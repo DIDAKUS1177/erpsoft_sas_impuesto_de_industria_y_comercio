@@ -1,0 +1,19 @@
+# Configuraciones locales
+config.municipio.php
+
+# Backups y compresión
+*.bak
+*.zip
+*.rar
+*.tar.gz
+
+# Docker
+/mysql_data
+/sql_data
+
+# Logs
+*.log
+
+# Ignorar temporales
+.DS_Store
+Thumbs.db

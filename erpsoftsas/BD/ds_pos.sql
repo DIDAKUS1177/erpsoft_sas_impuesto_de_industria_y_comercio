@@ -1,0 +1,3595 @@
+-- phpMyAdmin SQL Dump
+-- version 5.1.1
+-- https://www.phpmyadmin.net/
+--
+-- Servidor: 127.0.0.1
+-- Tiempo de generación: 24-07-2023 a las 22:37:00
+-- Versión del servidor: 10.4.19-MariaDB
+-- Versión de PHP: 7.4.20
+
+SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+START TRANSACTION;
+SET time_zone = "+00:00";
+
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8mb4 */;
+
+--
+-- Base de datos: `ds_pos`
+--
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `conf_departamentos`
+--
+
+CREATE TABLE `conf_departamentos` (
+  `dep_Id` bigint(20) NOT NULL,
+  `dep_Nombre` varchar(255) NOT NULL,
+  `dep_Codigo` int(20) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+--
+-- Volcado de datos para la tabla `conf_departamentos`
+--
+
+INSERT INTO `conf_departamentos` (`dep_Id`, `dep_Nombre`, `dep_Codigo`) VALUES
+(1, 'Antioquia', 5),
+(2, 'Atlantico', 8),
+(3, 'D. C. Santa Fe de Bogotá', 11),
+(4, 'Bolivar', 13),
+(5, 'Boyaca', 15),
+(6, 'Caldas', 17),
+(7, 'Caqueta', 18),
+(8, 'Cauca', 19),
+(9, 'Cesar', 20),
+(10, 'Cordova', 23),
+(11, 'Cundinamarca', 25),
+(12, 'Choco', 27),
+(13, 'Huila', 41),
+(14, 'La Guajira', 44),
+(15, 'Magdalena', 47),
+(16, 'Meta', 50),
+(17, 'Nariño', 52),
+(18, 'Norte de Santander', 54),
+(19, 'Quindio', 63),
+(20, 'Risaralda', 66),
+(21, 'Santander', 68),
+(22, 'Sucre', 70),
+(23, 'Tolima', 73),
+(24, 'Valle', 76),
+(25, 'Arauca', 81),
+(26, 'Casanare', 85),
+(27, 'Putumayo', 86),
+(28, 'San Andres', 88),
+(29, 'Amazonas', 91),
+(30, 'Guainia', 94),
+(31, 'Guaviare', 95),
+(32, 'Vaupes', 97),
+(33, 'Vichada', 99);
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `conf_empresa`
+--
+
+CREATE TABLE `conf_empresa` (
+  `emp_Id` int(11) NOT NULL,
+  `emp_Nombre` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `emp_NombreComercial` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `emp_Nit` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `emp_IdMunicipio` int(11) NOT NULL,
+  `emp_IdDepartamento` int(11) NOT NULL,
+  `emp_Email` varchar(200) CHARACTER SET utf8mb4 DEFAULT NULL,
+  `emp_SitioWeb` varchar(200) CHARACTER SET utf8mb4 DEFAULT NULL,
+  `emp_TipoImpresora` int(11) NOT NULL,
+  `emp_TipoPantalla` int(11) NOT NULL DEFAULT 1,
+  `emp_TextoFactura` text COLLATE utf8mb4_spanish_ci DEFAULT NULL,
+  `emp_UrlSoporteLogo` varchar(500) COLLATE utf8mb4_spanish_ci DEFAULT NULL,
+  `emp_Estado` int(11) NOT NULL,
+  `emp_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `conf_empresa`
+--
+
+INSERT INTO `conf_empresa` (`emp_Id`, `emp_Nombre`, `emp_NombreComercial`, `emp_Nit`, `emp_IdMunicipio`, `emp_IdDepartamento`, `emp_Email`, `emp_SitioWeb`, `emp_TipoImpresora`, `emp_TipoPantalla`, `emp_TextoFactura`, `emp_UrlSoporteLogo`, `emp_Estado`, `emp_FechaCreacion`) VALUES
+(1, 'DigitSoft', 'Nombre Comercial', '1111111-1', 246, 5, 'soporte@digitsoft.com.co', 'www.digitsoft.com.co', 1, 1, 'Gracias por su Compra', 'images/logo.jpeg', 1, '2021-01-18 13:00:00');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `conf_log`
+--
+
+CREATE TABLE `conf_log` (
+  `log_Id` int(11) NOT NULL,
+  `log_IdUsuario` int(11) NOT NULL,
+  `log_IdModulo` int(11) NOT NULL,
+  `log_IdSubModulo` int(11) NOT NULL,
+  `log_IdRegistro` int(11) NOT NULL,
+  `log_Fecha` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `conf_log`
+--
+
+INSERT INTO `conf_log` (`log_Id`, `log_IdUsuario`, `log_IdModulo`, `log_IdSubModulo`, `log_IdRegistro`, `log_Fecha`) VALUES
+(1, 1, 2, 8, 1, '2023-05-22 22:03:21'),
+(2, 1, 2, 8, 2, '2023-05-22 22:03:45'),
+(3, 1, 2, 8, 2, '2023-05-22 22:04:09');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `conf_modulo`
+--
+
+CREATE TABLE `conf_modulo` (
+  `mod_Id` int(11) NOT NULL,
+  `mod_Descripcion` varchar(500) CHARACTER SET utf8mb4 NOT NULL,
+  `mod_Nombre` varchar(500) CHARACTER SET utf8mb4 NOT NULL,
+  `mod_Icono` varchar(500) CHARACTER SET utf8mb4 NOT NULL,
+  `mod_Url` varchar(500) CHARACTER SET utf8mb4 NOT NULL,
+  `mod_Estado` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `conf_modulo`
+--
+
+INSERT INTO `conf_modulo` (`mod_Id`, `mod_Descripcion`, `mod_Nombre`, `mod_Icono`, `mod_Url`, `mod_Estado`) VALUES
+(1, 'ROLES', 'ROLES', 'mdi mdi-account-group', 'rol.php', 1),
+(2, 'USUARIOS', 'USUARIOS', 'mdi mdi-account', 'usuario.php', 1),
+(3, 'BODEGA', 'BODEGA', 'mdi mdi-account', 'bodega.php', 1),
+(4, 'PRODUCTO', 'PRODUCTO', 'mdi mdi-account', 'producto.php', 1),
+(5, 'NOTAS CREDITO/DEBITO (PRODUCTOS)', 'NOTAS CREDITO/DEBITO (PRODUCTOS)', 'mdi mdi-account', 'nota.php', 1),
+(6, 'FACTURA', 'FACTURA', 'mdi mdi-account', 'factura.php', 1),
+(7, 'INSUMOS', 'INSUMOS', 'mdi mdi-account', 'insumos.php', 1),
+(8, 'CATEGORIAS', 'CATEGORIAS', 'mdi mdi-account', 'categorias.php', 1),
+(9, 'SUBCATEGORIAS', 'SUBCATEGORIAS', 'mdi mdi-account', 'subcategorias.php', 1),
+(10, 'NOTAS CREDITO/DEBITO (INSUMOS)', 'NOTAS CREDITO/DEBITO (INSUMOS)', 'mdi mdi-account', 'notaInsumos.php', 1),
+(11, 'COTIZADOR (INSUMOS)', 'COTIZADOR (INSUMOS)', 'mdi mdi-account', 'cotizadorInsumos.php', 1),
+(12, 'ORDENES DE PRODUCCION (INSUMOS)', 'ORDENES DE PRODUCCION (INSUMOS)', 'mdi mdi-account', 'ordenesInsumos.php', 1),
+(13, 'BASE CAJA (FACTURA)', 'BASE CAJA (FACTURA)', 'mdi mdi-account', 'baseCaja.php', 1),
+(14, 'PAGOS CAJA (FACTURA)', 'PAGOS CAJA (FACTURA)', 'mdi mdi-account', 'pagosCaja.php', 1),
+(15, 'CIERRE CAJA (FACTURA)', 'CIERRE CAJA (FACTURA)', 'mdi mdi-account', 'cierreCaja.php', 1),
+(16, 'PROVEEDORES', 'PROVEEDORES', 'mdi mdi-account', 'proveedores.php', 1),
+(17, 'CLIENTES', 'CLIENTES', 'mdi mdi-account', 'clientes.php', 1),
+(18, 'FORMAS DE PAGO', 'FORMAS DE PAGO', 'mdi mdi-account', 'formasPago.php', 1),
+(19, 'INFORMES', 'INFORMES', 'mdi mdi-account', 'informes.php', 1),
+(20, 'MARCAS', 'MARCAS', 'mdi mdi-account', 'marca.php', 1),
+(21, 'RESOLUCIONES', 'RESOLUCIONES', 'mdi mdi-account', 'resolucion.php', 1),
+(22, 'EMPRESA', 'EMPRESA', 'mdi mdi-account', 'empresa.php', 1),
+(23, 'TESORERIA', 'TESORERIA', 'mdi mdi-account', 'tesoreria.php', 1),
+(24, 'EVENTOS', 'EVENTOS', 'mdi mdi-account', 'eventos.php', 1),
+(25, 'TIPOS DE PAGOS', 'TIPOS DE PAGOS', 'mdi mdi-account', 'tiposPagos.php', 1),
+(26, 'SUBTIPOS DE PAGOS', 'SUBTIPOS DE PAGOS', 'mdi mdi-account', 'subTiposPagos.php', 1);
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `conf_municipios`
+--
+
+CREATE TABLE `conf_municipios` (
+  `mun_Id` bigint(20) NOT NULL,
+  `mun_IdDepartamento` bigint(20) NOT NULL,
+  `mun_Codigo` int(11) NOT NULL,
+  `mun_Nombre` varchar(255) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+--
+-- Volcado de datos para la tabla `conf_municipios`
+--
+
+INSERT INTO `conf_municipios` (`mun_Id`, `mun_IdDepartamento`, `mun_Codigo`, `mun_Nombre`) VALUES
+(1, 1, 1, 'MEDELLIN'),
+(2, 1, 2, 'ABEJORRAL'),
+(3, 1, 4, 'ABRIAQUI'),
+(4, 1, 21, 'ALEJANDRIA'),
+(5, 1, 30, 'AMAGA'),
+(6, 1, 31, 'AMALFI'),
+(7, 1, 34, 'ANDES'),
+(8, 1, 36, 'ANGELOPOLIS'),
+(9, 1, 38, 'ANGOSTURA'),
+(10, 1, 40, 'ANORI'),
+(11, 1, 42, 'ANTIOQUIA'),
+(12, 1, 44, 'ANZA'),
+(13, 1, 45, 'APARTADO'),
+(14, 1, 51, 'ARBOLETES'),
+(15, 1, 55, 'ARGELIA'),
+(16, 1, 59, 'ARMENIA'),
+(17, 1, 79, 'BARBOSA'),
+(18, 1, 86, 'BELMIRA'),
+(19, 1, 88, 'BELLO'),
+(20, 1, 91, 'BETANIA'),
+(21, 1, 93, 'BETULIA'),
+(22, 1, 101, 'BOLIVAR'),
+(23, 1, 107, 'BRICEÑO'),
+(24, 1, 113, 'BURITICA'),
+(25, 1, 120, 'CACERES'),
+(26, 1, 125, 'CAICEDO'),
+(27, 1, 129, 'CALDAS'),
+(28, 1, 134, 'CAMPAMENTO'),
+(29, 1, 138, 'CAÑASGORDAS'),
+(30, 1, 142, 'CARACOLI'),
+(31, 1, 145, 'CARAMANTA'),
+(32, 1, 147, 'CAREPA'),
+(33, 1, 148, 'CARMEN DE VIBORAL'),
+(34, 1, 150, 'CAROLINA'),
+(35, 1, 154, 'CAUCASIA'),
+(36, 1, 172, 'CHIGORODO'),
+(37, 1, 190, 'CISNEROS'),
+(38, 1, 197, 'COCORNA'),
+(39, 1, 206, 'CONCEPCION'),
+(40, 1, 209, 'CONCORDIA'),
+(41, 1, 212, 'COPACABANA'),
+(42, 1, 234, 'DABEIBA'),
+(43, 1, 237, 'DON MATIAS'),
+(44, 1, 240, 'EBEJICO'),
+(45, 1, 250, 'EL BAGRE'),
+(46, 1, 264, 'ENTRERRIOS'),
+(47, 1, 266, 'ENVIGADO'),
+(48, 1, 282, 'FREDONIA'),
+(49, 1, 284, 'FRONTINO'),
+(50, 1, 306, 'GIRALDO'),
+(51, 1, 308, 'GIRARDOTA'),
+(52, 1, 310, 'GOMEZ PLATA'),
+(53, 1, 313, 'GRANADA'),
+(54, 1, 315, 'GUADALUPE'),
+(55, 1, 318, 'GUARNE'),
+(56, 1, 321, 'GUATAPE'),
+(57, 1, 347, 'HELICONIA'),
+(58, 1, 353, 'HISPANIA'),
+(59, 1, 360, 'ITAGUI'),
+(60, 1, 361, 'ITUANGO'),
+(61, 1, 364, 'JARDIN'),
+(62, 1, 368, 'JERICO'),
+(63, 1, 376, 'LA CEJA'),
+(64, 1, 380, 'LA ESTRELLA'),
+(65, 1, 390, 'LA PINTADA'),
+(66, 1, 400, 'LA UNION'),
+(67, 1, 411, 'LIBORINA'),
+(68, 1, 425, 'MACEO'),
+(69, 1, 440, 'MARINILLA'),
+(70, 1, 467, 'MONTEBELLO'),
+(71, 1, 475, 'MURINDO'),
+(72, 1, 480, 'MUTATA'),
+(73, 1, 483, 'NARIÑO'),
+(74, 1, 490, 'NECOCLI'),
+(75, 1, 495, 'NECHI'),
+(76, 1, 501, 'OLAYA'),
+(77, 1, 541, 'PEÑOL'),
+(78, 1, 543, 'PEQUE'),
+(79, 1, 576, 'PUEBLORRICO'),
+(80, 1, 579, 'PUERTO BERRIO'),
+(81, 1, 585, 'PUERTO NARE (LA MAGDALENA)'),
+(82, 1, 591, 'PUERTO TRIUNFO'),
+(83, 1, 604, 'REMEDIOS'),
+(84, 1, 607, 'RETIRO'),
+(85, 1, 615, 'RIONEGRO'),
+(86, 1, 628, 'SABANALARGA'),
+(87, 1, 631, 'SABANETA'),
+(88, 1, 642, 'SALGAR'),
+(89, 1, 647, 'SAN ANDRES'),
+(90, 1, 649, 'SAN CARLOS'),
+(91, 1, 652, 'SAN FRANCISCO'),
+(92, 1, 656, 'SAN JERONIMO'),
+(93, 1, 658, 'SAN JOSE DE LA MONTAÑA'),
+(94, 1, 659, 'SAN JUAN DE URABA'),
+(95, 1, 660, 'SAN LUIS'),
+(96, 1, 664, 'SAN PEDRO'),
+(97, 1, 665, 'SAN PEDRO DE URABA'),
+(98, 1, 667, 'SAN RAFAEL'),
+(99, 1, 670, 'SAN ROQUE'),
+(100, 1, 674, 'SAN VICENTE'),
+(101, 1, 679, 'SANTA BARBARA'),
+(102, 1, 686, 'SANTA ROSA DE OSOS'),
+(103, 1, 690, 'SANTO DOMINGO'),
+(104, 1, 697, 'SANTUARIO'),
+(105, 1, 736, 'SEGOVIA'),
+(106, 1, 756, 'SONSON'),
+(107, 1, 761, 'SOPETRAN'),
+(108, 1, 789, 'TAMESIS'),
+(109, 1, 790, 'TARAZA'),
+(110, 1, 792, 'TARSO'),
+(111, 1, 809, 'TITIRIBI'),
+(112, 1, 819, 'TOLEDO'),
+(113, 1, 837, 'TURBO'),
+(114, 1, 842, 'URAMITA'),
+(115, 1, 847, 'URRAO'),
+(116, 1, 854, 'VALDIVIA'),
+(117, 1, 856, 'VALPARAISO'),
+(118, 1, 858, 'VEGACHI'),
+(119, 1, 861, 'VENECIA'),
+(120, 1, 873, 'VIGIA DEL FUERTE'),
+(121, 1, 885, 'YALI'),
+(122, 1, 887, 'YARUMAL'),
+(123, 1, 890, 'YOLOMBO'),
+(124, 1, 893, 'YONDO'),
+(125, 1, 895, 'ZARAGOZA'),
+(126, 2, 1, 'BARRANQUILLA (DISTRITO ESPECIAL INDUSTRIAL Y PORTUARIO DE BARRANQUILLA)'),
+(127, 2, 78, 'BARANOA'),
+(128, 2, 137, 'CAMPO DE LA CRUZ'),
+(129, 2, 141, 'CANDELARIA'),
+(130, 2, 296, 'GALAPA'),
+(131, 2, 372, 'JUAN DE ACOSTA'),
+(132, 2, 421, 'LURUACO'),
+(133, 2, 433, 'MALAMBO'),
+(134, 2, 436, 'MANATI'),
+(135, 2, 520, 'PALMAR DE VARELA'),
+(136, 2, 549, 'PIOJO'),
+(137, 2, 558, 'POLO NUEVO'),
+(138, 2, 560, 'PONEDERA'),
+(139, 2, 573, 'PUERTO COLOMBIA'),
+(140, 2, 606, 'REPELON'),
+(141, 2, 634, 'SABANAGRANDE'),
+(142, 2, 638, 'SABANALARGA'),
+(143, 2, 675, 'SANTA LUCIA'),
+(144, 2, 685, 'SANTO TOMAS'),
+(145, 2, 758, 'SOLEDAD'),
+(146, 2, 770, 'SUAN'),
+(147, 2, 832, 'TUBARA'),
+(148, 2, 849, 'USIACURI'),
+(149, 3, 1, 'Santa Fe de Bogotá'),
+(150, 3, 1, 'USAQUEN'),
+(151, 3, 2, 'CHAPINERO'),
+(152, 3, 3, 'SANTA FE'),
+(153, 3, 4, 'SAN CRISTOBAL'),
+(154, 3, 5, 'USME'),
+(155, 3, 6, 'TUNJUELITO'),
+(156, 3, 7, 'BOSA'),
+(157, 3, 8, 'KENNEDY'),
+(158, 3, 9, 'FONTIBON'),
+(159, 3, 10, 'ENGATIVA'),
+(160, 3, 11, 'SUBA'),
+(161, 3, 12, 'BARRIOS UNIDOS'),
+(162, 3, 13, 'TEUSAQUILLO'),
+(163, 3, 14, 'MARTIRES'),
+(164, 3, 15, 'ANTONIO NARIÑO'),
+(165, 3, 16, 'PUENTE ARANDA'),
+(166, 3, 17, 'CANDELARIA'),
+(167, 3, 18, 'RAFAEL URIBE'),
+(168, 3, 19, 'CIUDAD BOLIVAR'),
+(169, 3, 20, 'SUMAPAZ'),
+(170, 4, 1, 'CARTAGENA (DISTRITO TURISTICO Y CULTURAL DE CARTAGENA)'),
+(171, 4, 6, 'ACHI'),
+(172, 4, 30, 'ALTOS DEL ROSARIO'),
+(173, 4, 42, 'ARENAL'),
+(174, 4, 52, 'ARJONA'),
+(175, 4, 62, 'ARROYOHONDO'),
+(176, 4, 74, 'BARRANCO DE LOBA'),
+(177, 4, 140, 'CALAMAR'),
+(178, 4, 160, 'CANTAGALLO'),
+(179, 4, 188, 'CICUCO'),
+(180, 4, 212, 'CORDOBA'),
+(181, 4, 222, 'CLEMENCIA'),
+(182, 4, 244, 'EL CARMEN DE BOLIVAR'),
+(183, 4, 248, 'EL GUAMO'),
+(184, 4, 268, 'EL PEÑON'),
+(185, 4, 300, 'HATILLO DE LOBA'),
+(186, 4, 430, 'MAGANGUE'),
+(187, 4, 433, 'MAHATES'),
+(188, 4, 440, 'MARGARITA'),
+(189, 4, 442, 'MARIA LA BAJA'),
+(190, 4, 458, 'MONTECRISTO'),
+(191, 4, 468, 'MOMPOS'),
+(192, 4, 473, 'MORALES'),
+(193, 4, 549, 'PINILLOS'),
+(194, 4, 580, 'REGIDOR'),
+(195, 4, 600, 'RIO VIEJO'),
+(196, 4, 620, 'SAN CRISTOBAL'),
+(197, 4, 647, 'SAN ESTANISLAO'),
+(198, 4, 650, 'SAN FERNANDO'),
+(199, 4, 654, 'SAN JACINTO'),
+(200, 4, 655, 'SAN JACINTO DEL CAUCA'),
+(201, 4, 657, 'SAN JUAN NEPOMUCENO'),
+(202, 4, 667, 'SAN MARTIN DE LOBA'),
+(203, 4, 670, 'SAN PABLO'),
+(204, 4, 673, 'SANTA CATALINA'),
+(205, 4, 683, 'SANTA ROSA'),
+(206, 4, 688, 'SANTA ROSA DEL SUR'),
+(207, 4, 744, 'SIMITI'),
+(208, 4, 760, 'SOPLAVIENTO'),
+(209, 4, 780, 'TALAIGUA NUEVO'),
+(210, 4, 810, 'TIQUISIO (PUERTO RICO)'),
+(211, 4, 836, 'TURBACO'),
+(212, 4, 838, 'TURBANA'),
+(213, 4, 873, 'VILLANUEVA'),
+(214, 4, 894, 'ZAMBRANO'),
+(215, 5, 1, 'TUNJA'),
+(216, 5, 22, 'ALMEIDA'),
+(217, 5, 47, 'AQUITANIA'),
+(218, 5, 51, 'ARCABUCO'),
+(219, 5, 87, 'BELEN'),
+(220, 5, 90, 'BERBEO'),
+(221, 5, 92, 'BETEITIVA'),
+(222, 5, 97, 'BOAVITA'),
+(223, 5, 104, 'BOYACA'),
+(224, 5, 106, 'BRICEÑO'),
+(225, 5, 109, 'BUENAVISTA'),
+(226, 5, 114, 'BUSBANZA'),
+(227, 5, 131, 'CALDAS'),
+(228, 5, 135, 'CAMPOHERMOSO'),
+(229, 5, 162, 'CERINZA'),
+(230, 5, 172, 'CHINAVITA'),
+(231, 5, 176, 'CHIQUINQUIRA'),
+(232, 5, 180, 'CHISCAS'),
+(233, 5, 183, 'CHITA'),
+(234, 5, 185, 'CHITARAQUE'),
+(235, 5, 187, 'CHIVATA'),
+(236, 5, 189, 'CIENEGA'),
+(237, 5, 204, 'COMBITA'),
+(238, 5, 212, 'COPER'),
+(239, 5, 215, 'CORRALES'),
+(240, 5, 218, 'COVARACHIA'),
+(241, 5, 223, 'CUBARA'),
+(242, 5, 224, 'CUCAITA'),
+(243, 5, 226, 'CUITIVA'),
+(244, 5, 232, 'CHIQUIZA'),
+(245, 5, 236, 'CHIVOR'),
+(246, 5, 238, 'DUITAMA'),
+(247, 5, 244, 'EL COCUY'),
+(248, 5, 248, 'EL ESPINO'),
+(249, 5, 272, 'FIRAVITOBA'),
+(250, 5, 276, 'FLORESTA'),
+(251, 5, 293, 'GACHANTIVA'),
+(252, 5, 296, 'GAMEZA'),
+(253, 5, 299, 'GARAGOA'),
+(254, 5, 317, 'GUACAMAYAS'),
+(255, 5, 322, 'GUATEQUE'),
+(256, 5, 325, 'GUAYATA'),
+(257, 5, 332, 'GUICAN'),
+(258, 5, 362, 'IZA'),
+(259, 5, 367, 'JENESANO'),
+(260, 5, 368, 'JERICO'),
+(261, 5, 377, 'LABRANZAGRANDE'),
+(262, 5, 380, 'LA CAPILLA'),
+(263, 5, 401, 'LA VICTORIA'),
+(264, 5, 403, 'LA UVITA'),
+(265, 5, 407, 'VILLA DE LEIVA'),
+(266, 5, 425, 'MACANAL'),
+(267, 5, 442, 'MARIPI'),
+(268, 5, 455, 'MIRAFLORES'),
+(269, 5, 464, 'MONGUA'),
+(270, 5, 466, 'MONGUI'),
+(271, 5, 469, 'MONIQUIRA'),
+(272, 5, 476, 'MOTAVITA'),
+(273, 5, 480, 'MUZO'),
+(274, 5, 491, 'NOBSA'),
+(275, 5, 494, 'NUEVO COLON'),
+(276, 5, 500, 'OICATA'),
+(277, 5, 507, 'OTANCHE'),
+(278, 5, 511, 'PACHAVITA'),
+(279, 5, 514, 'PAEZ'),
+(280, 5, 516, 'PAIPA'),
+(281, 5, 518, 'PAJARITO'),
+(282, 5, 522, 'PANQUEBA'),
+(283, 5, 531, 'PAUNA'),
+(284, 5, 533, 'PAYA'),
+(285, 5, 537, 'PAZ DEL RIO'),
+(286, 5, 542, 'PESCA'),
+(287, 5, 550, 'PISBA'),
+(288, 5, 572, 'PUERTO BOYACA'),
+(289, 5, 580, 'QUIPAMA'),
+(290, 5, 599, 'RAMIRIQUI'),
+(291, 5, 600, 'RAQUIRA'),
+(292, 5, 621, 'RONDON'),
+(293, 5, 632, 'SABOYA'),
+(294, 5, 638, 'SACHICA'),
+(295, 5, 646, 'SAMACA'),
+(296, 5, 660, 'SAN EDUARDO'),
+(297, 5, 664, 'SAN JOSE DE PARE'),
+(298, 5, 667, 'SAN LUIS DE GACENO'),
+(299, 5, 673, 'SAN MATEO'),
+(300, 5, 676, 'SAN MIGUEL DE SEMA'),
+(301, 5, 681, 'SAN PABLO DE BORBUR'),
+(302, 5, 686, 'SANTANA'),
+(303, 5, 690, 'SANTA MARIA'),
+(304, 5, 693, 'SANTA ROSA DE VITERBO'),
+(305, 5, 696, 'SANTA SOFIA'),
+(306, 5, 720, 'SATIVANORTE'),
+(307, 5, 723, 'SATIVASUR'),
+(308, 5, 740, 'SIACHOQUE'),
+(309, 5, 753, 'SOATA'),
+(310, 5, 755, 'SOCOTA'),
+(311, 5, 757, 'SOCHA'),
+(312, 5, 759, 'SOGAMOSO'),
+(313, 5, 761, 'SOMONDOCO'),
+(314, 5, 762, 'SORA'),
+(315, 5, 763, 'SOTAQUIRA'),
+(316, 5, 764, 'SORACA'),
+(317, 5, 774, 'SUSACON'),
+(318, 5, 776, 'SUTAMARCHAN'),
+(319, 5, 778, 'SUTATENZA'),
+(320, 5, 790, 'TASCO'),
+(321, 5, 798, 'TENZA'),
+(322, 5, 804, 'TIBANA'),
+(323, 5, 806, 'TIBASOSA'),
+(324, 5, 808, 'TINJACA'),
+(325, 5, 810, 'TIPACOQUE'),
+(326, 5, 814, 'TOCA'),
+(327, 5, 816, 'TOGUI'),
+(328, 5, 820, 'TOPAGA'),
+(329, 5, 822, 'TOTA'),
+(330, 5, 832, 'TUNUNGUA'),
+(331, 5, 835, 'TURMEQUE'),
+(332, 5, 837, 'TUTA'),
+(333, 5, 839, 'TUTASA'),
+(334, 5, 842, 'UMBITA'),
+(335, 5, 861, 'VENTAQUEMADA'),
+(336, 5, 879, 'VIRACACHA'),
+(337, 5, 897, 'ZETAQUIRA'),
+(338, 6, 1, 'MANIZALES'),
+(339, 6, 13, 'AGUADAS'),
+(340, 6, 42, 'ANSERMA'),
+(341, 6, 50, 'ARANZAZU'),
+(342, 6, 88, 'BELALCAZAR'),
+(343, 6, 174, 'CHINCHINA'),
+(344, 6, 272, 'FILADELFIA'),
+(345, 6, 380, 'LA DORADA'),
+(346, 6, 388, 'LA MERCED'),
+(347, 6, 433, 'MANZANARES'),
+(348, 6, 442, 'MARMATO'),
+(349, 6, 444, 'MARQUETALIA'),
+(350, 6, 446, 'MARULANDA'),
+(351, 6, 486, 'NEIRA'),
+(352, 6, 495, 'NORCASIA'),
+(353, 6, 513, 'PACORA'),
+(354, 6, 524, 'PALESTINA'),
+(355, 6, 541, 'PENSILVANIA'),
+(356, 6, 614, 'RIOSUCIO'),
+(357, 6, 616, 'RISARALDA'),
+(358, 6, 653, 'SALAMINA'),
+(359, 6, 662, 'SAMANA'),
+(360, 6, 665, 'SAN JOSE'),
+(361, 6, 777, 'SUPIA'),
+(362, 6, 867, 'VICTORIA'),
+(363, 6, 873, 'VILLAMARIA'),
+(364, 6, 877, 'VITERBO'),
+(365, 7, 1, 'FLORENCIA'),
+(366, 7, 29, 'ALBANIA'),
+(367, 7, 94, 'BELEN DE LOS ANDAQUIES'),
+(368, 7, 150, 'CARTAGENA DEL CHAIRA'),
+(369, 7, 205, 'CURILLO'),
+(370, 7, 247, 'EL DONCELLO'),
+(371, 7, 256, 'EL PAUJIL'),
+(372, 7, 410, 'LA MONTAÑITA'),
+(373, 7, 460, 'MILAN'),
+(374, 7, 479, 'MORELIA'),
+(375, 7, 592, 'PUERTO RICO'),
+(376, 7, 610, 'SAN JOSE DE FRAGUA'),
+(377, 7, 753, 'SAN VICENTE DEL CAGUAN'),
+(378, 7, 756, 'SOLANO'),
+(379, 7, 785, 'SOLITA'),
+(380, 7, 860, 'VALPARAISO'),
+(381, 8, 1, 'POPAYAN'),
+(382, 8, 22, 'ALMAGUER'),
+(383, 8, 50, 'ARGELIA'),
+(384, 8, 75, 'BALBOA'),
+(385, 8, 100, 'BOLIVAR'),
+(386, 8, 110, 'BUENOS AIRES'),
+(387, 8, 130, 'CAJIBIO'),
+(388, 8, 137, 'CALDONO'),
+(389, 8, 142, 'CALOTO'),
+(390, 8, 212, 'CORINTO'),
+(391, 8, 256, 'EL TAMBO'),
+(392, 8, 290, 'FLORENCIA'),
+(393, 8, 318, 'GUAPI'),
+(394, 8, 355, 'INZA'),
+(395, 8, 364, 'JAMBALO'),
+(396, 8, 392, 'LA SIERRA'),
+(397, 8, 397, 'LA VEGA'),
+(398, 8, 418, 'LOPEZ (MICAY)'),
+(399, 8, 450, 'MERCADERES'),
+(400, 8, 455, 'MIRANDA'),
+(401, 8, 473, 'MORALES'),
+(402, 8, 513, 'PADILLA'),
+(403, 8, 517, 'PAEZ (BELALCAZAR)'),
+(404, 8, 532, 'PATIA (EL BORDO)'),
+(405, 8, 533, 'PIAMONTE'),
+(406, 8, 548, 'PIENDAMO'),
+(407, 8, 573, 'PUERTO TEJADA'),
+(408, 8, 585, 'PURACE (COCONUCO)'),
+(409, 8, 622, 'ROSAS'),
+(410, 8, 693, 'SAN SEBASTIAN'),
+(411, 8, 698, 'SANTANDER DE QUILICHAO'),
+(412, 8, 701, 'SANTA ROSA'),
+(413, 8, 743, 'SILVIA'),
+(414, 8, 760, 'SOTARA (PAISPAMBA)'),
+(415, 8, 780, 'SUAREZ'),
+(416, 8, 807, 'TIMBIO'),
+(417, 8, 809, 'TIMBIQUI'),
+(418, 8, 821, 'TORIBIO'),
+(419, 8, 824, 'TOTORO'),
+(420, 8, 845, 'VILLARICA'),
+(421, 9, 1, 'VALLEDUPAR'),
+(422, 9, 11, 'AGUACHICA'),
+(423, 9, 13, 'AGUSTIN CODAZZI'),
+(424, 9, 32, 'ASTREA'),
+(425, 9, 45, 'BECERRIL'),
+(426, 9, 60, 'BOSCONIA'),
+(427, 9, 175, 'CHIMICHAGUA'),
+(428, 9, 178, 'CHIRIGUANA'),
+(429, 9, 228, 'CURUMANI'),
+(430, 9, 238, 'EL COPEY'),
+(431, 9, 250, 'EL PASO'),
+(432, 9, 295, 'GAMARRA'),
+(433, 9, 310, 'GONZALEZ'),
+(434, 9, 383, 'LA GLORIA'),
+(435, 9, 400, 'LA JAGUA IBIRICO'),
+(436, 9, 443, 'MANAURE (BALCON DEL CESAR)'),
+(437, 9, 517, 'PAILITAS'),
+(438, 9, 550, 'PELAYA'),
+(439, 9, 570, 'PUEBLO BELLO'),
+(440, 9, 614, 'RIO DE ORO'),
+(441, 9, 621, 'LA PAZ (ROBLES)'),
+(442, 9, 710, 'SAN ALBERTO'),
+(443, 9, 750, 'SAN DIEGO'),
+(444, 9, 770, 'SAN MARTIN'),
+(445, 9, 787, 'TAMALAMEQUE'),
+(446, 10, 1, 'MONTERIA'),
+(447, 10, 68, 'AYAPEL'),
+(448, 10, 79, 'BUENAVISTA'),
+(449, 10, 90, 'CANALETE'),
+(450, 10, 162, 'CERETE'),
+(451, 10, 168, 'CHIMA'),
+(452, 10, 182, 'CHINU'),
+(453, 10, 189, 'CIENAGA DE ORO'),
+(454, 10, 300, 'COTORRA'),
+(455, 10, 350, 'LA APARTADA'),
+(456, 10, 417, 'LORICA'),
+(457, 10, 419, 'LOS CORDOBAS'),
+(458, 10, 464, 'MOMIL'),
+(459, 10, 466, 'MONTELIBANO'),
+(460, 10, 500, 'MOÑITOS'),
+(461, 10, 555, 'PLANETA RICA'),
+(462, 10, 570, 'PUEBLO NUEVO'),
+(463, 10, 574, 'PUERTO ESCONDIDO'),
+(464, 10, 580, 'PUERTO LIBERTADOR'),
+(465, 10, 586, 'PURISIMA'),
+(466, 10, 660, 'SAHAGUN'),
+(467, 10, 670, 'SAN ANDRES SOTAVENTO'),
+(468, 10, 672, 'SAN ANTERO'),
+(469, 10, 675, 'SAN BERNARDO DEL VIENTO'),
+(470, 10, 678, 'SAN CARLOS'),
+(471, 10, 686, 'SAN PELAYO'),
+(472, 10, 807, 'TIERRALTA'),
+(473, 10, 855, 'VALENCIA'),
+(474, 11, 1, 'AGUA DE DIOS'),
+(475, 11, 19, 'ALBAN'),
+(476, 11, 35, 'ANAPOIMA'),
+(477, 11, 40, 'ANOLAIMA'),
+(478, 11, 53, 'ARBELAEZ'),
+(479, 11, 86, 'BELTRAN'),
+(480, 11, 95, 'BITUIMA'),
+(481, 11, 99, 'BOJACA'),
+(482, 11, 120, 'CABRERA'),
+(483, 11, 123, 'CACHIPAY'),
+(484, 11, 126, 'CAJICA'),
+(485, 11, 148, 'CAPARRAPI'),
+(486, 11, 151, 'CAQUEZA'),
+(487, 11, 154, 'CARMEN DE CARUPA'),
+(488, 11, 168, 'CHAGUANI'),
+(489, 11, 175, 'CHIA'),
+(490, 11, 178, 'CHIPAQUE'),
+(491, 11, 181, 'CHOACHI'),
+(492, 11, 183, 'CHOCONTA'),
+(493, 11, 200, 'COGUA'),
+(494, 11, 214, 'COTA'),
+(495, 11, 224, 'CUCUNUBA'),
+(496, 11, 245, 'EL COLEGIO'),
+(497, 11, 258, 'EL PEÑON'),
+(498, 11, 260, 'EL ROSAL'),
+(499, 11, 269, 'FACATATIVA'),
+(500, 11, 279, 'FOMEQUE'),
+(501, 11, 281, 'FOSCA'),
+(502, 11, 286, 'FUNZA'),
+(503, 11, 288, 'FUQUENE'),
+(504, 11, 290, 'FUSAGASUGA'),
+(505, 11, 293, 'GACHALA'),
+(506, 11, 295, 'GACHANCIPA'),
+(507, 11, 297, 'GACHETA'),
+(508, 11, 299, 'GAMA'),
+(509, 11, 307, 'GIRARDOT'),
+(510, 11, 312, 'GRANADA'),
+(511, 11, 317, 'GUACHETA'),
+(512, 11, 320, 'GUADUAS'),
+(513, 11, 322, 'GUASCA'),
+(514, 11, 324, 'GUATAQUI'),
+(515, 11, 326, 'GUATAVITA'),
+(516, 11, 328, 'GUAYABAL DE SIQUIMA'),
+(517, 11, 335, 'GUAYABETAL'),
+(518, 11, 339, 'GUTIERREZ'),
+(519, 11, 368, 'JERUSALEN'),
+(520, 11, 372, 'JUNIN'),
+(521, 11, 377, 'LA CALERA'),
+(522, 11, 386, 'LA MESA'),
+(523, 11, 394, 'LA PALMA'),
+(524, 11, 398, 'LA PEÑA'),
+(525, 11, 402, 'LA VEGA'),
+(526, 11, 407, 'LENGUAZAQUE'),
+(527, 11, 426, 'MACHETA'),
+(528, 11, 430, 'MADRID'),
+(529, 11, 436, 'MANTA'),
+(530, 11, 438, 'MEDINA'),
+(531, 11, 473, 'MOSQUERA'),
+(532, 11, 483, 'NARIÑO'),
+(533, 11, 486, 'NEMOCON'),
+(534, 11, 488, 'NILO'),
+(535, 11, 489, 'NIMAIMA'),
+(536, 11, 491, 'NOCAIMA'),
+(537, 11, 506, 'VENECIA (OSPINA PEREZ)'),
+(538, 11, 513, 'PACHO'),
+(539, 11, 518, 'PAIME'),
+(540, 11, 524, 'PANDI'),
+(541, 11, 530, 'PARATEBUENO'),
+(542, 11, 535, 'PASCA'),
+(543, 11, 572, 'PUERTO SALGAR'),
+(544, 11, 580, 'PULI'),
+(545, 11, 592, 'QUEBRADANEGRA'),
+(546, 11, 594, 'QUETAME'),
+(547, 11, 596, 'QUIPILE'),
+(548, 11, 599, 'APULO (RAFAEL REYES)'),
+(549, 11, 612, 'RICAURTE'),
+(550, 11, 645, 'SAN ANTONIO DEL TEQUENDAMA'),
+(551, 11, 649, 'SAN BERNARDO'),
+(552, 11, 653, 'SAN CAYETANO'),
+(553, 11, 658, 'SAN FRANCISCO'),
+(554, 11, 662, 'SAN JUAN DE RIOSECO'),
+(555, 11, 718, 'SASAIMA'),
+(556, 11, 736, 'SESQUILE'),
+(557, 11, 740, 'SIBATE'),
+(558, 11, 743, 'SILVANIA'),
+(559, 11, 745, 'SIMIJACA'),
+(560, 11, 754, 'SOACHA'),
+(561, 11, 758, 'SOPO'),
+(562, 11, 769, 'SUBACHOQUE'),
+(563, 11, 772, 'SUESCA'),
+(564, 11, 777, 'SUPATA'),
+(565, 11, 779, 'SUSA'),
+(566, 11, 781, 'SUTATAUSA'),
+(567, 11, 785, 'TABIO'),
+(568, 11, 793, 'TAUSA'),
+(569, 11, 797, 'TENA'),
+(570, 11, 799, 'TENJO'),
+(571, 11, 805, 'TIBACUY'),
+(572, 11, 807, 'TIBIRITA'),
+(573, 11, 815, 'TOCAIMA'),
+(574, 11, 817, 'TOCANCIPA'),
+(575, 11, 823, 'TOPAIPI'),
+(576, 11, 839, 'UBALA'),
+(577, 11, 841, 'UBAQUE'),
+(578, 11, 843, 'UBATE'),
+(579, 11, 845, 'UNE'),
+(580, 11, 851, 'UTICA'),
+(581, 11, 862, 'VERGARA'),
+(582, 11, 867, 'VIANI'),
+(583, 11, 871, 'VILLAGOMEZ'),
+(584, 11, 873, 'VILLAPINZON'),
+(585, 11, 875, 'VILLETA'),
+(586, 11, 878, 'VIOTA'),
+(587, 11, 885, 'YACOPI'),
+(588, 11, 898, 'ZIPACON'),
+(589, 11, 899, 'ZIPAQUIRA'),
+(590, 12, 1, 'QUIBDO (SAN FRANCISCO DE QUIBDO)'),
+(591, 12, 6, 'ACANDI'),
+(592, 12, 25, 'ALTO BAUDO (PIE DE PATO)'),
+(593, 12, 50, 'ATRATO'),
+(594, 12, 73, 'BAGADO'),
+(595, 12, 75, 'BAHIA SOLANO (MUTIS)'),
+(596, 12, 77, 'BAJO BAUDO (PIZARRO)'),
+(597, 12, 99, 'BOJAYA (BELLAVISTA)'),
+(598, 12, 135, 'CANTON DE SAN PABLO (MANAGRU)'),
+(599, 12, 205, 'CONDOTO'),
+(600, 12, 245, 'EL CARMEN DE ATRATO'),
+(601, 12, 250, 'LITORAL DEL BAJO SAN JUAN (SANTA GENOVEVA DE DOCORDO)'),
+(602, 12, 361, 'ISTMINA'),
+(603, 12, 372, 'JURADO'),
+(604, 12, 413, 'LLORO'),
+(605, 12, 425, 'MEDIO ATRATO'),
+(606, 12, 430, 'MEDIO BAUDO'),
+(607, 12, 491, 'NOVITA'),
+(608, 12, 495, 'NUQUI'),
+(609, 12, 600, 'RIOQUITO'),
+(610, 12, 615, 'RIOSUCIO'),
+(611, 12, 660, 'SAN JOSE DEL PALMAR'),
+(612, 12, 745, 'SIPI'),
+(613, 12, 787, 'TADO'),
+(614, 12, 800, 'UNGUIA'),
+(615, 12, 810, 'UNION PANAMERICANA'),
+(616, 13, 1, 'NEIVA'),
+(617, 13, 6, 'ACEVEDO'),
+(618, 13, 13, 'AGRADO'),
+(619, 13, 16, 'AIPE'),
+(620, 13, 20, 'ALGECIRAS'),
+(621, 13, 26, 'ALTAMIRA'),
+(622, 13, 78, 'BARAYA'),
+(623, 13, 132, 'CAMPOALEGRE'),
+(624, 13, 206, 'COLOMBIA'),
+(625, 13, 244, 'ELIAS'),
+(626, 13, 298, 'GARZON'),
+(627, 13, 306, 'GIGANTE'),
+(628, 13, 319, 'GUADALUPE'),
+(629, 13, 349, 'HOBO'),
+(630, 13, 357, 'IQUIRA'),
+(631, 13, 359, 'ISNOS (SAN JOSE DE ISNOS)'),
+(632, 13, 378, 'LA ARGENTINA'),
+(633, 13, 396, 'LA PLATA'),
+(634, 13, 483, 'NATAGA'),
+(635, 13, 503, 'OPORAPA'),
+(636, 13, 518, 'PAICOL'),
+(637, 13, 524, 'PALERMO'),
+(638, 13, 530, 'PALESTINA'),
+(639, 13, 548, 'PITAL'),
+(640, 13, 551, 'PITALITO'),
+(641, 13, 615, 'RIVERA'),
+(642, 13, 660, 'SALADOBLANCO'),
+(643, 13, 668, 'SAN AGUSTIN'),
+(644, 13, 676, 'SANTA MARIA'),
+(645, 13, 770, 'SUAZA'),
+(646, 13, 791, 'TARQUI'),
+(647, 13, 797, 'TESALIA'),
+(648, 13, 799, 'TELLO'),
+(649, 13, 801, 'TERUEL'),
+(650, 13, 807, 'TIMANA'),
+(651, 13, 872, 'VILLAVIEJA'),
+(652, 13, 885, 'YAGUARA'),
+(653, 14, 1, 'RIOHACHA'),
+(654, 14, 78, 'BARRANCAS'),
+(655, 14, 90, 'DIBULLA'),
+(656, 14, 98, 'DISTRACCION'),
+(657, 14, 110, 'EL MOLINO'),
+(658, 14, 279, 'FONSECA'),
+(659, 14, 378, 'HATONUEVO'),
+(660, 14, 420, 'LA JAGUA DEL PILAR'),
+(661, 14, 430, 'MAICAO'),
+(662, 14, 560, 'MANAURE'),
+(663, 14, 650, 'SAN JUAN DEL CESAR'),
+(664, 14, 847, 'URIBIA'),
+(665, 14, 855, 'URUMITA'),
+(666, 14, 874, 'VILLANUEVA'),
+(667, 15, 1, 'SANTA MARTA (DISTRITO TURISTICO CULTURAL E HISTORICO DE SANTA MARTA)'),
+(668, 15, 30, 'ALGARROBO'),
+(669, 15, 53, 'ARACATACA'),
+(670, 15, 58, 'ARIGUANI (EL DIFICIL)'),
+(671, 15, 161, 'CERRO SAN ANTONIO'),
+(672, 15, 170, 'CHIVOLO'),
+(673, 15, 189, 'CIENAGA'),
+(674, 15, 205, 'CONCORDIA'),
+(675, 15, 245, 'EL BANCO'),
+(676, 15, 258, 'EL PIÑON'),
+(677, 15, 268, 'EL RETEN'),
+(678, 15, 288, 'FUNDACION'),
+(679, 15, 318, 'GUAMAL'),
+(680, 15, 541, 'PEDRAZA'),
+(681, 15, 545, 'PIJIÑO DEL CARMEN (PIJIÑO)'),
+(682, 15, 551, 'PIVIJAY'),
+(683, 15, 555, 'PLATO'),
+(684, 15, 570, 'PUEBLOVIEJO'),
+(685, 15, 605, 'REMOLINO'),
+(686, 15, 660, 'SABANAS DE SAN ANGEL'),
+(687, 15, 675, 'SALAMINA'),
+(688, 15, 692, 'SAN SEBASTIAN DE BUENAVISTA'),
+(689, 15, 703, 'SAN ZENON'),
+(690, 15, 707, 'SANTA ANA'),
+(691, 15, 745, 'SITIONUEVO'),
+(692, 15, 798, 'TENERIFE'),
+(693, 16, 1, 'VILLAVICENCIO'),
+(694, 16, 6, 'ACACIAS'),
+(695, 16, 110, 'BARRANCA DE UPIA'),
+(696, 16, 124, 'CABUYARO'),
+(697, 16, 150, 'CASTILLA LA NUEVA'),
+(698, 16, 223, 'SAN LUIS DE CUBARRAL'),
+(699, 16, 226, 'CUMARAL'),
+(700, 16, 245, 'EL CALVARIO'),
+(701, 16, 251, 'EL CASTILLO'),
+(702, 16, 270, 'EL DORADO'),
+(703, 16, 287, 'FUENTE DE ORO'),
+(704, 16, 313, 'GRANADA'),
+(705, 16, 318, 'GUAMAL'),
+(706, 16, 325, 'MAPIRIPAN'),
+(707, 16, 330, 'MESETAS'),
+(708, 16, 350, 'LA MACARENA'),
+(709, 16, 370, 'LA URIBE'),
+(710, 16, 400, 'LEJANIAS'),
+(711, 16, 450, 'PUERTO CONCORDIA'),
+(712, 16, 568, 'PUERTO GAITAN'),
+(713, 16, 573, 'PUERTO LOPEZ'),
+(714, 16, 577, 'PUERTO LLERAS'),
+(715, 16, 590, 'PUERTO RICO'),
+(716, 16, 606, 'RESTREPO'),
+(717, 16, 680, 'SAN CARLOS DE GUAROA'),
+(718, 16, 683, 'SAN JUAN DE ARAMA'),
+(719, 16, 686, 'SAN JUANITO'),
+(720, 16, 689, 'SAN MARTIN'),
+(721, 16, 711, 'VISTAHERMOSA'),
+(722, 17, 1, 'PASTO (SAN JUAN DE PASTO)'),
+(723, 17, 19, 'ALBAN (SAN JOSE)'),
+(724, 17, 22, 'ALDANA'),
+(725, 17, 36, 'ANCUYA'),
+(726, 17, 51, 'ARBOLEDA (BERRUECOS)'),
+(727, 17, 79, 'BARBACOAS'),
+(728, 17, 83, 'BELEN'),
+(729, 17, 110, 'BUESACO'),
+(730, 17, 203, 'COLON (GENOVA)'),
+(731, 17, 207, 'CONSACA'),
+(732, 17, 210, 'CONTADERO'),
+(733, 17, 215, 'CORDOBA'),
+(734, 17, 224, 'CUASPUD (CARLOSAMA)'),
+(735, 17, 227, 'CUMBAL'),
+(736, 17, 233, 'CUMBITARA'),
+(737, 17, 240, 'CHACHAGUI'),
+(738, 17, 250, 'EL CHARCO'),
+(739, 17, 254, 'EL PEÑOL'),
+(740, 17, 256, 'EL ROSARIO'),
+(741, 17, 258, 'EL TABLON'),
+(742, 17, 260, 'EL TAMBO'),
+(743, 17, 287, 'FUNES'),
+(744, 17, 317, 'GUACHUCAL'),
+(745, 17, 320, 'GUAITARILLA'),
+(746, 17, 323, 'GUALMATAN'),
+(747, 17, 352, 'ILES'),
+(748, 17, 354, 'IMUES'),
+(749, 17, 356, 'IPIALES'),
+(750, 17, 378, 'LA CRUZ'),
+(751, 17, 381, 'LA FLORIDA'),
+(752, 17, 385, 'LA LLANADA'),
+(753, 17, 390, 'LA TOLA'),
+(754, 17, 399, 'LA UNION'),
+(755, 17, 405, 'LEIVA'),
+(756, 17, 411, 'LINARES'),
+(757, 17, 418, 'LOS ANDES (SOTOMAYOR)'),
+(758, 17, 427, 'MAGUI (PAYAN)'),
+(759, 17, 435, 'MALLAMA (PIEDRANCHA)'),
+(760, 17, 473, 'MOSQUERA'),
+(761, 17, 490, 'OLAYA HERRERA (BOCAS DE SATINGA)'),
+(762, 17, 506, 'OSPINA'),
+(763, 17, 520, 'FRANCISCO PIZARRO (SALAHONDA)'),
+(764, 17, 540, 'POLICARPA'),
+(765, 17, 560, 'POTOSI'),
+(766, 17, 565, 'PROVIDENCIA'),
+(767, 17, 573, 'PUERRES'),
+(768, 17, 585, 'PUPIALES'),
+(769, 17, 612, 'RICAURTE'),
+(770, 17, 621, 'ROBERTO PAYAN (SAN JOSE)'),
+(771, 17, 678, 'SAMANIEGO'),
+(772, 17, 683, 'SANDONA'),
+(773, 17, 685, 'SAN BERNARDO'),
+(774, 17, 687, 'SAN LORENZO'),
+(775, 17, 693, 'SAN PABLO'),
+(776, 17, 694, 'SAN PEDRO DE CARTAGO'),
+(777, 17, 696, 'SANTA BARBARA (ISCUANDE)'),
+(778, 17, 699, 'SANTA CRUZ (GUACHAVES)'),
+(779, 17, 720, 'SAPUYES'),
+(780, 17, 786, 'TAMINANGO'),
+(781, 17, 788, 'TANGUA'),
+(782, 17, 835, 'TUMACO'),
+(783, 17, 838, 'TUQUERRES'),
+(784, 17, 885, 'YACUANQUER'),
+(785, 18, 1, 'CUCUTA'),
+(786, 18, 3, 'ABREGO'),
+(787, 18, 51, 'ARBOLEDAS'),
+(788, 18, 99, 'BOCHALEMA'),
+(789, 18, 109, 'BUCARASICA'),
+(790, 18, 125, 'CACOTA'),
+(791, 18, 128, 'CACHIRA'),
+(792, 18, 172, 'CHINACOTA'),
+(793, 18, 174, 'CHITAGA'),
+(794, 18, 206, 'CONVENCION'),
+(795, 18, 223, 'CUCUTILLA'),
+(796, 18, 239, 'DURANIA'),
+(797, 18, 245, 'EL CARMEN'),
+(798, 18, 250, 'EL TARRA'),
+(799, 18, 261, 'EL ZULIA'),
+(800, 18, 313, 'GRAMALOTE'),
+(801, 18, 344, 'HACARI'),
+(802, 18, 347, 'HERRAN'),
+(803, 18, 377, 'LABATECA'),
+(804, 18, 385, 'LA ESPERANZA'),
+(805, 18, 398, 'LA PLAYA'),
+(806, 18, 405, 'LOS PATIOS'),
+(807, 18, 418, 'LOURDES'),
+(808, 18, 480, 'MUTISCUA'),
+(809, 18, 498, 'OCAÑA'),
+(810, 18, 518, 'PAMPLONA'),
+(811, 18, 520, 'PAMPLONITA'),
+(812, 18, 553, 'PUERTO SANTANDER'),
+(813, 18, 599, 'RAGONVALIA'),
+(814, 18, 660, 'SALAZAR'),
+(815, 18, 670, 'SAN CALIXTO'),
+(816, 18, 673, 'SAN CAYETANO'),
+(817, 18, 680, 'SANTIAGO'),
+(818, 18, 720, 'SARDINATA'),
+(819, 18, 743, 'SILOS'),
+(820, 18, 800, 'TEORAMA'),
+(821, 18, 810, 'TIBU'),
+(822, 18, 820, 'TOLEDO'),
+(823, 18, 871, 'VILLACARO'),
+(824, 18, 874, 'VILLA DEL ROSARIO'),
+(825, 19, 1, 'ARMENIA'),
+(826, 19, 111, 'BUENAVISTA'),
+(827, 19, 130, 'CALARCA'),
+(828, 19, 190, 'CIRCASIA'),
+(829, 19, 212, 'CORDOBA'),
+(830, 19, 272, 'FILANDIA'),
+(831, 19, 302, 'GENOVA'),
+(832, 19, 401, 'LA TEBAIDA'),
+(833, 19, 470, 'MONTENEGRO'),
+(834, 19, 548, 'PIJAO'),
+(835, 19, 594, 'QUIMBAYA'),
+(836, 19, 690, 'SALENTO'),
+(837, 20, 1, 'PEREIRA'),
+(838, 20, 45, 'APIA'),
+(839, 20, 75, 'BALBOA'),
+(840, 20, 88, 'BELEN DE UMBRIA'),
+(841, 20, 170, 'DOS QUEBRADAS'),
+(842, 20, 318, 'GUATICA'),
+(843, 20, 383, 'LA CELIA'),
+(844, 20, 400, 'LA VIRGINIA'),
+(845, 20, 440, 'MARSELLA'),
+(846, 20, 456, 'MISTRATO'),
+(847, 20, 572, 'PUEBLO RICO'),
+(848, 20, 594, 'QUINCHIA'),
+(849, 20, 682, 'SANTA ROSA DE CABAL'),
+(850, 20, 687, 'SANTUARIO'),
+(851, 21, 1, 'BUCARAMANGA'),
+(852, 21, 13, 'AGUADA'),
+(853, 21, 20, 'ALBANIA'),
+(854, 21, 51, 'ARATOCA'),
+(855, 21, 77, 'BARBOSA'),
+(856, 21, 79, 'BARICHARA'),
+(857, 21, 81, 'BARRANCABERMEJA'),
+(858, 21, 92, 'BETULIA'),
+(859, 21, 101, 'BOLIVAR'),
+(860, 21, 121, 'CABRERA'),
+(861, 21, 132, 'CALIFORNIA'),
+(862, 21, 147, 'CAPITANEJO'),
+(863, 21, 152, 'CARCASI'),
+(864, 21, 160, 'CEPITA'),
+(865, 21, 162, 'CERRITO'),
+(866, 21, 167, 'CHARALA'),
+(867, 21, 169, 'CHARTA'),
+(868, 21, 176, 'CHIMA'),
+(869, 21, 179, 'CHIPATA'),
+(870, 21, 190, 'CIMITARRA'),
+(871, 21, 207, 'CONCEPCION'),
+(872, 21, 209, 'CONFINES'),
+(873, 21, 211, 'CONTRATACION'),
+(874, 21, 217, 'COROMORO'),
+(875, 21, 229, 'CURITI'),
+(876, 21, 235, 'EL CARMEN DE CHUCURY'),
+(877, 21, 245, 'EL GUACAMAYO'),
+(878, 21, 250, 'EL PEÑON'),
+(879, 21, 255, 'EL PLAYON'),
+(880, 21, 264, 'ENCINO'),
+(881, 21, 266, 'ENCISO'),
+(882, 21, 271, 'FLORIAN'),
+(883, 21, 276, 'FLORIDABLANCA'),
+(884, 21, 296, 'GALAN'),
+(885, 21, 298, 'GAMBITA'),
+(886, 21, 307, 'GIRON'),
+(887, 21, 318, 'GUACA'),
+(888, 21, 320, 'GUADALUPE'),
+(889, 21, 322, 'GUAPOTA'),
+(890, 21, 324, 'GUAVATA'),
+(891, 21, 327, 'GUEPSA'),
+(892, 21, 344, 'HATO'),
+(893, 21, 368, 'JESUS MARIA'),
+(894, 21, 370, 'JORDAN'),
+(895, 21, 377, 'LA BELLEZA'),
+(896, 21, 385, 'LANDAZURI'),
+(897, 21, 397, 'LA PAZ'),
+(898, 21, 406, 'LEBRIJA'),
+(899, 21, 418, 'LOS SANTOS'),
+(900, 21, 425, 'MACARAVITA'),
+(901, 21, 432, 'MALAGA'),
+(902, 21, 444, 'MATANZA'),
+(903, 21, 464, 'MOGOTES'),
+(904, 21, 468, 'MOLAGAVITA'),
+(905, 21, 498, 'OCAMONTE'),
+(906, 21, 500, 'OIBA'),
+(907, 21, 502, 'ONZAGA'),
+(908, 21, 522, 'PALMAR'),
+(909, 21, 524, 'PALMAS DEL SOCORRO'),
+(910, 21, 533, 'PARAMO'),
+(911, 21, 547, 'PIEDECUESTA'),
+(912, 21, 549, 'PINCHOTE'),
+(913, 21, 572, 'PUENTE NACIONAL'),
+(914, 21, 573, 'PUERTO PARRA'),
+(915, 21, 575, 'PUERTO WILCHES'),
+(916, 21, 615, 'RIONEGRO'),
+(917, 21, 655, 'SABANA DE TORRES'),
+(918, 21, 669, 'SAN ANDRES'),
+(919, 21, 673, 'SAN BENITO'),
+(920, 21, 679, 'SAN GIL'),
+(921, 21, 682, 'SAN JOAQUIN'),
+(922, 21, 684, 'SAN JOSE DE MIRANDA'),
+(923, 21, 686, 'SAN MIGUEL'),
+(924, 21, 689, 'SAN VICENTE DE CHUCURI'),
+(925, 21, 705, 'SANTA BARBARA'),
+(926, 21, 720, 'SANTA HELENA DEL OPON'),
+(927, 21, 745, 'SIMACOTA'),
+(928, 21, 755, 'SOCORRO'),
+(929, 21, 770, 'SUAITA'),
+(930, 21, 773, 'SUCRE'),
+(931, 21, 780, 'SURATA'),
+(932, 21, 820, 'TONA'),
+(933, 21, 855, 'VALLE SAN JOSE'),
+(934, 21, 861, 'VELEZ'),
+(935, 21, 867, 'VETAS'),
+(936, 21, 872, 'VILLANUEVA'),
+(937, 21, 895, 'ZAPATOCA'),
+(938, 22, 1, 'SINCELEJO'),
+(939, 22, 110, 'BUENAVISTA'),
+(940, 22, 124, 'CAIMITO'),
+(941, 22, 204, 'COLOSO (RICAURTE)'),
+(942, 22, 215, 'COROZAL'),
+(943, 22, 230, 'CHALAN'),
+(944, 22, 235, 'GALERAS (NUEVA GRANADA)'),
+(945, 22, 265, 'GUARANDA'),
+(946, 22, 400, 'LA UNION'),
+(947, 22, 418, 'LOS PALMITOS'),
+(948, 22, 429, 'MAJAGUAL'),
+(949, 22, 473, 'MORROA'),
+(950, 22, 508, 'OVEJAS'),
+(951, 22, 523, 'PALMITO'),
+(952, 22, 670, 'SAMPUES'),
+(953, 22, 678, 'SAN BENITO ABAD'),
+(954, 22, 702, 'SAN JUAN DE BETULIA'),
+(955, 22, 708, 'SAN MARCOS'),
+(956, 22, 713, 'SAN ONOFRE'),
+(957, 22, 717, 'SAN PEDRO'),
+(958, 22, 742, 'SINCE'),
+(959, 22, 771, 'SUCRE'),
+(960, 22, 820, 'TOLU'),
+(961, 22, 823, 'TOLUVIEJO'),
+(962, 23, 1, 'IBAGUE'),
+(963, 23, 24, 'ALPUJARRA'),
+(964, 23, 26, 'ALVARADO'),
+(965, 23, 30, 'AMBALEMA'),
+(966, 23, 43, 'ANZOATEGUI'),
+(967, 23, 55, 'ARMERO (GUAYABAL)'),
+(968, 23, 67, 'ATACO'),
+(969, 23, 124, 'CAJAMARCA'),
+(970, 23, 148, 'CARMEN APICALA'),
+(971, 23, 152, 'CASABIANCA'),
+(972, 23, 168, 'CHAPARRAL'),
+(973, 23, 200, 'COELLO'),
+(974, 23, 217, 'COYAIMA'),
+(975, 23, 226, 'CUNDAY'),
+(976, 23, 236, 'DOLORES'),
+(977, 23, 268, 'ESPINAL'),
+(978, 23, 270, 'FALAN'),
+(979, 23, 275, 'FLANDES'),
+(980, 23, 283, 'FRESNO'),
+(981, 23, 319, 'GUAMO'),
+(982, 23, 347, 'HERVEO'),
+(983, 23, 349, 'HONDA'),
+(984, 23, 352, 'ICONONZO'),
+(985, 23, 408, 'LERIDA'),
+(986, 23, 411, 'LIBANO'),
+(987, 23, 443, 'MARIQUITA'),
+(988, 23, 449, 'MELGAR'),
+(989, 23, 461, 'MURILLO'),
+(990, 23, 483, 'NATAGAIMA'),
+(991, 23, 504, 'ORTEGA'),
+(992, 23, 520, 'PALOCABILDO'),
+(993, 23, 547, 'PIEDRAS'),
+(994, 23, 555, 'PLANADAS'),
+(995, 23, 563, 'PRADO'),
+(996, 23, 585, 'PURIFICACION'),
+(997, 23, 616, 'RIOBLANCO'),
+(998, 23, 622, 'RONCESVALLES'),
+(999, 23, 624, 'ROVIRA'),
+(1000, 23, 671, 'SALDAÑA'),
+(1001, 23, 675, 'SAN ANTONIO'),
+(1002, 23, 678, 'SAN LUIS'),
+(1003, 23, 686, 'SANTA ISABEL'),
+(1004, 23, 770, 'SUAREZ'),
+(1005, 23, 854, 'VALLE DE SAN JUAN'),
+(1006, 23, 861, 'VENADILLO'),
+(1007, 23, 870, 'VILLAHERMOSA'),
+(1008, 23, 873, 'VILLARRICA'),
+(1009, 24, 1, 'CALI (SANTIAGO DE CALI)'),
+(1010, 24, 20, 'ALCALA'),
+(1011, 24, 36, 'ANDALUCIA'),
+(1012, 24, 41, 'ANSERMANUEVO'),
+(1013, 24, 54, 'ARGELIA'),
+(1014, 24, 100, 'BOLIVAR'),
+(1015, 24, 109, 'BUENAVENTURA'),
+(1016, 24, 111, 'BUGA'),
+(1017, 24, 113, 'BUGALAGRANDE'),
+(1018, 24, 122, 'CAICEDONIA'),
+(1019, 24, 126, 'CALIMA (DARIEN)'),
+(1020, 24, 130, 'CANDELARIA'),
+(1021, 24, 147, 'CARTAGO'),
+(1022, 24, 233, 'DAGUA'),
+(1023, 24, 243, 'EL AGUILA'),
+(1024, 24, 246, 'EL CAIRO'),
+(1025, 24, 248, 'EL CERRITO'),
+(1026, 24, 250, 'EL DOVIO'),
+(1027, 24, 275, 'FLORIDA'),
+(1028, 24, 306, 'GINEBRA'),
+(1029, 24, 318, 'GUACARI'),
+(1030, 24, 364, 'JAMUNDI'),
+(1031, 24, 377, 'LA CUMBRE'),
+(1032, 24, 400, 'LA UNION'),
+(1033, 24, 403, 'LA VICTORIA'),
+(1034, 24, 497, 'OBANDO'),
+(1035, 24, 520, 'PALMIRA'),
+(1036, 24, 563, 'PRADERA'),
+(1037, 24, 606, 'RESTREPO'),
+(1038, 24, 616, 'RIOFRIO'),
+(1039, 24, 622, 'ROLDANILLO'),
+(1040, 24, 670, 'SAN PEDRO'),
+(1041, 24, 736, 'SEVILLA'),
+(1042, 24, 823, 'TORO'),
+(1043, 24, 828, 'TRUJILLO'),
+(1044, 24, 834, 'TULUA'),
+(1045, 24, 845, 'ULLOA'),
+(1046, 24, 863, 'VERSALLES'),
+(1047, 24, 869, 'VIJES'),
+(1048, 24, 890, 'YOTOCO'),
+(1049, 24, 892, 'YUMBO'),
+(1050, 24, 895, 'ZARZAL'),
+(1051, 25, 1, 'ARAUCA'),
+(1052, 25, 65, 'ARAUQUITA'),
+(1053, 25, 220, 'CRAVO NORTE'),
+(1054, 25, 300, 'FORTUL'),
+(1055, 25, 591, 'PUERTO RONDON'),
+(1056, 25, 736, 'SARAVENA'),
+(1057, 25, 794, 'TAME'),
+(1058, 26, 1, 'YOPAL'),
+(1059, 26, 10, 'AGUAZUL'),
+(1060, 26, 15, 'CHAMEZA'),
+(1061, 26, 125, 'HATO COROZAL'),
+(1062, 26, 136, 'LA SALINA'),
+(1063, 26, 139, 'MANI'),
+(1064, 26, 162, 'MONTERREY'),
+(1065, 26, 225, 'NUNCHIA'),
+(1066, 26, 230, 'OROCUE'),
+(1067, 26, 250, 'PAZ DE ARIPORO'),
+(1068, 26, 263, 'PORE'),
+(1069, 26, 279, 'RECETOR'),
+(1070, 26, 300, 'SABANALARGA'),
+(1071, 26, 315, 'SACAMA'),
+(1072, 26, 325, 'SAN LUIS DE PALENQUE'),
+(1073, 26, 400, 'TAMARA'),
+(1074, 26, 410, 'TAURAMENA'),
+(1075, 26, 430, 'TRINIDAD'),
+(1076, 26, 440, 'VILLANUEVA'),
+(1077, 27, 1, 'MOCOA'),
+(1078, 27, 219, 'COLON'),
+(1079, 27, 320, 'ORITO'),
+(1080, 27, 568, 'PUERTO ASIS'),
+(1081, 27, 569, 'PUERTO CAICEDO'),
+(1082, 27, 571, 'PUERTO GUZMAN'),
+(1083, 27, 573, 'PUERTO LEGUIZAMO'),
+(1084, 27, 749, 'SIBUNDOY'),
+(1085, 27, 755, 'SAN FRANCISCO'),
+(1086, 27, 757, 'SAN MIGUEL (LA DORADA)'),
+(1087, 27, 760, 'SANTIAGO'),
+(1088, 27, 865, 'LA HORMIGA (VALLE DEL GUAMUEZ)'),
+(1089, 27, 885, 'VILLAGARZON'),
+(1090, 28, 1, 'SAN ANDRES'),
+(1091, 28, 564, 'PROVIDENCIA'),
+(1092, 29, 1, 'LETICIA'),
+(1093, 29, 263, 'EL ENCANTO'),
+(1094, 29, 405, 'LA CHORRERA'),
+(1095, 29, 407, 'LA PEDRERA'),
+(1096, 29, 430, 'LA VICTORIA'),
+(1097, 29, 460, 'MIRITI-PARANA'),
+(1098, 29, 530, 'PUERTO ALEGRIA'),
+(1099, 29, 536, 'PUERTO ARICA'),
+(1100, 29, 540, 'PUERTO NARIÑO'),
+(1101, 29, 669, 'PUERTO SANTANDER'),
+(1102, 29, 798, 'TARAPACA'),
+(1103, 30, 1, 'PUERTO INIRIDA'),
+(1104, 30, 343, 'BARRANCO MINAS'),
+(1105, 30, 883, 'SAN FELIPE'),
+(1106, 30, 884, 'PUERTO COLOMBIA'),
+(1107, 30, 885, 'LA GUADALUPE'),
+(1108, 30, 886, 'CACAHUAL'),
+(1109, 30, 887, 'PANA PANA (CAMPO ALEGRE)'),
+(1110, 30, 888, 'MORICHAL (MORICHAL NUEVO)'),
+(1111, 31, 1, 'SAN JOSE DEL GUAVIARE'),
+(1112, 31, 15, 'CALAMAR'),
+(1113, 31, 25, 'EL RETORNO'),
+(1114, 31, 200, 'MIRAFLORES'),
+(1115, 32, 1, 'MITU'),
+(1116, 32, 161, 'CARURU'),
+(1117, 32, 511, 'PACOA'),
+(1118, 32, 666, 'TARAIRA'),
+(1119, 32, 777, 'PAPUNAUA (MORICHAL)'),
+(1120, 32, 889, 'YAVARATE'),
+(1121, 33, 1, 'PUERTO CARREÑO'),
+(1122, 33, 524, 'LA PRIMAVERA'),
+(1123, 33, 572, 'SANTA RITA'),
+(1124, 33, 666, 'SANTA ROSALIA'),
+(1125, 33, 760, 'SAN JOSE DE OCUNE'),
+(1126, 33, 773, 'CUMARIBO');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `conf_permisos`
+--
+
+CREATE TABLE `conf_permisos` (
+  `per_Id` int(11) NOT NULL,
+  `per_IdSubmodulo` int(11) NOT NULL,
+  `per_IdRol` int(11) NOT NULL,
+  `per_IdModulo` int(11) NOT NULL,
+  `per_IdBoton` int(11) NOT NULL,
+  `per_Estado` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `conf_resoluciones`
+--
+
+CREATE TABLE `conf_resoluciones` (
+  `reso_Id` int(11) NOT NULL,
+  `reso_IdTipoDocumento` int(11) NOT NULL,
+  `reso_Numero` varchar(50) CHARACTER SET utf8mb4 NOT NULL,
+  `reso_Prefijo` varchar(20) CHARACTER SET utf8mb4 NOT NULL,
+  `reso_FechaAutorizacion` date NOT NULL,
+  `reso_NumeroInicial` varchar(20) CHARACTER SET utf8mb4 NOT NULL,
+  `reso_NumeroFinal` varchar(20) CHARACTER SET utf8mb4 NOT NULL,
+  `reso_Contador` int(11) DEFAULT NULL,
+  `reso_FechaIngreso` timestamp NOT NULL DEFAULT current_timestamp(),
+  `reso_FechaVencimiento` date NOT NULL,
+  `reso_Estado` int(11) NOT NULL,
+  `reso_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `conf_resoluciones`
+--
+
+INSERT INTO `conf_resoluciones` (`reso_Id`, `reso_IdTipoDocumento`, `reso_Numero`, `reso_Prefijo`, `reso_FechaAutorizacion`, `reso_NumeroInicial`, `reso_NumeroFinal`, `reso_Contador`, `reso_FechaIngreso`, `reso_FechaVencimiento`, `reso_Estado`, `reso_FechaCreacion`) VALUES
+(1, 1, '12345', 'REM', '2021-01-18', '1', '10000000', 0, '2021-01-18 05:00:00', '2031-01-18', 1, '2021-01-18 13:00:00');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `conf_rol`
+--
+
+CREATE TABLE `conf_rol` (
+  `rol_Id` int(11) NOT NULL,
+  `rol_Nombre` varchar(500) CHARACTER SET utf8mb4 NOT NULL,
+  `rol_Estado` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `conf_rol`
+--
+
+INSERT INTO `conf_rol` (`rol_Id`, `rol_Nombre`, `rol_Estado`) VALUES
+(1, 'ADMINISTRADOR', 1),
+(2, 'VENDEDOR', 1);
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `conf_sedes_empresa`
+--
+
+CREATE TABLE `conf_sedes_empresa` (
+  `seem_Id` int(11) NOT NULL,
+  `seem_IdEmpresa` int(11) NOT NULL,
+  `seem_IdBodega` int(11) NOT NULL,
+  `seem_Nombre` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `seem_Direccion` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `seem_IdMunicipio` int(11) NOT NULL,
+  `seem_IdDepartamento` int(11) NOT NULL,
+  `seem_Telefono` varchar(50) CHARACTER SET utf8mb4 NOT NULL,
+  `seem_Estado` int(11) NOT NULL,
+  `seem_Email` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `seem_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `conf_sedes_empresa`
+--
+
+INSERT INTO `conf_sedes_empresa` (`seem_Id`, `seem_IdEmpresa`, `seem_IdBodega`, `seem_Nombre`, `seem_Direccion`, `seem_IdMunicipio`, `seem_IdDepartamento`, `seem_Telefono`, `seem_Estado`, `seem_Email`, `seem_FechaCreacion`) VALUES
+(1, 1, 1, 'Sede Nombre', 'Calle 1 # 2 - 3', 1, 1, '3111111111', 1, 'demo_sede@gmail.com', '2021-01-18 13:00:00');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `conf_sedes_empresa_cajas`
+--
+
+CREATE TABLE `conf_sedes_empresa_cajas` (
+  `seemca_Id` int(11) NOT NULL,
+  `seemca_Nombre` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `seemca_CodigoCaja` varchar(100) COLLATE utf8mb4_spanish_ci DEFAULT NULL,
+  `seemca_IdSedeEmpresa` int(11) NOT NULL,
+  `seemca_IdResolucion` int(11) NOT NULL,
+  `seemca_IdResolucionRemi` int(11) NOT NULL,
+  `seemca_Serial` varchar(100) COLLATE utf8mb4_spanish_ci DEFAULT NULL,
+  `seemca_Estado` int(11) NOT NULL,
+  `seemca_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `conf_sedes_empresa_cajas`
+--
+
+INSERT INTO `conf_sedes_empresa_cajas` (`seemca_Id`, `seemca_Nombre`, `seemca_CodigoCaja`, `seemca_IdSedeEmpresa`, `seemca_IdResolucion`, `seemca_IdResolucionRemi`, `seemca_Serial`, `seemca_Estado`, `seemca_FechaCreacion`) VALUES
+(1, '01', '2023', 1, 0, 1, 'Sin Datos', 1, '2021-01-18 13:00:00');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `conf_sedes_empresa_mesas`
+--
+
+CREATE TABLE `conf_sedes_empresa_mesas` (
+  `seemma_Id` int(11) NOT NULL,
+  `seemma_IdSedeEmpresa` int(11) DEFAULT NULL,
+  `seemma_Nombre` varchar(500) DEFAULT NULL,
+  `seemma_Estado` int(11) DEFAULT NULL,
+  `seemma_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=MyISAM DEFAULT CHARSET=latin1;
+
+--
+-- Volcado de datos para la tabla `conf_sedes_empresa_mesas`
+--
+
+INSERT INTO `conf_sedes_empresa_mesas` (`seemma_Id`, `seemma_IdSedeEmpresa`, `seemma_Nombre`, `seemma_Estado`, `seemma_FechaCreacion`) VALUES
+(1, 1, 'MESA 1', 1, '2023-07-24 15:19:35'),
+(2, 1, 'MESA 2', 1, '2023-07-24 15:19:35');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `conf_submodulo`
+--
+
+CREATE TABLE `conf_submodulo` (
+  `subMod_Id` int(11) NOT NULL,
+  `subMod_Nombre` varchar(500) CHARACTER SET utf8mb4 NOT NULL,
+  `subMod_Descripcion` varchar(500) CHARACTER SET utf8mb4 NOT NULL,
+  `subMod_IdModulo` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `conf_submodulo`
+--
+
+INSERT INTO `conf_submodulo` (`subMod_Id`, `subMod_Nombre`, `subMod_Descripcion`, `subMod_IdModulo`) VALUES
+(1, 'VER ROL', 'VER ROL', 1),
+(2, 'REGISTRAR ROL', 'REGISTRAR ROL', 1),
+(3, 'EDITAR ROL', 'EDITAR ROL', 1),
+(4, 'ACTIVAR/INACTIVAR ROL', 'ACTIVAR/INACTIVAR ROL', 1),
+(5, 'ASIGNAR/NEGAR PERMISOS AL ROL', 'ASIGNAR/NEGAR PERMISOS AL ROL', 1),
+(6, 'VER USUARIO', 'VER USUARIO', 2),
+(7, 'CREAR USUARIO', 'CREAR USUARIO', 2),
+(8, 'EDITAR USUARIO', 'EDITAR USUARIO', 2),
+(9, 'ACTIVAR/INACTIVAR USUARIO', 'ACTIVAR/INACTIVAR USUARIO', 2),
+(10, 'VER BODEGA', 'VER BODEGA', 3),
+(11, 'CREAR BODEGA', 'CREAR BODEGA', 3),
+(12, 'EDITAR BODEGA', 'EDITAR BODEGA', 3),
+(13, 'ACTIVAR/INACTIVAR BODEGA', 'ACTIVAR/INACTIVAR BODEGA', 3),
+(14, 'VER PRODUCTO', 'VER PRODUCTO', 4),
+(15, 'CREAR PRODUCTO', 'CREAR PRODUCTO', 4),
+(16, 'EDTIAR PRODUCTO', 'EDTIAR PRODUCTO', 4),
+(17, 'ACTIVAR/INACTIVAR PRODCUTO', 'ACTIVAR/INACTIVAR PRODCUTO', 4),
+(18, 'VER NOTAS PRODUCTO', 'VER NOTAS PRODUCTO', 5),
+(19, 'CREAR NOTAS PRODUCTO', 'CREAR NOTAS PRODUCTO', 5),
+(20, 'EDITAR NOTAS PRODUCTO', 'EDITAR NOTAS PRODUCTO', 5),
+(21, 'ANULAR NOTAS PRODUCTO', 'ANULAR NOTAS PRODUCTO', 5),
+(22, 'VER FACTURAS', 'VER FACTURAS', 6),
+(23, 'CREAR FACTURAS', 'CREAR FACTURAS', 6),
+(24, 'EDITAR FACTURAS', 'EDITAR FACTURAS', 6),
+(25, 'ANULAR FACTURAS', 'ANULAR FACTURAS', 6),
+(26, 'VER INSUMO', 'VER INSUMO', 7),
+(27, 'CREAR INSUMO', 'CREAR INSUMO', 7),
+(28, 'EDITAR INSUMO', 'EDITAR INSUMO', 7),
+(29, 'ACTIVAR/INACTIVAR INSUMO', 'ACTIVAR/INACTIVAR INSUMO', 7),
+(30, 'VER CATEGORIA', 'VER CATEGORIA', 8),
+(31, 'CREAR CATEGORIA', 'CREAR CATEGORIA', 8),
+(32, 'EDITAR CATEGORIA', 'EDITAR CATEGORIA', 8),
+(33, 'ACTIVAR/INACTIVAR CATEGORIA', 'ACTIVAR/INACTIVAR CATEGORIA', 8),
+(34, 'VER SUBCATEGORIA', 'VER SUBCATEGORIA', 9),
+(35, 'CREAR SUBCATEGORIA', 'CREAR SUBCATEGORIA', 9),
+(36, 'EDITAR SUBCATEGORIA', 'EDITAR SUBCATEGORIA', 9),
+(37, 'ACTIVAR/INACTIVAR SUBCATEGORIA', 'ACTIVAR/INACTIVAR SUBCATEGORIA', 9),
+(38, 'VER NOTAS INSUMOS', 'VER NOTAS INSUMOS', 10),
+(39, 'CREAR NOTAS INSUMOS', 'CREAR NOTAS INSUMOS', 10),
+(40, 'EDITAR NOTAS INSUMOS', 'EDITAR NOTAS INSUMOS', 10),
+(41, 'ANULAR NOTAS INSUMOS', 'ANULAR NOTAS INSUMOS', 10),
+(42, 'VER COTIZADOR INSUMOS = PRODUCTO', 'VER COTIZADOR INSUMOS = PRODUCTO', 11),
+(43, 'CREAR COTIZADOR INSUMOS = PRODUCTO', 'CREAR COTIZADOR INSUMOS = PRODUCTO', 11),
+(44, 'EDITAR COTIZADOR INSUMOS = PRODUCTO', 'EDITAR COTIZADOR INSUMOS = PRODUCTO', 11),
+(45, 'ACTIVAR/INACTIVAR COTIZADOR INSUMOS = PRODUCTO', 'ACTIVAR/INACTIVAR COTIZADOR INSUMOS = PRODUCTO', 11),
+(46, 'VER ORDENES DE PRODUCCION INSUMOS', 'VER ORDENES DE PRODUCCION INSUMOS', 12),
+(47, 'CREAR ORDENES DE PRODUCCION INSUMOS', 'CREAR ORDENES DE PRODUCCION INSUMOS', 12),
+(48, 'EDITAR ORDENES DE PRODUCCION INSUMOS', 'EDITAR ORDENES DE PRODUCCION INSUMOS', 12),
+(49, 'ACTIVAR/INACTIVAR ORDENES DE PRODUCCION INSUMOS', 'ACTIVAR/INACTIVAR ORDENES DE PRODUCCION INSUMOS', 12),
+(54, 'VER BASES CAJAS', 'VER BASES CAJAS', 13),
+(55, 'CREAR BASES CAJAS', 'CREAR BASES CAJAS', 13),
+(56, 'EDITAR BASES CAJAS', 'EDITAR BASES CAJAS', 13),
+(57, 'VER PAGOS CAJAS', 'VER PAGOS CAJAS', 14),
+(58, 'CREAR PAGOS CAJAS', 'CREAR PAGOS CAJAS', 14),
+(59, 'EDITAR PAGOS CAJAS', 'EDITAR PAGOS CAJAS', 14),
+(60, 'VER CIERRE CAJAS', 'VER CIERRE CAJAS', 15),
+(61, 'CREAR CIERRE CAJAS', 'CREAR CIERRE CAJAS', 15),
+(62, 'CONSULTAR CIERRE CAJAS', 'CONSULTAR CIERRE CAJAS', 15),
+(63, 'ASIGNAR PRECIOS A PRODUCTO', 'ASIGNAR PRECIOS A PRODUCTO', 4),
+(64, 'VER PROVEEDORES', 'VER PROVEEDORES', 16),
+(65, 'CREAR PROVEEDORES', 'CREAR PROVEEDORES', 16),
+(66, 'EDITAR PROVEEDORES', 'EDITAR PROVEEDORES', 16),
+(67, 'ACTIVAR/INACTIVAR PROVEEDORES', 'ACTIVAR/INACTIVAR PROVEEDORES', 16),
+(68, 'VER CLIENTES', 'VER CLIENTES', 17),
+(69, 'CREAR CLIENTES', 'CREAR CLIENTES', 17),
+(70, 'EDITAR CLIENTES', 'EDITAR CLIENTES', 17),
+(71, 'ACTIVAR/INACTIVAR CLIENTES', 'ACTIVAR/INACTIVAR CLIENTES', 17),
+(72, 'VER FORMAS DE PAGO', 'VER FORMAS DE PAGO', 18),
+(73, 'CREAR FORMAS DE PAGO', 'CREAR FORMAS DE PAGO', 18),
+(74, 'EDITAR FORMAS DE PAGO', 'EDITAR FORMAS DE PAGO', 18),
+(75, 'ACTIVAR/INACTIVAR FORMAS DE PAGO', 'ACTIVAR/INACTIVAR FORMAS DE PAGO', 18),
+(76, 'VER INFORMES FACTURACION', 'VER INFORMES FACTURACION', 19),
+(77, 'VER INFORMES POR MODULOS', 'VER INFORMES POR MODULOS', 19),
+(78, 'VER MARCAS', 'VER MARCAS', 20),
+(79, 'CREAR MARCAS', 'CREAR MARCAS', 20),
+(80, 'EDITAR MARCAS', 'EDITAR MARCAS', 20),
+(81, 'ACTIVAR/INACTIVAR MARCAS', 'ACTIVAR/INACTIVAR MARCAS', 20),
+(82, 'VER RESOLUCIONES', 'VER RESOLUCIONES', 21),
+(83, 'CREAR RESOLUCIONES', 'CREAR RESOLUCIONES', 21),
+(84, 'EDITAR RESOLUCIONES', 'EDITAR RESOLUCIONES', 21),
+(85, 'ACTIVAR/INACTIVAR RESOLUCIONES', 'ACTIVAR/INACTIVAR RESOLUCIONES', 21),
+(86, 'VER EMPRESA', 'VER EMPRESA', 22),
+(87, 'VER CUENTAS CONTABLES', 'VER CUENTAS CONTABLES', 23),
+(88, 'CREAR MOVIMIENTO CONTABLE', 'CREAR MOVIMIENTO CONTABLE', 23),
+(89, 'CONSULTAR MOVIMIENTOS CONTABLES', 'CONSULTAR MOVIMIENTOS CONTABLES', 23),
+(90, 'VER INFORMES CUENTAS', 'VER INFORMES CUENTAS', 19),
+(91, 'VER CUENTAS POR PAGAR', 'VER CUENTAS POR PAGAR', 23),
+(92, 'CREAR MOVIMIENTOS CUENTAS POR PAGAR', 'CREAR MOVIMIENTOS CUENTAS POR PAGAR', 23),
+(93, 'CREAR EVENTOS Y MOVIMIENTOS TOTALES', 'CREAR EVENTOS Y MOVIMIENTOS TOTALES', 24),
+(94, 'VER CUENTAS CONTABLES $$', 'VER CUENTAS CONTABLES $$', 23),
+(95, 'CREAR TRANSLADO', 'CREAR TRANSLADO', 5),
+(96, 'VER TIPOS DE PAGOS', 'VER TIPOS DE PAGOS', 25),
+(97, 'REGISTRAR TIPOS DE PAGOS', 'REGISTRAR TIPOS DE PAGOS', 25),
+(98, 'EDITAR TIPOS DE PAGOS', 'EDITAR TIPOS DE PAGOS', 25),
+(99, 'ACTIVAR/INACTIVAR TIPOS DE PAGOS', 'ACTIVAR/INACTIVAR TIPOS DE PAGOS', 25),
+(100, 'VER SUBTIPOS DE PAGOS', 'VER SUBTIPOS DE PAGOS', 26),
+(101, 'REGISTRAR SUBTIPOS DE PAGOS', 'REGISTRAR SUBTIPOS DE PAGOS', 26),
+(102, 'EDITAR SUBTIPOS DE PAGOS', 'EDITAR SUBTIPOS DE PAGOS', 26),
+(103, 'ACTIVAR/INACTIVAR SUBTIPOS DE PAGOS', 'ACTIVAR/INACTIVAR SUBTIPOS DE PAGOS', 26),
+(104, 'EDITAR PRECIO PRODUCTOS EN FACTURAS', 'EDITAR PRECIO PRODUCTOS EN FACTURAS', 6),
+(105, 'ELIMINAR PRODUCTOS EN FACTURAS', 'ELIMINAR PRODUCTOS EN FACTURAS', 6);
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `conf_tipo_documento`
+--
+
+CREATE TABLE `conf_tipo_documento` (
+  `tip_Id` int(11) NOT NULL,
+  `tip_Descripcion` varchar(50) CHARACTER SET utf8mb4 NOT NULL,
+  `tip_DIAN` varchar(5) CHARACTER SET utf8mb4 DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `conf_tipo_documento`
+--
+
+INSERT INTO `conf_tipo_documento` (`tip_Id`, `tip_Descripcion`, `tip_DIAN`) VALUES
+(1, 'Remisión', NULL),
+(2, 'Factura POS', NULL);
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `conf_tipo_persona`
+--
+
+CREATE TABLE `conf_tipo_persona` (
+  `tip_Id` int(11) NOT NULL,
+  `tip_Descripcion` varchar(50) CHARACTER SET utf8mb4 NOT NULL,
+  `tip_DIAN` varchar(2) CHARACTER SET utf8mb4 DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `conf_tipo_persona`
+--
+
+INSERT INTO `conf_tipo_persona` (`tip_Id`, `tip_Descripcion`, `tip_DIAN`) VALUES
+(1, 'Consumidor Final', NULL),
+(2, 'Natural', NULL),
+(3, 'Juridica', NULL);
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `conf_usuario`
+--
+
+CREATE TABLE `conf_usuario` (
+  `usu_Id` int(11) NOT NULL,
+  `usu_Nombre` varchar(500) CHARACTER SET utf8mb4 NOT NULL,
+  `usu_Usuario` varchar(100) COLLATE utf8mb4_spanish_ci NOT NULL,
+  `usu_NumeroDocumento` varchar(500) CHARACTER SET utf8mb4 NOT NULL,
+  `usu_Correo` varchar(500) CHARACTER SET utf8mb4 NOT NULL,
+  `usu_Password` varchar(500) CHARACTER SET utf8mb4 NOT NULL,
+  `usu_Rol` int(11) NOT NULL,
+  `usu_Estado` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `conf_usuario`
+--
+
+INSERT INTO `conf_usuario` (`usu_Id`, `usu_Nombre`, `usu_Usuario`, `usu_NumeroDocumento`, `usu_Correo`, `usu_Password`, `usu_Rol`, `usu_Estado`) VALUES
+(1, 'digitsoft', 'digitsoft', '74381687', 'soprote@digitsoft.com.co', 'adbaa8a2b601d57e8e514479d07091d47c96dc75', 1, 1),
+(2, 'administrador', 'administrador', '11111111', 'admin@gmail.com', 'f865b53623b121fd34ee5426c792e5c33af8c227', 1, 1);
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `conf_usuario_caja`
+--
+
+CREATE TABLE `conf_usuario_caja` (
+  `usuca_Id` int(11) NOT NULL,
+  `usuca_IdSede` int(11) NOT NULL,
+  `usuca_IdCaja` int(11) NOT NULL,
+  `usuca_IdVendedor` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `conf_usuario_caja`
+--
+
+INSERT INTO `conf_usuario_caja` (`usuca_Id`, `usuca_IdSede`, `usuca_IdCaja`, `usuca_IdVendedor`) VALUES
+(1, 1, 1, 2);
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `eve_actividadeseventos`
+--
+
+CREATE TABLE `eve_actividadeseventos` (
+  `eva_Id` int(11) NOT NULL,
+  `eva_IdProyecto` int(11) NOT NULL,
+  `eva_IdProveedor` int(11) NOT NULL,
+  `eva_IdCategoria` int(11) NOT NULL,
+  `eva_Descripcion` varchar(500) NOT NULL,
+  `eva_Valor` int(11) NOT NULL,
+  `eva_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp(),
+  `eva_Estado` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `eve_categoriasactividades`
+--
+
+CREATE TABLE `eve_categoriasactividades` (
+  `caa_Id` int(11) NOT NULL,
+  `caa_Nombre` varchar(100) NOT NULL,
+  `caa_Estado` int(11) NOT NULL,
+  `caa_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--
+-- Volcado de datos para la tabla `eve_categoriasactividades`
+--
+
+INSERT INTO `eve_categoriasactividades` (`caa_Id`, `caa_Nombre`, `caa_Estado`, `caa_FechaCreacion`) VALUES
+(1, 'Alimentación', 1, '2023-04-14 18:38:27'),
+(2, 'Ambientación', 1, '2023-04-14 18:38:27'),
+(3, 'Decoración', 1, '2023-04-14 18:38:32');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `eve_egresoseventos`
+--
+
+CREATE TABLE `eve_egresoseventos` (
+  `egre_Id` int(11) NOT NULL,
+  `egre_IdEvento` int(11) NOT NULL,
+  `egre_IdActividad` int(11) NOT NULL,
+  `egre_IdCuentaContable` int(11) DEFAULT 0,
+  `egre_Descripcion` varchar(500) DEFAULT NULL,
+  `egre_Valor` varchar(11) NOT NULL,
+  `egre_Fecha` date DEFAULT NULL,
+  `egre_Estado` int(11) NOT NULL,
+  `egre_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `eve_eventos`
+--
+
+CREATE TABLE `eve_eventos` (
+  `eve_Id` int(11) NOT NULL,
+  `eve_Nombre` varchar(500) NOT NULL,
+  `eve_Descripcion` varchar(500) DEFAULT NULL,
+  `eve_FechaEvento` date NOT NULL,
+  `eve_NombreCliente` varchar(500) NOT NULL,
+  `eve_TelefonoCliente` varchar(15) NOT NULL,
+  `eve_Email` varchar(100) DEFAULT NULL,
+  `eve_LugarEvento` varchar(100) NOT NULL,
+  `eve_ValorEvento` int(11) NOT NULL,
+  `eve_Notas` longtext DEFAULT NULL,
+  `eve_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp(),
+  `eve_Estado` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `eve_ingresoseventos`
+--
+
+CREATE TABLE `eve_ingresoseventos` (
+  `pago_Id` int(11) NOT NULL,
+  `pago_IdProyecto` int(11) NOT NULL,
+  `pago_IdCuentaContable` int(11) DEFAULT 0,
+  `pago_Fecha` date DEFAULT NULL,
+  `pago_Descripcion` varchar(100) NOT NULL,
+  `pago_Valor` varchar(100) NOT NULL,
+  `pago_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp(),
+  `pago_Estado` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `eve_proveedoreseventos`
+--
+
+CREATE TABLE `eve_proveedoreseventos` (
+  `prov_Id` int(11) NOT NULL,
+  `prov_Nombre` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `prov_RazonSocial` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `prov_Nit` varchar(20) CHARACTER SET utf8mb4 NOT NULL,
+  `prov_Direccion` varchar(100) CHARACTER SET utf8mb4 NOT NULL,
+  `prov_IdDepartamento` int(11) NOT NULL,
+  `prov_IdCiudad` int(11) NOT NULL,
+  `prov_Telefono` bigint(11) NOT NULL,
+  `prov_Email` varchar(200) CHARACTER SET utf8mb4 DEFAULT NULL,
+  `prov_IdTipoPersona` int(11) NOT NULL,
+  `prov_IdTipoCuenta` int(11) DEFAULT NULL,
+  `prov_NumeroCuenta` int(11) DEFAULT NULL,
+  `prov_NombreBanco` varchar(100) COLLATE utf8mb4_spanish_ci DEFAULT NULL,
+  `prov_Estado` int(11) NOT NULL,
+  `prov_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `eve_proveedoreseventos`
+--
+
+INSERT INTO `eve_proveedoreseventos` (`prov_Id`, `prov_Nombre`, `prov_RazonSocial`, `prov_Nit`, `prov_Direccion`, `prov_IdDepartamento`, `prov_IdCiudad`, `prov_Telefono`, `prov_Email`, `prov_IdTipoPersona`, `prov_IdTipoCuenta`, `prov_NumeroCuenta`, `prov_NombreBanco`, `prov_Estado`, `prov_FechaCreacion`) VALUES
+(1, 'Generico', 'Generico', '12545454', 'Generico', 2, 128, 3111111111, 'generico@gmail.com', 2, 1, 0, 'Banco', 1, '2022-12-04 23:35:44');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `fac_base_caja`
+--
+
+CREATE TABLE `fac_base_caja` (
+  `bace_Id` int(11) NOT NULL,
+  `bace_IdCaja` int(11) NOT NULL,
+  `bace_IdVendedor` int(11) NOT NULL,
+  `bace_Base` float(20,0) NOT NULL,
+  `bace_Cierre` int(11) NOT NULL COMMENT '1: Cerrado; 0:No Cerrado',
+  `bace_IdCierre` int(11) DEFAULT NULL,
+  `bace_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `fac_base_caja`
+--
+
+INSERT INTO `fac_base_caja` (`bace_Id`, `bace_IdCaja`, `bace_IdVendedor`, `bace_Base`, `bace_Cierre`, `bace_IdCierre`, `bace_FechaCreacion`) VALUES
+(1, 1, 2, 100000, 0, NULL, '2022-07-08 15:13:03');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `fac_cierre_caja`
+--
+
+CREATE TABLE `fac_cierre_caja` (
+  `cica_Id` int(11) NOT NULL,
+  `cica_IdCaja` int(11) NOT NULL,
+  `cica_IdVendedor` int(11) NOT NULL,
+  `cica_Fecha` timestamp NOT NULL DEFAULT current_timestamp(),
+  `cica_Hora` timestamp NOT NULL DEFAULT current_timestamp(),
+  `cica_Total` float(20,3) NOT NULL,
+  `cica_Descuadre` float(20,3) DEFAULT NULL,
+  `cica_Observaciones` text COLLATE utf8mb4_spanish_ci DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `fac_cliente`
+--
+
+CREATE TABLE `fac_cliente` (
+  `cli_Id` int(11) NOT NULL,
+  `cli_IdTipoPersona` int(11) NOT NULL,
+  `cli_Nombre` varchar(500) COLLATE utf8mb4_spanish_ci NOT NULL,
+  `cli_RazonSocial` varchar(500) CHARACTER SET utf8mb4 NOT NULL,
+  `cli_Identificacion` varchar(20) CHARACTER SET utf8mb4 DEFAULT NULL,
+  `cli_Direccion` varchar(150) CHARACTER SET utf8mb4 DEFAULT NULL,
+  `cli_IdDepartamento` bigint(11) NOT NULL,
+  `cli_IdCiudad` bigint(11) NOT NULL,
+  `cli_Telefono` varchar(15) CHARACTER SET utf8mb4 DEFAULT NULL,
+  `cli_Correo` varchar(500) CHARACTER SET utf8mb4 DEFAULT NULL,
+  `cli_Estado` int(11) NOT NULL,
+  `cli_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `fac_cliente`
+--
+
+INSERT INTO `fac_cliente` (`cli_Id`, `cli_IdTipoPersona`, `cli_Nombre`, `cli_RazonSocial`, `cli_Identificacion`, `cli_Direccion`, `cli_IdDepartamento`, `cli_IdCiudad`, `cli_Telefono`, `cli_Correo`, `cli_Estado`, `cli_FechaCreacion`) VALUES
+(1, 1, 'Varios', 'Varios', '22222222', 'no aplica', 3, 149, '3111111111', 'cliente@gmail.com', 1, '2021-02-08 21:14:39');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `fac_cuentascontables`
+--
+
+CREATE TABLE `fac_cuentascontables` (
+  `cuco_Id` int(11) NOT NULL,
+  `cuco_IdCaja` int(11) DEFAULT 0,
+  `cuco_IdTipoMovimiento` int(11) NOT NULL COMMENT '1: Entrada; 2:Salida',
+  `cuco_IdCuentaContable` int(11) NOT NULL,
+  `cuco_IdDocumento` int(11) DEFAULT NULL,
+  `cuco_IdTipoSalida` int(11) NOT NULL,
+  `cuco_IdSubTipoSalida` int(11) DEFAULT 0,
+  `cuco_Valor` int(11) NOT NULL,
+  `cuco_Observacion` varchar(500) NOT NULL,
+  `cuco_Cierre` int(11) DEFAULT 0,
+  `cuco_IdCierre` int(11) DEFAULT NULL,
+  `cuco_Estado` int(11) NOT NULL,
+  `cuco_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--
+-- Volcado de datos para la tabla `fac_cuentascontables`
+--
+
+INSERT INTO `fac_cuentascontables` (`cuco_Id`, `cuco_IdCaja`, `cuco_IdTipoMovimiento`, `cuco_IdCuentaContable`, `cuco_IdDocumento`, `cuco_IdTipoSalida`, `cuco_IdSubTipoSalida`, `cuco_Valor`, `cuco_Observacion`, `cuco_Cierre`, `cuco_IdCierre`, `cuco_Estado`, `cuco_FechaCreacion`) VALUES
+(1, 1, 1, 1, 1, 0, 0, 100, 'Abono/Pago Factura a Credito #  REM-1', 0, NULL, 1, '2023-07-24 14:52:16'),
+(2, 1, 1, 1, 3, 0, 0, 1000, 'VENTA REM_3', 0, NULL, 1, '2023-07-24 15:40:37'),
+(3, 1, 1, 1, 4, 0, 0, 9000, 'VENTA REM_4', 0, NULL, 1, '2023-07-24 19:25:42'),
+(4, 1, 1, 50, 5, 0, 0, 5000, 'VENTA REM_5', 0, NULL, 1, '2023-07-24 19:40:20'),
+(5, 1, 1, 1, 1, 0, 0, 900, 'Abono/Pago Factura a Credito #  REM-1', 0, NULL, 1, '2023-07-24 20:11:26');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `fac_cuentas_por_cobrar`
+--
+
+CREATE TABLE `fac_cuentas_por_cobrar` (
+  `cuco_Id` int(11) NOT NULL,
+  `cuco_IdDocumento` int(11) NOT NULL,
+  `cuco_IdCuentaContable` int(11) NOT NULL,
+  `cuco_Valor` varchar(100) NOT NULL,
+  `cuco_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=MyISAM DEFAULT CHARSET=latin1;
+
+--
+-- Volcado de datos para la tabla `fac_cuentas_por_cobrar`
+--
+
+INSERT INTO `fac_cuentas_por_cobrar` (`cuco_Id`, `cuco_IdDocumento`, `cuco_IdCuentaContable`, `cuco_Valor`, `cuco_FechaCreacion`) VALUES
+(2, 1, 1, '100', '2023-07-24 14:52:16'),
+(3, 1, 1, '900', '2023-07-24 20:11:26');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `fac_cuentas_por_pagar`
+--
+
+CREATE TABLE `fac_cuentas_por_pagar` (
+  `cupa_Id` int(11) NOT NULL,
+  `cupa_IdNota` int(11) NOT NULL,
+  `cupa_IdCuentaContable` int(11) NOT NULL,
+  `cupa_Valor` varchar(100) NOT NULL,
+  `cupa_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `fac_detalle_documento`
+--
+
+CREATE TABLE `fac_detalle_documento` (
+  `detDoc_Id` int(11) NOT NULL,
+  `detDoc_IdDocumento` int(11) NOT NULL,
+  `detDoc_IdProducto` int(11) NOT NULL,
+  `detDoc_Cantidad` float(20,2) NOT NULL,
+  `detDoc_ValorUnitario` float(20,3) NOT NULL,
+  `detDoc_ValorTotal` float(20,3) NOT NULL,
+  `detDoc_ValorImpuesto` float(20,3) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `fac_detalle_documento`
+--
+
+INSERT INTO `fac_detalle_documento` (`detDoc_Id`, `detDoc_IdDocumento`, `detDoc_IdProducto`, `detDoc_Cantidad`, `detDoc_ValorUnitario`, `detDoc_ValorTotal`, `detDoc_ValorImpuesto`) VALUES
+(1, 1, 1, 1.00, 1000.000, 1000.000, 0.000),
+(2, 2, 1, 1.00, 1000.000, 1000.000, 0.000),
+(3, 3, 1, 1.00, 1000.000, 1000.000, 0.000),
+(4, 4, 1, 3.00, 3000.000, 9000.000, 0.000),
+(5, 5, 1, 5.00, 1000.000, 5000.000, 0.000);
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `fac_detalle_documento_ordenes`
+--
+
+CREATE TABLE `fac_detalle_documento_ordenes` (
+  `detDoc_Id` int(11) NOT NULL,
+  `detDoc_IdDocumento` int(11) DEFAULT NULL,
+  `detDoc_IdProducto` int(11) DEFAULT NULL,
+  `detDoc_Cantidad` int(11) DEFAULT NULL,
+  `detDoc_ValorUnitario` int(11) DEFAULT NULL,
+  `detDoc_ValorTotal` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1;
+
+--
+-- Volcado de datos para la tabla `fac_detalle_documento_ordenes`
+--
+
+INSERT INTO `fac_detalle_documento_ordenes` (`detDoc_Id`, `detDoc_IdDocumento`, `detDoc_IdProducto`, `detDoc_Cantidad`, `detDoc_ValorUnitario`, `detDoc_ValorTotal`) VALUES
+(3, 1, 1, 3, 1000, 3000),
+(2, 2, 1, 2, 1000, 2000);
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `fac_documento`
+--
+
+CREATE TABLE `fac_documento` (
+  `doc_Id` int(11) NOT NULL,
+  `doc_Prefijo` varchar(10) CHARACTER SET utf8mb4 DEFAULT NULL,
+  `doc_Numero` int(11) NOT NULL,
+  `doc_IdSerieCaja` int(11) NOT NULL,
+  `doc_IdCliente` int(11) NOT NULL,
+  `doc_IdVendedor` int(11) NOT NULL,
+  `doc_IdTipoDocumento` int(11) NOT NULL,
+  `doc_IdKardex` int(11) NOT NULL,
+  `doc_Observaciones` varchar(200) CHARACTER SET utf8mb4 DEFAULT NULL,
+  `doc_ValorBruto` float(20,3) NOT NULL,
+  `doc_ValorImpuestos` float(20,3) NOT NULL,
+  `doc_ValorNeto` float(20,3) NOT NULL,
+  `doc_Subtotal` int(11) NOT NULL,
+  `doc_Redondeo` int(11) NOT NULL,
+  `doc_Descuento` int(11) NOT NULL,
+  `doc_campoPersonalizado` varchar(100) COLLATE utf8mb4_spanish_ci DEFAULT NULL,
+  `doc_Fecha` timestamp NOT NULL DEFAULT current_timestamp(),
+  `doc_MotivoAnulacion` text COLLATE utf8mb4_spanish_ci DEFAULT NULL,
+  `doc_Estado` int(11) NOT NULL DEFAULT 1
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `fac_documento`
+--
+
+INSERT INTO `fac_documento` (`doc_Id`, `doc_Prefijo`, `doc_Numero`, `doc_IdSerieCaja`, `doc_IdCliente`, `doc_IdVendedor`, `doc_IdTipoDocumento`, `doc_IdKardex`, `doc_Observaciones`, `doc_ValorBruto`, `doc_ValorImpuestos`, `doc_ValorNeto`, `doc_Subtotal`, `doc_Redondeo`, `doc_Descuento`, `doc_campoPersonalizado`, `doc_Fecha`, `doc_MotivoAnulacion`, `doc_Estado`) VALUES
+(1, 'REM', 1, 1, 1, 2, 1, 2, NULL, 1000.000, 0.000, 1000.000, 1000, 0, 0, NULL, '2023-07-24 14:29:20', NULL, 1),
+(2, 'REM', 2, 1, 1, 2, 1, 3, NULL, 1000.000, 0.000, 1000.000, 1000, 0, 0, NULL, '2023-07-24 14:46:42', NULL, 1),
+(3, 'REM', 3, 1, 1, 2, 1, 4, NULL, 1000.000, 0.000, 1000.000, 1000, 0, 0, NULL, '2023-07-24 15:40:37', NULL, 1),
+(4, 'REM', 4, 1, 1, 2, 1, 5, NULL, 9000.000, 0.000, 9000.000, 9000, 0, 0, NULL, '2023-07-24 19:25:42', NULL, 1),
+(5, 'REM', 5, 1, 1, 2, 1, 7, NULL, 5000.000, 0.000, 5000.000, 5000, 0, 0, NULL, '2023-07-24 19:40:20', NULL, 1);
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `fac_documento_ordenes`
+--
+
+CREATE TABLE `fac_documento_ordenes` (
+  `doc_Id` int(11) NOT NULL,
+  `doc_Numero` varchar(500) DEFAULT NULL,
+  `doc_IdSede` int(11) NOT NULL,
+  `doc_IdMesa` int(11) DEFAULT NULL,
+  `doc_IdVendedor` int(11) DEFAULT NULL,
+  `doc_Observaciones` int(11) DEFAULT NULL,
+  `doc_ValorNeto` int(11) DEFAULT NULL,
+  `doc_Fecha` timestamp NULL DEFAULT current_timestamp(),
+  `doc_MotivoAnulacion` varchar(500) DEFAULT NULL,
+  `doc_IdFactura` int(11) DEFAULT NULL,
+  `doc_Estado` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1;
+
+--
+-- Volcado de datos para la tabla `fac_documento_ordenes`
+--
+
+INSERT INTO `fac_documento_ordenes` (`doc_Id`, `doc_Numero`, `doc_IdSede`, `doc_IdMesa`, `doc_IdVendedor`, `doc_Observaciones`, `doc_ValorNeto`, `doc_Fecha`, `doc_MotivoAnulacion`, `doc_IdFactura`, `doc_Estado`) VALUES
+(1, '1', 1, 1, 2, 0, 3000, '2023-07-24 19:23:22', NULL, 4, 0),
+(2, '2', 1, 2, 2, 0, 2000, '2023-07-24 19:23:22', NULL, NULL, 1);
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `fac_formas_pago`
+--
+
+CREATE TABLE `fac_formas_pago` (
+  `forpa_Id` int(11) NOT NULL,
+  `forpa_Descripcion` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `forpa_Estado` int(11) NOT NULL,
+  `forpa_Saldada` int(11) NOT NULL COMMENT '1: Saldada; 0: No Saldada',
+  `forpa_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `fac_formas_pago`
+--
+
+INSERT INTO `fac_formas_pago` (`forpa_Id`, `forpa_Descripcion`, `forpa_Estado`, `forpa_Saldada`, `forpa_FechaCreacion`) VALUES
+(1, 'EFECTIVO', 1, 1, '2020-12-08 20:41:50'),
+(50, 'CREDITO', 1, 1, '2022-06-21 02:01:10');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `fac_impuestos`
+--
+
+CREATE TABLE `fac_impuestos` (
+  `imp_Id` int(11) NOT NULL,
+  `imp_Descripcion` varchar(50) CHARACTER SET utf8mb4 NOT NULL,
+  `imp_Porcentaje` int(11) NOT NULL,
+  `imp_Estado` int(11) NOT NULL,
+  `imp_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `fac_impuestos`
+--
+
+INSERT INTO `fac_impuestos` (`imp_Id`, `imp_Descripcion`, `imp_Porcentaje`, `imp_Estado`, `imp_FechaCreacion`) VALUES
+(1, 'IVA 19%', 19, 1, '2020-11-12 23:15:31'),
+(2, 'IVA 5%', 5, 1, '2020-11-12 23:15:31'),
+(3, 'Impoconsumo 8%', 8, 1, '2020-11-30 14:37:06'),
+(4, 'Excluido de IVA', 0, 1, '2020-11-30 14:35:21');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `fac_pagos_caja`
+--
+
+CREATE TABLE `fac_pagos_caja` (
+  `paca_Id` int(11) NOT NULL,
+  `paca_IdCaja` int(11) NOT NULL,
+  `paca_IdVendedor` int(11) NOT NULL,
+  `paca_IdTipoPago` int(11) NOT NULL,
+  `paca_IdSubTipoPago` int(11) DEFAULT 0,
+  `paca_Valor` float(20,0) NOT NULL,
+  `paca_Observaciones` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `paca_Cierre` int(11) NOT NULL COMMENT '	1: Cerrado; 0:No Cerrado',
+  `paca_IdCierre` int(11) DEFAULT NULL,
+  `paca_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `fac_precios_venta`
+--
+
+CREATE TABLE `fac_precios_venta` (
+  `preVen_Id` int(11) NOT NULL,
+  `preVen_IdTarifa` int(11) NOT NULL,
+  `preVen_IdProducto` int(11) NOT NULL,
+  `preVen_PrecioNeto` float(20,0) NOT NULL,
+  `preVen_FechaModificado` timestamp NOT NULL DEFAULT current_timestamp(),
+  `preVen_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp(),
+  `preVen_Estado` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `fac_precios_venta`
+--
+
+INSERT INTO `fac_precios_venta` (`preVen_Id`, `preVen_IdTarifa`, `preVen_IdProducto`, `preVen_PrecioNeto`, `preVen_FechaModificado`, `preVen_FechaCreacion`, `preVen_Estado`) VALUES
+(1, 1, 1, 1000, '2023-07-24 14:29:01', '2023-07-24 14:29:01', 1);
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `fac_sub_tipos_pagos`
+--
+
+CREATE TABLE `fac_sub_tipos_pagos` (
+  `subtipa_Id` int(11) NOT NULL,
+  `subtipa_IdTipo` int(11) DEFAULT 1 COMMENT '1: Ingresos, 2:Egresos',
+  `subtipa_Nombre` varchar(100) NOT NULL,
+  `subtipa_Estado` int(11) NOT NULL,
+  `subtipa_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--
+-- Volcado de datos para la tabla `fac_sub_tipos_pagos`
+--
+
+INSERT INTO `fac_sub_tipos_pagos` (`subtipa_Id`, `subtipa_IdTipo`, `subtipa_Nombre`, `subtipa_Estado`, `subtipa_FechaCreacion`) VALUES
+(1, 2, 'Cafeteria', 1, '2023-03-17 03:01:04'),
+(2, 2, 'Viativos', 1, '2023-03-17 03:01:04'),
+(3, 2, 'Transportes', 1, '2023-04-17 16:32:45'),
+(5, 1, 'Credito', 1, '2023-04-17 16:32:45');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `fac_tarifas_venta`
+--
+
+CREATE TABLE `fac_tarifas_venta` (
+  `tar_Id` int(11) NOT NULL,
+  `tar_Descripcion` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `tar_Estado` int(11) NOT NULL,
+  `tar_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `fac_tarifas_venta`
+--
+
+INSERT INTO `fac_tarifas_venta` (`tar_Id`, `tar_Descripcion`, `tar_Estado`, `tar_FechaCreacion`) VALUES
+(1, 'TARIFA 1', 1, '2021-01-18 13:00:00');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `fac_tesoreria`
+--
+
+CREATE TABLE `fac_tesoreria` (
+  `teso_Id` int(11) NOT NULL,
+  `teso_IdDocumento` int(11) NOT NULL,
+  `teso_IdCaja` int(11) NOT NULL,
+  `teso_Pocision` int(11) NOT NULL,
+  `teso_Importe` float(20,3) NOT NULL,
+  `teso_IdFormaPago` int(11) NOT NULL,
+  `teso_Cierre` int(11) NOT NULL COMMENT '1: Cerrado; 0:No Cerrado',
+  `teso_IdCierre` int(11) DEFAULT NULL,
+  `teso_EstadoPago` int(11) DEFAULT 1 COMMENT '	1:Saldado, 0:No Saldado	',
+  `teso_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `fac_tesoreria`
+--
+
+INSERT INTO `fac_tesoreria` (`teso_Id`, `teso_IdDocumento`, `teso_IdCaja`, `teso_Pocision`, `teso_Importe`, `teso_IdFormaPago`, `teso_Cierre`, `teso_IdCierre`, `teso_EstadoPago`, `teso_FechaCreacion`) VALUES
+(1, 1, 1, 1, 1000.000, 50, 0, NULL, 1, '2023-07-24 14:29:20'),
+(2, 2, 1, 1, 1000.000, 1, 0, NULL, 1, '2023-07-24 14:46:42'),
+(3, 3, 1, 1, 1000.000, 1, 0, NULL, 1, '2023-07-24 15:40:37'),
+(4, 4, 1, 1, 9000.000, 1, 0, NULL, 1, '2023-07-24 19:25:42'),
+(5, 5, 1, 1, 5000.000, 50, 0, NULL, 0, '2023-07-24 19:40:20');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `fac_tipos_pagos`
+--
+
+CREATE TABLE `fac_tipos_pagos` (
+  `tipa_Id` int(11) NOT NULL,
+  `tipa_IdTipo` int(11) DEFAULT 1 COMMENT '1: Ingresos, 2: Egresos',
+  `tipa_Nombre` varchar(100) NOT NULL,
+  `tipa_Estado` int(11) NOT NULL,
+  `tipa_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--
+-- Volcado de datos para la tabla `fac_tipos_pagos`
+--
+
+INSERT INTO `fac_tipos_pagos` (`tipa_Id`, `tipa_IdTipo`, `tipa_Nombre`, `tipa_Estado`, `tipa_FechaCreacion`) VALUES
+(1, 2, 'COMPRAS', 1, '2022-06-21 02:34:42'),
+(2, 2, 'PAGOS', 1, '2022-06-21 02:34:42'),
+(3, 2, 'GASTOS', 1, '2022-07-06 14:33:55'),
+(4, 2, 'SALIDA EFECTIVO', 1, '2022-07-06 14:33:55'),
+(5, 1, 'INVERSIÓN', 1, '2022-07-06 14:33:55');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `inv_bodega`
+--
+
+CREATE TABLE `inv_bodega` (
+  `bod_Id` int(11) NOT NULL,
+  `bod_IdTipo` int(11) NOT NULL COMMENT '1:Producto ; 2:Insumos',
+  `bod_Nombre` varchar(500) CHARACTER SET utf8mb4 NOT NULL,
+  `bod_Estado` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `inv_bodega`
+--
+
+INSERT INTO `inv_bodega` (`bod_Id`, `bod_IdTipo`, `bod_Nombre`, `bod_Estado`) VALUES
+(1, 1, 'PRINCIPAL', 1);
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `inv_categoria`
+--
+
+CREATE TABLE `inv_categoria` (
+  `cate_Id` int(11) NOT NULL,
+  `cate_IdTipo` int(11) NOT NULL COMMENT '1:Producto ; 2:Insumos',
+  `cate_Descripcion` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `cate_Estado` int(11) NOT NULL,
+  `cate_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `inv_categoria`
+--
+
+INSERT INTO `inv_categoria` (`cate_Id`, `cate_IdTipo`, `cate_Descripcion`, `cate_Estado`, `cate_FechaCreacion`) VALUES
+(1, 1, 'Defecto', 1, '2021-02-03 20:40:43');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `inv_detalle_kardex`
+--
+
+CREATE TABLE `inv_detalle_kardex` (
+  `detkar_Id` int(11) NOT NULL,
+  `detkar_IdProducto` int(11) NOT NULL,
+  `detkar_NombreFacturar` varchar(100) COLLATE utf8mb4_spanish_ci DEFAULT NULL,
+  `detkar_ValorUnitario` float(20,3) NOT NULL,
+  `detkar_CantidadEntrada` float(20,3) DEFAULT NULL,
+  `detkar_ValorEntrada` float(20,3) DEFAULT NULL,
+  `detkar_CantidadSalida` float(20,3) DEFAULT NULL,
+  `detkar_ValorSalida` float(20,3) DEFAULT NULL,
+  `detkar_CantidadSaldo` float(20,3) NOT NULL,
+  `detkar_ValorSaldo` float(20,3) NOT NULL,
+  `detkar_IdBodega` int(11) NOT NULL,
+  `detkar_IdKardex` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `inv_detalle_kardex`
+--
+
+INSERT INTO `inv_detalle_kardex` (`detkar_Id`, `detkar_IdProducto`, `detkar_NombreFacturar`, `detkar_ValorUnitario`, `detkar_CantidadEntrada`, `detkar_ValorEntrada`, `detkar_CantidadSalida`, `detkar_ValorSalida`, `detkar_CantidadSaldo`, `detkar_ValorSaldo`, `detkar_IdBodega`, `detkar_IdKardex`) VALUES
+(1, 1, '1', 500.000, 10.000, 5000.000, NULL, NULL, 10.000, 5000.000, 1, 1),
+(2, 1, '1', 1000.000, NULL, NULL, 1.000, 1000.000, 9.000, 4000.000, 1, 2),
+(3, 1, '1', 1000.000, NULL, NULL, 1.000, 1000.000, 8.000, 3000.000, 1, 3),
+(4, 1, '1', 1000.000, NULL, NULL, 1.000, 1000.000, 7.000, 2000.000, 1, 4),
+(5, 1, '1', 3000.000, NULL, NULL, 3.000, 9000.000, 4.000, -7000.000, 1, 5),
+(6, 1, '1 / Producto Prueba  ', 550.000, 20.000, 11000.000, NULL, NULL, 24.000, 13200.000, 1, 6),
+(7, 1, '1', 1000.000, NULL, NULL, 5.000, 5000.000, 19.000, 8200.000, 1, 7);
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `inv_existencias`
+--
+
+CREATE TABLE `inv_existencias` (
+  `exi_Id` int(11) NOT NULL,
+  `exi_IdBodega` int(11) NOT NULL,
+  `exi_IdProducto` int(11) NOT NULL,
+  `exi_Cantidad` float(20,2) NOT NULL,
+  `exi_Minimo` int(11) DEFAULT NULL,
+  `exi_Maximo` int(11) DEFAULT NULL,
+  `exi_FechaModificacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `inv_existencias`
+--
+
+INSERT INTO `inv_existencias` (`exi_Id`, `exi_IdBodega`, `exi_IdProducto`, `exi_Cantidad`, `exi_Minimo`, `exi_Maximo`, `exi_FechaModificacion`) VALUES
+(1, 1, 1, 19.00, NULL, NULL, '2023-07-24 14:29:01');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `inv_kardex`
+--
+
+CREATE TABLE `inv_kardex` (
+  `kar_Id` int(11) NOT NULL,
+  `kar_Tipo` int(11) NOT NULL COMMENT '1:Entradas ; 2:Salidas',
+  `kar_NumOrden` varchar(100) COLLATE utf8mb4_spanish_ci DEFAULT NULL,
+  `kar_IdProveedor` int(11) DEFAULT NULL,
+  `kar_TipoPago` int(11) DEFAULT NULL COMMENT '1: Contado , 2: Credito',
+  `kar_Observaciones` varchar(500) CHARACTER SET utf8mb4 DEFAULT NULL,
+  `kar_EstadoPago` int(11) DEFAULT 0 COMMENT '0:No Saldada, 1: Saldada',
+  `kar_Estado` int(11) NOT NULL,
+  `kar_Fecha` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `inv_kardex`
+--
+
+INSERT INTO `inv_kardex` (`kar_Id`, `kar_Tipo`, `kar_NumOrden`, `kar_IdProveedor`, `kar_TipoPago`, `kar_Observaciones`, `kar_EstadoPago`, `kar_Estado`, `kar_Fecha`) VALUES
+(1, 1, NULL, NULL, NULL, 'Creación Producto', 0, 1, '2023-07-24 14:29:01'),
+(2, 2, NULL, NULL, NULL, 'Remisión= REM-1', 0, 1, '2023-07-24 14:29:20'),
+(3, 2, NULL, NULL, NULL, 'Remisión= REM-2', 0, 1, '2023-07-24 14:46:42'),
+(4, 2, NULL, NULL, NULL, 'Remisión= REM-3', 0, 1, '2023-07-24 15:40:37'),
+(5, 2, NULL, NULL, NULL, 'Remisión= REM-4', 0, 1, '2023-07-24 19:25:42'),
+(6, 1, '01', 1, 2, 'Prueba 1', 0, 1, '2023-07-24 19:27:49'),
+(7, 2, NULL, NULL, NULL, 'Remisión= REM-5', 0, 1, '2023-07-24 19:40:20');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `inv_marca`
+--
+
+CREATE TABLE `inv_marca` (
+  `mar_Id` int(11) NOT NULL,
+  `mar_Descripcion` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `mar_Estado` int(11) NOT NULL,
+  `mar_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `inv_marca`
+--
+
+INSERT INTO `inv_marca` (`mar_Id`, `mar_Descripcion`, `mar_Estado`, `mar_FechaCreacion`) VALUES
+(1, 'GENERICA', 1, '2020-11-12 23:59:02');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `inv_producto`
+--
+
+CREATE TABLE `inv_producto` (
+  `pro_Id` int(11) NOT NULL,
+  `pro_Codigo` int(11) NOT NULL,
+  `pro_Nombre` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_spanish2_ci NOT NULL,
+  `pro_Tipo` int(11) NOT NULL COMMENT '1= producto; 2= servicio',
+  `pro_UnidadMed` int(11) NOT NULL,
+  `pro_CantidadMed` float NOT NULL,
+  `pro_UsaStoks` int(11) NOT NULL COMMENT '1: Usa . 0: No Usa',
+  `pro_CodBarras` varchar(1000) CHARACTER SET utf8mb4 DEFAULT NULL,
+  `pro_IdImpuesto` int(11) NOT NULL,
+  `pro_Categoria` int(11) NOT NULL,
+  `pro_SubCategoria` int(11) NOT NULL,
+  `pro_IdMarca` int(11) NOT NULL,
+  `pro_IdProveedor` int(11) NOT NULL,
+  `imagen` longtext CHARACTER SET utf8mb4 DEFAULT NULL,
+  `pro_Estado` int(11) NOT NULL,
+  `pro_FechaModificacion` timestamp NOT NULL DEFAULT current_timestamp(),
+  `pro_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `inv_producto`
+--
+
+INSERT INTO `inv_producto` (`pro_Id`, `pro_Codigo`, `pro_Nombre`, `pro_Tipo`, `pro_UnidadMed`, `pro_CantidadMed`, `pro_UsaStoks`, `pro_CodBarras`, `pro_IdImpuesto`, `pro_Categoria`, `pro_SubCategoria`, `pro_IdMarca`, `pro_IdProveedor`, `imagen`, `pro_Estado`, `pro_FechaModificacion`, `pro_FechaCreacion`) VALUES
+(1, 1, 'Producto Prueba', 1, 1, 1, 1, '1', 4, 1, 1, 1, 1, NULL, 1, '2023-07-24 14:29:01', '2023-07-24 14:29:01');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `inv_proveedores`
+--
+
+CREATE TABLE `inv_proveedores` (
+  `prov_Id` int(11) NOT NULL,
+  `prov_Nombre` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `prov_RazonSocial` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `prov_Nit` varchar(20) CHARACTER SET utf8mb4 NOT NULL,
+  `prov_Direccion` varchar(100) CHARACTER SET utf8mb4 NOT NULL,
+  `prov_IdDepartamento` bigint(11) NOT NULL,
+  `prov_IdCiudad` bigint(11) NOT NULL,
+  `prov_Telefono` bigint(11) NOT NULL,
+  `prov_Email` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `prov_IdTipoPersona` int(11) NOT NULL,
+  `prov_Estado` int(11) NOT NULL,
+  `prov_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `inv_proveedores`
+--
+
+INSERT INTO `inv_proveedores` (`prov_Id`, `prov_Nombre`, `prov_RazonSocial`, `prov_Nit`, `prov_Direccion`, `prov_IdDepartamento`, `prov_IdCiudad`, `prov_Telefono`, `prov_Email`, `prov_IdTipoPersona`, `prov_Estado`, `prov_FechaCreacion`) VALUES
+(1, 'GENERICO', 'GENERICO', '1111111-11', 'Calle 1 # 2 -3', 3, 149, 0, 'proveedorgenerico@gmail.com', 2, 1, '2021-01-18 13:00:00');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `inv_sub_categoria`
+--
+
+CREATE TABLE `inv_sub_categoria` (
+  `subCate_Id` int(11) NOT NULL,
+  `subCate_IdCategoria` int(11) NOT NULL,
+  `subCate_Descripcion` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `subCate_Estado` int(11) NOT NULL,
+  `subCate_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `inv_sub_categoria`
+--
+
+INSERT INTO `inv_sub_categoria` (`subCate_Id`, `subCate_IdCategoria`, `subCate_Descripcion`, `subCate_Estado`, `subCate_FechaCreacion`) VALUES
+(1, 1, 'Defecto', 1, '2021-02-03 20:43:57');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `inv_tipo_documento`
+--
+
+CREATE TABLE `inv_tipo_documento` (
+  `tipoDoc_Id` int(11) NOT NULL,
+  `tipoDoc_Descripcion` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `tipoDoc_Estado` int(11) NOT NULL,
+  `tipoDoc_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `inv_tipo_documento`
+--
+
+INSERT INTO `inv_tipo_documento` (`tipoDoc_Id`, `tipoDoc_Descripcion`, `tipoDoc_Estado`, `tipoDoc_FechaCreacion`) VALUES
+(1, 'Entrada Inventario', 1, '2020-11-13 16:18:11'),
+(2, 'Salida Inventario', 1, '2020-11-13 16:18:24');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `inv_unidad_medida`
+--
+
+CREATE TABLE `inv_unidad_medida` (
+  `uniM_Id` int(11) NOT NULL,
+  `uniM_Nombre` varchar(100) CHARACTER SET utf8mb4 NOT NULL,
+  `uniM_Prefijo` varchar(100) COLLATE utf8mb4_spanish_ci NOT NULL,
+  `uniM_Estado` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `inv_unidad_medida`
+--
+
+INSERT INTO `inv_unidad_medida` (`uniM_Id`, `uniM_Nombre`, `uniM_Prefijo`, `uniM_Estado`) VALUES
+(1, 'Unidad', 'Uni', 1),
+(2, 'Kilo', 'Kl', 1),
+(3, 'Metros', 'Mts', 1);
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `prod_detalle_kardex`
+--
+
+CREATE TABLE `prod_detalle_kardex` (
+  `detkar_Id` int(11) NOT NULL,
+  `detkar_IdProducto` int(11) NOT NULL,
+  `detkar_ValorUnitario` float(20,3) NOT NULL,
+  `detkar_CantidadEntrada` float(20,3) DEFAULT NULL,
+  `detkar_ValorEntrada` float(20,3) DEFAULT NULL,
+  `detkar_CantidadSalida` float(20,3) DEFAULT NULL,
+  `detkar_ValorSalida` float(20,3) DEFAULT NULL,
+  `detkar_CantidadSaldo` float(20,3) NOT NULL,
+  `detkar_ValorSaldo` float(20,3) NOT NULL,
+  `detkar_IdBodega` int(11) NOT NULL,
+  `detkar_IdKardex` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `prod_existencias`
+--
+
+CREATE TABLE `prod_existencias` (
+  `exi_Id` int(11) NOT NULL,
+  `exi_IdBodega` int(11) NOT NULL,
+  `exi_IdProducto` int(11) NOT NULL,
+  `exi_Cantidad` float NOT NULL,
+  `exi_Minimo` int(11) DEFAULT NULL,
+  `exi_Maximo` int(11) DEFAULT NULL,
+  `exi_FechaModificacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `prod_insumos`
+--
+
+CREATE TABLE `prod_insumos` (
+  `ins_Id` int(11) NOT NULL,
+  `ins_IdCategoria` int(11) NOT NULL,
+  `ins_IdSubCategoria` int(11) NOT NULL,
+  `ins_IdProveedor` int(11) NOT NULL,
+  `ins_Nombre` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `ins_Codigo` varchar(10) CHARACTER SET utf8mb4 NOT NULL,
+  `ins_CodBarras` varchar(1000) CHARACTER SET utf8mb4 DEFAULT NULL,
+  `ins_ReferenciaNombre1` text CHARACTER SET utf8mb4 DEFAULT NULL,
+  `ins_ReferenciaValor1` text CHARACTER SET utf8mb4 DEFAULT NULL,
+  `ins_ReferenciaNombre2` text CHARACTER SET utf8mb4 DEFAULT NULL,
+  `ins_ReferenciaValor2` text CHARACTER SET utf8mb4 DEFAULT NULL,
+  `ins_IdTipoCantidad` int(11) NOT NULL COMMENT '1: Rollo; 2:Caja; 3:Bolsa',
+  `ins_IdTipoUnidad` int(11) NOT NULL COMMENT '1:Unidad; 2:Metros; 3:Kilos',
+  `ins_Imagen` longtext CHARACTER SET utf8mb4 DEFAULT NULL,
+  `ins_Estado` int(11) NOT NULL,
+  `ins_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `prod_kardex`
+--
+
+CREATE TABLE `prod_kardex` (
+  `kar_Id` int(11) NOT NULL,
+  `kar_Tipo` int(11) NOT NULL COMMENT 'Tipo Documento',
+  `kar_Observaciones` varchar(500) CHARACTER SET utf8mb4 NOT NULL,
+  `kar_Estado` int(11) NOT NULL,
+  `kar_Fecha` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `prod_tipo_cantidad`
+--
+
+CREATE TABLE `prod_tipo_cantidad` (
+  `tica_Id` int(11) NOT NULL,
+  `tica_Nombre` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `tica_Estado` int(11) NOT NULL,
+  `tica_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `prod_tipo_cantidad`
+--
+
+INSERT INTO `prod_tipo_cantidad` (`tica_Id`, `tica_Nombre`, `tica_Estado`, `tica_FechaCreacion`) VALUES
+(1, 'Rollo', 1, '2020-12-02 15:01:31'),
+(2, 'Caja', 1, '2020-12-02 15:01:31'),
+(3, 'Bolsa', 1, '2020-12-02 15:01:41');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `prod_tipo_unidad`
+--
+
+CREATE TABLE `prod_tipo_unidad` (
+  `tiuni_Id` int(11) NOT NULL,
+  `tiuni_Nombre` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+  `tiuni_Abreviatura` varchar(20) CHARACTER SET utf8mb4 NOT NULL,
+  `tiuni_Estado` int(11) NOT NULL,
+  `tiuni_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_spanish_ci;
+
+--
+-- Volcado de datos para la tabla `prod_tipo_unidad`
+--
+
+INSERT INTO `prod_tipo_unidad` (`tiuni_Id`, `tiuni_Nombre`, `tiuni_Abreviatura`, `tiuni_Estado`, `tiuni_FechaCreacion`) VALUES
+(1, 'Unidad', 'uni', 1, '2020-12-02 15:06:37'),
+(2, 'Metros', 'mt', 1, '2020-12-02 15:04:10'),
+(3, 'Kilos', 'kl', 1, '2020-12-02 15:04:10');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `pro_egresosgastos`
+--
+
+CREATE TABLE `pro_egresosgastos` (
+  `egre_Id` int(11) NOT NULL,
+  `egre_IdProyecto` int(11) NOT NULL,
+  `egre_Descripcion` varchar(500) DEFAULT NULL,
+  `egre_IdCategoria` int(11) NOT NULL,
+  `egre_IdProveedor` int(11) NOT NULL,
+  `egre_Valor` varchar(11) NOT NULL,
+  `egre_Pagado` int(11) DEFAULT NULL,
+  `egre_IdTipoSoporte` int(11) DEFAULT NULL COMMENT '1: Factura, 2:Recibo, 3:Cuenta de Cobro, 4: Otro',
+  `egre_UrlSoporte` text DEFAULT NULL,
+  `egre_Fecha` date DEFAULT NULL,
+  `egre_Estado` int(11) NOT NULL,
+  `egre_FechaCreacion` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+--
+-- Índices para tablas volcadas
+--
+
+--
+-- Indices de la tabla `conf_departamentos`
+--
+ALTER TABLE `conf_departamentos`
+  ADD PRIMARY KEY (`dep_Id`);
+
+--
+-- Indices de la tabla `conf_empresa`
+--
+ALTER TABLE `conf_empresa`
+  ADD PRIMARY KEY (`emp_Id`);
+
+--
+-- Indices de la tabla `conf_log`
+--
+ALTER TABLE `conf_log`
+  ADD PRIMARY KEY (`log_Id`),
+  ADD KEY `log_IdUsuario` (`log_IdUsuario`),
+  ADD KEY `log_IdModulo` (`log_IdModulo`),
+  ADD KEY `log_IdSubModulo` (`log_IdSubModulo`);
+
+--
+-- Indices de la tabla `conf_modulo`
+--
+ALTER TABLE `conf_modulo`
+  ADD PRIMARY KEY (`mod_Id`);
+
+--
+-- Indices de la tabla `conf_municipios`
+--
+ALTER TABLE `conf_municipios`
+  ADD PRIMARY KEY (`mun_Id`),
+  ADD KEY `departamento_id` (`mun_IdDepartamento`);
+
+--
+-- Indices de la tabla `conf_permisos`
+--
+ALTER TABLE `conf_permisos`
+  ADD PRIMARY KEY (`per_Id`),
+  ADD KEY `per_IdSubmodulo` (`per_IdSubmodulo`),
+  ADD KEY `per_IdRol` (`per_IdRol`),
+  ADD KEY `per_IdModulo` (`per_IdModulo`);
+
+--
+-- Indices de la tabla `conf_resoluciones`
+--
+ALTER TABLE `conf_resoluciones`
+  ADD PRIMARY KEY (`reso_Id`);
+
+--
+-- Indices de la tabla `conf_rol`
+--
+ALTER TABLE `conf_rol`
+  ADD PRIMARY KEY (`rol_Id`);
+
+--
+-- Indices de la tabla `conf_sedes_empresa`
+--
+ALTER TABLE `conf_sedes_empresa`
+  ADD PRIMARY KEY (`seem_Id`),
+  ADD KEY `fk_empresa_1` (`seem_IdEmpresa`),
+  ADD KEY `fk_bodega_1` (`seem_IdBodega`);
+
+--
+-- Indices de la tabla `conf_sedes_empresa_cajas`
+--
+ALTER TABLE `conf_sedes_empresa_cajas`
+  ADD PRIMARY KEY (`seemca_Id`),
+  ADD KEY `fk_Sedeempresa_1` (`seemca_IdSedeEmpresa`);
+
+--
+-- Indices de la tabla `conf_sedes_empresa_mesas`
+--
+ALTER TABLE `conf_sedes_empresa_mesas`
+  ADD PRIMARY KEY (`seemma_Id`);
+
+--
+-- Indices de la tabla `conf_submodulo`
+--
+ALTER TABLE `conf_submodulo`
+  ADD PRIMARY KEY (`subMod_Id`),
+  ADD KEY `subMod_Modulo` (`subMod_IdModulo`);
+
+--
+-- Indices de la tabla `conf_tipo_documento`
+--
+ALTER TABLE `conf_tipo_documento`
+  ADD PRIMARY KEY (`tip_Id`);
+
+--
+-- Indices de la tabla `conf_tipo_persona`
+--
+ALTER TABLE `conf_tipo_persona`
+  ADD PRIMARY KEY (`tip_Id`);
+
+--
+-- Indices de la tabla `conf_usuario`
+--
+ALTER TABLE `conf_usuario`
+  ADD PRIMARY KEY (`usu_Id`),
+  ADD KEY `usu_IdRol` (`usu_Rol`);
+
+--
+-- Indices de la tabla `conf_usuario_caja`
+--
+ALTER TABLE `conf_usuario_caja`
+  ADD PRIMARY KEY (`usuca_Id`),
+  ADD KEY `fk_sede_1` (`usuca_IdCaja`),
+  ADD KEY `fk_sede_2` (`usuca_IdVendedor`),
+  ADD KEY `fk_sede_3` (`usuca_IdSede`);
+
+--
+-- Indices de la tabla `eve_actividadeseventos`
+--
+ALTER TABLE `eve_actividadeseventos`
+  ADD PRIMARY KEY (`eva_Id`),
+  ADD KEY `fk_empresa_2` (`eva_IdProveedor`);
+
+--
+-- Indices de la tabla `eve_categoriasactividades`
+--
+ALTER TABLE `eve_categoriasactividades`
+  ADD PRIMARY KEY (`caa_Id`);
+
+--
+-- Indices de la tabla `eve_egresoseventos`
+--
+ALTER TABLE `eve_egresoseventos`
+  ADD PRIMARY KEY (`egre_Id`);
+
+--
+-- Indices de la tabla `eve_eventos`
+--
+ALTER TABLE `eve_eventos`
+  ADD PRIMARY KEY (`eve_Id`);
+
+--
+-- Indices de la tabla `eve_ingresoseventos`
+--
+ALTER TABLE `eve_ingresoseventos`
+  ADD PRIMARY KEY (`pago_Id`);
+
+--
+-- Indices de la tabla `eve_proveedoreseventos`
+--
+ALTER TABLE `eve_proveedoreseventos`
+  ADD PRIMARY KEY (`prov_Id`);
+
+--
+-- Indices de la tabla `fac_base_caja`
+--
+ALTER TABLE `fac_base_caja`
+  ADD PRIMARY KEY (`bace_Id`),
+  ADD KEY `fk_caja_1` (`bace_IdCaja`),
+  ADD KEY `fk_vendedor_1` (`bace_IdVendedor`);
+
+--
+-- Indices de la tabla `fac_cierre_caja`
+--
+ALTER TABLE `fac_cierre_caja`
+  ADD PRIMARY KEY (`cica_Id`),
+  ADD KEY `fk_cierre_caja_1` (`cica_IdCaja`),
+  ADD KEY `fk_cierre_caja_2` (`cica_IdVendedor`);
+
+--
+-- Indices de la tabla `fac_cliente`
+--
+ALTER TABLE `fac_cliente`
+  ADD PRIMARY KEY (`cli_Id`),
+  ADD KEY `cli_IdTipoPersona` (`cli_IdTipoPersona`),
+  ADD KEY `fk_cliente_2` (`cli_IdCiudad`),
+  ADD KEY `fk_cliente_3` (`cli_IdDepartamento`);
+
+--
+-- Indices de la tabla `fac_cuentascontables`
+--
+ALTER TABLE `fac_cuentascontables`
+  ADD PRIMARY KEY (`cuco_Id`),
+  ADD KEY `fk_cuentaCOntable_1` (`cuco_IdCuentaContable`);
+
+--
+-- Indices de la tabla `fac_cuentas_por_cobrar`
+--
+ALTER TABLE `fac_cuentas_por_cobrar`
+  ADD PRIMARY KEY (`cuco_Id`);
+
+--
+-- Indices de la tabla `fac_cuentas_por_pagar`
+--
+ALTER TABLE `fac_cuentas_por_pagar`
+  ADD PRIMARY KEY (`cupa_Id`);
+
+--
+-- Indices de la tabla `fac_detalle_documento`
+--
+ALTER TABLE `fac_detalle_documento`
+  ADD PRIMARY KEY (`detDoc_Id`),
+  ADD KEY `fk_documento_1` (`detDoc_IdDocumento`),
+  ADD KEY `fk_producto_1` (`detDoc_IdProducto`);
+
+--
+-- Indices de la tabla `fac_detalle_documento_ordenes`
+--
+ALTER TABLE `fac_detalle_documento_ordenes`
+  ADD PRIMARY KEY (`detDoc_Id`);
+
+--
+-- Indices de la tabla `fac_documento`
+--
+ALTER TABLE `fac_documento`
+  ADD PRIMARY KEY (`doc_Id`),
+  ADD KEY `fac_IdTipoDocumento` (`doc_IdTipoDocumento`),
+  ADD KEY `fac_factura_ibfk_1` (`doc_IdCliente`),
+  ADD KEY `fac_documento_ibfk_3` (`doc_IdKardex`),
+  ADD KEY `fk_documento_4` (`doc_IdVendedor`);
+
+--
+-- Indices de la tabla `fac_documento_ordenes`
+--
+ALTER TABLE `fac_documento_ordenes`
+  ADD PRIMARY KEY (`doc_Id`);
+
+--
+-- Indices de la tabla `fac_formas_pago`
+--
+ALTER TABLE `fac_formas_pago`
+  ADD PRIMARY KEY (`forpa_Id`);
+
+--
+-- Indices de la tabla `fac_impuestos`
+--
+ALTER TABLE `fac_impuestos`
+  ADD PRIMARY KEY (`imp_Id`);
+
+--
+-- Indices de la tabla `fac_pagos_caja`
+--
+ALTER TABLE `fac_pagos_caja`
+  ADD PRIMARY KEY (`paca_Id`),
+  ADD KEY `fk_pagos_cajas_1` (`paca_IdCaja`),
+  ADD KEY `fk_pagos_cajas_2` (`paca_IdVendedor`);
+
+--
+-- Indices de la tabla `fac_precios_venta`
+--
+ALTER TABLE `fac_precios_venta`
+  ADD PRIMARY KEY (`preVen_Id`),
+  ADD KEY `preVen_IdTarifa_fky_1` (`preVen_IdTarifa`),
+  ADD KEY `preVen_IdProducto_fky_2` (`preVen_IdProducto`);
+
+--
+-- Indices de la tabla `fac_sub_tipos_pagos`
+--
+ALTER TABLE `fac_sub_tipos_pagos`
+  ADD PRIMARY KEY (`subtipa_Id`);
+
+--
+-- Indices de la tabla `fac_tarifas_venta`
+--
+ALTER TABLE `fac_tarifas_venta`
+  ADD PRIMARY KEY (`tar_Id`);
+
+--
+-- Indices de la tabla `fac_tesoreria`
+--
+ALTER TABLE `fac_tesoreria`
+  ADD PRIMARY KEY (`teso_Id`),
+  ADD KEY `fk_tesoreria_1` (`teso_IdDocumento`),
+  ADD KEY `fk_tesoreria_2` (`teso_IdCaja`);
+
+--
+-- Indices de la tabla `fac_tipos_pagos`
+--
+ALTER TABLE `fac_tipos_pagos`
+  ADD PRIMARY KEY (`tipa_Id`);
+
+--
+-- Indices de la tabla `inv_bodega`
+--
+ALTER TABLE `inv_bodega`
+  ADD PRIMARY KEY (`bod_Id`);
+
+--
+-- Indices de la tabla `inv_categoria`
+--
+ALTER TABLE `inv_categoria`
+  ADD PRIMARY KEY (`cate_Id`),
+  ADD KEY `fk_categoria_1` (`cate_IdTipo`);
+
+--
+-- Indices de la tabla `inv_detalle_kardex`
+--
+ALTER TABLE `inv_detalle_kardex`
+  ADD PRIMARY KEY (`detkar_Id`),
+  ADD KEY `detkar_IdKardex` (`detkar_IdKardex`),
+  ADD KEY `detkar_IdProducto` (`detkar_IdProducto`),
+  ADD KEY `detkar_IdBodega` (`detkar_IdBodega`);
+
+--
+-- Indices de la tabla `inv_existencias`
+--
+ALTER TABLE `inv_existencias`
+  ADD PRIMARY KEY (`exi_Id`),
+  ADD KEY `exi_IdBodega` (`exi_IdBodega`),
+  ADD KEY `exi_IdProducto` (`exi_IdProducto`);
+
+--
+-- Indices de la tabla `inv_kardex`
+--
+ALTER TABLE `inv_kardex`
+  ADD PRIMARY KEY (`kar_Id`);
+
+--
+-- Indices de la tabla `inv_marca`
+--
+ALTER TABLE `inv_marca`
+  ADD PRIMARY KEY (`mar_Id`);
+
+--
+-- Indices de la tabla `inv_producto`
+--
+ALTER TABLE `inv_producto`
+  ADD PRIMARY KEY (`pro_Id`),
+  ADD KEY `pro_UnidadMed` (`pro_UnidadMed`),
+  ADD KEY `inv_IdImpuesto_ibfk_2` (`pro_IdImpuesto`),
+  ADD KEY `inv_categoria_ibfk_3` (`pro_Categoria`),
+  ADD KEY `inv_sub_categoria_ibfk_4` (`pro_SubCategoria`),
+  ADD KEY `inv_marca_ibfk_5` (`pro_IdMarca`),
+  ADD KEY `inv_IdProveedor_ibfk_5` (`pro_IdProveedor`);
+
+--
+-- Indices de la tabla `inv_proveedores`
+--
+ALTER TABLE `inv_proveedores`
+  ADD PRIMARY KEY (`prov_Id`),
+  ADD KEY `prov_IdTipoPersona_fk_1` (`prov_IdTipoPersona`);
+
+--
+-- Indices de la tabla `inv_sub_categoria`
+--
+ALTER TABLE `inv_sub_categoria`
+  ADD PRIMARY KEY (`subCate_Id`),
+  ADD KEY `subCate_categoria_ibfk_1` (`subCate_IdCategoria`);
+
+--
+-- Indices de la tabla `inv_tipo_documento`
+--
+ALTER TABLE `inv_tipo_documento`
+  ADD PRIMARY KEY (`tipoDoc_Id`);
+
+--
+-- Indices de la tabla `inv_unidad_medida`
+--
+ALTER TABLE `inv_unidad_medida`
+  ADD PRIMARY KEY (`uniM_Id`);
+
+--
+-- Indices de la tabla `prod_detalle_kardex`
+--
+ALTER TABLE `prod_detalle_kardex`
+  ADD PRIMARY KEY (`detkar_Id`),
+  ADD KEY `prod_detalle_kardex_IdProducto_bfk_1` (`detkar_IdProducto`),
+  ADD KEY `prod_detalle_kardex_IdBodega_bfk_2` (`detkar_IdBodega`),
+  ADD KEY `prod_detalle_kardex_IdKardex_bfk_3` (`detkar_IdKardex`);
+
+--
+-- Indices de la tabla `prod_existencias`
+--
+ALTER TABLE `prod_existencias`
+  ADD PRIMARY KEY (`exi_Id`),
+  ADD KEY `prod_existencias_ibfk_1` (`exi_IdBodega`),
+  ADD KEY `prod_existencias_ibfk_2` (`exi_IdProducto`);
+
+--
+-- Indices de la tabla `prod_insumos`
+--
+ALTER TABLE `prod_insumos`
+  ADD PRIMARY KEY (`ins_Id`),
+  ADD KEY `ins_IdCategoria_ibfk_1` (`ins_IdCategoria`),
+  ADD KEY `ins_IdSubCategoria_ibfk_2` (`ins_IdSubCategoria`),
+  ADD KEY `ins_IdProveedor_ibfk_3` (`ins_IdProveedor`),
+  ADD KEY `ins_IdTippCantidad_ibfk_4` (`ins_IdTipoCantidad`),
+  ADD KEY `ins_IdTippCantidad_ibfk_5` (`ins_IdTipoUnidad`);
+
+--
+-- Indices de la tabla `prod_kardex`
+--
+ALTER TABLE `prod_kardex`
+  ADD PRIMARY KEY (`kar_Id`),
+  ADD KEY `kar_TipoDocumento_fki_1` (`kar_Tipo`);
+
+--
+-- Indices de la tabla `prod_tipo_cantidad`
+--
+ALTER TABLE `prod_tipo_cantidad`
+  ADD PRIMARY KEY (`tica_Id`);
+
+--
+-- Indices de la tabla `prod_tipo_unidad`
+--
+ALTER TABLE `prod_tipo_unidad`
+  ADD PRIMARY KEY (`tiuni_Id`);
+
+--
+-- AUTO_INCREMENT de las tablas volcadas
+--
+
+--
+-- AUTO_INCREMENT de la tabla `conf_departamentos`
+--
+ALTER TABLE `conf_departamentos`
+  MODIFY `dep_Id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=34;
+
+--
+-- AUTO_INCREMENT de la tabla `conf_empresa`
+--
+ALTER TABLE `conf_empresa`
+  MODIFY `emp_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT de la tabla `conf_log`
+--
+ALTER TABLE `conf_log`
+  MODIFY `log_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
+-- AUTO_INCREMENT de la tabla `conf_modulo`
+--
+ALTER TABLE `conf_modulo`
+  MODIFY `mod_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=27;
+
+--
+-- AUTO_INCREMENT de la tabla `conf_municipios`
+--
+ALTER TABLE `conf_municipios`
+  MODIFY `mun_Id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=1127;
+
+--
+-- AUTO_INCREMENT de la tabla `conf_permisos`
+--
+ALTER TABLE `conf_permisos`
+  MODIFY `per_Id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de la tabla `conf_resoluciones`
+--
+ALTER TABLE `conf_resoluciones`
+  MODIFY `reso_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT de la tabla `conf_rol`
+--
+ALTER TABLE `conf_rol`
+  MODIFY `rol_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
+-- AUTO_INCREMENT de la tabla `conf_sedes_empresa`
+--
+ALTER TABLE `conf_sedes_empresa`
+  MODIFY `seem_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT de la tabla `conf_sedes_empresa_cajas`
+--
+ALTER TABLE `conf_sedes_empresa_cajas`
+  MODIFY `seemca_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT de la tabla `conf_sedes_empresa_mesas`
+--
+ALTER TABLE `conf_sedes_empresa_mesas`
+  MODIFY `seemma_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
+-- AUTO_INCREMENT de la tabla `conf_submodulo`
+--
+ALTER TABLE `conf_submodulo`
+  MODIFY `subMod_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=106;
+
+--
+-- AUTO_INCREMENT de la tabla `conf_tipo_documento`
+--
+ALTER TABLE `conf_tipo_documento`
+  MODIFY `tip_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
+-- AUTO_INCREMENT de la tabla `conf_tipo_persona`
+--
+ALTER TABLE `conf_tipo_persona`
+  MODIFY `tip_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
+-- AUTO_INCREMENT de la tabla `conf_usuario`
+--
+ALTER TABLE `conf_usuario`
+  MODIFY `usu_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
+-- AUTO_INCREMENT de la tabla `conf_usuario_caja`
+--
+ALTER TABLE `conf_usuario_caja`
+  MODIFY `usuca_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT de la tabla `eve_actividadeseventos`
+--
+ALTER TABLE `eve_actividadeseventos`
+  MODIFY `eva_Id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de la tabla `eve_categoriasactividades`
+--
+ALTER TABLE `eve_categoriasactividades`
+  MODIFY `caa_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
+-- AUTO_INCREMENT de la tabla `eve_egresoseventos`
+--
+ALTER TABLE `eve_egresoseventos`
+  MODIFY `egre_Id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de la tabla `eve_eventos`
+--
+ALTER TABLE `eve_eventos`
+  MODIFY `eve_Id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de la tabla `eve_ingresoseventos`
+--
+ALTER TABLE `eve_ingresoseventos`
+  MODIFY `pago_Id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de la tabla `eve_proveedoreseventos`
+--
+ALTER TABLE `eve_proveedoreseventos`
+  MODIFY `prov_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT de la tabla `fac_base_caja`
+--
+ALTER TABLE `fac_base_caja`
+  MODIFY `bace_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT de la tabla `fac_cierre_caja`
+--
+ALTER TABLE `fac_cierre_caja`
+  MODIFY `cica_Id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de la tabla `fac_cliente`
+--
+ALTER TABLE `fac_cliente`
+  MODIFY `cli_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT de la tabla `fac_cuentascontables`
+--
+ALTER TABLE `fac_cuentascontables`
+  MODIFY `cuco_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+
+--
+-- AUTO_INCREMENT de la tabla `fac_cuentas_por_cobrar`
+--
+ALTER TABLE `fac_cuentas_por_cobrar`
+  MODIFY `cuco_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
+-- AUTO_INCREMENT de la tabla `fac_cuentas_por_pagar`
+--
+ALTER TABLE `fac_cuentas_por_pagar`
+  MODIFY `cupa_Id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de la tabla `fac_detalle_documento`
+--
+ALTER TABLE `fac_detalle_documento`
+  MODIFY `detDoc_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+
+--
+-- AUTO_INCREMENT de la tabla `fac_detalle_documento_ordenes`
+--
+ALTER TABLE `fac_detalle_documento_ordenes`
+  MODIFY `detDoc_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
+-- AUTO_INCREMENT de la tabla `fac_documento`
+--
+ALTER TABLE `fac_documento`
+  MODIFY `doc_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+
+--
+-- AUTO_INCREMENT de la tabla `fac_documento_ordenes`
+--
+ALTER TABLE `fac_documento_ordenes`
+  MODIFY `doc_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
+-- AUTO_INCREMENT de la tabla `fac_formas_pago`
+--
+ALTER TABLE `fac_formas_pago`
+  MODIFY `forpa_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=51;
+
+--
+-- AUTO_INCREMENT de la tabla `fac_impuestos`
+--
+ALTER TABLE `fac_impuestos`
+  MODIFY `imp_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+
+--
+-- AUTO_INCREMENT de la tabla `fac_pagos_caja`
+--
+ALTER TABLE `fac_pagos_caja`
+  MODIFY `paca_Id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de la tabla `fac_precios_venta`
+--
+ALTER TABLE `fac_precios_venta`
+  MODIFY `preVen_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT de la tabla `fac_sub_tipos_pagos`
+--
+ALTER TABLE `fac_sub_tipos_pagos`
+  MODIFY `subtipa_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+
+--
+-- AUTO_INCREMENT de la tabla `fac_tarifas_venta`
+--
+ALTER TABLE `fac_tarifas_venta`
+  MODIFY `tar_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT de la tabla `fac_tesoreria`
+--
+ALTER TABLE `fac_tesoreria`
+  MODIFY `teso_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+
+--
+-- AUTO_INCREMENT de la tabla `fac_tipos_pagos`
+--
+ALTER TABLE `fac_tipos_pagos`
+  MODIFY `tipa_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+
+--
+-- AUTO_INCREMENT de la tabla `inv_bodega`
+--
+ALTER TABLE `inv_bodega`
+  MODIFY `bod_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT de la tabla `inv_categoria`
+--
+ALTER TABLE `inv_categoria`
+  MODIFY `cate_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT de la tabla `inv_detalle_kardex`
+--
+ALTER TABLE `inv_detalle_kardex`
+  MODIFY `detkar_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+
+--
+-- AUTO_INCREMENT de la tabla `inv_existencias`
+--
+ALTER TABLE `inv_existencias`
+  MODIFY `exi_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT de la tabla `inv_kardex`
+--
+ALTER TABLE `inv_kardex`
+  MODIFY `kar_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+
+--
+-- AUTO_INCREMENT de la tabla `inv_marca`
+--
+ALTER TABLE `inv_marca`
+  MODIFY `mar_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT de la tabla `inv_producto`
+--
+ALTER TABLE `inv_producto`
+  MODIFY `pro_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT de la tabla `inv_proveedores`
+--
+ALTER TABLE `inv_proveedores`
+  MODIFY `prov_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT de la tabla `inv_sub_categoria`
+--
+ALTER TABLE `inv_sub_categoria`
+  MODIFY `subCate_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT de la tabla `inv_tipo_documento`
+--
+ALTER TABLE `inv_tipo_documento`
+  MODIFY `tipoDoc_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
+-- AUTO_INCREMENT de la tabla `inv_unidad_medida`
+--
+ALTER TABLE `inv_unidad_medida`
+  MODIFY `uniM_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
+-- AUTO_INCREMENT de la tabla `prod_detalle_kardex`
+--
+ALTER TABLE `prod_detalle_kardex`
+  MODIFY `detkar_Id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de la tabla `prod_existencias`
+--
+ALTER TABLE `prod_existencias`
+  MODIFY `exi_Id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de la tabla `prod_insumos`
+--
+ALTER TABLE `prod_insumos`
+  MODIFY `ins_Id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de la tabla `prod_kardex`
+--
+ALTER TABLE `prod_kardex`
+  MODIFY `kar_Id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT de la tabla `prod_tipo_cantidad`
+--
+ALTER TABLE `prod_tipo_cantidad`
+  MODIFY `tica_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
+-- AUTO_INCREMENT de la tabla `prod_tipo_unidad`
+--
+ALTER TABLE `prod_tipo_unidad`
+  MODIFY `tiuni_Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
+-- Restricciones para tablas volcadas
+--
+
+--
+-- Filtros para la tabla `conf_log`
+--
+ALTER TABLE `conf_log`
+  ADD CONSTRAINT `conf_log_ibfk_1` FOREIGN KEY (`log_IdModulo`) REFERENCES `conf_modulo` (`mod_Id`),
+  ADD CONSTRAINT `conf_log_ibfk_2` FOREIGN KEY (`log_IdSubModulo`) REFERENCES `conf_submodulo` (`subMod_Id`),
+  ADD CONSTRAINT `conf_log_ibfk_3` FOREIGN KEY (`log_IdUsuario`) REFERENCES `conf_usuario` (`usu_Id`);
+
+--
+-- Filtros para la tabla `conf_municipios`
+--
+ALTER TABLE `conf_municipios`
+  ADD CONSTRAINT `municipios_ibfk_1` FOREIGN KEY (`mun_IdDepartamento`) REFERENCES `conf_departamentos` (`dep_Id`);
+
+--
+-- Filtros para la tabla `conf_permisos`
+--
+ALTER TABLE `conf_permisos`
+  ADD CONSTRAINT `conf_permisos_ibfk_1` FOREIGN KEY (`per_IdModulo`) REFERENCES `conf_modulo` (`mod_Id`),
+  ADD CONSTRAINT `conf_permisos_ibfk_2` FOREIGN KEY (`per_IdSubmodulo`) REFERENCES `conf_submodulo` (`subMod_Id`),
+  ADD CONSTRAINT `conf_permisos_ibfk_3` FOREIGN KEY (`per_IdRol`) REFERENCES `conf_rol` (`rol_Id`);
+
+--
+-- Filtros para la tabla `conf_sedes_empresa`
+--
+ALTER TABLE `conf_sedes_empresa`
+  ADD CONSTRAINT `fk_bodega_1` FOREIGN KEY (`seem_IdBodega`) REFERENCES `inv_bodega` (`bod_Id`),
+  ADD CONSTRAINT `fk_empresa_1` FOREIGN KEY (`seem_IdEmpresa`) REFERENCES `conf_empresa` (`emp_Id`);
+
+--
+-- Filtros para la tabla `conf_sedes_empresa_cajas`
+--
+ALTER TABLE `conf_sedes_empresa_cajas`
+  ADD CONSTRAINT `fk_Sedeempresa_2` FOREIGN KEY (`seemca_IdSedeEmpresa`) REFERENCES `conf_sedes_empresa` (`seem_Id`);
+
+--
+-- Filtros para la tabla `conf_submodulo`
+--
+ALTER TABLE `conf_submodulo`
+  ADD CONSTRAINT `fk_submodulo_1` FOREIGN KEY (`subMod_IdModulo`) REFERENCES `conf_modulo` (`mod_Id`);
+
+--
+-- Filtros para la tabla `conf_usuario`
+--
+ALTER TABLE `conf_usuario`
+  ADD CONSTRAINT `fk_rol_1` FOREIGN KEY (`usu_Rol`) REFERENCES `conf_rol` (`rol_Id`);
+
+--
+-- Filtros para la tabla `conf_usuario_caja`
+--
+ALTER TABLE `conf_usuario_caja`
+  ADD CONSTRAINT `fk_usua_caja_1` FOREIGN KEY (`usuca_IdVendedor`) REFERENCES `conf_usuario` (`usu_Id`),
+  ADD CONSTRAINT `fk_usua_caja_2` FOREIGN KEY (`usuca_IdSede`) REFERENCES `conf_sedes_empresa` (`seem_Id`),
+  ADD CONSTRAINT `fk_usua_caja_3` FOREIGN KEY (`usuca_IdCaja`) REFERENCES `conf_sedes_empresa_cajas` (`seemca_Id`);
+
+--
+-- Filtros para la tabla `eve_actividadeseventos`
+--
+ALTER TABLE `eve_actividadeseventos`
+  ADD CONSTRAINT `fk_empresa_2` FOREIGN KEY (`eva_IdProveedor`) REFERENCES `eve_proveedoreseventos` (`prov_Id`);
+
+--
+-- Filtros para la tabla `fac_base_caja`
+--
+ALTER TABLE `fac_base_caja`
+  ADD CONSTRAINT `fk_base_caja_1` FOREIGN KEY (`bace_IdCaja`) REFERENCES `conf_sedes_empresa_cajas` (`seemca_Id`),
+  ADD CONSTRAINT `fk_base_caja_2` FOREIGN KEY (`bace_IdVendedor`) REFERENCES `conf_usuario` (`usu_Id`);
+
+--
+-- Filtros para la tabla `fac_cierre_caja`
+--
+ALTER TABLE `fac_cierre_caja`
+  ADD CONSTRAINT `fk_cierre_caja_1` FOREIGN KEY (`cica_IdCaja`) REFERENCES `conf_sedes_empresa_cajas` (`seemca_Id`),
+  ADD CONSTRAINT `fk_cierre_caja_2` FOREIGN KEY (`cica_IdVendedor`) REFERENCES `conf_usuario` (`usu_Id`);
+
+--
+-- Filtros para la tabla `fac_cliente`
+--
+ALTER TABLE `fac_cliente`
+  ADD CONSTRAINT `fk_cliente_1` FOREIGN KEY (`cli_IdTipoPersona`) REFERENCES `conf_tipo_persona` (`tip_Id`),
+  ADD CONSTRAINT `fk_cliente_2` FOREIGN KEY (`cli_IdCiudad`) REFERENCES `conf_municipios` (`mun_Id`),
+  ADD CONSTRAINT `fk_cliente_3` FOREIGN KEY (`cli_IdDepartamento`) REFERENCES `conf_departamentos` (`dep_Id`);
+
+--
+-- Filtros para la tabla `fac_cuentascontables`
+--
+ALTER TABLE `fac_cuentascontables`
+  ADD CONSTRAINT `fk_cuentaCOntable_1` FOREIGN KEY (`cuco_IdCuentaContable`) REFERENCES `fac_formas_pago` (`forpa_Id`);
+
+--
+-- Filtros para la tabla `fac_detalle_documento`
+--
+ALTER TABLE `fac_detalle_documento`
+  ADD CONSTRAINT `fk_detale_docu_1` FOREIGN KEY (`detDoc_IdProducto`) REFERENCES `inv_producto` (`pro_Id`),
+  ADD CONSTRAINT `fk_detale_docu_2` FOREIGN KEY (`detDoc_IdDocumento`) REFERENCES `fac_documento` (`doc_Id`);
+
+--
+-- Filtros para la tabla `fac_documento`
+--
+ALTER TABLE `fac_documento`
+  ADD CONSTRAINT `fk_documento_1` FOREIGN KEY (`doc_IdCliente`) REFERENCES `fac_cliente` (`cli_Id`),
+  ADD CONSTRAINT `fk_documento_2` FOREIGN KEY (`doc_IdKardex`) REFERENCES `inv_kardex` (`kar_Id`),
+  ADD CONSTRAINT `fk_documento_3` FOREIGN KEY (`doc_IdTipoDocumento`) REFERENCES `conf_tipo_documento` (`tip_Id`),
+  ADD CONSTRAINT `fk_documento_4` FOREIGN KEY (`doc_IdVendedor`) REFERENCES `conf_usuario` (`usu_Id`);
+
+--
+-- Filtros para la tabla `fac_pagos_caja`
+--
+ALTER TABLE `fac_pagos_caja`
+  ADD CONSTRAINT `fk_pagos_cajas_1` FOREIGN KEY (`paca_IdCaja`) REFERENCES `conf_sedes_empresa_cajas` (`seemca_Id`),
+  ADD CONSTRAINT `fk_pagos_cajas_2` FOREIGN KEY (`paca_IdVendedor`) REFERENCES `conf_usuario` (`usu_Id`);
+
+--
+-- Filtros para la tabla `fac_precios_venta`
+--
+ALTER TABLE `fac_precios_venta`
+  ADD CONSTRAINT `fk_precios_venta_1` FOREIGN KEY (`preVen_IdProducto`) REFERENCES `inv_producto` (`pro_Id`),
+  ADD CONSTRAINT `fk_precios_venta_2` FOREIGN KEY (`preVen_IdTarifa`) REFERENCES `fac_tarifas_venta` (`tar_Id`);
+
+--
+-- Filtros para la tabla `fac_tesoreria`
+--
+ALTER TABLE `fac_tesoreria`
+  ADD CONSTRAINT `fk_tesoreria_1` FOREIGN KEY (`teso_IdDocumento`) REFERENCES `fac_documento` (`doc_Id`),
+  ADD CONSTRAINT `fk_tesoreria_2` FOREIGN KEY (`teso_IdCaja`) REFERENCES `conf_sedes_empresa_cajas` (`seemca_Id`);
+
+--
+-- Filtros para la tabla `inv_detalle_kardex`
+--
+ALTER TABLE `inv_detalle_kardex`
+  ADD CONSTRAINT `fk_detalle_kadex_1` FOREIGN KEY (`detkar_IdBodega`) REFERENCES `inv_bodega` (`bod_Id`),
+  ADD CONSTRAINT `fk_detalle_kadex_2` FOREIGN KEY (`detkar_IdKardex`) REFERENCES `inv_kardex` (`kar_Id`),
+  ADD CONSTRAINT `fk_detalle_kadex_3` FOREIGN KEY (`detkar_IdProducto`) REFERENCES `inv_producto` (`pro_Id`);
+
+--
+-- Filtros para la tabla `inv_existencias`
+--
+ALTER TABLE `inv_existencias`
+  ADD CONSTRAINT `fk_existencias_1` FOREIGN KEY (`exi_IdBodega`) REFERENCES `inv_bodega` (`bod_Id`),
+  ADD CONSTRAINT `fk_existencias_2` FOREIGN KEY (`exi_IdProducto`) REFERENCES `inv_producto` (`pro_Id`);
+
+--
+-- Filtros para la tabla `inv_producto`
+--
+ALTER TABLE `inv_producto`
+  ADD CONSTRAINT `fk_kardex_1` FOREIGN KEY (`pro_IdImpuesto`) REFERENCES `fac_impuestos` (`imp_Id`),
+  ADD CONSTRAINT `fk_kardex_2` FOREIGN KEY (`pro_IdMarca`) REFERENCES `inv_marca` (`mar_Id`),
+  ADD CONSTRAINT `fk_kardex_3` FOREIGN KEY (`pro_IdProveedor`) REFERENCES `inv_proveedores` (`prov_Id`),
+  ADD CONSTRAINT `fk_kardex_4` FOREIGN KEY (`pro_Categoria`) REFERENCES `inv_categoria` (`cate_Id`),
+  ADD CONSTRAINT `fk_kardex_5` FOREIGN KEY (`pro_SubCategoria`) REFERENCES `inv_sub_categoria` (`subCate_Id`),
+  ADD CONSTRAINT `fk_kardex_6` FOREIGN KEY (`pro_UnidadMed`) REFERENCES `inv_unidad_medida` (`uniM_Id`);
+
+--
+-- Filtros para la tabla `inv_proveedores`
+--
+ALTER TABLE `inv_proveedores`
+  ADD CONSTRAINT `fk_proveedores_1` FOREIGN KEY (`prov_IdTipoPersona`) REFERENCES `conf_tipo_persona` (`tip_Id`);
+
+--
+-- Filtros para la tabla `inv_sub_categoria`
+--
+ALTER TABLE `inv_sub_categoria`
+  ADD CONSTRAINT `fk_subCategoria_1` FOREIGN KEY (`subCate_IdCategoria`) REFERENCES `inv_categoria` (`cate_Id`);
+
+--
+-- Filtros para la tabla `prod_detalle_kardex`
+--
+ALTER TABLE `prod_detalle_kardex`
+  ADD CONSTRAINT `fk_detalle_kardex_1` FOREIGN KEY (`detkar_IdBodega`) REFERENCES `inv_bodega` (`bod_Id`),
+  ADD CONSTRAINT `fk_detalle_kardex_2` FOREIGN KEY (`detkar_IdKardex`) REFERENCES `prod_kardex` (`kar_Id`),
+  ADD CONSTRAINT `fk_detalle_kardex_3` FOREIGN KEY (`detkar_IdProducto`) REFERENCES `prod_insumos` (`ins_Id`);
+
+--
+-- Filtros para la tabla `prod_existencias`
+--
+ALTER TABLE `prod_existencias`
+  ADD CONSTRAINT `prod_existencias_ibfk_1` FOREIGN KEY (`exi_IdBodega`) REFERENCES `inv_bodega` (`bod_Id`),
+  ADD CONSTRAINT `prod_existencias_ibfk_2` FOREIGN KEY (`exi_IdProducto`) REFERENCES `prod_insumos` (`ins_Id`);
+
+--
+-- Filtros para la tabla `prod_insumos`
+--
+ALTER TABLE `prod_insumos`
+  ADD CONSTRAINT `ins_IdCategoria_ibfk_1` FOREIGN KEY (`ins_IdCategoria`) REFERENCES `inv_categoria` (`cate_Id`),
+  ADD CONSTRAINT `ins_IdProveedor_ibfk_3` FOREIGN KEY (`ins_IdProveedor`) REFERENCES `inv_proveedores` (`prov_Id`),
+  ADD CONSTRAINT `ins_IdSubCategoria_ibfk_2` FOREIGN KEY (`ins_IdSubCategoria`) REFERENCES `inv_sub_categoria` (`subCate_Id`),
+  ADD CONSTRAINT `ins_IdTippCantidad_ibfk_4` FOREIGN KEY (`ins_IdTipoCantidad`) REFERENCES `prod_tipo_cantidad` (`tica_Id`),
+  ADD CONSTRAINT `ins_IdTippCantidad_ibfk_5` FOREIGN KEY (`ins_IdTipoUnidad`) REFERENCES `prod_tipo_unidad` (`tiuni_Id`);
+COMMIT;
+
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;

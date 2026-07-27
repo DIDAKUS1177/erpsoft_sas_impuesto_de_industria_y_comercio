@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar Sesión - Portal Tributario de Paipa</title>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        /* ==========================================================================
+           VARIABLES DE DISEÑO - PALETA PREMIUM HOMOGÉNEA
+           ========================================================================== */
+        :root {
+            --brand-green: #0E9F98; /* Azul/Teal Corporativo de ERPSoft (#0E9F98) */
+            --brand-green-hover: #0C827C;
+            --brand-light-green: #E4F8F7;
+            --brand-accent: #1e60b6;
+            --text-main: #1F2937;
+            --text-muted: #6B7280;
+            --bg-body: #F3F4F6;
+            --bg-card: #FFFFFF;
+            --border-color: #E5E7EB;
+            
+            /* Sombra suave y premium */
+            --shadow-card: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+            --shadow-hover: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Reset general */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        a {
+            text-decoration: none;
+            color: inherit;
+        }
+
+        button {
+            font-family: inherit;
+            cursor: pointer;
+            border: none;
+            background: none;
+        }
+
+        /* Encabezado Principal */
+        .main-header {
+            background-color: var(--bg-card);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .logo-shield {
+            width: 48px;
+            height: 48px;
+            object-fit: contain;
+        }
+        .logo-text h1 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-main);
+            line-height: 1.2;
+        }
+        .logo-text p {
+            font-size: 13px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        /* Contenedor Login */
+        .login-container {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 3rem 1.5rem;
+            background: linear-gradient(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.6)), url('login_image.png') center/cover no-repeat;
+        }
+        .login-card {
+            background-color: var(--bg-card);
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+            width: 100%;
+            max-width: 440px;
+            overflow: hidden;
+            transition: var(--transition-smooth);
+        }
+        .login-card:hover {
+            box-shadow: var(--shadow-hover);
+        }
+        .login-header-band {
+            background-color: var(--brand-green);
+            color: #FFFFFF;
+            padding: 1.5rem 2rem;
+            text-align: center;
+        }
+        .login-header-band h2 {
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .login-header-band p {
+            font-size: 13px;
+            opacity: 0.9;
+            margin-top: 0.25rem;
+        }
+        .login-body {
+            padding: 2.5rem 2rem;
+        }
+        
+        .form-group {
+            margin-bottom: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .form-group label {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--brand-green);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        .input-icon {
+            position: absolute;
+            left: 1rem;
+            color: var(--text-muted);
+            pointer-events: none;
+            width: 18px;
+            height: 18px;
+        }
+        .form-control {
+            width: 100%;
+            padding: 0.85rem 1rem 0.85rem 2.75rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            transition: var(--transition-smooth);
+            font-family: inherit;
+        }
+        .form-control:focus {
+            border-color: var(--brand-green);
+            box-shadow: 0 0 0 3px rgba(14, 159, 152, 0.1);
+        }
+
+        .login-options {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            margin-bottom: 2rem;
+        }
+        .remember-me {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-muted);
+            cursor: pointer;
+        }
+        .forgot-pass {
+            color: var(--brand-green);
+            font-weight: 600;
+        }
+        .forgot-pass:hover {
+            text-decoration: underline;
+        }
+
+        .btn-submit {
+            background-color: var(--brand-green);
+            color: #FFFFFF;
+            width: 100%;
+            padding: 0.85rem;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 15px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 4px 10px rgba(14, 159, 152, 0.2);
+            transition: var(--transition-smooth);
+            margin-bottom: 1.5rem;
+        }
+        .btn-submit:hover {
+            background-color: var(--brand-green-hover);
+            transform: translateY(-1px);
+        }
+
+        .register-callout {
+            text-align: center;
+            font-size: 13.5px;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border-color);
+            padding-top: 1.5rem;
+        }
+        .register-callout a {
+            color: var(--brand-green);
+            font-weight: 700;
+        }
+        .register-callout a:hover {
+            text-decoration: underline;
+        }
+
+        /* Footer Banner */
+        .footer-banner {
+            background-color: var(--brand-green); /* Fondo azul principal (tema de dos colores) */
+            color: #FFFFFF;
+            padding: 3.5rem 2rem 1.5rem;
+            width: 100%;
+        }
+        .footer-banner-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1.2fr 1fr 1fr;
+            gap: 3rem;
+        }
+        .footer-logo-area {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        
+        .erpsoft-logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .erpsoft-logo-icon {
+            width: 42px;
+            height: 42px;
+            background: linear-gradient(135deg, var(--brand-green), #00C4C7);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #FFFFFF;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
+        }
+        .erpsoft-logo-text {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            color: #FFFFFF;
+        }
+        .erpsoft-logo-text span {
+            color: #00C4C7;
+        }
+        .erpsoft-logo-desc {
+            font-size: 13px;
+            color: rgba(255,255,255,0.9);
+            max-width: 280px;
+            line-height: 1.4;
+        }
+        
+        .footer-banner h3 {
+            font-size: 15px;
+            font-weight: 700;
+            color: #FFFFFF;
+            margin-bottom: 1.25rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            position: relative;
+            padding-bottom: 0.5rem;
+        }
+        .footer-banner h3::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            width: 30px;
+            height: 2px;
+            background-color: var(--brand-accent);
+        }
+        .footer-banner ul {
+            list-style: none;
+            padding: 0;
+        }
+        .footer-banner ul li {
+            margin-bottom: 0.75rem;
+            font-size: 13.5px;
+            color: rgba(255,255,255,0.9);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .footer-banner ul li svg {
+            width: 16px;
+            height: 16px;
+            color: #00C4C7;
+            flex-shrink: 0;
+        }
+        .footer-banner ul li a {
+            transition: var(--transition-smooth);
+        }
+        .footer-banner ul li a:hover {
+            color: #FFFFFF;
+            text-decoration: underline;
+        }
+        .footer-banner-bottom {
+            max-width: 1200px;
+            margin: 3rem auto 0;
+            padding-top: 1.5rem;
+            border-top: 1px solid rgba(255,255,255,0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: rgba(255,255,255,0.8);
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .footer-banner-bottom a:hover {
+            color: #FFFFFF;
+        }
+
+        @media (max-width: 768px) {
+            .footer-banner-container {
+                grid-template-columns: 1fr;
+                gap: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ENCABEZADO PRINCIPAL -->
+    <header class="main-header">
+        <div class="logo-container">
+            <svg class="logo-shield" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M25 5C12 5 7 12 7 24C7 37 17 45 25 45C33 45 43 37 43 24C43 12 38 5 25 5Z" fill="var(--brand-green)"/>
+                <path d="M25 5C18.5 5 15.5 12 15.5 24C15.5 37 20.5 45 25 45V5Z" fill="var(--brand-accent)"/>
+                <circle cx="25" cy="24" r="8" fill="#FFFFFF"/>
+                <path d="M25 18V30M19 24H31" stroke="var(--brand-green)" stroke-width="2"/>
+            </svg>
+            <div class="logo-text">
+                <h1>Alcaldía de Paipa</h1>
+                <p>Secretaría de Hacienda - Portal Tributario Virtual</p>
+            </div>
+        </div>
+    </header>
+
+    <!-- CUERPO DE INICIO DE SESIÓN -->
+    <main class="login-container">
+        <div class="login-card">
+            <div class="login-header-band">
+                <h2>Iniciar Sesión</h2>
+                <p>Módulo de Industria y Comercio (ICA)</p>
+            </div>
+            <div class="login-body">
+                <form action="inner_dashboard_mockup.html" method="GET">
+                    <div class="form-group">
+                        <label for="username">Usuario / Nit</label>
+                        <div class="input-wrapper">
+                            <!-- Icono de usuario SVG -->
+                            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                                <circle cx="12" cy="7" r="4"/>
+                            </svg>
+                            <input type="text" id="username" class="form-control" placeholder="Ingrese su usuario" required>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="password">Contraseña</label>
+                        <div class="input-wrapper">
+                            <!-- Icono de candado SVG -->
+                            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                            </svg>
+                            <input type="password" id="password" class="form-control" placeholder="••••••••••••" required>
+                        </div>
+                    </div>
+
+                    <div class="login-options">
+                        <label class="remember-me">
+                            <input type="checkbox" style="accent-color: var(--brand-green);"> Recordar usuario
+                        </label>
+                        <a href="#" class="forgot-pass" onclick="alert('Instrucciones enviadas al correo registrado.')">¿Olvidó su clave?</a>
+                    </div>
+
+                    <button type="submit" class="btn-submit">Ingresar al Sistema</button>
+                </form>
+
+                <div class="register-callout">
+                    ¿Es un contribuyente nuevo? <br>
+                    <a href="#" onclick="alert('Formulario de inscripción cargado. Ingrese tipo de persona, NIT y datos básicos.')">Regístrese aquí / Inscribirse RIT</a>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- BANNER DE PIE DE PÁGINA (FOOTER BANNER) -->
+    <footer class="footer-banner">
+        <div class="footer-banner-container">
+            <!-- Columna 1: Logo ERPSOFT S.A.S -->
+            <div class="footer-logo-area">
+                <div class="erpsoft-logo">
+                    <div class="erpsoft-logo-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width: 24px; height: 24px;">
+                            <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                            <polyline points="2 17 12 22 22 17"/>
+                            <polyline points="2 12 12 17 22 12"/>
+                        </svg>
+                    </div>
+                    <div class="erpsoft-logo-text">
+                        ERPSOFT<span>SAS</span>
+                    </div>
+                </div>
+                <p class="erpsoft-logo-desc">
+                    Líderes en soluciones de software tributario y de gestión para alcaldías y entidades municipales en Colombia.
+                </p>
+            </div>
+
+            <!-- Columna 2: Contacto -->
+            <div>
+                <h3>Contacto y Atención</h3>
+                <ul>
+                    <li>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                        <span>Teléfono: 318 530 9285</span>
+                    </li>
+                    <li>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                        <span>Correo: <a href="mailto:impuestos@paipa-boyaca.gov.co" style="color: #9CA3AF;">impuestos@paipa-boyaca.gov.co</a></span>
+                    </li>
+                    <li>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        <span>Carrera 22 # 25-14, primer piso, Paipa</span>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Columna 3: Normatividad -->
+            <div>
+                <h3>Normatividad Reciente</h3>
+                <ul>
+                    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><a href="#">Estatuto de Rentas (Acuerdo 019-2022)</a></li>
+                    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><a href="#">Régimen Sancionatorio</a></li>
+                    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><a href="#">Calendario Tributario Vigente 2026</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer-banner-bottom">
+            <span>ERPSOFTSAS © 2026 - Versión 2.0 (Rediseño Tributario)</span>
+            <div style="display:flex; gap:1.5rem;">
+                <a href="#">Soporte Técnico</a>
+                <a href="https://erpsoftsas.com" target="_blank">erpsoftsas.com</a>
+            </div>
+        </div>
+    </footer>
+
+</body>
+</html>
