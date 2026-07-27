@@ -540,56 +540,44 @@ consultarDeclaraciones(idEstablecimiento) {
                 return;
             }
 
-            resp.datos.forEach(d => {
+            let d = resp.datos[0]; // Solo la última declaración realizada
 
-                let fechaPago = d.dec_FechaPago ?? 'No Aplica';
-                let banco = d.dec_BancoPago ?? 'No Aplica';
-                let valor = d.dec_ValorPago ?? 0;
+            let fechaPago = d.dec_FechaPago ?? 'No Aplica';
+            let banco = d.dec_BancoPago ?? 'No Aplica';
+            let valor = d.dec_ValorPago ?? 0;
 
-                $("#tbodyDeclaraciones").append(`
-                    <tr>
-                        <td>${d.dec_AnioDeclaracion}</td>
-                        <td>${establecimientos.nombreMes(d.dec_MesDeclaracion)}</td>
-                        <td>${d.dec_NumeroDeclaracion}</td>
-                        <td>${fechaPago}</td>
-                        <td>${banco}</td>
-                        <td style="text-align:right;">$ ${Number(valor).toLocaleString()}</td>
+            $("#tbodyDeclaraciones").append(`
+                <tr>
+                    <td>${d.dec_AnioDeclaracion}</td>
+                    <td>${establecimientos.nombreMes(d.dec_MesDeclaracion)}</td>
+                    <td>${d.dec_NumeroDeclaracion}</td>
+                    <td>${fechaPago}</td>
+                    <td>${banco}</td>
+                    <td style="text-align:right;">$ ${Number(valor).toLocaleString()}</td>
 
-                        <td class="text-center">
-                          <a href="../extensiones/declaracion.php?dec_Id=${d.dec_Id}" 
-                                target="_blank"
-                                class="btn btn-primary btn-sm"
-                                title="Consultar">
-                                <i class="fa fa-eye"></i>
-                            </a>
-                        </td>       
-                        
-                        <td class="text-center">
-                          <a href="#" 
-                                class="btn btn-warning btn-sm"
-                                title="Editar">
-                                <i class="fa fa-edit"></i>
-                          </a>                        
-                        </td>   
-
-                        <td class="text-center">
-                          <a href="#" 
-                                class="btn btn-outline-primary btn-sm">
-                                <i class="fa fa-download"></i>
-                          </a>
-                        </td>
-
-                        <td class="text-center">
-                          <a href="#" 
-                                class="btn btn-outline-success btn-sm">
-                                <i class="fa fa-file"></i>
-                          </a>
-                        </td>
-
-                        
-                    </tr>
-                `);
-            });
+                    <td class="text-center" style="white-space:nowrap;">
+                        <a href="../extensiones/declaracion.php?dec_Id=${d.dec_Id}" 
+                            target="_blank" class="btn btn-info btn-sm mr-1" title="Consultar">
+                            <i class="fa fa-eye"></i>
+                        </a>
+                        <a href="#" class="btn btn-warning btn-sm mr-1" title="Editar">
+                            <i class="fa fa-pencil"></i>
+                        </a>
+                        <a href="#" class="btn btn-primary btn-sm mr-1" title="Descargar PDF">
+                            <i class="fa fa-download"></i>
+                        </a>
+                        <a href="#" class="btn btn-secondary btn-sm mr-1" title="Firmar">
+                            <i class="fa fa-certificate"></i>
+                        </a>
+                        <a href="#" class="btn btn-success btn-sm mr-1" title="Presentar">
+                            <i class="fa fa-paper-plane"></i>
+                        </a>
+                        <a href="../extensiones/liquidacion.php" target="_blank" class="btn btn-danger btn-sm" title="Pagar">
+                            <i class="fa fa-money"></i>
+                        </a>
+                    </td>       
+                </tr>
+            `);
 
             $('#modal-ConsultarDeclaraciones').modal({
                 backdrop: 'static',

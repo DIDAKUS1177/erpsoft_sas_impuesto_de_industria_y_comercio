@@ -156,7 +156,7 @@ function drawCheckBoxX($pdf, $x, $y, $size = 4, $checked = false) {
 /* ============================================================
    CREACIÓN PDF
    ============================================================ */
-$pdf = new LiquidacionICAComercioPdf('P', 'mm', 'LEGAL', true, 'UTF-8', false);
+$pdf = new LiquidacionICAComercioPdf('P', 'mm', array(215.9, 330.2), true, 'UTF-8', false);
 $pdf->SetMargins(7,8,7);
 $pdf->SetAutoPageBreak(false, 0);
 $pdf->AddPage();

@@ -22,7 +22,7 @@ function dibujarTextoVertical($pdf, $texto, $y_inicio, $y_fin) {
 }
 
 
-$pdf = new ICAPdf('P','mm','LEGAL',true,'UTF-8',false);
+$pdf = new ICAPdf('P','mm',array(215.9, 330.2),true,'UTF-8',false);
 $pdf->SetMargins(10,10,10);
 $pdf->AddPage();
 $pdf->SetFont('helvetica','',6);

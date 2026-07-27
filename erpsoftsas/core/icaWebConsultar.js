@@ -541,17 +541,27 @@ consultarDeclaraciones(idEstablecimiento) {
                         <td>${banco}</td>
                         <td style="text-align:right;">$ ${Number(valor).toLocaleString()}</td>
 
-                        <td class="text-center">
-                          <a href="../extensiones/declaracion.php?dec_Id=${d.dec_Id}" 
-                                target="_blank"
-                                class="btn btn-primary btn-sm"
-                                title="Consultar">
+                        <td class="text-center" style="white-space:nowrap;">
+                            <a href="../extensiones/declaracion.php?dec_Id=${d.dec_Id}" 
+                                target="_blank" class="btn btn-info btn-sm mr-1" title="Consultar">
                                 <i class="fa fa-eye"></i>
                             </a>
+                            <a href="#" class="btn btn-warning btn-sm mr-1" title="Editar">
+                                <i class="fa fa-pencil"></i>
+                            </a>
+                            <a href="#" class="btn btn-primary btn-sm mr-1" title="Descargar PDF">
+                                <i class="fa fa-download"></i>
+                            </a>
+                            <a href="#" class="btn btn-secondary btn-sm mr-1" title="Firmar">
+                                <i class="fa fa-certificate"></i>
+                            </a>
+                            <a href="#" class="btn btn-success btn-sm mr-1" title="Presentar">
+                                <i class="fa fa-paper-plane"></i>
+                            </a>
+                            <a href="../extensiones/liquidacion.php" target="_blank" class="btn btn-danger btn-sm" title="Pagar">
+                                <i class="fa fa-money"></i>
+                            </a>
                         </td>       
-                      
-
-                        
                     </tr>
                 `);
             });
