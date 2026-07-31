@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Demo — Microservicio Firma Digital</title>
+
+    <!-- Dependencias por CDN (sin necesidad del servidor ERP) -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+
+    <style>
+        body { background: #f4f6f9; }
+        .demo-card {
+            max-width: 700px;
+            margin: 40px auto;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,.1);
+        }
+        .badge-ms {
+            background: #1a73e8;
+            color: #fff;
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 20px;
+            vertical-align: middle;
+        }
+        .step-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .step { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: #1a73e8; }
+        .step-sep { color: #aaa; }
+        .mock-tag {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 6px;
+            padding: 8px 14px;
+            font-size: 12px;
+            color: #856404;
+            margin-bottom: 16px;
+        }
+        .log-box {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border-radius: 6px;
+            padding: 12px 16px;
+            font-family: monospace;
+            font-size: 12px;
+            min-height: 80px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .log-ok   { color: #6cbf6c; }
+        .log-err  { color: #f47272; }
+        .log-info { color: #79b8ff; }
+        .log-req  { color: #f0c674; }
+    </style>
+</head>
+<body>
+
+<div class="demo-card card p-4">
+    <h4 class="mb-1">
+        <i class="fa fa-pencil-square-o text-primary"></i>
+        Microservicio — Firma Digital
+        <span class="badge-ms">demo</span>
+    </h4>
+    <p class="text-muted" style="font-size:13px;">
+        Demo autocontenida. Las llamadas al API están simuladas para mostrar el flujo completo sin necesidad del servidor ERP.
+    </p>
+
+    <div class="mock-tag">
+        <i class="fa fa-info-circle"></i>
+        <strong>Modo demo:</strong> las respuestas del backend son simuladas.
+        En producción se comunica con <code>api.php</code> y la base de datos SQL Server.
+    </div>
+
+    <hr>
+
+    <h6 class="mb-3">Establecimiento de prueba: <strong>Panadería El Trigal</strong> <code>(id: 42)</code></h6>
+
+    <button class="btn btn-secondary" onclick="firmasDemo.abrirModal(42)">
+        <i class="fa fa-pencil-square-o"></i> Firmar RIT
+    </button>
+
+    <hr>
+
+    <h6>Log de llamadas al API:</h6>
+    <div class="log-box" id="demo-log">
+        <span class="log-info">▶ Listo. Abre el modal para comenzar.</span>
+    </div>
+</div>
+
+<!-- ── MODAL (mismo HTML del microservicio) ── -->
+<div class="modal fade" id="modal-Firma" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-md" role="document">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#1a73e8;">
+                <h5 class="modal-title text-white">
+                    <i class="fa fa-pencil-square-o"></i> Firma Digital del Funcionario
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+
+                <div id="firma-info-existente" class="alert alert-info" style="display:none;font-size:13px;"></div>
+
+                <div class="step-bar">
+                    <span class="step"><i class="fa fa-envelope"></i> 1. Enviar código</span>
+                    <span class="step-sep">→</span>
+                    <span class="step"><i class="fa fa-key"></i> 2. Verificar código</span>
+                    <span class="step-sep">→</span>
+                    <span class="step"><i class="fa fa-image"></i> 3. Subir firma</span>
+                </div>
+
+                <!-- PASO 1 -->
+                <div id="firma-paso-1" class="firma-paso text-center py-3">
+                    <p class="mb-3">Se enviará un código de verificación al correo registrado de tu cuenta.</p>
+                    <button type="button" class="btn btn-primary" id="firma-btn-enviar"
+                        onclick="firmasDemo.enviarCodigo()">
+                        <i class="fa fa-envelope"></i> Enviar código al correo
+                    </button>
+                </div>
+
+                <!-- PASO 2 -->
+                <div id="firma-paso-2" class="firma-paso" style="display:none;">
+                    <p class="text-center mb-3">Ingresa el código de 6 dígitos que recibiste en tu correo.</p>
+                    <div class="form-group">
+                        <input type="text" class="form-control text-center" id="firma-codigo-input"
+                            maxlength="6" placeholder="000000"
+                            style="font-size:28px;letter-spacing:10px;font-weight:bold;">
+                    </div>
+                    <p class="text-center text-muted" style="font-size:12px;">
+                        <i class="fa fa-lightbulb-o"></i> En demo usa el código: <strong>123456</strong>
+                    </p>
+                    <div class="d-flex justify-content-between mt-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm"
+                            onclick="firmasDemo._irPaso(1)">
+                            <i class="fa fa-arrow-left"></i> Reenviar código
+                        </button>
+                        <button type="button" class="btn btn-success" id="firma-btn-verificar"
+                            onclick="firmasDemo.verificarCodigo()">
+                            <i class="fa fa-check"></i> Verificar código
+                        </button>
+                    </div>
+                </div>
+
+                <!-- PASO 3 -->
+                <div id="firma-paso-3" class="firma-paso" style="display:none;">
+                    <p class="text-center mb-2">Sube la imagen de tu firma (PNG o JPG, máx. 2 MB).</p>
+                    <div class="form-group">
+                        <label class="font-weight-bold">Seleccionar imagen</label>
+                        <input type="file" class="form-control-file" id="firma-archivo"
+                            accept="image/png,image/jpeg"
+                            onchange="firmasDemo.previsualizarFirma()">
+                    </div>
+                    <div class="text-center mt-2">
+                        <img id="firma-preview-img" src="" alt="Vista previa"
+                            style="display:none;max-width:100%;max-height:120px;
+                                   border:2px dashed #ccc;padding:4px;border-radius:4px;">
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger btn-sm" data-dismiss="modal">
+                    <i class="fa fa-times"></i> Cancelar
+                </button>
+                <button type="button" class="btn btn-success btn-sm" id="firma-btn-guardar"
+                    disabled onclick="firmasDemo.guardarFirma()">
+                    <i class="fa fa-save"></i> Guardar firma
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scripts por CDN -->
+<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
+
+<script>
+'use strict';
+
+/* ── Logger de demo ───────────────────────────────────────────────── */
+function log(msg, type = 'info') {
+    const box = document.getElementById('demo-log');
+    const cls  = { ok: 'log-ok', err: 'log-err', info: 'log-info', req: 'log-req' }[type] || 'log-info';
+    box.innerHTML += `<br><span class="${cls}">${msg}</span>`;
+    box.scrollTop = box.scrollHeight;
+}
+
+/* ── Respuestas simuladas del API ─────────────────────────────────── */
+function mockAPI(data) {
+    log(`► POST api.php  funcion=${data.funcion}  ${JSON.stringify(data).substring(0, 80)}`, 'req');
+
+    return new Promise(resolve => setTimeout(() => {
+        let resp;
+
+        if (data.funcion === 4) {
+            // Consultar firma: simula que ya existe una
+            resp = {
+                ok: 1,
+                datos: {
+                    firma_NombreUsuario: 'Carlos Gómez Rueda',
+                    firma_FechaHora:     '2025-03-20 09:14:32'
+                }
+            };
+        } else if (data.funcion === 1) {
+            // Generar OTP: simula envío exitoso
+            resp = { ok: 1, mensaje: 'Código enviado a funcionario@alcaldiapaipa.gov.co' };
+        } else if (data.funcion === 2) {
+            // Verificar OTP: acepta solo "123456" en demo
+            resp = data.codigo === '123456'
+                ? { ok: 1, mensaje: 'Código verificado correctamente' }
+                : { ok: 0, mensaje: 'Código inválido o expirado' };
+        } else if (data.funcion === 3) {
+            // Guardar firma
+            resp = { ok: 1, mensaje: 'Firma guardada correctamente' };
+        }
+
+        log(`◀ Respuesta: ${JSON.stringify(resp)}`, resp.ok === 1 ? 'ok' : 'err');
+        resolve(resp);
+    }, 800)); // simula latencia de red
+}
+
+/* ── Clase del microservicio (idéntica a firmas.js, _post usa mock) ─ */
+class FirmasDemo {
+
+    constructor() {
+        this._idEstablecimiento = null;
+        this._codigoVerificado  = false;
+    }
+
+    async abrirModal(idEstablecimiento) {
+        this._idEstablecimiento = idEstablecimiento;
+        this._codigoVerificado  = false;
+
+        this._irPaso(1);
+        $('#firma-preview-img').attr('src', '').hide();
+        $('#firma-archivo').val('');
+        $('#firma-codigo-input').val('');
+        $('#firma-info-existente').hide();
+        $('#firma-btn-guardar').prop('disabled', true);
+
+        log(`── Abriendo modal para establecimiento id=${idEstablecimiento}`, 'info');
+
+        const resp = await this._post({ funcion: 4, id_establecimiento: idEstablecimiento });
+        if (resp.ok === 1) {
+            const d = resp.datos;
+            $('#firma-info-existente')
+                .html(`<i class="fa fa-check-circle text-success"></i>
+                       Ya existe una firma de <strong>${d.firma_NombreUsuario}</strong>
+                       registrada el ${d.firma_FechaHora}.
+                       Puedes reemplazarla siguiendo los pasos.`)
+                .show();
+        }
+
+        $('#modal-Firma').modal({ backdrop: 'static', keyboard: false });
+        $('#modal-Firma').modal('show');
+    }
+
+    async enviarCodigo() {
+        $('#firma-btn-enviar').prop('disabled', true)
+            .html('<i class="fa fa-spinner fa-spin"></i> Enviando...');
+
+        const resp = await this._post({
+            funcion:            1,
+            id_usuario:         99,
+            id_establecimiento: this._idEstablecimiento
+        });
+
+        $('#firma-btn-enviar').prop('disabled', false)
+            .html('<i class="fa fa-envelope"></i> Enviar código');
+
+        if (resp.ok === 1) {
+            alert('✅ ' + resp.mensaje);
+            this._irPaso(2);
+        } else {
+            alert('❌ ' + resp.mensaje);
+        }
+    }
+
+    async verificarCodigo() {
+        const codigo = $('#firma-codigo-input').val().trim();
+
+        if (codigo.length !== 6) {
+            alert('⚠️ Ingresa el código de 6 dígitos.');
+            return;
+        }
+
+        $('#firma-btn-verificar').prop('disabled', true)
+            .html('<i class="fa fa-spinner fa-spin"></i> Verificando...');
+
+        const resp = await this._post({
+            funcion:            2,
+            codigo:             codigo,
+            id_usuario:         99,
+            id_establecimiento: this._idEstablecimiento
+        });
+
+        $('#firma-btn-verificar').prop('disabled', false)
+            .html('<i class="fa fa-check"></i> Verificar código');
+
+        if (resp.ok === 1) {
+            this._codigoVerificado = true;
+            alert('✅ ' + resp.mensaje);
+            this._irPaso(3);
+        } else {
+            alert('❌ ' + resp.mensaje);
+        }
+    }
+
+    previsualizarFirma() {
+        const archivo = document.getElementById('firma-archivo').files[0];
+        if (!archivo) return;
+
+        const tiposPermitidos = ['image/png', 'image/jpeg', 'image/jpg'];
+        if (!tiposPermitidos.includes(archivo.type)) {
+            alert('⚠️ Solo PNG o JPG.');
+            $('#firma-archivo').val('');
+            return;
+        }
+        if (archivo.size > 2 * 1024 * 1024) {
+            alert('⚠️ Máximo 2 MB.');
+            $('#firma-archivo').val('');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            $('#firma-preview-img').attr('src', e.target.result).show();
+            $('#firma-btn-guardar').prop('disabled', false);
+            log(`✔ Imagen cargada: ${archivo.name} (${(archivo.size/1024).toFixed(1)} KB)`, 'ok');
+        };
+        reader.readAsDataURL(archivo);
+    }
+
+    async guardarFirma() {
+        if (!this._codigoVerificado) {
+            alert('⚠️ Debes verificar el código primero.');
+            return;
+        }
+
+        const base64 = $('#firma-preview-img').attr('src');
+        if (!base64) {
+            alert('⚠️ Carga la imagen de firma primero.');
+            return;
+        }
+
+        $('#firma-btn-guardar').prop('disabled', true)
+            .html('<i class="fa fa-spinner fa-spin"></i> Guardando...');
+
+        const resp = await this._post({
+            funcion:            3,
+            id_usuario:         99,
+            id_establecimiento: this._idEstablecimiento,
+            firma_base64:       base64.substring(0, 40) + '...[base64]'  // log resumido
+        });
+
+        $('#firma-btn-guardar').prop('disabled', false)
+            .html('<i class="fa fa-save"></i> Guardar firma');
+
+        if (resp.ok === 1) {
+            $('#modal-Firma').modal('hide');
+            alert('✅ ¡Firma guardada! La firma quedó registrada en el sistema.');
+            log('── Flujo completo exitoso ✓', 'ok');
+        } else {
+            alert('❌ ' + resp.mensaje);
+        }
+    }
+
+    _irPaso(numero) {
+        $('.firma-paso').hide();
+        $(`#firma-paso-${numero}`).show();
+        log(`── Paso ${numero} activo`, 'info');
+    }
+
+    _post(data) {
+        return mockAPI(data);
+    }
+}
+
+const firmasDemo = new FirmasDemo();
+</script>
+</body>
+</html>

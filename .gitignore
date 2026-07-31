@@ -13,7 +13,13 @@ config.municipio.php
 
 # Logs
 *.log
+error_log
 
 # Ignorar temporales
 .DS_Store
 Thumbs.db
+
+# Dependencias de Composer: regenerables con `composer install`, y
+# tcpdf_old/vendor tiene rutas de tests tan largas que rompen git en
+# Windows (Filename too long).
+vendor/

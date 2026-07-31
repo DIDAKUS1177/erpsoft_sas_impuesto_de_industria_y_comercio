@@ -1,0 +1,448 @@
+<?php
+    require_once '../business/globals.php';
+    include_once('../business/class.sessions.php');
+    try {
+        \predial\SesionUsuario::verificarSesion();
+    } catch (\predial\sesionException $e) {
+        echo $e->getMessage();
+    }
+?>
+<!DOCTYPE html>
+<html>
+<head>
+	<!-- Basic Page Info -->
+	<meta charset="utf-8">
+	<title>Notas | DS-POS</title>
+
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta http-equiv="Expires" content="0">
+    <meta http-equiv="Last-Modified" content="0">
+    <meta http-equiv="Cache-Control" content="no-cache, mustrevalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+
+	<!-- Site favicon -->
+	<link rel="apple-touch-icon" sizes="180x180" href="../vendors/images/apple-touch-icon.png">
+	<link rel="icon" type="image/png" sizes="32x32" href="../vendors/images/favicon-32x32.png">
+	<link rel="icon" type="image/png" sizes="16x16" href="../vendors/images/favicon-16x16.png">
+
+	<!-- Mobile Specific Metas -->
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+	<!-- Google Font -->
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+	<!-- CSS -->
+	<link rel="stylesheet" type="text/css" href="../vendors/styles/core.css">
+	<link rel="stylesheet" type="text/css" href="../vendors/styles/icon-font.min.css">
+	<link rel="stylesheet" type="text/css" href="../src/plugins/datatables/css/dataTables.bootstrap4.min.css">
+	<link rel="stylesheet" type="text/css" href="../src/plugins/datatables/css/responsive.bootstrap4.min.css">
+    <link rel="stylesheet" type="text/css" href="../vendors/styles/style.css">
+    
+	<link rel="stylesheet" type="text/css" href="../src/plugins/sweetalert2/sweetalert2.css">
+	
+	<!-- switchery css -->
+	<link rel="stylesheet" type="text/css" href="../src/plugins/switchery/switchery.min.css">
+
+	<!-- loading css -->
+	<link rel="stylesheet" type="text/css" href="../src/styles/loading.css">
+	
+	<!-- Global site tag (gtag.js) - Google Analytics -->
+	<script async src="https://www.googletagmanager.com/gtag/js?id=UA-119386393-1"></script>
+
+	<script>
+		window.dataLayer = window.dataLayer || [];
+		function gtag(){dataLayer.push(arguments);}
+		gtag('js', new Date());
+
+		gtag('config', 'UA-119386393-1');
+	</script>
+</head>
+<body>
+	<div id="loading" class="loading" hidden></div>
+	<div id="wrapper" class="wrapper">
+
+		<?php include 'menu.php'; ?>
+		<div class="mobile-menu-overlay"></div>
+
+		<div class="main-container">
+			
+		
+			<!-- Simple Datatable start -->
+			<div class="card-box mb-30">
+				<div class="pd-20 d-flex justify-content-between" style="margin-top: 1%">
+					<h4 class="h4">Listado de Notas de Entradas y Salidas</h4>
+					<button type="button" class="btn btn-outline-success" onclick="nota.crearNotaTranslado()"><span class="ti-plus"></span> Crear Translado</button>
+<!--    			<button type="button" class="btn btn-outline-success" onclick="nota.crearNotaRegularizacion()"><span class="ti-plus"></span> Crear Regularización</button>     -->
+					<button type="button" class="btn btn-outline-success" onclick="nota.crearNota()"><span class="ti-plus"></span> Crear Nota</button>
+				</div>
+				<div class="pb-20">
+				<table id="notasRegistradas" class="data-table table stripe hover nowrap">
+						<thead>
+							<tr>
+								<th>Consecutivo</th>
+								<th>Fecha</th>
+								<th>Tipo</th>
+								<th># Orden / Observaciones</th>
+								<th>Acciones</th>
+							</tr>
+						</thead>
+						<tbody id="bodyNotasRegistradas">
+							
+						</tbody>
+					</table>
+				</div>
+			</div>
+		</div>
+	
+		<?php #require_once 'footer.php'?>
+    
+		<!--Modal Nota-->
+		<div class="modal fade" id="modal-Nota"  role="dialog" aria-labelledby="exampleModalFormTitle" aria-hidden="true">
+			<div class="modal-dialog modal-lg" role="document">
+				<div class="modal-content ">
+					<div class="modal-header">
+						<h5 class="modal-title" id="exampleModalFormTitle">Crear nota (Entrada/Salida de Productos)</h5>
+						<button type="button" class="close" data-dismiss="modal" aria-label="Close">
+							<span aria-hidden="true">&times;</span>
+						</button>
+					</div>
+					<form id="formCrearNota">
+						<div class="modal-body">
+						<div class="row container">
+								<div class="col-sm-12 col-md-6">
+									<div class="row">
+										<div class="form-group" style="width: 100%">
+											<label>Tipo <span class="require">*</span></label>
+											<select class="form-control" style="width: 95%;"
+											tabindex="-1" aria-hidden="true" id="kar_Tipo" name="kar_Tipo" onChange="nota.getstock(this.value)" required>
+												<option value="">Seleccione una opción</option>
+												<option value="1">Entrada</option>
+												<option value="2">Salida</option>
+											</select>
+										</div>	
+									</div>	
+								</div>
+
+								<div class="col-sm-12 col-md-6">
+									<div class="row">
+										<div class="form-group" style="width: 100%">
+											<label id="kar_IdproveedorLabel">Proveedor <span class="require">*</span></label>
+											<select class="form-control" style="width: 95%;"
+											tabindex="-1" aria-hidden="true" id="kar_Idproveedor" name="kar_Idproveedor" required>
+											</select>
+										</div>	
+									</div>	
+								</div>
+
+								<div class="col-sm-12 col-md-6">
+									<div class="row">
+										<div class="form-group" style="width: 95%">
+											<label id="kar_NumOrdenLabel"># Orden <span class="require">*</span></label>
+											<input class="form-control" id="kar_NumOrden" name="kar_NumOrden" maxlength="100" placeholder="Numero de Orden"/>
+										</div>	
+									</div>	
+								</div>
+
+								<div class="col-sm-12 col-md-6">
+									<div class="row">
+										<div class="form-group" style="width: 100%">
+											<label id="kar_TipoPagoLabell">Tipo de Pago <span class="require">*</span></label>
+											<select class="form-control" style="width: 95%;"
+											tabindex="-1" aria-hidden="true" id="kar_TipoPago" name="kar_TipoPago" required>
+												<option value="">Seleccione una opción</option>
+												<option value="1">Contado</option>
+												<option value="2">Credito</option>
+											</select>
+										</div>	
+									</div>	
+								</div>
+
+								<div class="col-sm-12">
+									<div class="row">
+										<div class="form-group" style="width: 100%">
+											<label>Observaciones</label>
+											<input class="form-control" id="Kar_Observaciones" name="Kar_Observaciones" maxlength="500" 
+												placeholder="Observaciones..." required/>
+										</div>	
+									</div>	
+								</div>
+
+
+
+							</div>
+
+							
+
+							<div class="col-sm-12">
+								<table class="table hover nowrap table-responsive">
+									<thead>
+										<tr>
+											<th>Nombre Producto</th>
+											<th>Cantidad</th>
+											<th>Costo x Unidad</th>
+											<th>Bodega</th>
+											<th>Acciones</th>
+										</tr>
+									</thead>
+									<tbody>
+										<tr>
+											<td style="width: 35%">
+												<select class="custom-select2 form-control" style="width: 100%;" tabindex="-1" aria-hidden="true" id="detkar_IdProducto" name="detkar_IdProducto">
+												</select>
+											</td>
+											<td style="width: 10%">
+												<input type="text" class="form-control" id="detkar_Cantidad" name="detkar_Cantidad" style="text-align: right;">
+											</td>
+											<td>
+												<input type="text" class="form-control" id="detkar_Costo" name="detkar_Costo" value="0"style="text-align: right;">
+											</td style="width: 20%">
+											<td style="width: 30%">
+												<select class="custom-select2 form-control" style="width: 100%;" tabindex="-1" aria-hidden="true" id="detkar_IdBodega" name="detkar_IdBodega" >
+												</select>
+											</td>
+											<td align="center" style="width: 5%">
+												<button type="button" class="btn btn-social-icon btn-success " data-toggle="tooltip" title="Agregar detalle"  onclick="nota.agregarDetalle()">
+													<i class="dw dw-checked"></i>
+												</button>
+											</td>
+										
+									</tbody>
+								</table>
+							</div>
+
+							<div class="col-lg-12">
+								<!-- Simple Datatable start -->
+								<table id="detalleNotas" class="data-table table stripe hover nowrap table-responsive">
+									<thead>
+										<tr>
+											<th>Nombre Producto</th>
+											<th>Nombre Facturar</th>
+											<th>Cantidad</th>
+											<th>Costo</th>
+											<th>Bodega</th>
+											<th>Acciones</th>
+										</tr>
+									</thead>
+									<tbody id="bodyDetallesNotas">
+										
+									</tbody>
+								</table>
+							</div>
+							
+						</div>
+						<div class="modal-footer" id="modal_footer">
+							
+
+						</div>
+					</form>
+					
+				</div>
+			</div>
+		</div>
+
+<!--  Modal Nota crear translados entre bodegas -->
+		<div class="modal fade" id="modal-NotaTranslados"  role="dialog" aria-labelledby="exampleModalFormTitle" aria-hidden="true">
+			<div class="modal-dialog modal-lg" role="document">
+				<div class="modal-content ">
+					<div class="modal-header">
+						<h5 class="modal-title" id="exampleModalFormTitle">Crear Translado - En Desarrollo</h5>
+						<button type="button" class="close" data-dismiss="modal" aria-label="Close">
+							<span aria-hidden="true">&times;</span>
+						</button>
+					</div>
+					<form id="formCrearNotaTranslados">
+						<div class="modal-body">
+						<div class="row container">
+								<div class="col-sm-12 col-md-6">
+									<div class="row">
+										<div class="form-group" style="width: 100%">
+											<label>Bodega Origen <span class="require">*</span></label>
+											<select class="form-control" style="width: 95%;"
+											tabindex="-1" aria-hidden="true" id="bodega_origen" name="bodega_origen" onclick="nota.getBodegaDestino();" required>
+											</select>
+										</div>	
+									</div>	
+								</div>
+
+								<div class="col-sm-12 col-md-6">
+									<div class="row">
+										<div class="form-group" style="width: 100%">
+											<label>Bodega Destino <span class="require">*</span></label>
+											<select class="form-control" style="width: 95%;"
+											tabindex="-1" aria-hidden="true" id="bodega_destino" name="bodega_destino"  required>
+											</select>
+										</div>	
+									</div>	
+								</div>
+							</div>
+
+							<div class="col-sm-12">
+								<div class="row">
+									<div class="form-group" style="width: 100%">
+										<label>Observaciones</label>
+										<input class="form-control" id="observaciones_translados" name="observaciones_translados" maxlength="500" 
+											placeholder="Observaciones..." required/>
+									</div>	
+								</div>	
+							</div>
+
+							<div class="col-sm-12">
+								<table class="table hover nowrap table-responsive">
+									<thead>
+										<tr>
+											<th>Producto</th>
+											<th>Cantidad</th>
+											<th>Acciones</th>
+										</tr>
+									</thead>
+									<tbody>
+										<tr>
+											<td style="width: 35%">											
+											<select class="custom-select2 form-control" style="width: 100%;" tabindex="-1" aria-hidden="true" id="detkar_IdProductoTranslados" name="detkar_IdProductoTranslados" onchange="nota.getPrecioCosto()"></select>
+											</td>
+											<td style="width: 10%">
+												<input type="text" class="form-control" id="detkar_CantidadTranslados" name="detkar_CantidadTranslados" style="text-align: right;">
+												<input type="hidden" id="detkar_PrecioCostoTranslado" name="detkar_PrecioCostoTranslado">
+											</td>
+											<td align="center" style="width: 5%">
+												<button type="button" class="btn btn-social-icon btn-success " data-toggle="tooltip" title="Agregar detalle"  onclick="nota.agregarDetalleTranslado()">
+													<i class="dw dw-checked"></i>
+												</button>
+											</td>
+										</tr>
+									</tbody>
+								</table>
+							</div>
+
+							<div class="col-md-12">
+								<!-- Simple Datatable start -->
+								<table id="detalleNotasTranslados" class="data-table table stripe hover nowrap table-responsive-especial">
+									<thead>
+										<tr>
+											<th>Producto</th>
+											<th>Cantidad</th>
+											<th>Acciones</th>
+										</tr>
+									</thead>
+									<tbody id="bodyDetallesNotasTranslados">
+										
+									</tbody>
+								</table>
+							</div>
+							
+						</div>
+						<div class="modal-footer" id="modal_footerTranslados">
+							
+
+						</div>
+					</form>
+					
+				</div>
+			</div>
+		</div>
+
+
+
+		<!--  Modal  -->
+		<div class="modal fade" id="modal-NotaRegularizacion"  role="dialog" aria-labelledby="exampleModalFormTitle" aria-hidden="true">
+			<div class="modal-dialog modal-lg" role="document">
+				<div class="modal-content ">
+					<div class="modal-header">
+						<h5 class="modal-title" id="exampleModalFormTitle">Regularización de Inventario</h5>
+						<button type="button" class="close" data-dismiss="modal" aria-label="Close">
+							<span aria-hidden="true">&times;</span>
+						</button>
+					</div>
+					<form id="formCrearNotaRegularizacion">
+						<div class="modal-body">
+						<div class="row container">
+								<div class="col-sm-12 col-md-6">
+									<div class="row">
+										<div class="form-group" style="width: 100%">
+											<label>Se deja en 0 las existencias de cada producto creado en la bodega principal. <span class="require">*</span></label>
+										</div>	
+									</div>	
+								</div>
+							</div>
+							
+						</div>
+						<div class="modal-footer" id="modal_footerRegularizacion">
+							
+						</div>
+					</form>
+					
+				</div>
+			</div>
+		</div>
+
+
+
+		<!--Modal Detalles-->
+		<div class="modal fade" id="modal-Detalles"  role="dialog" aria-labelledby="exampleModalFormTitle" aria-hidden="true">
+			<div class="modal-dialog modal-lg" role="document">
+				<div class="modal-content ">
+					<div class="modal-header">
+						<h5 class="modal-title" id="exampleModalFormTitle">Detalles nota</h5>
+						<button type="button" class="close" data-dismiss="modal" aria-label="Close">
+							<span aria-hidden="true">&times;</span>
+						</button>
+					</div>
+					
+					<div class="modal-body">
+						<div class="col-sm-12">
+							<table id="ltsDetallesNota" class="table table-responsive hover nowrap">
+								<thead>
+									<tr>
+										<th>Producto</th>
+										<th>Bodega</th>
+										<th>Cant Entrada</th>
+										<!--<th>Valor Entrada</th>-->
+										<th>Cant Salida</th>
+										<!--th>Valor Salida</th>
+										<th>Cant Saldo</th>
+										<th>Valor Saldo</th>-->
+									</tr>
+								</thead>
+								<tbody id="bodyDetallesNota">
+									
+								</tbody>
+							</table>
+						</div>
+					</div>
+					<div class="modal-footer">
+						<button class="btn btn-primary" data-dismiss="modal"><span class="icon-copy ti-close"></span> Cerrar</button>
+					</div>
+					
+					
+				</div>
+			</div>
+		</div>
+		<!-- js -->
+		<script src="../vendors/scripts/core.js"></script>
+		<script src="../vendors/scripts/script.min.js"></script>
+		<script src="../vendors/scripts/process.js"></script>
+		<script src="../vendors/scripts/layout-settings.js"></script>
+		<script src="../src/plugins/datatables/js/jquery.dataTables.min.js"></script>
+		<script src="../src/plugins/datatables/js/dataTables.bootstrap4.min.js"></script>
+		<script src="../src/plugins/datatables/js/dataTables.responsive.min.js"></script>
+		<script src="../src/plugins/datatables/js/responsive.bootstrap4.min.js"></script>
+		<!-- buttons for Export datatable -->
+		<script src="../src/plugins/datatables/js/dataTables.buttons.min.js"></script>
+		<script src="../src/plugins/datatables/js/buttons.bootstrap4.min.js"></script>
+		<script src="../src/plugins/datatables/js/buttons.print.min.js"></script>
+		<script src="../src/plugins/datatables/js/buttons.html5.min.js"></script>
+		<script src="../src/plugins/datatables/js/buttons.flash.min.js"></script>
+		<script src="../src/plugins/datatables/js/pdfmake.min.js"></script>
+		<script src="../src/plugins/datatables/js/vfs_fonts.js"></script>
+
+		<!-- switchery js -->
+		<script src="../src/plugins/switchery/switchery.min.js"></script>
+
+		<!-- jquery-number js -->
+		<script src="../src/plugins/jquery-number/jquery.number.js"></script>
+		
+		<script src="../src/plugins/sweetalert2/sweetalert2.all.js"></script>
+		<script src="../core/nota.js"></script>
+		<!-- <script src="../core/Permisos.js"></script> -->
+	</div>	
+</body>
+</html>

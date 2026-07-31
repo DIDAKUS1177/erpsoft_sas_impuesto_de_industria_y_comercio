@@ -1,0 +1,5 @@
+SuperAdmin: digitsoft
+contraseña: 1q2w3e4r2023
+
+Usuario: administrador
+Contraseña: admin123

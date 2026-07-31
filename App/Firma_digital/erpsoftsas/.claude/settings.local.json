@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker exec:*)",
+      "Bash(xargs grep:*)",
+      "Bash(docker-compose ps *)",
+      "Bash(docker-compose up *)",
+      "Bash(netstat -ano)",
+      "Bash(tasklist /FI \"PID eq 12616\")",
+      "Bash(tasklist /FI \"PID eq 28376\")",
+      "Bash(powershell -Command \"Get-Process -Id 12616,28376 | Select-Object Id, ProcessName, MainWindowTitle\")",
+      "Bash(powershell -NoProfile -Command \"vssadmin list shadows 2>&1 | Select-Object -First 50\")",
+      "Bash(powershell -NoProfile -Command \"Get-WmiObject Win32_ShadowCopy | Select-Object InstallDate, DeviceObject, VolumeName | Format-List\")",
+      "Bash(powershell -NoProfile -Command \"Get-CimInstance Win32_ShadowCopy -ErrorAction SilentlyContinue | Select-Object InstallDate, DeviceObject, VolumeName | Format-List; Write-Host '---FileHistory---'; Get-ChildItem 'C:\\\\Users\\\\Diego\\\\AppData\\\\Local\\\\Microsoft\\\\Windows\\\\FileHistory' -ErrorAction SilentlyContinue | Select-Object Name; Write-Host '---Config---'; Get-ChildItem HKCU:\\\\SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\FileHistory -ErrorAction SilentlyContinue\")",
+      "Bash(curl -sL https://raw.githubusercontent.com/thedotmack/claude-mem/main/README.md)",
+      "Bash(npm --version)",
+      "Bash(npx -y claude-mem@latest install)",
+      "Bash(grep -E \"\\\\.php$|\\\\.html$|\\\\.js$\")",
+      "Bash(xargs -0 md5sum)",
+      "Bash(uniq -d -w32)",
+      "Bash(awk '{print $2}')",
+      "mcp__plugin_claude-mem_mcp-search__smart_outline",
+      "mcp__plugin_claude-mem_mcp-search__get_observations"
+    ]
+  }
+}

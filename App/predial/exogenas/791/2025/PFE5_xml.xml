@@ -1,0 +1,347 @@
+<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+  <Author>Cristian</Author>
+  <LastAuthor>ANDRES FELIPE OTALVARO TIRADO</LastAuthor>
+  <Created>2015-06-05T18:19:34Z</Created>
+  <LastSaved>2026-07-02T12:52:07Z</LastSaved>
+  <Version>16.00</Version>
+ </DocumentProperties>
+ <OfficeDocumentSettings xmlns="urn:schemas-microsoft-com:office:office">
+  <AllowPNG/>
+ </OfficeDocumentSettings>
+ <ExcelWorkbook xmlns="urn:schemas-microsoft-com:office:excel">
+  <WindowHeight>7710</WindowHeight>
+  <WindowWidth>19200</WindowWidth>
+  <WindowTopX>32767</WindowTopX>
+  <WindowTopY>32767</WindowTopY>
+  <TabRatio>601</TabRatio>
+  <ProtectStructure>False</ProtectStructure>
+  <ProtectWindows>False</ProtectWindows>
+ </ExcelWorkbook>
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Alignment ss:Vertical="Bottom"/>
+   <Borders/>
+   <Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"/>
+   <Interior/>
+   <NumberFormat/>
+   <Protection/>
+  </Style>
+  <Style ss:ID="s16" ss:Name="Millares">
+   <NumberFormat ss:Format="_-* #,##0.00_-;\-* #,##0.00_-;_-* &quot;-&quot;??_-;_-@_-"/>
+  </Style>
+  <Style ss:ID="s24">
+   <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
+   <Protection ss:Protected="0"/>
+  </Style>
+  <Style ss:ID="s25">
+   <Protection ss:Protected="0"/>
+  </Style>
+  <Style ss:ID="s26">
+   <Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"
+    ss:Bold="1"/>
+   <Interior ss:Color="#DDEBF7" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="s27">
+   <Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"
+    ss:Bold="1"/>
+  </Style>
+  <Style ss:ID="s28">
+   <Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"
+    ss:Bold="1"/>
+   <Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="s34">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+   </Borders>
+   <Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"
+    ss:Bold="1"/>
+   <Interior ss:Color="#EDEDED" ss:Pattern="Solid"/>
+   <NumberFormat ss:Format="0"/>
+  </Style>
+  <Style ss:ID="s35">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+   </Borders>
+   <Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"
+    ss:Bold="1"/>
+   <Interior ss:Color="#EDEDED" ss:Pattern="Solid"/>
+   <NumberFormat ss:Format="0"/>
+  </Style>
+  <Style ss:ID="s36">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+   </Borders>
+   <Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"
+    ss:Bold="1"/>
+   <Interior ss:Color="#EDEDED" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="s37">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+   <Borders>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+   </Borders>
+   <Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"
+    ss:Bold="1"/>
+   <Interior ss:Color="#EDEDED" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="s38" ss:Parent="s16">
+   <Borders/>
+   <Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"/>
+   <NumberFormat ss:Format="_-* #,##0_-;\-* #,##0_-;_-* &quot;-&quot;??_-;_-@_-"/>
+   <Protection ss:Protected="0"/>
+  </Style>
+  <Style ss:ID="s39">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Bottom"/>
+   <Protection ss:Protected="0"/>
+  </Style>
+  <Style ss:ID="s41">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Bottom"/>
+   <Borders>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"
+     ss:Color="#D0CECE"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"
+     ss:Color="#D0CECE"/>
+   </Borders>
+   <NumberFormat ss:Format="Short Date"/>
+   <Protection ss:Protected="0"/>
+  </Style>
+  <Style ss:ID="s43">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Bottom"/>
+  </Style>
+  <Style ss:ID="s44">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Bottom"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"
+     ss:Color="#D0CECE"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"
+     ss:Color="#D0CECE"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"
+     ss:Color="#D0CECE"/>
+   </Borders>
+   <Interior ss:Color="#DDEBF7" ss:Pattern="Solid"/>
+   <Protection ss:Protected="0"/>
+  </Style>
+  <Style ss:ID="s46">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Bottom"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"
+     ss:Color="#D0CECE"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"
+     ss:Color="#D0CECE"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"
+     ss:Color="#D0CECE"/>
+   </Borders>
+   <Protection ss:Protected="0"/>
+  </Style>
+ </Styles>
+ <Names>
+  <NamedRange ss:Name="MiLista" ss:RefersTo="=#REF!"/>
+ </Names>
+ <Worksheet ss:Name="PFE5">
+  <Table ss:ExpandedColumnCount="146" ss:ExpandedRowCount="12" x:FullColumns="1"
+   x:FullRows="1" ss:StyleID="s25" ss:DefaultColumnWidth="48.5"
+   ss:DefaultRowHeight="14.5">
+   <Column ss:StyleID="s25" ss:AutoFitWidth="0" ss:Width="75.5"/>
+   <Column ss:Index="3" ss:StyleID="s25" ss:Width="93.5"/>
+   <Column ss:StyleID="s25" ss:Width="114"/>
+   <Column ss:StyleID="s25" ss:AutoFitWidth="0" ss:Width="62"/>
+   <Column ss:StyleID="s25" ss:AutoFitWidth="0" ss:Width="107"/>
+   <Column ss:StyleID="s25" ss:Width="123.5"/>
+   <Column ss:StyleID="s25" ss:Width="117"/>
+   <Column ss:StyleID="s25" ss:AutoFitWidth="0" ss:Width="119.5"/>
+   <Column ss:StyleID="s25" ss:Width="74"/>
+   <Column ss:StyleID="s25" ss:AutoFitWidth="0" ss:Width="77"/>
+   <Column ss:StyleID="s24" ss:AutoFitWidth="0" ss:Width="106"/>
+   <Column ss:StyleID="s24" ss:AutoFitWidth="0" ss:Width="107.5"/>
+   <Column ss:StyleID="s24" ss:AutoFitWidth="0" ss:Span="132"/>
+   <Row ss:AutoFitHeight="0" ss:Height="137.25">
+    <Cell ss:MergeAcross="10" ss:StyleID="s43"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s26"><Data ss:Type="String">NIT O CÉDULA DEL  INFORMANTE</Data></Cell>
+    <Cell ss:StyleID="s26"/>
+    <Cell ss:StyleID="s26"/>
+    <Cell ss:MergeAcross="2" ss:StyleID="s44"><Data ss:Type="Number">860016610</Data></Cell>
+    <Cell ss:StyleID="s24"/>
+    <Cell ss:StyleID="s24"/>
+    <Cell ss:StyleID="s24"/>
+    <Cell ss:StyleID="s24"/>
+    <Cell ss:StyleID="s24"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s27"><Data ss:Type="String">RAZÓN SOCIAL O NOMBRE DEL INFORMANTE</Data></Cell>
+    <Cell ss:StyleID="s27"/>
+    <Cell ss:StyleID="s27"/>
+    <Cell ss:MergeAcross="2" ss:StyleID="s46"><Data ss:Type="String">INTERCONEXIÓN ELÉCTRICA S.A E.S.P</Data></Cell>
+    <Cell ss:StyleID="s24"/>
+    <Cell ss:StyleID="s24"/>
+    <Cell ss:StyleID="s24"/>
+    <Cell ss:StyleID="s24"/>
+    <Cell ss:StyleID="s24"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s26"><Data ss:Type="String">VIGENCIA A REPORTAR</Data></Cell>
+    <Cell ss:StyleID="s26"/>
+    <Cell ss:StyleID="s26"/>
+    <Cell ss:MergeAcross="2" ss:StyleID="s44"><Data ss:Type="Number">2025</Data></Cell>
+    <Cell ss:StyleID="s24"/>
+    <Cell ss:StyleID="s24"/>
+    <Cell ss:StyleID="s24"/>
+    <Cell ss:StyleID="s24"/>
+    <Cell ss:StyleID="s24"/>
+   </Row>
+   <Row>
+    <Cell ss:StyleID="s28"><Data ss:Type="String">FECHA DE ENVÍO</Data></Cell>
+    <Cell ss:StyleID="s28"/>
+    <Cell ss:StyleID="s28"/>
+    <Cell ss:MergeAcross="2" ss:StyleID="s41"><Data ss:Type="DateTime">2026-06-30T00:00:00.000</Data></Cell>
+    <Cell ss:StyleID="s24"/>
+    <Cell ss:StyleID="s24"/>
+    <Cell ss:StyleID="s24"/>
+    <Cell ss:StyleID="s24"/>
+    <Cell ss:StyleID="s24"/>
+   </Row>
+   <Row ss:Height="43.5">
+    <Cell ss:StyleID="s34"><Data ss:Type="String">NIT / CC DEL PROVEEDOR</Data></Cell>
+    <Cell ss:StyleID="s35"><Data ss:Type="String">DV</Data></Cell>
+    <Cell ss:StyleID="s36"><Data ss:Type="String">NOMBRE O RAZON SOCIAL DEL PROVEEDOR </Data></Cell>
+    <Cell ss:StyleID="s37"><Data ss:Type="String">CORREO ELECTRÓNICO </Data></Cell>
+    <Cell ss:StyleID="s35"><Data ss:Type="String">TELÉFONO </Data></Cell>
+    <Cell ss:StyleID="s36"><Data ss:Type="String">DIRECCIÓN DOMICILIO FISCAL</Data></Cell>
+    <Cell ss:StyleID="s35"><Data ss:Type="String">CÓDIGO DEL MUNICIPIO</Data></Cell>
+    <Cell ss:StyleID="s34"><Data ss:Type="String">CÓDIGO ACTIVIDAD DEL BIEN O SERVICIO ADQUIRIDO</Data></Cell>
+    <Cell ss:StyleID="s34"><Data ss:Type="String">VALOR FACTURADO CONSOLIDADO POR ACTIVIDAD ECONÓMICA </Data></Cell>
+    <Cell ss:StyleID="s34"><Data ss:Type="String">RETENCIÓN PRACTICADA</Data></Cell>
+    <Cell ss:StyleID="s34"><Data ss:Type="String">DEVOLUCIONES REBAJAS Y DESCUENTOS</Data></Cell>
+   </Row>
+   <Row>
+    <Cell><Data ss:Type="String">804002840</Data></Cell>
+    <Cell><Data ss:Type="Number">6</Data></Cell>
+    <Cell><Data ss:Type="String">S.D. S.A.S.</Data></Cell>
+    <Cell><Data ss:Type="String">gerencia@sdsas.net</Data></Cell>
+    <Cell><Data ss:Type="String">97-6913740</Data></Cell>
+    <Cell><Data ss:Type="String">KM 4 VÍA PIEDECUESTA FLORIDABLANCA</Data></Cell>
+    <Cell ss:StyleID="s39"><Data ss:Type="String">68547</Data></Cell>
+    <Cell><Data ss:Type="Number">329</Data></Cell>
+    <Cell ss:StyleID="s38"><Data ss:Type="Number">309673304</Data></Cell>
+    <Cell ss:StyleID="s38"><Data ss:Type="Number">2477386.4300000002</Data></Cell>
+    <Cell><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell><Data ss:Type="String">811035508</Data></Cell>
+    <Cell><Data ss:Type="Number">2</Data></Cell>
+    <Cell><Data ss:Type="String">CORPORACION MONTAÑAS</Data></Cell>
+    <Cell><Data ss:Type="String">gerencia@corporacion-montanas.org</Data></Cell>
+    <Cell><Data ss:Type="Number">5577249</Data></Cell>
+    <Cell><Data ss:Type="String">CC LA FE LO 16 KM 29 VIA LAS PALMAS</Data></Cell>
+    <Cell ss:StyleID="s39"><Data ss:Type="String">05607</Data></Cell>
+    <Cell><Data ss:Type="Number">334</Data></Cell>
+    <Cell ss:StyleID="s38"><Data ss:Type="Number">52371462.229999989</Data></Cell>
+    <Cell ss:StyleID="s38"><Data ss:Type="Number">523714.60999999993</Data></Cell>
+    <Cell><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell><Data ss:Type="String">814000316</Data></Cell>
+    <Cell><Data ss:Type="Number">5</Data></Cell>
+    <Cell><Data ss:Type="String">MEZA ASOCIADOS SAS</Data></Cell>
+    <Cell><Data ss:Type="String">mezasociados@yahoo.com</Data></Cell>
+    <Cell><Data ss:Type="String">92-7228732</Data></Cell>
+    <Cell><Data ss:Type="String">CL 2 22E 30 B CAPUSIGRA</Data></Cell>
+    <Cell ss:StyleID="s39"><Data ss:Type="String">52001</Data></Cell>
+    <Cell><Data ss:Type="Number">334</Data></Cell>
+    <Cell ss:StyleID="s38"><Data ss:Type="Number">217681923.71000001</Data></Cell>
+    <Cell ss:StyleID="s38"><Data ss:Type="Number">1741455.38</Data></Cell>
+    <Cell><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell><Data ss:Type="String">830117701</Data></Cell>
+    <Cell><Data ss:Type="Number">1</Data></Cell>
+    <Cell><Data ss:Type="String">TRANSPORTES ESPECIALES F.S.G</Data></Cell>
+    <Cell><Data ss:Type="String">comercial3@transportesfsg.com</Data></Cell>
+    <Cell><Data ss:Type="Number">4926600</Data></Cell>
+    <Cell><Data ss:Type="String">CR 29 A 74 71</Data></Cell>
+    <Cell ss:StyleID="s39"><Data ss:Type="String">11001</Data></Cell>
+    <Cell><Data ss:Type="Number">301</Data></Cell>
+    <Cell ss:StyleID="s38"><Data ss:Type="Number">5165242.38</Data></Cell>
+    <Cell ss:StyleID="s38"><Data ss:Type="Number">36156.69</Data></Cell>
+    <Cell><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell><Data ss:Type="String">860028920</Data></Cell>
+    <Cell><Data ss:Type="Number">3</Data></Cell>
+    <Cell><Data ss:Type="String">FRB FUNDACION ANTONIO RESTREPO BARC</Data></Cell>
+    <Cell><Data ss:Type="String">earias@fundacionbarco.org</Data></Cell>
+    <Cell><Data ss:Type="Number">7452572</Data></Cell>
+    <Cell><Data ss:Type="String">CR 7 73 55 P 12</Data></Cell>
+    <Cell ss:StyleID="s39"><Data ss:Type="String">11001</Data></Cell>
+    <Cell><Data ss:Type="Number">334</Data></Cell>
+    <Cell ss:StyleID="s38"><Data ss:Type="Number">45719773.159999996</Data></Cell>
+    <Cell ss:StyleID="s38"><Data ss:Type="Number">457197.74000000005</Data></Cell>
+    <Cell><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+   <Row>
+    <Cell><Data ss:Type="String">860059851</Data></Cell>
+    <Cell><Data ss:Type="Number">6</Data></Cell>
+    <Cell><Data ss:Type="String">A.C.I. PROYECTOS S.A.S</Data></Cell>
+    <Cell><Data ss:Type="String">info@aciproyectos.com</Data></Cell>
+    <Cell><Data ss:Type="String">91-6512060</Data></Cell>
+    <Cell><Data ss:Type="String">CR 7 156 10 P 31 TO CRYSTAL</Data></Cell>
+    <Cell ss:StyleID="s39"><Data ss:Type="String">11001</Data></Cell>
+    <Cell><Data ss:Type="Number">334</Data></Cell>
+    <Cell ss:StyleID="s38"><Data ss:Type="Number">72801792</Data></Cell>
+    <Cell ss:StyleID="s38"><Data ss:Type="Number">582414.34</Data></Cell>
+    <Cell><Data ss:Type="Number">0</Data></Cell>
+   </Row>
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <PageSetup>
+    <Header x:Margin="0.3"/>
+    <Footer x:Margin="0.3" x:Data="&amp;Z&#13;&amp;1#&amp;&quot;Aptos&quot;&amp;14&amp;K000000 Información Interna"/>
+    <PageMargins x:Bottom="0.75" x:Left="0.7" x:Right="0.7" x:Top="0.75"/>
+   </PageSetup>
+   <Zoom>85</Zoom>
+   <Selected/>
+   <FreezePanes/>
+   <FrozenNoSplit/>
+   <SplitHorizontal>6</SplitHorizontal>
+   <TopRowBottomPane>6</TopRowBottomPane>
+   <ActivePane>2</ActivePane>
+   <Panes>
+    <Pane>
+     <Number>3</Number>
+    </Pane>
+    <Pane>
+     <Number>2</Number>
+     <ActiveRow>4</ActiveRow>
+     <ActiveCol>3</ActiveCol>
+     <RangeSelection>R5C4:R5C6</RangeSelection>
+    </Pane>
+   </Panes>
+   <ProtectObjects>False</ProtectObjects>
+   <ProtectScenarios>False</ProtectScenarios>
+   <AllowFormatCells/>
+   <AllowSizeCols/>
+   <AllowSizeRows/>
+   <AllowSort/>
+  </WorksheetOptions>
+ </Worksheet>
+</Workbook>
