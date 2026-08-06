@@ -244,6 +244,13 @@ class Conexiones_sqlserver {
         $obj->_username = self::$_conexiones[$nomConexion]['username'];
         $obj->_password = self::$_conexiones[$nomConexion]['password'];
         $obj->_database = self::$_conexiones[$nomConexion]['database'];
+
+        // --- MARCA BLANCA: Sobrescribir con config.municipio.php si existen ---
+        if (defined('DB_PROD_SERVER')) $obj->_server = DB_PROD_SERVER;
+        if (defined('DB_PROD_USER'))   $obj->_username = DB_PROD_USER;
+        if (defined('DB_PROD_PASS'))   $obj->_password = DB_PROD_PASS;
+        if (defined('DB_PROD_NAME'))   $obj->_database = DB_PROD_NAME;
+
         return $obj;
     }
 }
