@@ -10,7 +10,7 @@
 <head>
 	<!-- Basic Page Info -->
 	<meta charset="utf-8">
-	<title>Establecimientos |ERPSOFTSAS </title>
+	<title>Consultar Declaraciones | ERPSOFTSAS</title>
 
 	<meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta http-equiv="Expires" content="0">
@@ -24,7 +24,7 @@
 	<link rel="icon" type="image/png" sizes="16x16" href="../vendors/images/favicon-16x16.png">
 
 	<!-- Mobile Specific Metas -->
-	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
 
 	<!-- Google Font -->
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -43,16 +43,8 @@
 	<!-- loading css -->
 	<link rel="stylesheet" type="text/css" href="../src/styles/loading.css">
 	
-	<!-- Global site tag (gtag.js) - Google Analytics -->
-	<script async src="https://www.googletagmanager.com/gtag/js?id=UA-119386393-1"></script>
-
-	<script>
-		window.dataLayer = window.dataLayer || [];
-		function gtag(){dataLayer.push(arguments);}
-		gtag('js', new Date());
-
-		gtag('config', 'UA-119386393-1');
-	</script>
+	<!-- Analitica retirada: la etiqueta era UA- (Universal Analytics),
+	     apagada por Google en 2023, por lo que no recogia ningun dato. -->
 </head>
 <body>
 	<div id="loading" class="loading" hidden></div>
@@ -79,8 +71,8 @@
                                 <th>Establecimiento</th>
                                 <th>Contribuyente</th>
                                 <th># Documento</th>	
-								<th>Dirección</th>								
-								<th>Acciones</th>
+								<th>Dirección</th>
+								<th class="text-center" style="width:320px;">Acciones</th>
 							</tr>
 						</thead>
 						<tbody id="bodyEstablecimientosRegistrados">
@@ -562,6 +554,11 @@ Guardar
 
                     <div class="modal-body">
 
+                        <!-- Progreso del tramite: responde "que hice, en que voy
+                             y que me falta" sin que la persona tenga que
+                             deducirlo de los botones disponibles. -->
+                        <div id="stepperDeclaracion"></div>
+
                         <form id="formDeclaracion">
 
                             <div class="row">
@@ -1024,6 +1021,29 @@ data-campo="sanciones" value="0">
 
                     <div class="modal-body">
 
+                        <!-- Filtros: el listado abre en el año en curso en vez de
+                             volcar todo el historico (un establecimiento de prueba
+                             ya acumula 131 declaraciones). -->
+                        <div class="filtros-declaraciones">
+                            <div class="campo">
+                                <label for="filtroAnioDecl">Año</label>
+                                <select id="filtroAnioDecl">
+                                    <option value="">Todos los años</option>
+                                </select>
+                            </div>
+                            <div class="campo">
+                                <label for="filtroEstadoDecl">Estado</label>
+                                <select id="filtroEstadoDecl">
+                                    <option value="">Todos los estados</option>
+                                    <option value="borrador">Borrador</option>
+                                    <option value="firmada">Firmada</option>
+                                    <option value="presentada">Presentada</option>
+                                    <option value="pagada">Pagada</option>
+                                </select>
+                            </div>
+                            <span class="conteo" id="conteoDeclaraciones"></span>
+                        </div>
+
                         <div class="table-responsive">
                             <table class="table table-bordered table-striped table-sm" id="tablaDeclaraciones">
                                 <thead style="background:#e9ecef; font-weight:600;">
@@ -1031,6 +1051,7 @@ data-campo="sanciones" value="0">
                                         <th>Año</th>
                                         <th>Mes</th>
                                         <th>N° Declaración</th>
+                                        <th>Estado</th>
                                         <th>Fecha Pago</th>
                                         <th>Banco</th>
                                         <th>Valor Pago</th>
@@ -1066,10 +1087,18 @@ data-campo="sanciones" value="0">
                         </button>
                     </div>
                     <div class="modal-body text-center">
-                        <p style="font-size: 14px; margin-bottom: 15px;">Se ha enviado un código de seguridad de 6 dígitos a su correo electrónico.</p>
+                        <p style="font-size: 14px; margin-bottom: 6px;">Enviamos un código de 6 dígitos a:</p>
+                        <p id="otpDestino" style="font-size: 13px; font-weight: 700; color: var(--erp-primario); margin-bottom: 4px; word-break: break-all;">su correo electrónico</p>
+                        <p id="otpVigencia" style="font-size: 12px; color: #6B7280; margin-bottom: 15px;">El código vence en 10:00</p>
                         <div class="form-group">
-                            <input type="text" id="otpCodigo" class="form-control form-control-lg text-center" placeholder="000000" maxlength="6" style="font-size: 24px; letter-spacing: 5px; font-weight: bold; width: 80%; margin: 0 auto;">
+                            <input type="text" id="otpCodigo" class="form-control form-control-lg text-center"
+                                   placeholder="000000" maxlength="6" inputmode="numeric" autocomplete="one-time-code"
+                                   style="font-size: 24px; letter-spacing: 5px; font-weight: bold; width: 80%; margin: 0 auto;">
                         </div>
+                        <div id="otpError" style="display:none; font-size:12.5px; color:#DC2626; margin-top:8px;"></div>
+                        <button type="button" id="btnReenviarOTP" class="btn btn-link btn-sm" style="font-size:12.5px; margin-top:6px;">
+                            <i class="fa fa-refresh"></i> Reenviar código
+                        </button>
                         <input type="hidden" id="otpIdDeclaracion">
                     </div>
                     <div class="modal-footer justify-content-center">

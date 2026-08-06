@@ -179,6 +179,13 @@ class Conexiones_mysql{
         $_obj->_username = self::$_conexiones[$nomConexion]['username'];
         $_obj->_password = self::$_conexiones[$nomConexion]['password'];
         $_obj->_database = self::$_conexiones[$nomConexion]['database'];
+        
+        // --- MARCA BLANCA: Sobrescribir con config.municipio.php si existen ---
+        if (defined('DB_PROD_SERVER')) $_obj->_server = DB_PROD_SERVER;
+        if (defined('DB_PROD_USER'))   $_obj->_username = DB_PROD_USER;
+        if (defined('DB_PROD_PASS'))   $_obj->_password = DB_PROD_PASS;
+        if (defined('DB_PROD_NAME'))   $_obj->_database = DB_PROD_NAME;
+
         return $_obj;
     }
 }

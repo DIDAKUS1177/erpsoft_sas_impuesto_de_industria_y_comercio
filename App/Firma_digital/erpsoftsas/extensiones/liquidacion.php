@@ -3,6 +3,14 @@ include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
 require_once('./tcpdf/tcpdf.php');
 
+// Cargar configuración del municipio
+$configPath = dirname(__DIR__) . '/config.municipio.php';
+if (file_exists($configPath)) {
+    require_once $configPath;
+}
+if (!defined('MUNICIPIO_SELLO_FIRMA')) define('MUNICIPIO_SELLO_FIRMA', 'Sello_Firma.png');
+
+
 class LiquidacionICAComercioPdf extends TCPDF {
     public function Header() {}
     public function Footer() {}
@@ -63,6 +71,31 @@ WHERE fd.fd_NumeroDeclaracion = ?
 $stmtFirma = $con->consultar($sqlFirma, [$idDeclaracion]);
 $firmaData = $con->obnerFila($stmtFirma);
 
+/*
+ * Fecha impresa dentro del sello: acredita la PRESENTACION ante el
+ * municipio, no el momento de la firma. Si aun no se ha presentado se
+ * cae a la fecha de firma para no dejar el sello sin fecha.
+ * (Mismo criterio que extensiones/declaracion.php.)
+ */
+if (!function_exists('erp_formatearFechaSello')) {
+function erp_formatearFechaSello($valor) {
+    if ($valor instanceof DateTime) {
+        return $valor->format('d/m/Y H:i:s');
+    }
+    if (is_string($valor) && trim($valor) !== '') {
+        $ts = strtotime($valor);
+        return $ts ? date('d/m/Y H:i:s', $ts) : trim($valor);
+    }
+    return '';
+}
+}
+
+$fechaSello = erp_formatearFechaSello($row['dec_FechaPresentacion'] ?? null);
+
+if ($fechaSello === '' && $firmaData) {
+    $fechaSello = erp_formatearFechaSello($firmaData['fd_FechaHora'] ?? null);
+}
+
 $nombreCompleto = trim(
     $row['ind_PrimerNombre'].' '.
     $row['ind_SegundoNombre'].' '.
@@ -82,11 +115,11 @@ foreach ($actividades as $act) {
 /* ============================================================
    VARIABLES – ENCABEZADO / GENERALES
    ============================================================ */
-$municipio          = "PAIPA";
+$municipio          = strtoupper(MUNICIPIO_CIUDAD);
 $departamento       = "BOYACÁ";
 $nit_municipio      = "891801240";
 $direccion_mpio     = "Carrera 22 No 25-14";
-$ciudad_mpio        = "PAIPA - BOYACÁ";
+$ciudad_mpio        = strtoupper(MUNICIPIO_CIUDAD) . " - BOYACÁ";
 
 $fecha_max_presentacion = "";
 $anio_gravable      = $row['dec_AnioDeclaracion'] ?? date('Y');
@@ -139,7 +172,16 @@ $departamento_contrib   = $row['ciu_Departamento'] ?? '';
 
 $telefono_contrib   = $row['ind_Telefono'] ?? '';
 $correo_contrib     = $row['ind_Email'] ?? '';
-$no_establecimientos = "1";
+
+// Mismo criterio que extensiones/declaracion.php: cuenta todos los
+// establecimientos activos del contribuyente (aun no se captura cual esta
+// en Paipa, ver la nota alla).
+$no_establecimientos = (string) ($con->obnerFila($con->consultar(
+    "SELECT COUNT(*) AS n FROM ind_establecimientos
+     WHERE est_IdContribuyente = ? AND est_Activo = 1",
+    [$row['dec_IdContribuyente']]
+))['n'] ?? 1);
+
 $clasificacion       = "";
 
 /* ============================================================
@@ -255,7 +297,7 @@ $y = 9;
 
 // logos izquierda (ajusta rutas)
 $pdf->Rect(8,$y,24,22);
-$pdf->Image('tcpdf/pdf/img/escudo_izq.png', 8, $y, 24, 22, '', '', '', false, 300);
+$pdf->Image(dirname(dirname(__DIR__)) . MUNICIPIO_LOGO, 8, $y, 24, 22, '', '', '', false, 300);
 
 // texto cabecera
 $pdf->SetFont('helvetica','B',9);
@@ -535,13 +577,10 @@ $pdf->Cell(68,6,"REVISOR FISCAL",1,1,'C');
 // dentro del mismo espacio reservado para la firma manuscrita en vez
 // de dejarlo en blanco (igual que declaracion.php).
 if ($firmaData) {
-    $pdf->Image('Sello_Firma.png', 7 + (67 - 14) / 2, $y + 7, 14, 14, '', '', '', false, 300);
-    $fechaHoraFirmaLiq = $firmaData['fd_FechaHora'] instanceof DateTime
-        ? $firmaData['fd_FechaHora']->format('d/m/Y H:i:s')
-        : (is_string($firmaData['fd_FechaHora']) ? $firmaData['fd_FechaHora'] : '');
+    $pdf->Image(MUNICIPIO_SELLO_FIRMA, 7 + (67 - 14) / 2, $y + 7, 14, 14, '', '', '', false, 300);
     $pdf->SetFont('helvetica','',5);
     $pdf->SetXY(7, $y + 21);
-    $pdf->Cell(67, 3, $firmaData['fd_NombreUsuario'] . ' - ' . $fechaHoraFirmaLiq, 0, 0, 'C');
+    $pdf->Cell(67, 3, $firmaData['fd_NombreUsuario'] . ' - ' . $fechaSello, 0, 0, 'C');
     $pdf->SetFont('helvetica','',7);
 }
 

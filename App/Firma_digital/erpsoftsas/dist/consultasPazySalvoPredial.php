@@ -21,7 +21,7 @@
 	<link rel="icon" type="image/png" sizes="16x16" href="../vendors/images/favicon-16x16.png">
 
 	<!-- Mobile Specific Metas -->
-	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
 
 	<!-- Google Font -->
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -40,16 +40,8 @@
 	<!-- loading css -->
 	<link rel="stylesheet" type="text/css" href="../src/styles/loading.css">
 	
-	<!-- Global site tag (gtag.js) - Google Analytics -->
-	<script async src="https://www.googletagmanager.com/gtag/js?id=UA-119386393-1"></script>
-
-	<script>
-		window.dataLayer = window.dataLayer || [];
-		function gtag(){dataLayer.push(arguments);}
-		gtag('js', new Date());
-
-		gtag('config', 'UA-119386393-1');
-	</script>
+	<!-- Analitica retirada: la etiqueta era UA- (Universal Analytics),
+	     apagada por Google en 2023, por lo que no recogia ningun dato. -->
 </head>
 <body>
 

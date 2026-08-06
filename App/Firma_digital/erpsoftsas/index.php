@@ -1,6 +1,6 @@
 <?php
 // Incluir configuración del municipio
-$configPath = dirname(__DIR__) . '/config.municipio.php';
+$configPath = __DIR__ . '/config.municipio.php';
 if (file_exists($configPath)) {
     require_once $configPath;
 }
@@ -9,7 +9,7 @@ if (!defined('MUNICIPIO_NOMBRE')) define('MUNICIPIO_NOMBRE', 'Alcaldía de Paipa
 if (!defined('MUNICIPIO_LOGO')) define('MUNICIPIO_LOGO', '/erpsoftsas/vendors/images/escudo-paipa.png');
 if (!defined('MUNICIPIO_COLOR')) define('MUNICIPIO_COLOR', '#1fa49d');
 if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756f');
-if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', '/erpsoftsas/vendors/images/login-bg.jpg');
+if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', 'vendors/images/fondo-paipa.jpg');
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -107,11 +107,14 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', '/erpsoft
 			display: flex;
 			align-items: center;
 			justify-content: center;
-			padding: 3rem 1.5rem;
-			/* Panoramica del municipio (o predeterminado) con velo institucional
-			   para garantizar contraste del card por encima. */
+			padding: 1.4rem 1.5rem;
+			/* Panoramica del municipio (fondo-paipa.jpg: el lago Sochagota) con
+			   un velo institucional. Antes el velo llegaba a 78% de opacidad,
+			   suficiente para tapar casi toda la foto -por eso se veia como un
+			   degradado solido sin ninguna imagen debajo-. Bajado para que el
+			   lago se note, conservando contraste para el card blanco. */
 			background:
-				linear-gradient(rgba(31, 164, 157, 0.55), rgba(23, 117, 111, 0.78)),
+				linear-gradient(rgba(15, 60, 57, 0.38), rgba(15, 60, 57, 0.52)),
 				url('<?php echo MUNICIPIO_FONDO_LOGIN; ?>') center/cover no-repeat;
 		}
 
@@ -134,7 +137,7 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', '/erpsoft
 		.login-header-band {
 			background: linear-gradient(135deg, var(--brand-primary), var(--brand-accent));
 			color: #FFFFFF;
-			padding: 1.5rem 2rem;
+			padding: 0.85rem 2rem;
 			text-align: center;
 		}
 		.login-header-band h2 {
@@ -150,14 +153,14 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', '/erpsoft
 
 		/* Cuerpo del formulario */
 		.login-body-custom {
-			padding: 2.5rem 2rem;
+			padding: 1.4rem 2rem;
 		}
 
 		.form-group-custom {
-			margin-bottom: 1.5rem;
+			margin-bottom: 1.15rem;
 			display: flex;
 			flex-direction: column;
-			gap: 0.5rem;
+			gap: 0.4rem;
 		}
 		.form-group-custom label {
 			font-size: 13px;
@@ -207,7 +210,7 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', '/erpsoft
 			letter-spacing: 0.5px;
 			box-shadow: 0 4px 10px rgba(31, 164, 157, 0.25);
 			transition: var(--transition-smooth);
-			margin-bottom: 1.5rem;
+			margin-bottom: 1.1rem;
 			border: none;
 			cursor: pointer;
 		}
@@ -223,7 +226,7 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', '/erpsoft
 			font-size: 13.5px;
 			color: var(--text-muted);
 			border-top: 1px solid var(--border-color);
-			padding-top: 1.5rem;
+			padding-top: 1.1rem;
 		}
 		.login-links-custom a,
 		.login-links-custom button {
@@ -244,7 +247,7 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', '/erpsoft
 		.login-footer-banner {
 			background: linear-gradient(135deg, var(--brand-primary), var(--brand-accent));
 			color: #FFFFFF;
-			padding: 2rem;
+			padding: 1.1rem 2rem;
 			text-align: center;
 			font-size: 13px;
 		}
@@ -253,7 +256,7 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', '/erpsoft
 			justify-content: center;
 			align-items: center;
 			gap: 2rem;
-			margin-bottom: 1rem;
+			margin-bottom: 0.6rem;
 		}
 		.login-footer-banner .footer-logo-item {
 			display: flex;
@@ -264,7 +267,7 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', '/erpsoft
 		/* El escudo es cuadrado; el logo de ERPSoft es un lockup horizontal.
 		   Se fija solo la altura para no deformar ninguno de los dos. */
 		.login-footer-banner .footer-logo-item img {
-			height: 55px;
+			height: 40px;
 			width: auto;
 			max-width: 250px;
 			object-fit: contain;
@@ -350,7 +353,7 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', '/erpsoft
 				<div class="login-links-custom">
 					<button type="button" onclick="login.crearUsuario()">
 						¿Soy un nuev@ usuario? Inscribirse
-					</button><br><br>
+					</button><br>
 					<button type="button" onclick="login.RecuperarUsuario()">
 						¿Has olvidado tu Contraseña?
 					</button>
@@ -371,7 +374,7 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', '/erpsoft
 				<img src="vendors/images/deskapp-logo.svg" alt="ERPSoft" class="logo-vendor">
 			</div>
 		</div>
-		<div style="margin: 10px 0; font-size: 14px; font-weight: 600; opacity: 0.95;">
+		<div style="margin: 4px 0; font-size: 14px; font-weight: 600; opacity: 0.95;">
 			Secretaría de Hacienda - Dirección de Impuestos, Rentas y Jurisdicción Coactiva
 		</div>
 		<span style="opacity: 0.75; font-size: 12px;">ERPSOFTSAS © 2026 — <a href="https://erpsoftsas.com" target="_blank" style="color: #FFFFFF; text-decoration: underline;">erpsoftsas.com</a> | Soporte: 318 530 9285</span>
@@ -494,16 +497,18 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', '/erpsoft
 					<div class="form-row justify-content-center">
 						<div class="form-group col-md-8 col-lg-6 text-center">
 
-							<label class="font-weight-bold">* Correo</label>
+							<label class="font-weight-bold">* NIT o Cédula</label>
 
-							<input type="email"
+							<input type="text"
 								class="form-control text-center"
-								id="usu_CorreoRecuperar"
+								id="usu_DocumentoRecuperar"
 								required
-								placeholder="Ingrese su correo electrónico">
+								inputmode="numeric"
+								placeholder="Ingrese su NIT o número de cédula">
 
 							<small class="form-text text-muted mt-2">
-								Te enviaremos un correo con las instrucciones de recuperación.
+								Enviaremos las instrucciones al correo electrónico
+								registrado para ese documento.
 							</small>
 
 						</div>

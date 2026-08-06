@@ -52,35 +52,63 @@ class FirmasAPI
     {
         $idUsuario = intval($_POST['id_usuario']);
         $idEstablecimiento = intval($_POST['id_establecimiento'] ?? 0);
-        file_put_contents('/tmp/firma_id.log', "ID_USUARIO=" . $idUsuario . "\n", FILE_APPEND);
+        $rol = $this->_rolFirmante();
 
         $conSql = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
-        $stmt = $conSql->consultar(
-            "SELECT usu_Nombres AS usu_Nombre, usu_Correo FROM conf_usuarios WHERE usu_Id = $idUsuario AND usu_Estado = 1"
-        );
-        $usuario = $conSql->obnerFila($stmt);
 
-        if (!$usuario) {
-            echo json_encode(['ok' => 0, 'mensaje' => 'Usuario no encontrado (ID: ' . $idUsuario . ')']);
-            return;
+        if ($rol === 'declarante') {
+            // El declarante es el usuario del sistema: el codigo va a su correo.
+            $stmt = $conSql->consultar(
+                "SELECT usu_Nombres AS usu_Nombre, usu_Correo
+                 FROM conf_usuarios WHERE usu_Id = ? AND usu_Estado = 1",
+                [$idUsuario]
+            );
+            $usuario = $conSql->obnerFila($stmt);
+
+            if (!$usuario) {
+                header('Content-type: application/json');
+                echo json_encode(['ok' => 0, 'mensaje' => 'Usuario no encontrado (ID: ' . $idUsuario . ')']);
+                return;
+            }
+
+            $email  = $usuario['usu_Correo'];
+            $nombre = $usuario['usu_Nombre'];
+        } else {
+            // Contador o revisor fiscal: NO es usuario del sistema. Sus datos
+            // viven en el contribuyente dueño de la declaración y el codigo
+            // viaja a SU correo, porque es esa persona la que firma.
+            $destino = $this->_destinatarioContador($conSql);
+
+            if (!$destino['ok']) {
+                header('Content-type: application/json');
+                echo json_encode(['ok' => 0, 'mensaje' => $destino['mensaje']]);
+                return;
+            }
+
+            $email  = $destino['email'];
+            $nombre = $destino['nombre'];
         }
 
-        $email = $usuario['usu_Correo'];
-        $nombre = $usuario['usu_Nombre'];
         $codigo = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
         $expiracion = date('Y-m-d H:i:s', strtotime('+10 minutes'));
 
+        // Se anulan los codigos previos del MISMO rol: el del declarante y el
+        // del contador conviven sin pisarse.
         $conSql->consultar(
             "UPDATE codigos_verificacion SET codigo_Usado = 1
-             WHERE codigo_IdUsuario = $idUsuario
-               AND codigo_IdEstablecimiento = $idEstablecimiento
-               AND codigo_Usado = 0"
+             WHERE codigo_IdUsuario = ?
+               AND codigo_IdEstablecimiento = ?
+               AND codigo_Rol = ?
+               AND codigo_Usado = 0",
+            [$idUsuario, $idEstablecimiento, $rol]
         );
-        $emailSafe = str_replace("'", "''", $email);
+
         $conSql->consultar(
             "INSERT INTO codigos_verificacion
-                (codigo_Valor, codigo_IdUsuario, codigo_Email, codigo_IdEstablecimiento, codigo_FechaExpiracion)
-             VALUES ('$codigo', $idUsuario, '$emailSafe', $idEstablecimiento, '$expiracion')"
+                (codigo_Valor, codigo_IdUsuario, codigo_Email, codigo_IdEstablecimiento,
+                 codigo_FechaExpiracion, codigo_Rol)
+             VALUES (?, ?, ?, ?, ?, ?)",
+            [$codigo, $idUsuario, $email, $idEstablecimiento, $expiracion, $rol]
         );
 
         $enviado = $this->_enviarCodigo($email, $nombre, $codigo);
@@ -89,9 +117,79 @@ class FirmasAPI
         echo json_encode([
             'ok' => $enviado ? 1 : 0,
             'mensaje' => $enviado
-                ? 'Código enviado a ' . $email
+                ? 'Código enviado a ' . $this->_enmascarar($email)
                 : 'Error al enviar el correo. Intente nuevamente.'
         ]);
+    }
+
+    /**
+     * Rol del firmante para esta operación: 'declarante' (por defecto) o
+     * 'contador'. Contador y revisor fiscal comparten una sola casilla en el
+     * formulario, por eso comparten también un solo rol.
+     */
+    private function _rolFirmante()
+    {
+        $rol = strtolower(trim($_POST['rol'] ?? 'declarante'));
+        return $rol === 'contador' ? 'contador' : 'declarante';
+    }
+
+    /**
+     * Nombre y correo del contador (o, si no hay, del revisor fiscal) del
+     * contribuyente dueño de la declaración que se está firmando.
+     */
+    private function _destinatarioContador($conSql)
+    {
+        $numeroDeclaracion = preg_replace(
+            '/[^A-Za-z0-9\-]/', '',
+            $_POST['numero_declaracion'] ?? $_POST['id_declaracion'] ?? ''
+        );
+
+        if ($numeroDeclaracion === '') {
+            return ['ok' => false, 'mensaje' => 'Número de declaración inválido'];
+        }
+
+        $stmt = $conSql->consultar(
+            "SELECT c.ind_NombreContador, c.ind_EmailContador,
+                    c.ind_NombreRevisor,  c.ind_EmailRevisor
+             FROM ind_declaraciones_ica d
+             INNER JOIN ind_contribuyentes c ON c.ind_Id = d.dec_IdContribuyente
+             WHERE d.dec_Id = ?",
+            [$numeroDeclaracion]
+        );
+        $fila = $conSql->obnerFila($stmt);
+
+        if (!$fila) {
+            return ['ok' => false, 'mensaje' => 'No se encontró la declaración'];
+        }
+
+        $nombre = trim((string)$fila['ind_NombreContador']);
+        $email  = trim((string)$fila['ind_EmailContador']);
+
+        if ($email === '') {
+            $nombre = trim((string)$fila['ind_NombreRevisor']);
+            $email  = trim((string)$fila['ind_EmailRevisor']);
+        }
+
+        if ($email === '') {
+            return [
+                'ok' => false,
+                'mensaje' => 'El contribuyente no tiene registrado el correo del contador '
+                           . 'ni del revisor fiscal. Regístrelo en el RIT para poder firmar.'
+            ];
+        }
+
+        return [
+            'ok'     => true,
+            'nombre' => $nombre !== '' ? $nombre : 'Contador / Revisor Fiscal',
+            'email'  => $email
+        ];
+    }
+
+    /** "contador@dominio.com" -> "co***@dominio.com" */
+    private function _enmascarar($email)
+    {
+        $p = explode('@', (string)$email);
+        return count($p) === 2 ? mb_substr($p[0], 0, 2) . '***@' . $p[1] : '';
     }
 
     /**
@@ -109,13 +207,17 @@ class FirmasAPI
         }
 
         $conSql = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        $rol = $this->_rolFirmante();
+
         $stmt = $conSql->consultar(
             "SELECT codigo_Id FROM codigos_verificacion
-             WHERE codigo_Valor = '$codigo'
-               AND codigo_IdUsuario = $idUsuario
-               AND codigo_IdEstablecimiento = $idEstablecimiento
+             WHERE codigo_Valor = ?
+               AND codigo_IdUsuario = ?
+               AND codigo_IdEstablecimiento = ?
+               AND codigo_Rol = ?
                AND codigo_Usado = 0
-               AND codigo_FechaExpiracion > GETDATE()"
+               AND codigo_FechaExpiracion > GETDATE()",
+            [$codigo, $idUsuario, $idEstablecimiento, $rol]
         );
         $row = $conSql->obnerFila($stmt);
 
@@ -125,8 +227,10 @@ class FirmasAPI
             return;
         }
 
-        $id = intval($row['codigo_Id']);
-        $conSql->consultar("UPDATE codigos_verificacion SET codigo_Usado = 1 WHERE codigo_Id = $id");
+        $conSql->consultar(
+            "UPDATE codigos_verificacion SET codigo_Usado = 1 WHERE codigo_Id = ?",
+            [intval($row['codigo_Id'])]
+        );
 
         header('Content-type: application/json');
         echo json_encode(['ok' => 1, 'mensaje' => 'Código verificado correctamente']);
@@ -149,21 +253,23 @@ class FirmasAPI
 
         $conSql = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
         $stmt = $conSql->consultar(
-            "SELECT usu_Nombres AS usu_Nombre, usu_Correo FROM conf_usuarios WHERE usu_Id = $idUsuario"
+            "SELECT usu_Nombres AS usu_Nombre, usu_Correo FROM conf_usuarios WHERE usu_Id = ?",
+            [$idUsuario]
         );
         $usuario = $conSql->obnerFila($stmt);
-        $nombre = str_replace("'", "''", $usuario['usu_Nombre'] ?? '');
-        $email = str_replace("'", "''", $usuario['usu_Correo'] ?? '');
+        $nombre = $usuario['usu_Nombre'] ?? '';
+        $email = $usuario['usu_Correo'] ?? '';
 
         $conSql->consultar(
-            "UPDATE firmas SET firma_Estado = 0 WHERE firma_IdEstablecimiento = $idEstablecimiento"
+            "UPDATE firmas SET firma_Estado = 0 WHERE firma_IdEstablecimiento = ?",
+            [$idEstablecimiento]
         );
 
-        $base64Safe = str_replace("'", "''", $base64);
         $conSql->consultar(
             "INSERT INTO firmas
                 (firma_IdEstablecimiento, firma_IdUsuario, firma_NombreUsuario, firma_EmailUsuario, firma_Base64)
-             VALUES ($idEstablecimiento, $idUsuario, '$nombre', '$email', '$base64Safe')"
+             VALUES (?, ?, ?, ?, ?)",
+            [$idEstablecimiento, $idUsuario, $nombre, $email, $base64]
         );
 
         header('Content-type: application/json');
@@ -182,7 +288,8 @@ class FirmasAPI
             "SELECT firma_Id, firma_NombreUsuario, firma_EmailUsuario,
                     CONVERT(VARCHAR(19), firma_FechaHora, 120) AS firma_FechaHora
              FROM firmas
-             WHERE firma_IdEstablecimiento = $idEstablecimiento AND firma_Estado = 1"
+             WHERE firma_IdEstablecimiento = ? AND firma_Estado = 1",
+            [$idEstablecimiento]
         );
         $row = $conSql->obnerFila($stmt);
 
@@ -205,25 +312,27 @@ class FirmasAPI
             return;
         }
 
-        $base64Safe = str_replace("'", "''", $base64);
         $conSql = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
         // UPSERT: actualiza si existe, inserta si no
         $stmt = $conSql->consultar(
-            "SELECT fu_Id FROM firmas_usuario WHERE fu_IdUsuario = $idUsuario"
+            "SELECT fu_Id FROM firmas_usuario WHERE fu_IdUsuario = ?",
+            [$idUsuario]
         );
         $existe = $conSql->obnerFila($stmt);
 
         if ($existe) {
             $conSql->consultar(
                 "UPDATE firmas_usuario
-                 SET fu_Base64 = '$base64Safe', fu_FechaHora = GETDATE()
-                 WHERE fu_IdUsuario = $idUsuario"
+                 SET fu_Base64 = ?, fu_FechaHora = GETDATE()
+                 WHERE fu_IdUsuario = ?",
+                [$base64, $idUsuario]
             );
         } else {
             $conSql->consultar(
                 "INSERT INTO firmas_usuario (fu_IdUsuario, fu_Base64)
-                 VALUES ($idUsuario, '$base64Safe')"
+                 VALUES (?, ?)",
+                [$idUsuario, $base64]
             );
         }
 
@@ -242,7 +351,8 @@ class FirmasAPI
         $conSql = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
         $stmt = $conSql->consultar(
             "SELECT fu_Base64, CONVERT(VARCHAR(19), fu_FechaHora, 120) AS fu_FechaHora
-             FROM firmas_usuario WHERE fu_IdUsuario = $idUsuario"
+             FROM firmas_usuario WHERE fu_IdUsuario = ?",
+            [$idUsuario]
         );
         $row = $conSql->obnerFila($stmt);
 
@@ -271,17 +381,37 @@ class FirmasAPI
         }
 
         $conSql = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
-        $stmt = $conSql->consultar(
-            "SELECT usu_Nombres AS usu_Nombre, usu_Correo FROM conf_usuarios WHERE usu_Id = $idUsuario"
-        );
-        $usuario = $conSql->obnerFila($stmt);
-        $nombre = str_replace("'", "''", $usuario['usu_Nombre'] ?? '');
-        $email = str_replace("'", "''", $usuario['usu_Correo'] ?? '');
+        $rol = $this->_rolFirmante();
 
-        // Verificar si ya está firmada
+        // De quién queda el sello: el declarante es el usuario del sistema;
+        // el contador/revisor no lo es, sus datos vienen del contribuyente.
+        if ($rol === 'declarante') {
+            $stmt = $conSql->consultar(
+                "SELECT usu_Nombres AS usu_Nombre, usu_Correo FROM conf_usuarios WHERE usu_Id = ?",
+                [$idUsuario]
+            );
+            $usuario = $conSql->obnerFila($stmt);
+            $nombre  = $usuario['usu_Nombre'] ?? '';
+            $email   = $usuario['usu_Correo'] ?? '';
+        } else {
+            $destino = $this->_destinatarioContador($conSql);
+
+            if (!$destino['ok']) {
+                header('Content-type: application/json');
+                echo json_encode(['ok' => 0, 'mensaje' => $destino['mensaje']]);
+                return;
+            }
+
+            $nombre = $destino['nombre'];
+            $email  = $destino['email'];
+        }
+
+        // La unicidad ahora es por (declaración, rol): el declarante y el
+        // contador firman la misma declaración sin pisarse.
         $stmtCheck = $conSql->consultar(
             "SELECT fd_Id FROM firmas_declaraciones
-             WHERE fd_NumeroDeclaracion = '$numeroDeclaracion'"
+             WHERE fd_NumeroDeclaracion = ? AND fd_Rol = ?",
+            [$numeroDeclaracion, $rol]
         );
         $existe = $conSql->obnerFila($stmtCheck);
 
@@ -292,29 +422,28 @@ class FirmasAPI
         }
 
         if ($existe && $esRefirma) {
-            // Actualizar registro existente
-            $idFirma = intval($existe['fd_Id']);
             $conSql->consultar(
                 "UPDATE firmas_declaraciones
-                 SET fd_IdUsuario = $idUsuario,
-                     fd_NombreUsuario = '$nombre',
-                     fd_EmailUsuario = '$email',
+                 SET fd_IdUsuario = ?, fd_NombreUsuario = ?, fd_EmailUsuario = ?,
                      fd_FechaHora = GETDATE()
-                 WHERE fd_Id = $idFirma"
+                 WHERE fd_Id = ?",
+                [$idUsuario, $nombre, $email, intval($existe['fd_Id'])]
             );
             $msg = 'Declaración refirmada correctamente';
         } else {
-            // Insertar nuevo registro
             $conSql->consultar(
                 "INSERT INTO firmas_declaraciones
-                    (fd_NumeroDeclaracion, fd_IdUsuario, fd_NombreUsuario, fd_EmailUsuario)
-                 VALUES ('$numeroDeclaracion', $idUsuario, '$nombre', '$email')"
+                    (fd_NumeroDeclaracion, fd_IdUsuario, fd_NombreUsuario, fd_EmailUsuario, fd_Rol)
+                 VALUES (?, ?, ?, ?, ?)",
+                [$numeroDeclaracion, $idUsuario, $nombre, $email, $rol]
             );
-            $msg = 'Declaración firmada correctamente';
+            $msg = $rol === 'contador'
+                 ? 'Declaración firmada por el contador / revisor fiscal'
+                 : 'Declaración firmada correctamente';
         }
 
         header('Content-type: application/json');
-        echo json_encode(['ok' => 1, 'mensaje' => $msg]);
+        echo json_encode(['ok' => 1, 'mensaje' => $msg, 'rol' => $rol]);
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -414,6 +543,10 @@ class FirmasAPI
             $mail->send();
             return true;
         } catch (\Exception $e) {
+            // Antes la excepcion se descartaba en silencio: si el SMTP fallaba,
+            // el usuario solo veia "Error al enviar el correo" y no quedaba
+            // ningun rastro para saber por que. Ahora queda en el log de PHP.
+            error_log('[firmas] Fallo al enviar OTP a ' . $email . ': ' . $e->getMessage());
             return false;
         }
     }

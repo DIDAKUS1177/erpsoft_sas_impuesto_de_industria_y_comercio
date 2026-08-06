@@ -216,6 +216,10 @@ class Establecimientos {
 
                 $("#est_Cedula_contador").val(d.est_Cedula_contador);
                 $("#est_Nombre_contador").val(d.est_Nombre_contador);
+                // Los correos viven en el contribuyente (la declaracion es
+                // una sola por contribuyente), por eso vienen del join.
+                $("#ind_EmailContador").val(d.ind_EmailContador || '');
+                $("#ind_EmailRevisor").val(d.ind_EmailRevisor || '');
                 $("#est_Tarjeta_profesional").val(d.est_Tarjeta_profesional);
                 $("#est_Cedula_revisor").val(d.est_Cedula_revisor);
                 $("#est_Nombre_revisor").val(d.est_Nombre_revisor);
@@ -408,6 +412,21 @@ est_NoResolucion: $("#est_NoResolucion").val(),
             $('#wrapper').removeClass('body-load');
 
             if (arr.ok == 1) {
+
+                // Los correos de contador/revisor se guardan aparte porque
+                // pertenecen al CONTRIBUYENTE, no al establecimiento (la
+                // declaracion es una sola por contribuyente).
+                $.ajax({
+                    url: '../business/controller/class.establecimientos.php',
+                    type: 'POST',
+                    dataType: 'json',
+                    data: {
+                        funcion: 20,
+                        est_Id: idEstablecimiento,
+                        ind_EmailContador: $("#ind_EmailContador").val(),
+                        ind_EmailRevisor:  $("#ind_EmailRevisor").val()
+                    }
+                });
 
                 $("#formCrearEstablecimientos").trigger("reset");
                 $("#modal-Establecimientos").modal('hide');

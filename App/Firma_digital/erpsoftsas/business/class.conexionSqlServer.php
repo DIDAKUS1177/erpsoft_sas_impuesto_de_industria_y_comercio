@@ -81,7 +81,15 @@ class ConexionSQLServer {
      */
     public function consultar($query, $params = array()) {
         $this->_logQuery = $query;
-        $options = array("Scrollable" => SQLSRV_CURSOR_KEYSET);
+        // SQLSRV_CURSOR_KEYSET es un cursor DEL LADO DEL SERVIDOR: cada fila que
+        // se lee (sqlsrv_fetch_array) implica un viaje de red al servidor SQL.
+        // Contra la BD de produccion remota, con muchas filas eso se nota
+        // muchisimo (~450ms por fila medido con 131 filas = 59s en total).
+        // SQLSRV_CURSOR_CLIENT_BUFFERED trae todo el resultado en un solo viaje
+        // y lo guarda en el cliente; sqlsrv_num_rows() sigue funcionando igual
+        // (getNumeroFilasConsultadas() no se ve afectado), pero iterar las filas
+        // ya no cuesta un round-trip cada vez.
+        $options = array("Scrollable" => SQLSRV_CURSOR_CLIENT_BUFFERED);
 
         // Detecta si hay parámetros o placeholders
         if (!empty($params) || strpos($query, '?') !== false) {
@@ -113,7 +121,15 @@ class ConexionSQLServer {
             }
 
             // 🔹 Activa el cursor scrollable
-            $options = array("Scrollable" => SQLSRV_CURSOR_KEYSET);
+            // SQLSRV_CURSOR_KEYSET es un cursor DEL LADO DEL SERVIDOR: cada fila que
+        // se lee (sqlsrv_fetch_array) implica un viaje de red al servidor SQL.
+        // Contra la BD de produccion remota, con muchas filas eso se nota
+        // muchisimo (~450ms por fila medido con 131 filas = 59s en total).
+        // SQLSRV_CURSOR_CLIENT_BUFFERED trae todo el resultado en un solo viaje
+        // y lo guarda en el cliente; sqlsrv_num_rows() sigue funcionando igual
+        // (getNumeroFilasConsultadas() no se ve afectado), pero iterar las filas
+        // ya no cuesta un round-trip cada vez.
+        $options = array("Scrollable" => SQLSRV_CURSOR_CLIENT_BUFFERED);
 
             $stmt = sqlsrv_query($this->_link, $query, $params, $options);
 

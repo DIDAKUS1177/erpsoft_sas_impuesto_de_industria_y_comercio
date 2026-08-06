@@ -21,7 +21,7 @@
 	<link rel="icon" type="image/png" sizes="16x16" href="../vendors/images/favicon-16x16.png">
 
 	<!-- Mobile Specific Metas -->
-	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
 
 	<!-- Google Font -->
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -40,16 +40,8 @@
 	<!-- loading css -->
 	<link rel="stylesheet" type="text/css" href="../src/styles/loading.css">
 	
-	<!-- Global site tag (gtag.js) - Google Analytics -->
-	<script async src="https://www.googletagmanager.com/gtag/js?id=UA-119386393-1"></script>
-
-	<script>
-		window.dataLayer = window.dataLayer || [];
-		function gtag(){dataLayer.push(arguments);}
-		gtag('js', new Date());
-
-		gtag('config', 'UA-119386393-1');
-	</script>
+	<!-- Analitica retirada: la etiqueta era UA- (Universal Analytics),
+	     apagada por Google en 2023, por lo que no recogia ningun dato. -->
 </head>
 <body>
 	<div id="loading" class="loading" hidden></div>
@@ -468,40 +460,83 @@ Acción
 </div>
 
 <!-- ===================== CONTADOR Y REVISOR ===================== -->
+<!--
+  Antes cada campo era una columna suelta en una sola grilla (cedula,
+  nombre, tarjeta y correo del contador mezclados en la misma fila que los
+  del revisor), y el correo -el dato que de verdad importa, porque a el
+  llega el codigo de firma- quedaba flotando sin conexion visual con la
+  persona a la que pertenece. Ahora cada persona vive en su propia tarjeta,
+  con su correo justo debajo de sus otros datos, y una nota arriba explica
+  cual de los dos correos gana si se llenan ambos -la misma regla que ya
+  aplica el backend (_destinatarioContador en microservicios/firmas/api.php):
+  se usa el del contador; el del revisor solo si el del contador esta vacio-.
+-->
 <div class="bloque-form">
 <div class="titulo-bloque">Contador y Revisor Fiscal</div>
+<p class="text-muted" style="margin-top:-8px; font-size:13px;">
+    Diligencie el que corresponda (basta con uno). El código para firmar la
+    declaración llega al correo que se registre aquí; si se llenan los dos,
+    se usa el del <strong>contador</strong>.
+</p>
+
 <div class="row">
+    <div class="col-md-6">
+        <div style="border:1px solid #E5E7EB; border-radius:8px; padding:14px 16px;">
+            <div style="font-weight:700; font-size:13px; color:var(--erp-primario, #1fa49d); text-transform:uppercase; letter-spacing:.04em; margin-bottom:10px;">
+                Contador
+            </div>
+            <div class="row">
+                <div class="col-md-6 form-group">
+                    <label>Cédula</label>
+                    <input type="text" class="form-control" id="est_Cedula_contador" name="est_Cedula_contador">
+                </div>
+                <div class="col-md-6 form-group">
+                    <label>Tarjeta Profesional</label>
+                    <input type="text" class="form-control" id="est_Tarjeta_profesional" name="est_Tarjeta_profesional">
+                </div>
+                <div class="col-md-12 form-group">
+                    <label>Nombre</label>
+                    <input type="text" class="form-control" id="est_Nombre_contador" name="est_Nombre_contador">
+                </div>
+                <!-- El correo es el destino del codigo de firma: sin el, el
+                     contador no puede firmar la declaracion. -->
+                <div class="col-md-12 form-group mb-0">
+                    <label>Correo</label>
+                    <input type="email" class="form-control" id="ind_EmailContador" name="ind_EmailContador"
+                           placeholder="contador@correo.com">
+                    <small class="form-text text-muted">A este correo llega el código para firmar.</small>
+                </div>
+            </div>
+        </div>
+    </div>
 
-<div class="col-md-4">
-<label>Cédula Contador</label>
-<input type="text" class="form-control" id="est_Cedula_contador" name="est_Cedula_contador">
-</div>
-
-<div class="col-md-4">
-<label>Nombre Contador</label>
-<input type="text" class="form-control" id="est_Nombre_contador" name="est_Nombre_contador">
-</div>
-
-<div class="col-md-4">
-<label>Tarjeta Profesional</label>
-<input type="text" class="form-control" id="est_Tarjeta_profesional" name="est_Tarjeta_profesional">
-</div>
-
-<div class="col-md-4">
-<label>Cédula Revisor</label>
-<input type="text" class="form-control" id="est_Cedula_revisor" name="est_Cedula_revisor">
-</div>
-
-<div class="col-md-4">
-<label>Nombre Revisor</label>
-<input type="text" class="form-control" id="est_Nombre_revisor" name="est_Nombre_revisor">
-</div>
-
-<div class="col-md-4">
-<label>Tarjeta Profesional</label>
-<input type="text" class="form-control" id="est_Tarjeta_profesional_revisor" name="est_Tarjeta_profesional_revisor">
-</div>
-
+    <div class="col-md-6">
+        <div style="border:1px solid #E5E7EB; border-radius:8px; padding:14px 16px;">
+            <div style="font-weight:700; font-size:13px; color:var(--erp-primario, #1fa49d); text-transform:uppercase; letter-spacing:.04em; margin-bottom:10px;">
+                Revisor Fiscal
+            </div>
+            <div class="row">
+                <div class="col-md-6 form-group">
+                    <label>Cédula</label>
+                    <input type="text" class="form-control" id="est_Cedula_revisor" name="est_Cedula_revisor">
+                </div>
+                <div class="col-md-6 form-group">
+                    <label>Tarjeta Profesional</label>
+                    <input type="text" class="form-control" id="est_Tarjeta_profesional_revisor" name="est_Tarjeta_profesional_revisor">
+                </div>
+                <div class="col-md-12 form-group">
+                    <label>Nombre</label>
+                    <input type="text" class="form-control" id="est_Nombre_revisor" name="est_Nombre_revisor">
+                </div>
+                <div class="col-md-12 form-group mb-0">
+                    <label>Correo</label>
+                    <input type="email" class="form-control" id="ind_EmailRevisor" name="ind_EmailRevisor"
+                           placeholder="revisor@correo.com">
+                    <small class="form-text text-muted">Se usa solo si no hay contador registrado.</small>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 </div>
 

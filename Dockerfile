@@ -7,7 +7,15 @@ RUN apt-get update && apt-get install -y \
     apt-transport-https \
     unixodbc-dev \
     libmcrypt-dev \
-    libonig-dev
+    libonig-dev \
+    libpng-dev \
+    libjpeg62-turbo-dev \
+    libfreetype6-dev
+
+# Extension GD: requerida por TCPDF para procesar PNG con canal alfa
+# (escudo/logos institucionales en declaracion.php y liquidacion.php)
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j$(nproc) gd
 
 # Añadir llaves y repositorios de Microsoft para msodbcsql18
 RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \

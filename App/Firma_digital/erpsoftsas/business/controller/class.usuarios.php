@@ -310,28 +310,41 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
     **/
     protected function _recuperarUsuario() {
 
-        if (empty($_POST['email'])) {
+        // La persona se identifica con su NIT o cedula (no con el correo):
+        // es el dato que si recuerda. El correo destino se toma del que ya
+        // tiene registrado en su cuenta.
+        if (empty($_POST['documento'])) {
             $this->_ok = 0;
-            $this->_mensaje = 'Correo no enviado';
+            $this->_mensaje = 'Debe ingresar su NIT o cédula';
             return false;
         }
 
-        $email = trim($_POST['email']);
+        $documento = trim($_POST['documento']);
 
         $_objUsuario = new \erpsoftsas\DAO_Usuario();
-        $_objUsuario->set_usu_Correo($email);
+        $_objUsuario->set_usu_NumeroDocumento($documento);
         $_objUsuario->habilita1ResultadoEnArray();
 
         $usuario = $_objUsuario->consultar();
 
         if (!is_array($usuario) || !count($usuario)) {
             $this->_ok = 0;
-            $this->_mensaje = 'El correo no existe';
+            $this->_mensaje = 'El documento no se encuentra registrado';
             return false;
         }
 
         // Usuario encontrado
         $usuario = $usuario[0];
+
+        // Sin correo registrado no hay a donde enviar la clave temporal.
+        $email = trim((string) $usuario->get_usu_Correo());
+
+        if ($email === '') {
+            $this->_ok = 0;
+            $this->_mensaje = 'La cuenta no tiene un correo registrado. '
+                            . 'Comuníquese con la Secretaría de Hacienda.';
+            return false;
+        }
 
         // Generar clave temporal
         $claveTemporal = substr(str_shuffle('ABCDEFGHJKLMNPQRSTUVWXYZ23456789'), 0, 8);
@@ -354,7 +367,28 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
 
         $this->_ok = 1;
         $this->_mensaje = 'Correo de recuperación enviado';
-        return true;
+
+        // Se devuelve el correo enmascarado para que la persona confirme a
+        // donde llego, sin revelar la direccion completa a quien solo tecleo
+        // un numero de documento.
+        return array('correo' => $this->_enmascararCorreo($email));
+    }
+
+    /**
+     * Convierte "contribuyente@dominio.com" en "co***@dominio.com".
+     */
+    protected function _enmascararCorreo($email)
+    {
+        $partes = explode('@', $email);
+
+        if (count($partes) !== 2) {
+            return '';
+        }
+
+        $usuario = $partes[0];
+        $visible = mb_substr($usuario, 0, 2);
+
+        return $visible . '***@' . $partes[1];
     }
 
      /** Función para enviar el correo de recuperación de contraseña

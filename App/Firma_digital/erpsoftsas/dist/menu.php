@@ -3,7 +3,7 @@ require_once '../business/globals.php';
 include_once('../business/class.sessions.php');
 
 // Cargar configuración del municipio
-$configPath = dirname(dirname(__DIR__)) . '/config.municipio.php';
+$configPath = dirname(__DIR__) . '/config.municipio.php';
 if (file_exists($configPath)) {
     require_once $configPath;
 }
@@ -104,37 +104,13 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 	</div>
 </div>
 
-<div class="right-sidebar">
-	<div class="sidebar-title">
-		<h3 class="weight-600 font-16 text-blue">
-			Configuración Visual
-			<span class="btn-block font-weight-400 font-12">Ajustes de interfaz</span>
-		</h3>
-		<div class="close-sidebar" data-toggle="right-sidebar-close">
-			<i class="icon-copy ion-close-round"></i>
-		</div>
-	</div>
-	<div class="right-sidebar-body customscroll">
-		<div class="right-sidebar-body-content">
-			<h4 class="weight-600 font-18 pb-10">Header Background</h4>
-			<div class="sidebar-btn-group pb-30 mb-10">
-				<a href="javascript:void(0);" class="btn btn-outline-primary header-white active">White</a>
-				<a href="javascript:void(0);" class="btn btn-outline-primary header-dark">Dark</a>
-			</div>
+<!-- El panel lateral "Configuracion Visual" (Header/Sidebar White-Dark y
+     "Reset Settings") venia con la plantilla comprada. En un portal
+     tributario municipal no aporta nada -y deja cambiar los colores
+     institucionales-, asi que se retira. layout-settings.js sigue
+     cargando sin problema: sus selectores simplemente no encuentran
+     nada y no hacen nada. -->
 
-			<h4 class="weight-600 font-18 pb-10">Sidebar Background</h4>
-			<div class="sidebar-btn-group pb-30 mb-10">
-				<a href="javascript:void(0);" class="btn btn-outline-primary sidebar-light ">White</a>
-				<a href="javascript:void(0);" class="btn btn-outline-primary sidebar-dark active">Dark</a>
-			</div>
-
-			<div class="reset-options pt-30 text-center">
-				<button class="btn btn-danger" id="reset-settings">Reset Settings</button>
-			</div>
-		</div>
-	</div>
-</div>
- 
 <!-- ========== SIDEBAR / MENÚ LATERAL ========== -->
 <div class="left-side-bar">
 	<div class="menu-block customscroll" style="padding-bottom: 150px;">
@@ -145,7 +121,7 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 				<!-- INICIO -->
 				<li class="dropdown" id="MInicio">
 					<a href="dashboard.php" class="dropdown-toggle no-arrow">
-						<span class="micon dw dw-house-1"></span>
+						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>
 						<span class="mtext">Inicio</span>
 					</a>
 				</li>
@@ -153,14 +129,14 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 				<!-- CONSULTAS EXTERNAS -->
 				<li class="dropdown" id="MConsultasExternas">
 					<a href="javascript:;" class="dropdown-toggle">
-						<span class="micon fa fa-search"></span>
+						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
 						<span class="mtext">Impuesto Predial</span>
 					</a>
 
 					<ul class="submenu" id="SubConsultasExternas">
 						<li class="menu_1035">
 							<a  id="ConsultasPazYSalvo" onclick="menu.validarIngreso(1035,100)">
-								<i class="fa fa-check-circle submenu-icon"></i> Consultas Paz y Salvo
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></i> Consultas Paz y Salvo
 							</a>
 						</li>
 					</ul>
@@ -169,7 +145,7 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 				<!-- ICA ALCALDÍA → ADMINISTRACIÓN ICA -->
 				<li class="dropdown" id="MICAAlcaldia">
 					<a href="javascript:;" class="dropdown-toggle">
-						<span class="micon fa fa-institution"></span>
+						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></span>
 						<span class="mtext">Administración ICA</span>
 					</a>
 
@@ -177,31 +153,31 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 						<!-- DATOS BASICOS -->
 						<li class="dropdown" id="MICA_DatosBasicos">
 							<a href="javascript:;" class="dropdown-toggle">
-								<i class="fa fa-folder-open submenu-icon"></i> Datos Básicos
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></i> Datos Básicos
 							</a>
 
 							<ul class="submenu" id="SubICA_DatosBasicos">
 								<li class="menu_1639">
 									<a id="ICA_Contribuyentes" onclick="menu.validarIngreso(1639,4)">
-										<i class="fa fa-users submenu-icon"></i> Contribuyentes
+										<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></i> Contribuyentes
 									</a>
 								</li>
 
 								<li class="menu_1639">
 									<a id="ICA_Actividades" onclick="menu.validarIngreso(1639,3)">
-										<i class="fa fa-briefcase submenu-icon"></i> Actividades Comercio
+										<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></i> Actividades Comercio
 									</a>
 								</li>
 
 								<li class="menu_1639">
 									<a id="ICA_Conceptos" onclick="menu.validarIngreso(1639,6)">
-										<i class="fa fa-tags submenu-icon"></i> Conceptos
+										<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></i> Conceptos
 									</a>
 								</li>
 
 								<li class="menu_1639">
 									<a id="ICA_GrupoTarifario" onclick="menu.validarIngreso(1639,5)">
-										<i class="fa fa-list-alt submenu-icon"></i> Grupo Tarifario
+										<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></i> Grupo Tarifario
 									</a>
 								</li>
 
@@ -211,13 +187,13 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 						<!-- PROCESOS -->
 						<li class="dropdown" id="MICA_Procesos">
 							<a href="javascript:;" class="dropdown-toggle">
-								<i class="fa fa-industry submenu-icon"></i> Procesos
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></i> Procesos
 							</a>
 
 							<ul class="submenu" id="SubICA_Procesos">
 								<li class="menu_1640">
 									<a id="ICA_Establecimientos" onclick="menu.validarIngreso(1640,7)">
-										<i class="fa fa-building submenu-icon"></i> Establecimientos
+										<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><line x1="9" y1="9" x2="9" y2="9.01"/><line x1="9" y1="13" x2="9" y2="13.01"/><line x1="9" y1="17" x2="9" y2="17.01"/><line x1="15" y1="9" x2="15" y2="9.01"/><line x1="15" y1="13" x2="15" y2="13.01"/><line x1="15" y1="17" x2="15" y2="17.01"/></svg></i> Establecimientos
 									</a>
 								</li>
 							</ul>
@@ -228,7 +204,7 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 				<!-- ICA WEB → INDUSTRIA Y COMERCIO -->
 				<li class="dropdown" id="MICAWeb">
 					<a href="javascript:;" class="dropdown-toggle">
-						<span class="micon fa fa-building"></span>
+						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>
 						<span class="mtext">Industria y Comercio</span>
 					</a>
 
@@ -236,19 +212,19 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 
 						<li class="menu_1641">
 							<a id="ICAWeb_RIT" onclick="menu.validarIngreso(1641,101)">
-								<i class="fa fa-id-card submenu-icon"></i> RIT
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="7" y1="16" x2="13" y2="16"/></svg></i> RIT
 							</a>
 						</li>
 
 						<li class="menu_1641">
 							<a id="ICAWeb_Presentar" onclick="menu.validarIngreso(1641,103)">
-								<i class="fa fa-file-text submenu-icon"></i> Presentar Declaración
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></i> Presentar Declaración
 							</a>
 						</li>
 
 						<li class="menu_1641">
 							<a id="ICAWeb_Declaraciones" onclick="menu.validarIngreso(1641,102)">
-								<i class="fa fa-search submenu-icon"></i>
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></i>
 								Consultar Declaraciones
 							</a>
 						</li>
@@ -259,7 +235,7 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 				<!-- RETE ICA → RETENCIÓN ICA -->
 				<li class="dropdown" id="MReteICA">
 					<a href="javascript:;" class="dropdown-toggle">
-						<span class="micon fa fa-balance-scale"></span>
+						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M8 3h8M5 8l-3 6a4 4 0 0 0 8 0z"/><path d="M19 8l-3 6a4 4 0 0 0 8 0z"/><path d="M3 8h5M16 8h5"/></svg></span>
 						<span class="mtext">Retención ICA</span>
 					</a>
 
@@ -267,14 +243,14 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 
 						<li class="menu_1643">
 							<a id="ReteICA_Declaraciones" onclick="menu.validarIngreso(1643,104)">
-								<i class="fa fa-search submenu-icon"></i>
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></i>
 								Consultar Declaraciones
 							</a>
 						</li>
 
 						<li class="menu_1643">
 							<a id="ReteICA_Presentar" onclick="menu.validarIngreso(1643,105)">
-								<i class="fa fa-file-text submenu-icon"></i> Presentar Declaración
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></i> Presentar Declaración
 							</a>
 						</li>
 
@@ -284,7 +260,7 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 				<!-- AUTO RETENCION → AUTO RETENCIÓN ICA -->
 				<li class="dropdown" id="MAutoretencion">
 					<a href="javascript:;" class="dropdown-toggle">
-						<span class="micon fa fa-percent"></span>
+						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg></span>
 						<span class="mtext">Auto Retención ICA</span>
 					</a>
 
@@ -292,13 +268,13 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 
 						<li class="menu_1644">
 							<a id="AutoRet_Declaraciones" onclick="menu.validarIngreso(1644,106)">
-								<i class="fa fa-search submenu-icon"></i> Consultar Declaraciones
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></i> Consultar Declaraciones
 							</a>
 						</li>
 
 						<li class="menu_1644">
 							<a id="AutoRet_Presentar" onclick="menu.validarIngreso(1644,107)">
-								<i class="fa fa-file-text submenu-icon"></i> Presentar Declaración
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></i> Presentar Declaración
 							</a>
 						</li>
 
@@ -308,20 +284,20 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 				<!-- CONFIGURACION -->
 				<li class="dropdown" id="MConfig">
 					<a href="javascript:;" class="dropdown-toggle">
-						<span class="micon dw dw-settings"></span>
+						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
 						<span class="mtext">Configuración</span>
 					</a>
 
 					<ul class="submenu" id="SubConfig">
 						<li class="menu_26">
 							<a id="Config_Usuarios" onclick="menu.validarIngreso(26,1)">
-								<i class="fa fa-user-circle submenu-icon"></i> Usuarios
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.5a5 5 0 0 1 10 0"/></svg></i> Usuarios
 							</a>
 						</li>
 
 						<li class="menu_11">
 							<a id="Config_Roles" onclick="menu.validarIngreso(11,2)">
-								<i class="fa fa-key submenu-icon"></i> Roles
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="15" r="4"/><path d="M10.5 11.5L21 1"/><path d="M16 6l3 3"/><path d="M19 3l3 3"/></svg></i> Roles
 							</a>
 						</li>
 					</ul>
@@ -467,36 +443,32 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 
 	
 <style>
-/* Estilos para resaltar el menú activo */
-	/* Nivel 2 (Datos Básicos, Procesos) */
+/* Estilos para resaltar el menú activo
+   Antes el sangrado de cada nivel se hacia con padding-left en el <ul>
+   del submenu (18px, +24px mas en el nivel 3), lo que ENCOGE la caja
+   del <a> solo por la izquierda: su fondo de hover/activo terminaba
+   pegado al borde derecho pero con un hueco a la izquierda, y por eso
+   el resaltado de "Presentar Declaración" se veia como una pildora
+   descuadrada en vez de una barra completa. Ahora el <ul> solo aporta
+   un respiro simetrico (mismo padding a ambos lados) y TODO el sangrado
+   jerarquico vive en el padding-left del propio <a>, que no encoge su
+   caja: el fondo de hover/activo siempre llena el ancho completo. */
 	.sidebar-menu .submenu {
-		padding-left: 18px !important;
+		padding: 4px 6px !important;
 	}
 
-	/* Nivel 3 (Contribuyentes, Actividades, etc) */
-	.sidebar-menu .submenu .submenu {
-		padding-left: 24px !important;
-	}
-
-	/* Alinear íconos más a la derecha para escalera visual */
 	.sidebar-menu .submenu a {
-		padding-left: 12px !important;
+		padding-left: 26px !important;
 	}
 
 	.sidebar-menu .submenu .submenu a {
-		padding-left: 20px !important;
+		padding-left: 40px !important;
 	}
 
 	/* Quitar guiones del nivel 3 */
 	.sidebar-menu ul.submenu li a:before {
 		display: none !important;
 	}
-
-
-	/* Nivel 2 */
-.sidebar-menu > ul > li > ul.submenu {
-    padding-left: 18px !important;
-}
 
 /* =========================================================
    PALETA INSTITUCIONAL
@@ -567,6 +539,24 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 	transition: color .15s ease;
 }
 
+/* Iconos SVG (estilo trazo, como el mockup aprobado) en vez de
+   Font Awesome: .micon/.submenu-icon ya estaban posicionados para
+   iconos de fuente, asi que el SVG toma su tamano explicitamente. */
+.sidebar-menu .micon svg {
+	width: 19px;
+	height: 19px;
+	stroke: currentColor;
+	display: block;
+}
+
+.sidebar-menu .submenu-icon svg {
+	width: 15px;
+	height: 15px;
+	stroke: currentColor;
+	display: inline-block;
+	vertical-align: -3px;
+}
+
 .sidebar-menu .dropdown-toggle:hover {
 	background: rgba(255, 255, 255, .14) !important;
 	color: #FFFFFF !important;
@@ -589,6 +579,29 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 	box-shadow: inset 3px 0 0 #FFFFFF;
 }
 
+/* Submenu ABIERTO: antes solo el link del padre cambiaba un poco de
+   tono (rgba blanco 22%), facil de pasar por alto sobre un sidebar que
+   ya es todo teal. Ahora todo el bloque (padre + hijos) pasa a un teal
+   solido mas oscuro, para que se note de inmediato en cual seccion
+   estas sin tener que leer el texto. */
+.sidebar-menu li.dropdown.show {
+	background: var(--erp-oscuro);
+	border-radius: 8px;
+	margin: 2px 10px;
+}
+
+.sidebar-menu li.dropdown.show > .dropdown-toggle {
+	margin: 0;
+	background: transparent !important;
+}
+
+.sidebar-menu li.dropdown.show > .submenu {
+	background: rgba(0, 0, 0, .14);
+	border-radius: 0 0 8px 8px;
+	padding-top: 4px;
+	padding-bottom: 4px;
+}
+
 /* Submenús: un punto de jerarquía por debajo, sin gritar */
 .sidebar-menu .submenu a {
 	font-size: 13px;
@@ -600,6 +613,13 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 	color: #FFFFFF !important;
 	background: rgba(255, 255, 255, .10) !important;
 	border-radius: 6px;
+}
+
+.sidebar-menu .submenu a.active {
+	color: #FFFFFF !important;
+	background: rgba(255, 255, 255, .18) !important;
+	border-radius: 6px;
+	font-weight: 600;
 }
 
 .sidebar-menu .submenu .submenu-icon {
@@ -614,9 +634,19 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 	margin-bottom: 2px;
 }
 
-/* La flecha del desplegable estaba muy marcada */
+/* La flecha del desplegable indica si un item se puede abrir y si ya
+   esta abierto (chevron abajo/arriba). Antes quedaba casi invisible al
+   45% de opacidad, que era precisamente lo que hacia dificil notar que
+   el menu se podia desplegar. */
 .sidebar-menu ul li.dropdown > a:after {
-	opacity: .45;
+	opacity: .85;
+	font-size: 13px;
+	transition: opacity .15s ease;
+}
+
+.sidebar-menu ul li.dropdown > a:hover:after,
+.sidebar-menu ul li.dropdown.show > a:after {
+	opacity: 1;
 }
 
 /* ================== ESTADO COLLAPSED (SIDEBAR-SHRINK) ================== */
@@ -708,15 +738,26 @@ body.sidebar-shrink #btnMenuSidebar {
 }
 
 .data-table .btn-sm {
-	padding: 8px 12px !important;
+	width: 32px !important;
+	height: 32px !important;
+	padding: 0 !important;
+	display: inline-flex !important;
+	align-items: center;
+	justify-content: center;
 	font-size: 14px !important;
-	border-radius: 6px !important;
+	border-radius: 8px !important;
 	margin: 2px !important;
 	box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+	transition: transform .12s ease, box-shadow .12s ease;
+}
+
+.data-table .btn-sm:hover:not(:disabled) {
+	transform: scale(1.08);
+	box-shadow: 0 4px 8px rgba(0,0,0,0.15);
 }
 
 .data-table .btn-sm i {
-	font-size: 16px !important;
+	font-size: 15px !important;
 }
 
 table.dataTable.stripe tbody tr.odd {
@@ -724,6 +765,175 @@ table.dataTable.stripe tbody tr.odd {
 }
 table.dataTable tbody tr:hover {
 	background-color: #f4f8f8 !important;
+}
+
+/* =========================================================
+   ESTADO DE LA DECLARACION
+   El color nunca viaja solo: cada estado lleva punto + texto,
+   para que se siga entendiendo impreso en blanco y negro o
+   por alguien con daltonismo.
+   ========================================================= */
+.chip-estado {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 1;
+	padding: 5px 11px 5px 9px;
+	border-radius: 999px;
+	border: 1px solid;
+	white-space: nowrap;
+}
+
+.chip-estado::before {
+	content: "";
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: currentColor;
+	flex: none;
+}
+
+.chip-estado.est-borrador   { color: #6B7280; border-color: #D1D5DB; background: #F9FAFB; }
+.chip-estado.est-firmada    { color: var(--erp-primario-hover); border-color: var(--erp-primario); background: var(--erp-primario-suave); }
+.chip-estado.est-presentada { color: #1B6E45; border-color: #1B6E45; background: #ECFDF3; }
+.chip-estado.est-pagada     { color: #14532D; border-color: #14532D; background: #DCFCE7; }
+
+/* =========================================================
+   BARRA DE PROGRESO DEL TRAMITE
+   ========================================================= */
+.stepper-tramite {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin: 0 0 14px;
+}
+
+.stepper-tramite .paso {
+	flex: 1 1 110px;
+	min-width: 100px;
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	padding: 7px 10px;
+	border: 1px solid #E5E7EB;
+	border-radius: 6px;
+	background: #FFFFFF;
+	font-size: 12.5px;
+}
+
+.stepper-tramite .paso-n {
+	width: 19px;
+	height: 19px;
+	flex: none;
+	border-radius: 50%;
+	background: #E5E7EB;
+	color: #6B7280;
+	font-size: 11px;
+	font-weight: 700;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.stepper-tramite .paso-t { font-weight: 500; color: #6B7280; }
+
+.stepper-tramite .paso.done {
+	border-color: var(--erp-primario-borde);
+	background: var(--erp-primario-suave);
+}
+.stepper-tramite .paso.done .paso-n {
+	background: var(--erp-primario);
+	color: #FFFFFF;
+}
+.stepper-tramite .paso.done .paso-t { color: var(--erp-primario-hover); font-weight: 600; }
+
+.stepper-tramite .paso.now {
+	border-color: var(--erp-primario);
+	border-width: 2px;
+	padding: 6px 9px;
+	box-shadow: 0 0 0 3px rgba(31, 164, 157, .13);
+}
+.stepper-tramite .paso.now .paso-n {
+	background: var(--erp-primario);
+	color: #FFFFFF;
+}
+.stepper-tramite .paso.now .paso-t { color: var(--erp-texto); font-weight: 700; }
+
+.stepper-tramite .paso.todo { opacity: .55; }
+
+/* =========================================================
+   FILTROS DEL LISTADO DE DECLARACIONES
+   ========================================================= */
+.filtros-declaraciones {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: 12px;
+	padding: 12px 14px;
+	margin-bottom: 14px;
+	background: #F9FAFB;
+	border: 1px solid #E5E7EB;
+	border-radius: 6px;
+}
+
+.filtros-declaraciones .campo { display: flex; flex-direction: column; gap: 4px; }
+
+.filtros-declaraciones label {
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: .04em;
+	text-transform: uppercase;
+	color: var(--erp-texto-tenue);
+	margin: 0;
+}
+
+.filtros-declaraciones select {
+	min-width: 140px;
+	height: 34px;
+	font-size: 13px;
+	padding: 0 8px;
+	border: 1px solid #D1D5DB;
+	border-radius: 5px;
+	background: #FFFFFF;
+	color: var(--erp-texto);
+}
+
+.filtros-declaraciones .conteo {
+	margin-left: auto;
+	font-size: 12.5px;
+	color: var(--erp-texto-tenue);
+}
+
+/* =========================================================
+   ESTADOS VACIOS / DE ERROR
+   ========================================================= */
+.estado-vacio {
+	padding: 34px 20px;
+	text-align: center;
+	color: var(--erp-texto-tenue);
+}
+.estado-vacio .ev-icono { font-size: 30px; opacity: .35; margin-bottom: 10px; }
+.estado-vacio .ev-titulo {
+	font-size: 14.5px;
+	font-weight: 600;
+	color: var(--erp-texto);
+	margin-bottom: 4px;
+}
+.estado-vacio .ev-texto { font-size: 13px; max-width: 380px; margin: 0 auto; }
+.estado-vacio.es-error .ev-icono,
+.estado-vacio.es-error .ev-titulo { color: #B4341F; opacity: 1; }
+
+/* Texto solo para lectores de pantalla */
+.sr-only {
+	position: absolute;
+	width: 1px; height: 1px;
+	padding: 0; margin: -1px;
+	overflow: hidden;
+	clip: rect(0,0,0,0);
+	white-space: nowrap;
+	border: 0;
 }
 
 </style>

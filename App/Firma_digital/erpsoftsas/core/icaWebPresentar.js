@@ -58,6 +58,12 @@ class Establecimientos {
 
         $("#establecimientosRegistrados").DataTable().destroy();
         $("#bodyEstablecimientosRegistrados").empty();
+
+        // Se guarda para que pintarAccionesDeclaracionContribuyente() tenga
+        // un establecimiento de referencia al crear la primera declaracion
+        // (solo para auditoria; la declaracion en si es del contribuyente).
+        establecimientos._ultimoListado = arrFilter;
+
         for (let dep of arrFilter) {
             if (dep.est_Activos == 1) {
                 var icono = "dw dw-checked";
@@ -84,10 +90,15 @@ class Establecimientos {
                 }
 
 
+                // Sin columna de Acciones: la declaracion es UNA por
+                // contribuyente (no por establecimiento), asi que sus
+                // botones ya no se repiten en cada fila -viven una sola vez
+                // en la barra de arriba, ver pintarAccionesDeclaracionContribuyente()-.
+                // Esta fila solo describe el establecimiento en si.
                 $('#bodyEstablecimientosRegistrados').append(
                     '<tr>' +
                     '<td>' +
-                    dep.est_Nombre + 
+                    dep.est_Nombre +
                     '</td>' +
                     '<td>' +
                     dep.strNombreContribuyente +
@@ -98,41 +109,73 @@ class Establecimientos {
                     '<td>' +
                     dep.est_Direccion +
                     '</td>' +
-                    '<td align="center" style="white-space:nowrap;">' +
-                    
-/*                   
-                    '<button type="button" class="btn btn-warning btn-sm mr-1" ' +
-                        'data-toggle="tooltip" title="Editar Establecimiento" ' +
-                        'onclick="establecimientos.editarEstablecimiento(' + dep.est_Id + ')">' +
-                        '<i class="fa fa-pencil"></i>' +
-                    '</button>' +                                     
-                    soporteRit +
-*/
-                        '<button type="button" class="btn btn-primary btn-sm mr-1" ' +
-                            'data-toggle="tooltip" title="Crear Declaración" ' +
-                            'onclick="establecimientos.crearDeclaracion(' + dep.est_Id + ',' + dep.est_IdContribuyente + ')">' +
-                            '<i class="fa fa-file-text-o"></i>' +
-                        '</button>' +
-
-                        // Acciones de la ULTIMA declaracion. Antes esto era una
-                        // lupa que abria un modal, redundante con la pantalla de
-                        // Consultar Declaraciones. Se pintan ya deshabilitadas y
-                        // pintarAccionesUltima() las activa al llegar el dec_Id,
-                        // para que la columna nunca se vea vacia.
-                        '<span class="acciones-ultima" data-est="' + dep.est_Id + '">' +
-                            establecimientos.htmlAcciones(null) +
-                        '</span>' +
-
-
-                    '</td>'+
-
                     '</tr>'
                 );
-            
+
         }
-    
+
         establecimientos.init_table();
-        establecimientos.pintarAccionesUltima();
+
+        // Todos los establecimientos listados aqui son del MISMO
+        // contribuyente (la pantalla siempre filtra por idContribuyente),
+        // asi que basta con pintar la barra de declaracion una vez.
+        establecimientos.pintarAccionesDeclaracionContribuyente();
+    }
+
+
+    /**
+     * Barra unica (arriba de la tabla) con el estado y las acciones de la
+     * declaracion DEL CONTRIBUYENTE actual. Reemplaza lo que antes era un
+     * boton "Crear Declaración" + un cluster de acciones repetido en CADA
+     * fila de establecimiento -con 2 o 3 establecimientos, la misma
+     * declaracion aparecia 2 o 3 veces, dando la impresion de que cada
+     * establecimiento tenia la suya propia, cuando en realidad es una sola-.
+     */
+    pintarAccionesDeclaracionContribuyente() {
+
+        var $barra = $('#barraDeclaracionContribuyente');
+        var $chip = $('#chipDeclaracionContribuyente');
+        var $acciones = $('#accionesDeclaracionContribuyente');
+
+        if (!idContribuyente) { $barra.hide(); return; }
+
+        $barra.show();
+        $chip.html('<i class="fa fa-spinner fa-spin text-muted"></i>');
+        $acciones.empty();
+
+        $.ajax({
+            url: '../business/controller/class.declaracionesICA.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { funcion: 8, dec_IdContribuyente: idContribuyente },
+            success: function (resp) {
+
+                var hayDeclaracion = resp.ok == 1 && Array.isArray(resp.datos) && resp.datos.length > 0;
+                var ultima = hayDeclaracion ? resp.datos[0] : null;
+
+                $chip.html(hayDeclaracion ? DeclaracionesUI.chipEstado(ultima) : '<span class="text-muted">Sin declaración para este período</span>');
+
+                if (hayDeclaracion) {
+                    $acciones.html(DeclaracionesUI.htmlAcciones(ultima, 'establecimientos'));
+                } else {
+                    // Sin declaracion todavia: el unico boton posible es
+                    // crearla. No hace falta un establecimiento especifico
+                    // -la declaracion es del contribuyente-, pero se manda
+                    // el primero solo como referencia de auditoria.
+                    var filas = establecimientos._ultimoListado || [];
+                    var primerEst = filas.length ? filas[0].est_Id : '';
+                    $acciones.html(
+                        '<button type="button" class="btn btn-primary btn-sm" ' +
+                            'onclick="establecimientos.crearDeclaracion(' + (primerEst || 'null') + ', ' + idContribuyente + ')">' +
+                            '<i class="fa fa-file-text-o"></i> Crear Declaración' +
+                        '</button>'
+                    );
+                }
+            },
+            error: function () {
+                $chip.html('<span class="text-danger">No se pudo cargar</span>');
+            }
+        });
     }
 
 
@@ -144,42 +187,6 @@ class Establecimientos {
      */
     htmlAcciones(d) {
         return DeclaracionesUI.htmlAcciones(d, 'establecimientos');
-    }
-
-
-    /**
-     * Activa, en la columna Acciones de cada establecimiento, las acciones
-     * de su ULTIMA declaracion. Se consulta por establecimiento porque el
-     * listado de establecimientos no trae informacion de declaraciones.
-     */
-    pintarAccionesUltima() {
-
-        $('.acciones-ultima').each(function () {
-
-            var $celda = $(this);
-            var idEst = $celda.data('est');
-
-            if (!idEst || idEst === 'null') { return; }
-
-            $.ajax({
-                url: '../business/controller/class.declaracionesIca.php',
-                type: 'POST',
-                dataType: 'json',
-                data: {
-                    funcion: 8,
-                    dec_IdEstablecimiento: idEst
-                },
-                success: function (resp) {
-
-                    if (resp.ok != 1 || !Array.isArray(resp.datos) || resp.datos.length === 0) {
-                        return; // se quedan las acciones deshabilitadas ya pintadas
-                    }
-
-                    // resp.datos[0] es la ultima declaracion realizada
-                    $celda.html(establecimientos.htmlAcciones(resp.datos[0]));
-                }
-            });
-        });
     }
 
 
@@ -522,7 +529,12 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
             $('#wrapper').removeClass('body-load');
 
             if(arr.ok != 1){
-                swal("Error","No se pudo crear la declaración","error");
+                // El backend ya distingue casos reales (p.ej. "esta
+                // declaración ya fue presentada, genere una corrección") de
+                // errores genericos: mostrar SU mensaje en vez de uno fijo
+                // evita que el usuario vea "no se pudo crear" sin saber por
+                // que, cuando el sistema si sabe la razon exacta.
+                swal("Error", arr.mensaje || "No se pudo crear la declaración", "error");
                 return;
             }
 
@@ -530,7 +542,10 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
 
             console.log(d.dec_Id);
 
-            establecimientos.cargarActividades(idEstablecimiento);
+            // Las actividades se cargan del CONTRIBUYENTE (agregadas de
+            // todos sus establecimientos), no de este establecimiento en
+            // particular: la declaracion es una sola por contribuyente.
+            establecimientos.cargarActividadesContribuyente(idContribuyente);
 
             $("#numDeclaracion").val(d.dec_Id);
             $("#anioDeclaracion").val(d.dec_AnioDeclaracion);
@@ -544,8 +559,13 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
             $("#modal-CrearDeclaracion")
             .data("idDeclaracion", d.dec_Id);
 
-            $("#btnValidarDeclaracion").prop("disabled", false);
-            $("#btnGenerarOficial").prop("disabled", true);
+            // "Finalizar Declaración" (antes "Validar") es la primera accion
+            // disponible al crear: nace habilitado. Quedaba deshabilitado
+            // por una linea heredada de cuando existia un boton "Validar"
+            // aparte que lo habilitaba a el -ese boton ya no esta en el
+            // formulario, asi que nada volvia a habilitarlo nunca y la
+            // liquidacion completa quedaba imposible de guardar.
+            $("#btnGenerarOficial").prop("disabled", false);
 
               // 🔥 AQUÍ ESTÁ LA CLAVE
             $("#btnDescargarPDF")
@@ -555,6 +575,9 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
                     "window.open('../extensiones/declaracion.php?dec_Id=" + d.dec_Id + "', '_blank')"
                 );
 
+
+            // Declaracion recien creada: el progreso arranca en "Liquidar".
+            $('#stepperDeclaracion').html(DeclaracionesUI.stepperHtml(d));
 
             $('#modal-CrearDeclaracion').modal({
                 backdrop:'static',
@@ -657,7 +680,7 @@ consultarDeclaraciones(idEstablecimiento) {
             ],
             "language": {
                 'decimal': '',
-                'emptyTable': 'Establecimientos registrados',
+                'emptyTable': 'No hay establecimientos registrados',
                 "info": 'Mostrando _START_ a _END_ de _TOTAL_ Entradas',
                 'infoEmpty': 'Mostrando 0 to 0 of 0 Entradas',
                 'infoFiltered': '(Filtrado de _MAX_ total entradas)',
@@ -688,7 +711,16 @@ consultarDeclaraciones(idEstablecimiento) {
      * getDependencia: Método para consultar conceptos
      */
     getEstablecimientos() {
-        
+
+        // Antes la tabla se quedaba completamente vacia (sin ninguna fila)
+        // mientras llegaba la respuesta, lo que se sentia como una pantalla
+        // rota en vez de "cargando".
+        $("#bodyEstablecimientosRegistrados").html(
+            '<tr><td colspan="4" class="text-center text-muted py-4">' +
+                '<i class="fa fa-spinner fa-spin"></i> Cargando establecimientos...' +
+            '</td></tr>'
+        );
+
         $.ajax({
             url: '../business/controller/class.establecimientos.php',
             data: { funcion: 3 , est_IdContribuyente : idContribuyente },
@@ -701,12 +733,18 @@ consultarDeclaraciones(idEstablecimiento) {
                     $("#bodyEstablecimientosRegistrados").empty();
                     establecimientos.draw_table_documents(arr.datos);
                 } else {
+                    $("#bodyEstablecimientosRegistrados").empty();
                     $("#establecimientosRegistrados").DataTable().destroy();
                     establecimientos.init_table();
                 }
             },
             error: function(XMLHttpRequest, textStatus, errorThrown) {
                 console.log('Este es el error', XMLHttpRequest, textStatus, errorThrown);
+                $("#bodyEstablecimientosRegistrados").html(
+                    '<tr><td colspan="4" class="text-center text-danger py-4">' +
+                        '<i class="fa fa-exclamation-triangle"></i> No se pudieron cargar los establecimientos. Intenta de nuevo.' +
+                    '</td></tr>'
+                );
             }
         });
     }
@@ -1208,6 +1246,90 @@ calcularIngresos(){
 
 
     
+    /**
+     * Actividades del CONTRIBUYENTE para la declaracion (agregadas de
+     * todos sus establecimientos, sin repetir CIIU). Pinta la misma
+     * #tbodyActividades que antes llenaba cargarActividades(), asi que el
+     * resto del formulario (calculo de totales, guardado) no cambia.
+     */
+    cargarActividadesContribuyente(idContribuyente){
+
+        $.ajax({
+
+            url:'../business/controller/class.declaracionesIca.php',
+            type:'POST',
+            dataType:'json',
+
+            data:{
+                funcion:12,
+                dec_IdContribuyente:idContribuyente
+            },
+
+            success:function(arr){
+
+                $("#tbodyActividades").empty();
+
+                if(arr.ok != 1){
+                    if (arr.mensaje) {
+                        swal({
+                            type: 'warning',
+                            title: 'Sin actividades',
+                            text: arr.mensaje
+                        });
+                    }
+                    return;
+                }
+
+                arr.datos.forEach(function(a){
+
+                    // n_establecimientos es informativo: en cuantos locales
+                    // del contribuyente aplica esta actividad.
+                    var etiquetaLocales = a.n_establecimientos > 1
+                        ? ' <small class="text-muted">(' + a.n_establecimientos + ' establecimientos)</small>'
+                        : '';
+
+                    $("#tbodyActividades").append(`
+
+                        <tr>
+
+                            <td>
+                                ${a.acc_Codigo} - ${a.acc_Nombre}${etiquetaLocales}
+                                <input type="hidden"
+                                class="actividad-id"
+                                value="${a.ace_IdCodigoActividad}">
+                            </td>
+
+                            <td>
+                                <input type="text"
+                                class="form-control base-gravable"
+                                value="0">
+                            </td>
+
+                            <td>
+                                <input type="text"
+                                class="form-control tarifa"
+                                value="${a.acc_Tarifa}"readonly>
+                            </td>
+
+                            <td>
+                                <input type="text"
+                                class="form-control impuesto"
+                                readonly
+                                value="0">
+                            </td>
+
+                        </tr>
+
+                    `);
+
+                });
+
+            }
+
+        });
+    }
+
+
    cargarActividades(idEstablecimiento){
 
     $.ajax({
@@ -1454,7 +1576,17 @@ $(document).on("change", ".campo-total", function(){
 
     let valor = $(this).val();
     let numeroCampo = $(this).attr("numeroCampo");
-    
+
+    // Los 9 campos de "Totales" (ingresos, arriba del formulario) comparten
+    // la clase .campo-total con los de "Liquidación Privada" (renglones
+    // 20+, abajo) pero NO tienen numeroCampo -no mapean a una columna
+    // dec_ValorConceptoN via el SP de liquidacion-. Sin este guard, cambiar
+    // cualquiera de esos 9 campos disparaba un UPDATE a la columna literal
+    // "dec_ValorConcepto" (sin numero), que no existe, y tronaba con "No se
+    // pudieron guardar las actividades". Esos totales SI se guardan bien:
+    // junto con las actividades, al presionar "Finalizar Declaración".
+    if (!numeroCampo) { return; }
+
     establecimientos.actualizarDeclaracionIca(valor, numeroCampo);
 
 });
@@ -1550,77 +1682,19 @@ $("#btnCrearDeclaracion").off("click").on("click", function () {
 
 });
 
-$("#btnGenerarOficial").off("click").on("click", function () {
-
-
-       swal({
-                type: 'success',
-                title: 'Declaración Actualizada',
-                text: 'Puede proceder a firmarla en el boton de consulta.'
-            });
-
-    
-
-        $('#modal-CrearDeclaracion').modal('hide');
-
-    /*
-    swal({
-        title: 'Declaración con pago',
-        text: '¿La declaración se genera con pago?',
-        type: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Sí',
-        cancelButtonText: 'No',
-        confirmButtonColor: '#28a745',
-        cancelButtonColor: '#6c757d'
-    }).then((result) => {
-
-        // result.value === true  → Sí
-        // result.dismiss === 'cancel' → No
-
-        const conPago = result.value === true ? 1 : 0;
-
-        // Aquí luego puedes guardar conPago en BD si lo necesitas
-        // ejemplo: estado_pago = conPago
-
-        $('#modal-CrearDeclaracion').modal('hide');
-
-        swal({
-            type: 'warning',
-            title: 'Declaración Liquidada Exitosamente',
-            text:  'Para la PRESENTACIÓN y PAGO de la Declaración diríjase a las entidades financieras o realice transferecia bancaria y envíe los respectivos soportes al correo: impuestos@paipa-boyaca.gov.co.',
-            confirmButtonText: 'Entendido'
-        });
-
-    });
-*/
-
-
-
-
-
-});
-
 /*
-$("#btnValidarDeclaracion").on("click", function () {
-
-     if(!establecimientos.validarBasesActividades()){
-        return;
-    }
-    $("#btnDescargarPDF").prop("disabled", false);
-    $("#btnGenerarOficial").prop("disabled", false);
-
-    swal({
-        type: 'success',
-        title: 'Liquidación realizada',
-        text: 'Cálculos aplicados correctamente'
-    });
-
-   
-});
-*/
-
-$("#btnValidarDeclaracion").off("click").on("click", function () {
+ * Guarda la liquidacion completa (totales + actividades) y ejecuta el SP
+ * de calculo.
+ *
+ * Antes este boton ("Finalizar Declaración") no guardaba nada: solo
+ * mostraba un mensaje de exito falso y cerraba el modal. La logica real
+ * -construir totales/actividades y llamar a funcion 6- estaba escrita mas
+ * abajo pero atada a "#btnValidarDeclaracion", un boton que ya no existe
+ * en el formulario (quedo huerfano en un rediseño anterior del encabezado
+ * del modal). El usuario podia liquidar una declaracion completa, cerrar
+ * el modal creyendo que quedo guardada, y perder todo lo que escribio.
+ */
+$("#btnGenerarOficial").off("click").on("click", function () {
 
     if(!establecimientos.validarBasesActividades()){
         return;
@@ -1771,104 +1845,116 @@ $(document).on("change", "input[name='tipoSancion']", function(){
 // FUNCIONES DE FIRMA DIGITAL Y DECLARACIONES
 // ==========================================
 
+// Abre el mismo formulario de "Crear Declaración" pero pre-cargado con la
+// declaracion existente, lista para modificarla. Antes esto era un aviso
+// de "disponible próximamente": no habia ninguna forma real de editar.
 establecimientos.editarDeclaracion = function(dec_Id) {
-    swal('Atención', 'La función de edición de declaraciones estará disponible próximamente.', 'info');
+    EditarDeclaracion.abrir(dec_Id);
 };
 
 establecimientos.abrirFirmaDigital = function(dec_Id, idEstablecimiento) {
-    swal({
-        title: 'Generando Código OTP',
-        text: 'Por favor espere...',
-        allowOutsideClick: false,
-        onOpen: () => {
-            swal.showLoading();
-        }
-    });
-
-    $.ajax({
-        url: '../microservicios/firmas/api.php',
-        type: 'POST',
-        dataType: 'json',
-        data: {
-            funcion: 1,
-            id_usuario: ID_USUARIO,
-            id_establecimiento: 0 // Asumiendo que para declaración es 0 según el backend
-        },
-        success: function(resp) {
-            swal.close();
-            if (resp.ok == 1) {
-                $('#otpIdDeclaracion').val(dec_Id);
-                $('#otpCodigo').val('');
-                $('#modal-FirmaDigital').modal('show');
-            } else {
-                swal('Error', resp.mensaje, 'error');
-            }
-        },
-        error: function() {
-            swal('Error', 'No se pudo contactar con el servidor.', 'error');
-        }
+    // Todo el flujo OTP (envio, reenvio, cuenta regresiva, validacion y
+    // firma) vive en FirmaOTP, dentro de core/declaraciones.ui.js, y lo
+    // comparten esta pantalla y Consultar Declaraciones.
+    FirmaOTP.abrir(dec_Id, idEstablecimiento, function () {
+        $('#modal-ConsultarDeclaraciones').modal('hide');
+        establecimientos.pintarAccionesDeclaracionContribuyente();
     });
 };
 
-$(document).on('click', '#btnValidarOTP', function() {
-    let codigo = $('#otpCodigo').val();
-    let dec_Id = $('#otpIdDeclaracion').val();
+/**
+ * Firma del CONTADOR o REVISOR FISCAL. Obligatoria para presentar cuando
+ * la ley lo exige (ver requiere_contador en el backend). El codigo viaja
+ * al correo del contador/revisor del contribuyente, no al del usuario en
+ * pantalla.
+ *
+ * Faltaba en esta pantalla: DeclaracionesUI.htmlAcciones() (compartido con
+ * Consultar Declaraciones) genera un boton que llama a esta funcion, pero
+ * solo estaba implementada en icaWebConsultar.js. Aqui no hacia nada.
+ */
+establecimientos.firmaContador = function(dec_Id, idEstablecimiento) {
+    FirmaOTP.abrir(dec_Id, idEstablecimiento, function () {
+        establecimientos.pintarAccionesDeclaracionContribuyente();
+    }, 'contador');
+};
 
-    if (codigo.length !== 6) {
-        swal('Atención', 'Debe ingresar un código de 6 dígitos', 'warning');
-        return;
-    }
-
+/**
+ * "Editar borrador" sobre una declaracion YA FIRMADA: borra la firma (y la
+ * del contador, si existia) y vuelve a borrador, porque acreditaban un
+ * contenido que esta por cambiar.
+ */
+establecimientos.editarFirmada = function(dec_Id) {
     swal({
-        title: 'Validando Firma',
-        text: 'Por favor espere...',
-        allowOutsideClick: false,
-        onOpen: () => {
-            swal.showLoading();
-        }
-    });
+        title: '¿Editar esta declaración?',
+        text: 'Está firmada. Al editarla se eliminará la firma y volverá al estado Borrador. '
+            + 'Deberá firmarla de nuevo antes de presentarla.',
+        type: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#1fa49d',
+        cancelButtonColor: '#d33',
+        confirmButtonText: 'Sí, editar y eliminar la firma',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (!result.value) { return; }
 
-    $.ajax({
-        url: '../microservicios/firmas/api.php',
-        type: 'POST',
-        dataType: 'json',
-        data: {
-            funcion: 2,
-            id_usuario: ID_USUARIO,
-            codigo: codigo,
-            id_establecimiento: 0
-        },
-        success: function(resp) {
-            if (resp.ok == 1) {
-                // Llamamos la funcion 7 para firmar la declaracion
-                $.ajax({
-                    url: '../microservicios/firmas/api.php',
-                    type: 'POST',
-                    dataType: 'json',
-                    data: {
-                        funcion: 7,
-                        id_usuario: ID_USUARIO,
-                        id_declaracion: dec_Id
-                    },
-                    success: function(respFirma) {
-                        if (respFirma.ok == 1) {
-                            $('#modal-FirmaDigital').modal('hide');
-                            swal('Éxito', 'La declaración ha sido firmada digitalmente.', 'success').then(() => {
-                                $('#modal-ConsultarDeclaraciones').modal('hide'); // Forzar recarga o cierre
-                            });
-                        } else {
-                            swal('Error', respFirma.mensaje, 'error');
-                        }
+        $.ajax({
+            url: '../business/controller/class.declaracionesICA.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { funcion: 10, dec_Id: dec_Id },
+            success: function (resp) {
+                if (resp.ok != 1) {
+                    swal('Error', resp.mensaje || 'No se pudo devolver a borrador', 'error');
+                    return;
+                }
+                swal('Volvió a borrador', resp.mensaje, 'success').then(() => {
+                    establecimientos.editarDeclaracion(dec_Id);
+                });
+            }
+        });
+    });
+};
+
+/**
+ * Genera una DECLARACION DE CORRECCION de una ya presentada. No modifica
+ * la original: crea una nueva en borrador con todos los datos copiados,
+ * enlazada por dec_DeclaracionCorrige.
+ */
+establecimientos.corregirDeclaracion = function(dec_Id) {
+    swal({
+        title: '¿Generar declaración de corrección?',
+        text: 'Se creará una nueva declaración con los mismos datos, enlazada a esta. '
+            + 'La declaración presentada no se modifica.',
+        type: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#1fa49d',
+        cancelButtonColor: '#d33',
+        confirmButtonText: 'Sí, generar corrección',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (!result.value) { return; }
+
+        $.ajax({
+            url: '../business/controller/class.declaracionesICA.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { funcion: 11, dec_Id: dec_Id },
+            success: function (resp) {
+                if (resp.ok != 1) {
+                    swal('Error', resp.mensaje || 'No se pudo generar la corrección', 'error');
+                    return;
+                }
+                swal('Corrección generada', resp.mensaje, 'success').then(() => {
+                    if (resp.datos && resp.datos.dec_Id) {
+                        establecimientos.editarDeclaracion(resp.datos.dec_Id);
                     }
                 });
-            } else {
-                swal('Error', resp.mensaje, 'error');
             }
-        }
+        });
     });
-});
+};
 
-establecimientos.presentarDeclaracion = function(dec_Id) {
+establecimientos.presentarDeclaracion = function(dec_Id, idEstablecimiento) {
     swal({
         title: '¿Presentar Declaración?',
         text: "Al presentarla ya no podrá editarla.",
@@ -1878,10 +1964,43 @@ establecimientos.presentarDeclaracion = function(dec_Id) {
         cancelButtonColor: '#d33',
         confirmButtonText: 'Sí, presentar'
     }).then((result) => {
-        if (result.value) {
-            // Simulamos la presentación ya que no hay endpoint backend explícito para cambiar estado
+        if (!result.value) { return; }
+        establecimientos._intentarPresentar(dec_Id, idEstablecimiento);
+    });
+};
+
+/**
+ * Intenta presentar. Si falta la firma del contador/revisor (el backend
+ * responde datos.codigo === 'FALTA_CONTADOR'), en vez de mostrar eso como
+ * un error suelto, abre aqui mismo su flujo de OTP; en cuanto firma, se
+ * reintenta presentar solo. Antes eran dos acciones separadas ("Enviar
+ * código al contador" y luego, aparte, "Presentar") y habia que notar que
+ * el boton habia cambiado. Ahora "Presentar" resuelve todo en un click.
+ */
+establecimientos._intentarPresentar = function(dec_Id, idEstablecimiento) {
+
+    $.ajax({
+        url: '../business/controller/class.declaracionesICA.php',
+        type: 'POST',
+        dataType: 'json',
+        data: { funcion: 9, dec_Id: dec_Id },
+        success: function(resp) {
+
+            if (resp.ok != 1) {
+                if (resp.datos && resp.datos.codigo === 'FALTA_CONTADOR') {
+                    FirmaOTP.abrir(dec_Id, idEstablecimiento, function () {
+                        establecimientos._intentarPresentar(dec_Id, idEstablecimiento);
+                    }, 'contador');
+                    return;
+                }
+                swal('Error', resp.mensaje || 'No se pudo presentar la declaración', 'error');
+                return;
+            }
             swal('¡Presentada!', 'La declaración ha sido presentada con éxito.', 'success').then(() => {
                 $('#modal-ConsultarDeclaraciones').modal('hide');
+                // Refresca los botones de la tabla para reflejar el nuevo estado,
+                // en vez de dejarlos desactualizados hasta que se recargue la pagina.
+                establecimientos.pintarAccionesDeclaracionContribuyente();
             });
         }
     });

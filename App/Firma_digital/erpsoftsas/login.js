@@ -54,13 +54,16 @@ class Login {
      */
     postRecuperarUsuario() {
 
-        const mail = $("#usu_CorreoRecuperar").val().trim();
+        // Antes se pedia el correo. Ahora se identifica al usuario por su
+        // NIT o cedula y el sistema envia la clave temporal al correo que
+        // ya tiene registrado, para no depender de que recuerde cual uso.
+        const documento = $("#usu_DocumentoRecuperar").val().trim();
 
-        if (mail === '') {
+        if (documento === '') {
             swal({
                 type: 'warning',
                 title: 'Atención',
-                text: 'Debe ingresar el correo'
+                text: 'Debe ingresar su NIT o cédula'
             });
             return;
         }
@@ -79,19 +82,23 @@ class Login {
             url: 'business/controller/class.usuarios.php',
             type: 'POST',
             dataType: 'json',
-            data: { funcion: 5, email: mail },
+            data: { funcion: 5, documento: documento },
 
             success: function (arr) {
 
                 if (arr.ok === 1) {
 
                     $("#modal-RecuperarUsuario").modal('hide');
-                    $("#usu_CorreoRecuperar").val('');
+                    $("#usu_DocumentoRecuperar").val('');
 
                     swal({
                         type: 'success',
                         title: 'Correo enviado',
-                        text: 'Se envió un correo con las instrucciones de recuperación.'
+                        // El backend devuelve el correo enmascarado para que la
+                        // persona confirme a donde llego sin exponer la direccion.
+                        text: (arr.datos && arr.datos.correo)
+                            ? 'Se enviaron las instrucciones a ' + arr.datos.correo
+                            : 'Se envió un correo con las instrucciones de recuperación.'
                     });
 
                 } else {
@@ -99,7 +106,7 @@ class Login {
                     swal({
                         type: 'error',
                         title: 'Error',
-                        text: 'El correo no se encuentra registrado.'
+                        text: arr.mensaje || 'El documento no se encuentra registrado.'
                     });
                 }
             },

@@ -15,6 +15,7 @@
 
 // 1. Datos del Municipio
 if (!defined('MUNICIPIO_NOMBRE')) define('MUNICIPIO_NOMBRE', 'Nombre del Municipio');
+if (!defined('MUNICIPIO_CIUDAD')) define('MUNICIPIO_CIUDAD', 'Ciudad del Municipio');
 
 // Rutas web ABSOLUTAS: la constante se usa desde /erpsoftsas/ y desde
 // /erpsoftsas/dist/, por lo que una ruta relativa no puede servir a ambas.
@@ -28,6 +29,10 @@ if (!defined('MUNICIPIO_LOGO_FULL')) define('MUNICIPIO_LOGO_FULL', '/erpsoftsas/
 // MUNICIPIO_COLOR_OSCURO se usa en degradados y estados hover.
 if (!defined('MUNICIPIO_COLOR'))        define('MUNICIPIO_COLOR', '#1fa49d');
 if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756f');
+
+// Fondo de Login y Sello de Firma Digital
+if (!defined('MUNICIPIO_FONDO_LOGIN'))  define('MUNICIPIO_FONDO_LOGIN', 'vendors/images/fondo-municipio.jpg');
+if (!defined('MUNICIPIO_SELLO_FIRMA'))  define('MUNICIPIO_SELLO_FIRMA', 'Sello_Firma.png');
 
 // 2. Base de Datos (Producción)
 if (!defined('DB_PROD_SERVER')) define('DB_PROD_SERVER', 'localhost');

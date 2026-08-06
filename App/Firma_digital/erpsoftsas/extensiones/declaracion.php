@@ -4,20 +4,42 @@ require_once('tcpdf/tcpdf.php');
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
 
+// Cargar configuración del municipio
+$configPath = dirname(__DIR__) . '/config.municipio.php';
+if (file_exists($configPath)) {
+    require_once $configPath;
+}
+if (!defined('MUNICIPIO_SELLO_FIRMA')) define('MUNICIPIO_SELLO_FIRMA', 'Sello_Firma.png');
+
+
 class ICAPdf extends TCPDF {
     public function Header(){}
     public function Footer(){}
 }
 
-function dibujarTextoVertical($pdf, $texto, $y_inicio, $y_fin) {
+/**
+ * Dibuja el rotulo lateral rotado 90 grados, CENTRADO dentro de la banda
+ * [$y_top, $y_bottom] de su seccion.
+ *
+ * MultiCell($anchoCaja, 4, $texto, 0, 'C') centra el texto DENTRO de una
+ * caja de ancho fijo $anchoCaja que arranca en el pivote y crece hacia
+ * $y_top -- el centro visual del texto queda entonces en
+ * (pivote - $anchoCaja/2), no en el pivote mismo. Por eso el pivote debe
+ * ser el centro de la banda MAS la mitad de esa caja (no la mitad del
+ * texto real, que es lo que se probo primero y quedaba descuadrado).
+ * $anchoCaja=40 porque es mayor que la etiqueta mas larga ("A. INFORMACIÓN
+ * DEL CONTRIBUYENTE" ~34.6mm a 5pt), asi ninguna hace wrap a 2 lineas.
+ */
+function dibujarTextoVertical($pdf, $texto, $x, $y_top, $y_bottom) {
 
+    $anchoCaja = 40;
+    $pivote = ($y_top + $y_bottom) / 2 + $anchoCaja / 2;
 
     $pdf->StartTransform();
-    $pdf->Rotate(90, $y_inicio, $y_fin);
-    $pdf->SetXY($y_inicio, $y_fin);
-
+    $pdf->Rotate(90, $x, $pivote);
+    $pdf->SetXY($x, $pivote);
     $pdf->SetFont('helvetica','B',5);
-    $pdf->MultiCell(30, 4, $texto, 0, 'C');
+    $pdf->MultiCell($anchoCaja, 4, $texto, 0, 'C');
     $pdf->StopTransform();
 }
 
@@ -97,13 +119,88 @@ FIRMA DIGITAL
 =========================== */
 
 $sqlFirma = "
-SELECT fd_NombreUsuario, fd_EmailUsuario, fd_FechaHora, fu.fu_Base64
-FROM firmas_declaraciones fd
-LEFT JOIN firmas_usuario fu ON fu.fu_IdUsuario = fd.fd_IdUsuario
-WHERE fd.fd_NumeroDeclaracion = ?
+SELECT fd_NombreUsuario, fd_EmailUsuario, fd_FechaHora
+FROM firmas_declaraciones
+WHERE fd_NumeroDeclaracion = ? AND fd_Rol = ?
 ";
-$stmtFirma = $con->consultar($sqlFirma, [$idDeclaracion]);
-$firmaData = $con->obnerFila($stmtFirma);
+$firmaData         = $con->obnerFila($con->consultar($sqlFirma, [$idDeclaracion, 'declarante']));
+$firmaContadorData = $con->obnerFila($con->consultar($sqlFirma, [$idDeclaracion, 'contador']));
+
+/*
+ * Fecha que va impresa dentro del sello.
+ *
+ * El sello acredita la PRESENTACION de la declaracion ante el municipio,
+ * no el momento en que se firmo. Por eso se imprime dec_FechaPresentacion.
+ * Mientras la declaracion este firmada pero aun sin presentar todavia no
+ * existe esa fecha, y se muestra la de la firma para no dejar el sello mudo.
+ */
+if (!function_exists('erp_formatearFechaSello')) {
+function erp_formatearFechaSello($valor) {
+    if ($valor instanceof DateTime) {
+        return $valor->format('d/m/Y H:i:s');
+    }
+    if (is_string($valor) && trim($valor) !== '') {
+        $ts = strtotime($valor);
+        return $ts ? date('d/m/Y H:i:s', $ts) : trim($valor);
+    }
+    return '';
+}
+}
+
+$fechaSello = erp_formatearFechaSello($row['dec_FechaPresentacion'] ?? null);
+
+/*
+ * "No. ESTABLECIMIENTOS" del formulario: el cliente confirmo que cuenta
+ * solo los de Paipa. Hoy eso NO se puede filtrar -ind_establecimientos
+ * tiene la columna est_Local_municipio para eso, pero la pantalla del RIT
+ * nunca la captura (el campo esta comentado en core/icaWebRit.js)-. Hasta
+ * que se capture ese dato se cuentan TODOS los establecimientos activos
+ * del contribuyente, que es un numero seguro (nunca sub-cuenta) aunque
+ * pueda quedar por encima del que exige el formulario.
+ */
+$numEstablecimientosContribuyente = $con->obnerFila($con->consultar(
+    "SELECT COUNT(*) AS n FROM ind_establecimientos
+     WHERE est_IdContribuyente = ? AND est_Activo = 1",
+    [$row['dec_IdContribuyente']]
+))['n'] ?? 1;
+
+if ($fechaSello === '' && $firmaData) {
+    $fechaSello = erp_formatearFechaSello($firmaData['fd_FechaHora'] ?? null);
+}
+
+/*
+ * Firma del contador / revisor fiscal: es otra persona, que recibe su
+ * propio codigo OTP en su correo y queda con fd_Rol = 'contador'
+ * (ver microservicios/firmas/api.php). Se consulta arriba junto con la del
+ * declarante; si aun no ha firmado, la casilla sale vacia.
+ */
+
+/*
+ * Datos de la casilla unica de contador/revisor. Se prefiere el contador;
+ * si no esta diligenciado, se usa el revisor fiscal. Cada campo cae a su
+ * equivalente en ind_establecimientos para registros anteriores a la
+ * migracion 2026-08, cuando estos datos vivian en el establecimiento.
+ */
+$valorContador = function ($claveContribuyente, $claveEstablecimiento) use ($row) {
+    $v = trim((string)($row[$claveContribuyente] ?? ''));
+    return $v !== '' ? $v : trim((string)($row[$claveEstablecimiento] ?? ''));
+};
+
+$nombreContador = $valorContador('ind_NombreContador', 'est_Nombre_contador');
+
+if ($nombreContador !== '') {
+    $datosContador = [
+        'nombre' => $nombreContador,
+        'doc'    => $valorContador('ind_CedulaContador', 'est_Cedula_contador'),
+        'tp'     => $valorContador('ind_TarjetaProfContador', 'est_Tarjeta_profesional'),
+    ];
+} else {
+    $datosContador = [
+        'nombre' => $valorContador('ind_NombreRevisor', 'est_Nombre_revisor'),
+        'doc'    => $valorContador('ind_CedulaRevisor', 'est_Cedula_revisor'),
+        'tp'     => $valorContador('ind_TarjetaProfRevisor', 'est_Tarjeta_profesional_revisor'),
+    ];
+}
 
 /* ===========================
 FORMATEOS
@@ -134,12 +231,13 @@ DATOS
 
 $d = [
     // Encabezado entidad / periodo
-    'entidad'     => 'ALCALDÍA DE PAIPA',
+    'entidad'     => strtoupper(MUNICIPIO_NOMBRE),
     'secretaria'  => 'SECRETARÍA DE HACIENDA',
-    'nit_entidad' => '891855138-1',
-
-    'dep'         => 'BOYACA',
-    'mun'         => 'PAIPA',
+    'dir'         => ' ',
+    'tel'         => ' ',
+    'web'         => ' ',
+    'email'       => ' ',
+    'mun'         => strtoupper(MUNICIPIO_CIUDAD),
     'anio'        => '2025',
     'fecha_max'   => '',
     'num_form' => $row['dec_NumeroDeclaracion'],
@@ -168,7 +266,7 @@ $d = [
     'correo' => $row['ind_Email'],
     'dep_notif' => $row['ciu_Departamento'],
     'mun_notif' => $row['ciu_Nombre'],
-    'num_estab' => '1',
+    'num_estab' => (string) $numEstablecimientosContribuyente,
 
 
 
@@ -307,12 +405,20 @@ $d = [
 
     'declarante_nombre'      => $nombreCompleto,
     'declarante_cc'          => $row['ind_NumeroIdentificacion'],
-    'contador_nombre'        => '',
-    'contador_doc'           => '',
-    'contador_tp'            => '',
-    'revisor_nombre'         => '',
-    'revisor_doc'            => '',
-    'revisor_tp'             => '',
+    // Contador y revisor fiscal comparten una sola casilla en el formulario
+    // (ver bloque "F. FIRMAS"): un contribuyente tiene contador O revisor,
+    // no ambos firmando, asi que se toma el que este diligenciado.
+    //
+    // La fuente es el CONTRIBUYENTE (ind_*), no el establecimiento: la
+    // declaracion es una sola por contribuyente aunque tenga varios
+    // establecimientos. Se cae a los campos est_* solo por compatibilidad
+    // con registros anteriores a la migracion 2026-08.
+    'contador_nombre'        => $datosContador['nombre'],
+    'contador_doc'           => $datosContador['doc'],
+    'contador_tp'            => $datosContador['tp'],
+    'revisor_nombre'         => $row['ind_NombreRevisor'] ?? ($row['est_Nombre_revisor'] ?? ''),
+    'revisor_doc'            => $row['ind_CedulaRevisor'] ?? ($row['est_Cedula_revisor'] ?? ''),
+    'revisor_tp'             => $row['ind_TarjetaProfRevisor'] ?? ($row['est_Tarjeta_profesional_revisor'] ?? ''),
 ];
 
 
@@ -324,7 +430,7 @@ $html='
 
 <style>
 table { width:100%; border-collapse: collapse; }
-td { vertical-align: top; font-size:7px; }
+td { vertical-align: top; font-size:6px; }
 
 .tituloPrincipal { font-size:11px; font-weight:bold; }
 .titulo { font-size:12px; font-weight:bold; }
@@ -338,7 +444,8 @@ td { vertical-align: top; font-size:7px; }
 <tr>
 
 <td width="10%" rowspan="10" align="center" >
-    <img src="tcpdf/pdf/img/logopazysalvo.png" width="85"> 
+    <img src="' . dirname(dirname(__DIR__)) . MUNICIPIO_LOGO . '" width="85"> 
+    <div style="font-size:5px; text-align:center;">NIT 891.801.240-1</div>
 </td>
 
 <td class="tituloPrincipal" width="90%" align="center">
@@ -698,7 +805,6 @@ $html = '
 ';
 $pdf->writeHTML($html, true, false, true, false, '');
 $ySecD_fin = $pdf->GetY();
-$ySecE_inicio = $ySecD_fin;
 
 $html = '
 <br>
@@ -733,13 +839,36 @@ $html = '
 
 </table>
 ';
-$pdf->writeHTML($html, true, false, true, false, '');
-// Aqui termina la banda "E. PAGO": la tabla de "Seccion pago voluntario"
-// que sigue ya trae su propio rotulo escrito en la celda (rowspan), asi
-// que la etiqueta E no debe extenderse sobre ella o se superponen.
-$ySecE_fin = $pdf->GetY();
+// A partir de aqui (renglones 35 en adelante: pago, seccion pago
+// voluntario, firmas y codigo de barras) TODO se escribe con un UNICO
+// writeHTML(), sin volver a cortar en varias llamadas.
+//
+// Se intento dividir tambien este tramo en llamadas separadas (para
+// capturar la posicion real de "E. PAGO" y "F. FIRMAS" con GetY(), igual
+// que se hizo con A-D mas arriba), pero se encontro un comportamiento de
+// TCPDF por el cual, cerca del margen inferior de una pagina con
+// SetAutoPageBreak(false), llamar a writeHTML() varias veces seguidas
+// hace que el contenido de la ULTIMA tabla (codigo de barras) se pierda
+// silenciosamente -sin ningun error ni advertencia-, sin importar cuanto
+// se reduzca su contenido (se probo quitando la imagen del sello por
+// completo y el problema persistia). Con una sola llamada para todo el
+// tramo el contenido siempre sale completo, asi que las etiquetas E y F
+// se ubican con coordenadas fijas, medidas directamente sobre el PDF ya
+// renderizado (con un dec_Id real) en vez de con GetY().
+// Medido sobre un render real (dec_Id=94, fuente 6px). OJO: la banda de
+// "E. PAGO" es SOLO el recuadro de los renglones 35-38 (fila 35 empieza
+// ~251.5mm, fila 38 termina ~268.4mm) -- la tabla de "Seccion pago
+// voluntario" (39/40) que sigue ya trae su propio rotulo en la celda y
+// NO debe incluirse en esta banda, o el texto rotado le pasa por encima.
+// "F. FIRMAS" va desde donde empieza "FIRMA DEL DECLARANTE" (~283mm)
+// hasta donde termina "CODIGO DE BARRAS" (~320.3mm, dejando ~10mm de
+// margen inferior dentro de los 330.2mm de la pagina).
+$ySecE_inicio = 250;
+$ySecE_fin = 268;
+$ySecF_inicio = 282;
+$ySecF_fin = 320;
 
-$html = '
+$html .= '
 <br>
 
 <table border="1" cellpadding="2" width="100%">
@@ -765,11 +894,8 @@ $html = '
 </tr>
 
 </table>
-';
-$pdf->writeHTML($html, true, false, true, false, '');
 
-$html = '
-<br><br>
+<br>
 
 <table border="1" cellpadding="2" width="100%">
 
@@ -780,14 +906,14 @@ $html = '
 ';
 
 if ($firmaData) {
-    // Sello a 30x30mm: a 65x65 la fila de firmas crecia tanto que empujaba
-    // el bloque de codigo de barras fuera de la pagina (ver nota de
-    // SetAutoPageBreak mas arriba).
-    $html .= '<div align="center"><img src="Sello_Firma.png" width="30" height="30"><br>';
-    
-    // Add the name and date centered below the seal, using a smaller font
-    $fechaHoraFirma = $firmaData['fd_FechaHora'] instanceof DateTime ? $firmaData['fd_FechaHora']->format('d/m/Y H:i:s') : (is_string($firmaData['fd_FechaHora']) ? $firmaData['fd_FechaHora'] : '');
-    $html .= '<span style="font-size: 8px;">' . htmlspecialchars($firmaData['fd_NombreUsuario']) . '<br>' . $fechaHoraFirma . '</span></div>';
+    // Sello a 18x18mm: a 65x65 (y despues a 30x30) la fila de firmas
+    // crecia tanto que empujaba el bloque de codigo de barras fuera de
+    // la pagina (ver nota de SetAutoPageBreak mas arriba). Medido con
+    // GetY(): a 30mm el contenido quedaba 4.5mm mas alto que la pagina.
+    $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="18" height="18"><br>';
+
+    // Nombre de quien firmo + fecha/hora de presentacion (ver $fechaSello).
+    $html .= '<span style="font-size: 8px;">' . htmlspecialchars($firmaData['fd_NombreUsuario']) . '<br>' . $fechaSello . '</span></div>';
 } else {
     // Only put enough space for a physical signature without breaking the page layout
     $html .= '<br><br><br>';
@@ -796,12 +922,32 @@ if ($firmaData) {
 $html .= '
 </td>
 
-<td width="30%">
-<b>FIRMA DEL CONTADOR</b>
-</td>
+<td width="60%">
+<b>FIRMA DEL CONTADOR O REVISOR FISCAL</b><br>
+';
 
-<td width="30%">
-<b>FIRMA DEL REVISOR FISCAL</b>
+/*
+ * Antes eran dos recuadros separados ("FIRMA DEL CONTADOR" y "FIRMA DEL
+ * REVISOR FISCAL"). Se unifican en uno solo porque el contribuyente tiene
+ * contador O revisor fiscal -no ambos firmando a la vez- y el formulario
+ * ya traia una unica fila de identidad (NOMBRE / C.C. / T.P.) compartida
+ * entre las dos casillas.
+ *
+ * Lo que se estampa aqui es el MISMO sello del declarante (no una firma
+ * manuscrita), con el nombre de quien firmo y la fecha/hora de
+ * presentacion. $firmaContadorData lo llenara el flujo de OTP dirigido al
+ * correo del contador/revisor.
+ */
+if (!empty($firmaContadorData)) {
+    $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="18" height="18"><br>';
+    $html .= '<span style="font-size: 8px;">'
+           . htmlspecialchars($firmaContadorData['fd_NombreUsuario'])
+           . '<br>' . $fechaSello . '</span></div>';
+} else {
+    $html .= '<br><br><br>';
+}
+
+$html .= '
 </td>
 </tr>
 
@@ -813,7 +959,7 @@ $html .= '
 </td>
 
 <td width="60%">
-<b>NOMBRE:</b><br>
+<b>NOMBRE:</b> '.htmlspecialchars($d['contador_nombre']).'<br>
 </td>
 
 </tr>
@@ -835,9 +981,9 @@ $html .= '
 <td width="5%">C.E.</td>
 <td width="3%"></td>
 <td width="5%">No.</td>
-<td width="14%">'.$d['contador_doc'].''.$d['contador_tp'].'</td>
+<td width="14%">'.htmlspecialchars($d['contador_doc']).'</td>
 <td width="5%">T.P.</td>
-<td width="15%"></td>
+<td width="15%">'.htmlspecialchars($d['contador_tp']).'</td>
 
 
 </tr>
@@ -845,7 +991,7 @@ $html .= '
 
 </table>
 
-<br><br>
+<br>
 
 <table border="1" cellpadding="2" width="100%">
 
@@ -865,11 +1011,11 @@ $html .= '
 <tr>
 
 <td width="50%">
-<br><br><br><br>
+<br><br>
 </td>
 
 <td width="50%">
-<br><br><br>
+<br>
 </td>
 
 </tr>
@@ -880,10 +1026,7 @@ $html .= '
 
 ';
 
-
-
 $pdf->writeHTML($html,true,false,true,false,'');
-$ySecF_fin = $pdf->GetY();
 
 /* ===========================
 ETIQUETAS VERTICALES (A-F)
@@ -895,11 +1038,11 @@ contenido real en cuanto el texto de una fila cambiaba de tamaño
 =========================== */
 
 $x = 13;
-dibujarTextoVertical($pdf, 'A. INFORMACIÓN DEL CONTRIBUYENTE', $x, $ySecA_fin);
-dibujarTextoVertical($pdf, 'B. BASE GRAVABLE', $x, $ySecB_fin);
-dibujarTextoVertical($pdf, 'C. DISCR. ACTIVIDADES GRAVADAS', $x, $ySecC_fin);
-dibujarTextoVertical($pdf, 'D. LIQUIDACIÓN PRIVADA', $x, $ySecD_fin);
-dibujarTextoVertical($pdf, 'E. PAGO', $x, $ySecE_fin);
-dibujarTextoVertical($pdf, 'F. FIRMAS', $x, $ySecF_fin);
+dibujarTextoVertical($pdf, 'A. INFORMACIÓN DEL CONTRIBUYENTE', $x, $ySecA_inicio, $ySecA_fin);
+dibujarTextoVertical($pdf, 'B. BASE GRAVABLE', $x, $ySecB_inicio, $ySecB_fin);
+dibujarTextoVertical($pdf, "C. DISCR.\nACTIVIDADES GRAVADAS", $x - 2, $ySecC_inicio, $ySecC_fin);
+dibujarTextoVertical($pdf, 'D. LIQUIDACIÓN PRIVADA', $x, $ySecD_inicio, $ySecD_fin);
+dibujarTextoVertical($pdf, 'E. PAGO', $x, $ySecE_inicio, $ySecE_fin);
+dibujarTextoVertical($pdf, 'F. FIRMAS', $x, $ySecF_inicio, $ySecF_fin);
 
 $pdf->Output('ICA_DECLARACION.pdf','I');

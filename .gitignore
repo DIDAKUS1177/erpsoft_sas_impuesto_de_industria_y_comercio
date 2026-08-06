@@ -23,3 +23,8 @@ Thumbs.db
 # tcpdf_old/vendor tiene rutas de tests tan largas que rompen git en
 # Windows (Filename too long).
 vendor/
+
+# Carpetas de limpieza del repo: duplicados y backups viejos movidos aqui
+# (nunca borrados) durante las sesiones de orden. Son solo respaldo local,
+# no deben terminar en el historial de git.
+_archivo_obsoleto_*/

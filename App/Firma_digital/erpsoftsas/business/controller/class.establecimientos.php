@@ -36,6 +36,9 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
                 case 4:
                     $respuesta = $_obj->_inactivarEstablecimientos();
                     break;
+                case 20:
+                    $respuesta = $_obj->_guardarCorreosContadorRevisor();
+                    break;
                 default:
                     throw new \erpsoftsas\EstablecimientosException("Función no válida", 0);
             }
@@ -207,6 +210,22 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
                 $est = $obj->getArray();
 
                 // ============================
+                // CORREOS DE CONTADOR / REVISOR
+                // Viven en el contribuyente (la declaracion es una sola por
+                // contribuyente), pero la pantalla del RIT los edita junto
+                // con los demas datos del establecimiento.
+                // ============================
+
+                $correos = $con->obnerFila($con->consultar(
+                    "SELECT ind_EmailContador, ind_EmailRevisor
+                       FROM ind_contribuyentes WHERE ind_Id = ?",
+                    [$est['est_IdContribuyente']]
+                ));
+
+                $est['ind_EmailContador'] = $correos['ind_EmailContador'] ?? '';
+                $est['ind_EmailRevisor']  = $correos['ind_EmailRevisor']  ?? '';
+
+                // ============================
                 // CONSULTAR ACTIVIDADES
                 // ============================
 
@@ -262,6 +281,63 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
             $this->_mensaje = "Establecimiento ID $id inactivado correctamente";
         }
         return $_obj->getArray();
+    }
+
+
+    /**
+     * Guarda el correo del contador y del revisor fiscal.
+     *
+     * Van en el CONTRIBUYENTE, no en el establecimiento: la declaración es
+     * una sola por contribuyente aunque tenga varios establecimientos, así
+     * que quien la firma es uno solo. Estos correos son el destino del
+     * código OTP de firma (ver microservicios/firmas/api.php).
+     *
+     * Se recibe el id del establecimiento porque es lo que la pantalla del
+     * RIT tiene a mano; de ahí se resuelve su contribuyente.
+     */
+    private function _guardarCorreosContadorRevisor()
+    {
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+
+        $idEstablecimiento = $_POST['est_Id'] ?? null;
+        $idContribuyente   = $_POST['est_IdContribuyente'] ?? null;
+
+        if (!$idContribuyente && $idEstablecimiento) {
+            $fila = $con->obnerFila($con->consultar(
+                "SELECT est_IdContribuyente FROM ind_establecimientos WHERE est_Id = ?",
+                [$idEstablecimiento]
+            ));
+            $idContribuyente = $fila['est_IdContribuyente'] ?? null;
+        }
+
+        if (!$idContribuyente) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No se pudo determinar el contribuyente';
+            return [];
+        }
+
+        $correoContador = trim($_POST['ind_EmailContador'] ?? '');
+        $correoRevisor  = trim($_POST['ind_EmailRevisor'] ?? '');
+
+        foreach ([$correoContador, $correoRevisor] as $correo) {
+            if ($correo !== '' && !filter_var($correo, FILTER_VALIDATE_EMAIL)) {
+                $this->_ok = 0;
+                $this->_mensaje = 'El correo "' . $correo . '" no es válido';
+                return [];
+            }
+        }
+
+        $con->consultar(
+            "UPDATE ind_contribuyentes
+                SET ind_EmailContador = ?, ind_EmailRevisor = ?
+              WHERE ind_Id = ?",
+            [$correoContador, $correoRevisor, $idContribuyente]
+        );
+
+        $this->_ok = 1;
+        $this->_mensaje = 'Correos de contador/revisor actualizados';
+
+        return ['ind_Id' => $idContribuyente];
     }
 }
 
