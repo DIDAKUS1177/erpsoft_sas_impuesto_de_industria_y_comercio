@@ -1,4 +1,15 @@
 <?php
+   // Cargar configuracion del municipio ANTES que cualquier conexion a BD se
+   // instancie: sin esto, class.conexionSqlServer.php nunca ve las constantes
+   // DB_PROD_* y cae a las credenciales de produccion hardcodeadas, sin
+   // importar que municipio/despliegue sea. Este archivo (globals.php) es el
+   // unico punto que TODOS los controladores de business/controller/*.php
+   // incluyen antes de conectarse a la BD.
+   $_configMunicipioPath = dirname(__DIR__) . '/config.municipio.php';
+   if (file_exists($_configMunicipioPath)) {
+       require_once $_configMunicipioPath;
+   }
+
    define ('SERVER', $_SERVER['DOCUMENT_ROOT']."/erpsoftsas");
    header("Cache-Control: no-cache, must-revalidate"); // HTTP/1.1
 	header("Expires: Sat, 1 Jul 2000 05:00:00 GMT"); // Fecha en el pasado
