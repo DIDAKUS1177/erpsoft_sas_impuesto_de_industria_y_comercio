@@ -395,14 +395,11 @@ class DAOGeneral {
         $data = $con->consultar($query, []);
         $registros = [];
 
-        if ($con->getNumeroFilasConsultadas($data) > 0) {
-            while ($fila = $con->obnerFila($data)) {
-                $registros[] = $fila;
-            }
-            return $registros;
+        while ($fila = $con->obnerFila($data)) {
+            $registros[] = $fila;
         }
 
-        return false;
+        return $registros;
     }
 
 
