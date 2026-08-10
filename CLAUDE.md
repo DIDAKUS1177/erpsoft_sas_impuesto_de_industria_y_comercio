@@ -91,8 +91,8 @@ Login de prueba: usuario `administrador`, clave `administrador2025`.
 - Una declaración ya **presentada** no se edita ni se vuelve a crear una "original"
   para el mismo período — la única vía correcta es "Corregir" (crea una nueva ligada
   por `dec_DeclaracionCorrige`). Esto es un requisito legal, no una limitación técnica.
-- PSE / código de barras: **en pausa a propósito**, pendiente del trámite con Banco de
-  Bogotá (convenio de recaudo). Los botones existen pero deshabilitados.
+- PSE / código de barras: **implementado y desplegado en producción** (2026-08-10, ver
+  sección "PSE PlacetoPay" abajo). Los botones ya están habilitados.
 
 ## Estado del sistema (última sesión de trabajo activa)
 
@@ -101,7 +101,8 @@ declaración a nivel contribuyente con agregación de actividades, edición de
 declaraciones en borrador, estados (borrador → firmada → falta-contador → presentada
 → corrección) con un solo botón "Presentar" que encadena el OTP del contador
 automáticamente si falta, sello con fecha de presentación en el PDF, RIT reorganizado
-(contador y revisor fiscal en tarjetas separadas con su correo).
+(contador y revisor fiscal en tarjetas separadas con su correo), código de barras +
+integración de pago PSE (PlacetoPay).
 
 Pendiente / conocido: el conteo de "No. establecimientos" del formulario debería
 filtrar solo los de Paipa (`est_Local_municipio`), pero ese campo nunca se captura en
@@ -109,3 +110,71 @@ el RIT (está comentado en el JS) — hasta que se capture, cuenta todos los
 establecimientos del contribuyente. El sistema de roles/permisos (`conf_rol`,
 `conf_permisos`, pantalla `dist/rol.php`) ya existe en el código pero no está
 configurado a fondo para este cliente.
+
+## Código de barras (declaracion.php / liquidacion.php)
+
+Referencia = `dec_NumeroDeclaracion`, dibujado con la librería TCPDF ya vendorizada
+(`extensiones/tcpdf/tcpdf_barcodes_1d.php`, clase `TCPDFBarcode`, tipo `C128`) —
+**formato provisional**, pendiente de que el banco confirme si exige otro estándar
+para el código de barras/referencia de recaudo.
+
+`liquidacion.php` fue reescrito completo de Cell()/Rect() posicionados a mano a tablas
+HTML vía `writeHTML()` (mismo patrón que `declaracion.php`), porque el layout manual
+original no dejaba margen para el código de barras sin cortarse en el borde inferior
+de la página (`SetAutoPageBreak` está en `false` en ambos archivos — TCPDF no avisa si
+el contenido se pasa del borde).
+
+## PSE PlacetoPay (pago del impuesto)
+
+Integración construida desde cero contra la documentación pública de PlacetoPay
+(`docs.placetopay.dev/checkout`), usando credenciales de **prueba** (sandbox
+Avalpaycenter/Banco de Bogotá) — ver `PLACETOPAY_*` en `config.municipio.php`.
+Probada de extremo a extremo contra ese sandbox real antes de desplegar.
+
+```
+business/class.placetopay.php        auth (tranKey SHA256+Base64), crearSesion(),
+                                      consultarSesion(), validarFirmaWebhook()
+extensiones/pse/crearSesion.php      dispara el botón "Pagar PSE" -> crea sesión,
+                                      guarda dec_PSE_RequestId, redirige al banco
+extensiones/pse/retorno.php          a donde vuelve el usuario tras pagar
+extensiones/pse/webhook.php          notificación automática de PlacetoPay
+extensiones/pse/cron_verificar_pagos.php   respaldo, exigido por el banco
+extensiones/pse/DESPLIEGUE.md        guía de despliegue paso a paso
+extensiones/pse/migracion_produccion.sql   migración de BD (ya corrida en prod)
+```
+
+**Diseño de seguridad del webhook**: nunca se actualiza la declaración con datos
+tomados directamente del POST de PlacetoPay. Primero se valida la firma que traen
+(`hash(requestId + status.status + status.date + secretKey)`, SHA-1 por defecto o
+SHA-256 con prefijo `sha256:` — fórmula **no documentada públicamente**, confirmada
+leyendo un webhook de PlacetoPay ya usado en otro proyecto del equipo para predial,
+ver `pruebas.erpsoftsas.com/respuestaplacepay.php` en Plesk). Aunque la firma sea
+válida, el estado que se guarda siempre sale de una consulta autenticada aparte
+(`consultarSesion`), nunca del payload — así una firma robada no basta para forjar un
+pago.
+
+**Nota importante sobre "código replicable" de PSE**: existe infraestructura PSE ya
+desplegada en el mismo servidor para **PREDIAL** (dominios `pse{municipio}.erpsoftsas.com`
++ `serviciospse{municipio}.erpsoftsas.com` por cada municipio), pero es de otro stack
+(Angular + .NET/C#, con su propia tabla de facturas y SP `SP_UPDATE_FACTURAS_GENERADAS`)
+y **no es reutilizable** para esta app PHP de ICA — se investigó a fondo (2026-08-10)
+antes de decidir construir desde cero. Lo único rescatado de ahí fue la fórmula de
+firma del webhook, ya incorporada arriba.
+
+### Despliegue (Plesk)
+
+- Subscripción: `industria-comercio-paipa.erpsoftsas.com` — **cuidado**, existen
+  varios dominios parecidos que NO son este proyecto: `paipa.erpsoftsas.com` es
+  predial, `gestorpaipa.erpsoftsas.com` es otra cosa.
+- Base de datos real: `erpsofts_ind_comercio_paip`.
+- Plesk tiene Git conectado a este mismo repo (`erpsoft_sas_impuesto_de_industria_y_comercio`,
+  rama `main`) con la app publicada en `App/Firma_digital/erpsoftsas/` dentro del
+  checkout. Desplegar = push a `main` + botón "Pull ahora" en Plesk > el dominio >
+  Git (no es 100% automático pese al texto "se despliega automáticamente"; hay que
+  darle clic).
+- Tarea programada `Verificar_pagos_PSE_ICA_Paipa` (Plesk > Tareas programadas) corre
+  `cron_verificar_pagos.php` cada hora, PHP 8.1. Creada 2026-08-10. Cambiar a
+  diariamente (madrugada) cuando pase a producción real con el banco.
+- Pendiente (requiere al cliente/banco, no ejecutable por Claude): credenciales de
+  producción de PlacetoPay, certificación/homologación con el banco, registrar la URL
+  del webhook ante PlacetoPay.
