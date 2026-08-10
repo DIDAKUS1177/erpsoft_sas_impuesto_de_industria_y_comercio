@@ -150,11 +150,18 @@ class PlacetoPay {
     public static function interpretarRespuesta(array $respuesta) {
         $estado = $respuesta['status']['status'] ?? 'PENDING';
         $transaccion = $respuesta['payment'][0] ?? [];
+        $banco = $transaccion['issuerName'] ?? $transaccion['franchise'] ?? 'PSE';
 
         return [
             'aprobado'      => $estado === 'APPROVED',
             'estado'        => $estado,
-            'banco'         => $transaccion['issuerName'] ?? $transaccion['franchise'] ?? 'PSE',
+            // dec_BancoPago es VARCHAR(10) en ind_declaraciones_ica -- nombres de
+            // banco reales (p.ej. "Placetopay Bank", 16 caracteres) no caben, y
+            // SQL Server rechaza el UPDATE entero por el intento de truncar en
+            // vez de truncarlo solo (visto en pruebas: error 2628 "String or
+            // binary data would be truncated"). Se recorta aqui, antes de que
+            // llegue a cualquier UPDATE.
+            'banco'         => substr($banco, 0, 10),
             'autorizacion'  => $transaccion['authorization'] ?? '',
             'fecha'         => $respuesta['status']['date'] ?? date('c'),
         ];
