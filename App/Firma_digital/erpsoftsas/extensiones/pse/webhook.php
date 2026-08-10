@@ -3,10 +3,11 @@
 /**
  * URL de notificacion que se registra ante PlacetoPay. Cuando el estado de
  * una sesion cambia, PlacetoPay hace POST aqui con un JSON que incluye
- * "requestId". No se confia en el contenido del POST (ver nota en
- * class.placetopay.php sobre por que no se valida firma): se usa
- * unicamente como aviso de "revisa esta sesion", y el estado real se
- * obtiene con una consulta autenticada aparte.
+ * "requestId", "status" y "signature". Se valida la firma primero (ver
+ * PlacetoPay::validarFirmaWebhook) y, aunque sea valida, el estado que se
+ * guarda SIEMPRE sale de una consulta autenticada aparte (consultarSesion),
+ * nunca del contenido del POST -asi la firma filtra ruido/spoofing, pero
+ * no es la unica linea de defensa-.
  */
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
@@ -28,6 +29,12 @@ header('Content-Type: application/json');
 if (!$requestId) {
     http_response_code(400);
     echo json_encode(['ok' => false, 'mensaje' => 'Falta requestId']);
+    exit;
+}
+
+if (!PlacetoPay::validarFirmaWebhook($body)) {
+    http_response_code(401);
+    echo json_encode(['ok' => false, 'mensaje' => 'Firma inválida']);
     exit;
 }
 

@@ -9,14 +9,14 @@
  * y nonce = Base64(nonce_crudo) (dos codificaciones distintas del mismo
  * valor aleatorio: una cruda dentro del hash, otra en base64 en el JSON).
  *
- * El webhook (verificarNotificacion.php) NO valida la firma que manda
- * PlacetoPay en la notificación -esa parte de la documentacion publica no
- * esta disponible-. En su lugar, al recibir cualquier notificacion se
- * vuelve a consultar el estado real de la sesion con consultarSesion()
- * (autenticado con nuestro propio secretKey), y ese es el valor que se
- * guarda. Asi no importa si alguien falsifica el POST del webhook: nunca
- * se confia en su contenido, solo se usa como aviso de "revisa esta
- * sesion".
+ * El webhook (webhook.php) valida la firma que manda PlacetoPay en la
+ * notificacion (ver validarFirmaWebhook) COMO PRIMER FILTRO, pero de
+ * todas formas nunca actualiza la declaracion con datos tomados
+ * directamente del POST: siempre vuelve a consultar el estado real de la
+ * sesion con consultarSesion() (autenticado con nuestro propio
+ * secretKey) antes de guardar nada. Asi hay dos capas: firma invalida se
+ * rechaza de una, y aunque la firma sea valida, el estado que se guarda
+ * siempre sale de una consulta autenticada nuestra, no del payload.
  */
 class PlacetoPay {
 
@@ -98,6 +98,35 @@ class PlacetoPay {
             'requestId'  => $data['requestId'],
             'processUrl' => $data['processUrl'],
         ];
+    }
+
+    /**
+     * Valida la firma que PlacetoPay incluye en el POST del webhook.
+     * Formula (no documentada en docs.placetopay.dev, confirmada por un
+     * webhook de PlacetoPay ya usado en otro proyecto del equipo para
+     * predial): hash(requestId + status.status + status.date + secretKey).
+     * SHA-1 por defecto; si la firma trae el prefijo "sha256:", se usa
+     * SHA-256 y se compara sin ese prefijo.
+     */
+    public static function validarFirmaWebhook(array $body) {
+        $firmaRecibida = $body['signature'] ?? null;
+        if (!$firmaRecibida) {
+            return false;
+        }
+
+        $algoritmo = 'sha1';
+        if (strpos($firmaRecibida, 'sha256:') === 0) {
+            $algoritmo = 'sha256';
+            $firmaRecibida = substr($firmaRecibida, 7);
+        }
+
+        $requestId = $body['requestId'] ?? '';
+        $estado = $body['status']['status'] ?? '';
+        $fecha = $body['status']['date'] ?? '';
+
+        $firmaLocal = hash($algoritmo, $requestId . $estado . $fecha . PLACETOPAY_SECRETKEY);
+
+        return hash_equals($firmaLocal, $firmaRecibida);
     }
 
     /**
