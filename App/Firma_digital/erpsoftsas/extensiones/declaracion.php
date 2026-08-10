@@ -1,11 +1,17 @@
 <?php
 require_once('tcpdf/tcpdf.php');
+require_once('tcpdf/tcpdf_barcodes_1d.php');
 
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
 
-// Cargar configuración del municipio
-$configPath = dirname(__DIR__) . '/config.municipio.php';
+// Cargar configuración del municipio. Ubicación real (Plesk/producción): un
+// nivel arriba de /erpsoftsas; fallback dentro de /erpsoftsas solo para
+// Docker local (ver business/globals.php, que ya se incluyó arriba).
+$configPath = dirname(dirname(__DIR__)) . '/config.municipio.php';
+if (!file_exists($configPath)) {
+    $configPath = dirname(__DIR__) . '/config.municipio.php';
+}
 if (file_exists($configPath)) {
     require_once $configPath;
 }
@@ -421,6 +427,15 @@ $d = [
     'revisor_tp'             => $row['ind_TarjetaProfRevisor'] ?? ($row['est_Tarjeta_profesional_revisor'] ?? ''),
 ];
 
+/* ===========================
+CODIGO DE BARRAS / REFERENCIA DE RECAUDO
+Referencia = numero de declaracion. Formato provisional (Code 128): en
+cuanto quede definido el convenio de recaudo con el banco, ajustar aqui
+el armado de la referencia (y el tipo de codigo, si exigen otro).
+=========================== */
+$referenciaRecaudo = (string)$d['num_form'];
+$barcodeObj = new TCPDFBarcode($referenciaRecaudo, 'C128');
+$barcodeBase64 = base64_encode($barcodeObj->getBarcodePngData(2, 18));
 
 /* ===========================
 HEADER
@@ -915,8 +930,10 @@ if ($firmaData) {
     // Nombre de quien firmo + fecha/hora de presentacion (ver $fechaSello).
     $html .= '<span style="font-size: 8px;">' . htmlspecialchars($firmaData['fd_NombreUsuario']) . '<br>' . $fechaSello . '</span></div>';
 } else {
-    // Only put enough space for a physical signature without breaking the page layout
-    $html .= '<br><br><br>';
+    // Only put enough space for a physical signature without breaking the page layout.
+    // Recortado de 3 a 2 <br>: con el bloque de codigo de barras nuevo, cada mm
+    // libre al fondo de la pagina cuenta (SetAutoPageBreak esta en false).
+    $html .= '<br><br>';
 }
 
 $html .= '
@@ -1010,12 +1027,12 @@ $html .= '
 
 <tr>
 
-<td width="50%">
-<br><br>
+<td width="50%" align="center">
+<img src="@'.$barcodeBase64.'" width="50mm" height="7mm">
 </td>
 
 <td width="50%">
-<br>
+<br>'.$referenciaRecaudo.'
 </td>
 
 </tr>

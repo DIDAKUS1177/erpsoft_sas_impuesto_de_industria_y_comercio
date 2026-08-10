@@ -45,3 +45,10 @@ if (!defined('DB_DEV_SERVER')) define('DB_DEV_SERVER', 'db');
 if (!defined('DB_DEV_USER'))   define('DB_DEV_USER', 'usuario_dev');
 if (!defined('DB_DEV_PASS'))   define('DB_DEV_PASS', 'clave_dev');
 if (!defined('DB_DEV_NAME'))   define('DB_DEV_NAME', 'bd_dev');
+
+// 4. PlacetoPay (PSE ICA) — credenciales del convenio de recaudo con el
+// banco. Usar el login/secretKey de PRUEBA mientras se certifica, y los de
+// producción solo cuando el banco los entregue para el paso a producción.
+if (!defined('PLACETOPAY_LOGIN'))      define('PLACETOPAY_LOGIN', 'login_placetopay');
+if (!defined('PLACETOPAY_SECRETKEY'))  define('PLACETOPAY_SECRETKEY', 'secretkey_placetopay');
+if (!defined('PLACETOPAY_BASEURL'))    define('PLACETOPAY_BASEURL', 'https://checkout.test.avalpaycenter.com/api');

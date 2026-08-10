@@ -1,6 +1,12 @@
 <?php
-// Incluir configuración del municipio
-$configPath = __DIR__ . '/config.municipio.php';
+// Incluir configuración del municipio.
+// Ubicación real (Plesk/producción): un nivel arriba de /erpsoftsas (ver
+// plan_despliegue_plesk_claude.md). Fallback dentro de /erpsoftsas: solo para
+// Docker local, donde docker-compose.yml monta únicamente esta carpeta.
+$configPath = dirname(__DIR__) . '/config.municipio.php';
+if (!file_exists($configPath)) {
+    $configPath = __DIR__ . '/config.municipio.php';
+}
 if (file_exists($configPath)) {
     require_once $configPath;
 }

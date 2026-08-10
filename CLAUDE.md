@@ -35,14 +35,25 @@ _archivo_obsoleto_YYYY-MM-DD/  ← carpetas de limpieza: duplicados/backups viej
 ```
 
 **Gotcha crítico y recurrente**: varios archivos (`index.php`, `dist/menu.php`,
-`dist/dashboard.php`) buscan `config.municipio.php` **uno o dos niveles arriba** de
-donde están (`dirname(__DIR__)` / `dirname(dirname(__DIR__))`), apuntando siempre a
-`App/Firma_digital/config.municipio.php`. Si algún despliegue nuevo (Plesk, otro
-contenedor) publica solo la carpeta `erpsoftsas/` como raíz web **sin** incluir ese
-archivo un nivel arriba, la app cae en silencio a valores por defecto rotos — así se
-descubrió el bug del fondo del login invisible y el 404 del contenedor 8080. Antes de
-cualquier despliegue nuevo, confirmar que `config.municipio.php` es alcanzable desde
-esa ruta relativa.
+`dist/dashboard.php`, `business/globals.php`, `extensiones/declaracion.php`,
+`extensiones/liquidacion.php`) buscan `config.municipio.php` **uno o dos niveles
+arriba** de donde están (`dirname(__DIR__)` / `dirname(dirname(__DIR__))`), apuntando
+siempre primero a `App/Firma_digital/config.municipio.php` (la ubicación real en
+Plesk/producción, fuera del código versionado). Si ese archivo no existe ahí — como
+pasa en el contenedor Docker local `erpsoftsas_web_completo`, que monta *solo*
+`erpsoftsas/` y por lo tanto no puede ver un nivel arriba — cada uno de esos archivos
+cae a un segundo intento dentro de `erpsoftsas/config.municipio.php` (gitignored,
+solo para desarrollo local; **nunca** debe copiarse a un despliegue real). Ambos
+niveles usan el guard `defined()`, así que el primero que se resuelva gana.
+
+2026-08-10: se corrigió un bug real en este mecanismo — `index.php`, `dist/menu.php`,
+`dist/dashboard.php`, `business/globals.php` y los dos generadores de PDF en
+`extensiones/` tenían el cálculo de `dirname()` un nivel corto (aterrizaban todos en
+`erpsoftsas/`, nunca en `App/Firma_digital/`), así que en la práctica el archivo local
+de Docker siempre ganaba y el real de un nivel arriba nunca se leía. Se agregó el
+fallback explícito de dos niveles descrito arriba. Antes de cualquier despliegue
+nuevo, seguir confirmando que `config.municipio.php` es alcanzable desde la ruta un
+nivel arriba de `erpsoftsas/`.
 
 ## Docker (entorno local)
 

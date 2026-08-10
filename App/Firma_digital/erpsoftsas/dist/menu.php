@@ -2,8 +2,13 @@
 require_once '../business/globals.php';
 include_once('../business/class.sessions.php');
 
-// Cargar configuración del municipio
-$configPath = dirname(__DIR__) . '/config.municipio.php';
+// Cargar configuración del municipio. Ubicación real (Plesk/producción): un
+// nivel arriba de /erpsoftsas; fallback dentro de /erpsoftsas solo para
+// Docker local (ver business/globals.php, que ya se incluyó arriba).
+$configPath = dirname(dirname(__DIR__)) . '/config.municipio.php';
+if (!file_exists($configPath)) {
+    $configPath = dirname(__DIR__) . '/config.municipio.php';
+}
 if (file_exists($configPath)) {
     require_once $configPath;
 }

@@ -5,7 +5,17 @@
    // importar que municipio/despliegue sea. Este archivo (globals.php) es el
    // unico punto que TODOS los controladores de business/controller/*.php
    // incluyen antes de conectarse a la BD.
-   $_configMunicipioPath = dirname(__DIR__) . '/config.municipio.php';
+   //
+   // Ubicacion real (Plesk/produccion): un nivel arriba de /erpsoftsas, fuera
+   // del codigo versionado (ver plan_despliegue_plesk_claude.md). Este archivo
+   // vive en business/, dos niveles bajo /erpsoftsas, por eso son dos dirname().
+   // Fallback dentro de /erpsoftsas: solo para Docker local, donde
+   // docker-compose.yml monta unicamente esa carpeta y el nivel de arriba no
+   // existe dentro del contenedor.
+   $_configMunicipioPath = dirname(dirname(__DIR__)) . '/config.municipio.php';
+   if (!file_exists($_configMunicipioPath)) {
+       $_configMunicipioPath = dirname(__DIR__) . '/config.municipio.php';
+   }
    if (file_exists($_configMunicipioPath)) {
        require_once $_configMunicipioPath;
    }

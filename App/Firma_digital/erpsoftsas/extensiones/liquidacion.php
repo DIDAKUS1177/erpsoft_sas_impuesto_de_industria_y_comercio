@@ -3,8 +3,13 @@ include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
 require_once('./tcpdf/tcpdf.php');
 
-// Cargar configuración del municipio
-$configPath = dirname(__DIR__) . '/config.municipio.php';
+// Cargar configuración del municipio. Ubicación real (Plesk/producción): un
+// nivel arriba de /erpsoftsas; fallback dentro de /erpsoftsas solo para
+// Docker local (ver business/globals.php, que ya se incluyó arriba).
+$configPath = dirname(dirname(__DIR__)) . '/config.municipio.php';
+if (!file_exists($configPath)) {
+    $configPath = dirname(__DIR__) . '/config.municipio.php';
+}
 if (file_exists($configPath)) {
     require_once $configPath;
 }
@@ -269,349 +274,319 @@ function moneyCol($v) {
     return '$' . number_format((float)$v, 2, ',', '.');
 }
 
-function drawCheckBoxX($pdf, $x, $y, $size = 4, $checked = false) {
-    $pdf->Rect($x, $y, $size, $size);
-    if ($checked) {
-        $pdf->SetFont('helvetica','B', $size-1);
-        $pdf->SetXY($x, $y-0.5);
-        $pdf->Cell($size, $size+1, 'X', 0, 0, 'C');
-    }
-}
+/* ============================================================
+   CODIGO DE BARRAS / REFERENCIA DE RECAUDO
+   Referencia = numero de declaracion. Formato provisional (Code 128): en
+   cuanto quede definido el convenio de recaudo con el banco, ajustar aqui
+   el armado de la referencia (y el tipo de codigo, si exigen otro).
+   ============================================================ */
+require_once('./tcpdf/tcpdf_barcodes_1d.php');
+$barcodeObj = new TCPDFBarcode((string)$referencia_recaudo, 'C128');
+$barcodeBase64 = base64_encode($barcodeObj->getBarcodePngData(2, 18));
 
 /* ============================================================
    CREACIÓN PDF
+   Reescrito con tablas HTML (writeHTML), igual que declaracion.php, en vez
+   de Cell()/Rect() posicionados a mano: mas facil de mantener y evita que
+   una fila se salga de la pagina sin darse cuenta (con SetAutoPageBreak en
+   false, TCPDF no avisa si el contenido se pasa del borde inferior).
    ============================================================ */
 $pdf = new LiquidacionICAComercioPdf('P', 'mm', array(215.9, 330.2), true, 'UTF-8', false);
-$pdf->SetMargins(7,8,7);
+$pdf->SetMargins(10,10,10);
 $pdf->SetAutoPageBreak(false, 0);
 $pdf->AddPage();
 $pdf->SetFont('helvetica','',7);
 
-// Marco general
-$pdf->Rect(7,8,202,341); // ajusta altura si lo necesitas
+$nombreFirmanteContadorRevisor = $contador_nombre !== '' ? $contador_nombre : $revisor_nombre;
+$docFirmanteContadorRevisor    = $contador_num_doc !== '' ? $contador_num_doc : $revisor_num_doc;
 
-/* ------------------------------------------------------------
-   ENCABEZADO
-   ------------------------------------------------------------ */
-$y = 9;
+$html = '
 
-// logos izquierda (ajusta rutas)
-$pdf->Rect(8,$y,24,22);
-$pdf->Image(dirname(dirname(__DIR__)) . MUNICIPIO_LOGO, 8, $y, 24, 22, '', '', '', false, 300);
+<style>
+table { width:100%; border-collapse: collapse; }
+td { vertical-align: top; font-size:6px; }
+.tituloPrincipal { font-size:11px; font-weight:bold; }
+</style>
 
-// texto cabecera
-$pdf->SetFont('helvetica','B',9);
-$pdf->SetXY(40,$y);
-$pdf->Cell(120,5,"MUNICIPIO DE $municipio",0,2,'L');
-$pdf->SetFont('helvetica','',7);
-$pdf->SetX(40);
-$pdf->Cell(120,4,$nit_municipio,0,2,'L');
-$pdf->SetX(40);
-$pdf->Cell(120,4,$direccion_mpio,0,2,'L');
-$pdf->SetX(40);
-$pdf->Cell(120,4,$ciudad_mpio,0,2,'L');
+<table border="0" cellpadding="2" width="100%">
 
-// título principal
-$pdf->SetFont('helvetica','B',10);
-$pdf->SetXY(7, $y+20);
-$pdf->Cell(202,5,'FORMULARIO ÚNICO NACIONAL DE DECLARACIÓN Y PAGO DEL',0,2,'C');
-$pdf->Cell(202,5,'IMPUESTO DE INDUSTRIA Y COMERCIO',0,2,'C');
+<tr>
 
-// fecha máxima presentación (cuadro superior derecho)
-$pdf->SetFont('helvetica','',7);
-$pdf->SetXY(150,9);
-$pdf->MultiCell(58,8,"Fecha máxima de presentación\n$fecha_max_presentacion",1,'C');
+<td width="10%" rowspan="10" align="center">
+    <img src="' . dirname(dirname(__DIR__)) . MUNICIPIO_LOGO . '" width="85">
+    <div style="font-size:5px; text-align:center;">NIT ' . $nit_municipio . '</div>
+</td>
 
-/* ------------------------------------------------------------
-   BLOQUE: MUNICIPIO / DEPTO / AÑO / PERIODO
-   ------------------------------------------------------------ */
-$y = 32;
+<td class="tituloPrincipal" width="90%" align="center">
+<b>MUNICIPIO DE ' . htmlspecialchars($municipio) . '</b><br>
+' . $direccion_mpio . ' - ' . $ciudad_mpio . '<br>
+FORMULARIO ÚNICO NACIONAL DE DECLARACIÓN Y PAGO DEL<br>
+IMPUESTO DE INDUSTRIA Y COMERCIO
+</td>
 
-$pdf->SetFont('helvetica','',7);
+</tr>
 
-// fila municipio / depto
-$pdf->SetXY(7,$y);
-$pdf->Cell(100,6,"MUNICIPIO O DISTRITO:  $municipio_contrib",1,0,'L');
-$pdf->Cell(102,6,"DEPARTAMENTO:  $departamento_contrib",1,1,'L');
-$y += 6;
+<tr><td height="9"></td></tr>
+<tr><td height="9"></td></tr>
+<tr><td height="9"></td></tr>
 
-// fila año gravable + bimestres
-$pdf->SetXY(7,$y);
-$pdf->Cell(50,6,"AÑO GRAVABLE:",1,0,'L');
-$pdf->SetFont('helvetica','B',8);
-$pdf->Cell(15,6,$anio_gravable,1,0,'C');
-$pdf->SetFont('helvetica','',6);
-$pdf->Cell(137,6,"SOLAMENTE PARA BOGOTÁ, marque el bimestre o periodo anual",1,1,'L');
-$y += 6;
+</table>
 
-// fila meses / anual
-$pdf->SetXY(7,$y);
-$w_mes = 22;
-$pdf->Cell($w_mes,8,"ene-feb",1,0,'C');
-$pdf->Cell($w_mes,8,"mar-abr",1,0,'C');
-$pdf->Cell($w_mes,8,"may-jun",1,0,'C');
-$pdf->Cell($w_mes,8,"jul-ago",1,0,'C');
-$pdf->Cell($w_mes,8,"sep-oct",1,0,'C');
-$pdf->Cell($w_mes,8,"nov-dic",1,0,'C');
-$pdf->Cell(202-6*$w_mes,8,"anual",1,1,'C');
+<br>
 
-// dibujar checks
-$chkY = $y+2;
-drawCheckBoxX($pdf, 7 + $w_mes/2 -2,   $chkY, 4, $chk_ene_feb);
-drawCheckBoxX($pdf, 7 + $w_mes + $w_mes/2 -2, $chkY, 4, $chk_mar_abr);
-drawCheckBoxX($pdf, 7 + 2*$w_mes + $w_mes/2 -2, $chkY, 4, $chk_may_jun);
-drawCheckBoxX($pdf, 7 + 3*$w_mes + $w_mes/2 -2, $chkY, 4, $chk_jul_ago);
-drawCheckBoxX($pdf, 7 + 4*$w_mes + $w_mes/2 -2, $chkY, 4, $chk_sep_oct);
-drawCheckBoxX($pdf, 7 + 5*$w_mes + $w_mes/2 -2, $chkY, 4, $chk_nov_dic);
-drawCheckBoxX($pdf, 7 + 6*$w_mes + (202-6*$w_mes)/2 -2, $chkY, 4, $chk_anual);
+<table border="1" cellpadding="3" width="100%">
 
-$y += 8;
+<tr bgcolor="#e1dada">
+<td width="14%"><b>MUNICIPIO O DISTRITO</b></td>
+<td width="12%">' . htmlspecialchars($municipio_contrib) . '</td>
+<td width="14%"><b>DEPARTAMENTO</b></td>
+<td width="12%">' . htmlspecialchars($departamento_contrib) . '</td>
+<td width="14%"><b>AÑO GRAVABLE</b></td>
+<td width="8%">' . $anio_gravable . '</td>
+<td width="16%"><b>FECHA MÁXIMA PRESENT.</b></td>
+<td width="10%">' . $fecha_max_presentacion . '</td>
+</tr>
 
-/* ------------------------------------------------------------
-   BLOQUE: OPCIÓN DE USO
-   ------------------------------------------------------------ */
-$pdf->SetXY(7,$y);
-$pdf->Cell(202,6,"OPCIÓN DE USO:",1,1,'L');
-$y += 6;
+</table>
 
-$pdf->SetXY(7,$y);
-$pdf->Cell(60,6,"DECLARACIÓN INICIAL",1,0,'L');
-$pdf->Cell(40,6,"SOLO PAGO",1,0,'L');
-$pdf->Cell(40,6,"CORRECCIÓN",1,0,'L');
-$pdf->Cell(32,6,"Declaración que corrige No.",1,0,'L');
-$pdf->Cell(30,6,"Fecha:  $fecha_declaracion",1,1,'L');
+<br>
 
-// checkboxes opción uso
-$cbY = $y+1.5;
-drawCheckBoxX($pdf, 7+45, $cbY, 4, $chk_declaracion_inicial);
-drawCheckBoxX($pdf, 7+60+30, $cbY, 4, $chk_solo_pago);
-drawCheckBoxX($pdf, 7+100+30, $cbY, 4, $chk_correccion);
+<table border="1" cellpadding="2" width="100%">
 
-$y += 6;
+<tr>
+<td width="44%">SOLAMENTE PARA BOGOTÁ, marque el bimestre o periodo anual</td>
+<td width="8%" align="center">ene-feb<br>' . ($chk_ene_feb ? 'X' : '') . '</td>
+<td width="8%" align="center">mar-abr<br>' . ($chk_mar_abr ? 'X' : '') . '</td>
+<td width="8%" align="center">may-jun<br>' . ($chk_may_jun ? 'X' : '') . '</td>
+<td width="8%" align="center">jul-ago<br>' . ($chk_jul_ago ? 'X' : '') . '</td>
+<td width="8%" align="center">sep-oct<br>' . ($chk_sep_oct ? 'X' : '') . '</td>
+<td width="8%" align="center">nov-dic<br>' . ($chk_nov_dic ? 'X' : '') . '</td>
+<td width="8%" align="center">anual<br>' . ($chk_anual ? 'X' : '') . '</td>
+</tr>
 
-/* ------------------------------------------------------------
-   BLOQUE: DATOS BÁSICOS DEL CONTRIBUYENTE
-   ------------------------------------------------------------ */
+</table>
 
-// Fila 1 – Nombres / razón social
-$pdf->SetFont('helvetica','',7);
-$pdf->SetXY(7,$y);
-$pdf->Cell(7,6,"1",1,0,'C');
-$pdf->Cell(135,6,"NOMBRES Y APELLIDOS O RAZÓN SOCIAL",1,0,'L');
-$pdf->Cell(60,6,$nombre_razon_social,1,1,'L');
-$y += 6;
+<br>
 
-// fila tipo doc + número + DV + casillas consorcio/autónomo
-$pdf->SetXY(7,$y);
-$pdf->Cell(7,8,"2",1,0,'C');
-$pdf->Cell(135,8,"CC   NIT   XT   TI   CE   No.   DV   Es consorcio o unión temporal    Realiza actividades a través de patrimonio autónomo",1,0,'L');
-$pdf->Cell(60,8,"",1,1,'L');
+<table border="1" cellpadding="2" width="100%">
 
-// casillas tipo doc
-$baseX = 14; $ty = $y+2;
-$pdf->SetFont('helvetica','',6);
-$pdf->SetXY($baseX,$y);
-$pdf->Cell(6,8,"CC",0,0,'L');   drawCheckBoxX($pdf, $baseX+8, $ty, 3.5, $tipo_doc_CC);
-$pdf->SetXY($baseX+16,$y);
-$pdf->Cell(7,8,"NIT",0,0,'L');  drawCheckBoxX($pdf, $baseX+24, $ty, 3.5, $tipo_doc_NIT);
-$pdf->SetXY($baseX+32,$y);
-$pdf->Cell(7,8,"XT",0,0,'L');   drawCheckBoxX($pdf, $baseX+39, $ty, 3.5, $tipo_doc_XT);
-$pdf->SetXY($baseX+46,$y);
-$pdf->Cell(7,8,"TI",0,0,'L');   drawCheckBoxX($pdf, $baseX+53, $ty, 3.5, $tipo_doc_TI);
-$pdf->SetXY($baseX+60,$y);
-$pdf->Cell(7,8,"CE",0,0,'L');   drawCheckBoxX($pdf, $baseX+67, $ty, 3.5, $tipo_doc_CE);
+<tr>
+<td width="14%">DECLARACIÓN INICIAL</td>
+<td width="3%" align="center">' . ($chk_declaracion_inicial ? 'X' : '') . '</td>
+<td width="10%">SOLO PAGO</td>
+<td width="3%" align="center">' . ($chk_solo_pago ? 'X' : '') . '</td>
+<td width="10%">CORRECCIÓN</td>
+<td width="3%" align="center">' . ($chk_correccion ? 'X' : '') . '</td>
+<td width="18%">Declaración que corrige No.</td>
+<td width="10%">' . $no_declaracion_corrige . '</td>
+<td width="15%">Fecha</td>
+<td width="14%">' . $fecha_declaracion . '</td>
+</tr>
 
-// número doc + DV
-$pdf->SetXY($baseX+76,$y);
-$pdf->Cell(24,8,"No: $numero_documento",0,0,'L');
-$pdf->SetXY($baseX+100,$y);
-$pdf->Cell(10,8,"DV $digito_verif",0,0,'L');
+</table>
 
-// consorcio / patrimonio
-drawCheckBoxX($pdf, $baseX+124, $ty, 3.5, $es_consorcio_un_tv);
-drawCheckBoxX($pdf, $baseX+159, $ty, 3.5, $realiza_act_traves_patrimonio);
+<br>
 
-$y += 8;
+<table border="1" cellpadding="2" width="100%">
 
-// fila 3 – Dirección
-$pdf->SetXY(7,$y);
-$pdf->Cell(7,6,"3",1,0,'C');
-$pdf->Cell(195,6,"DIRECCIÓN DE NOTIFICACIÓN  $direccion_notificacion",1,1,'L');
-$y += 6;
+<tr>
+<td width="3%">1</td>
+<td width="30%"><b>NOMBRES Y APELLIDOS O RAZÓN SOCIAL</b></td>
+<td width="67%">' . htmlspecialchars($nombre_razon_social) . '</td>
+</tr>
 
-// fila 4 – Municipio / Depto / Establecimientos / Clasificación
-$pdf->SetXY(7,$y);
-$pdf->Cell(7,6,"4",1,0,'C');
-$pdf->Cell(70,6,"MUNICIPIO O DISTRITO DE LA DIRECCIÓN:  $municipio_contrib",1,0,'L');
-$pdf->Cell(60,6,"DEPARTAMENTO:  $departamento_contrib",1,0,'L');
-$pdf->Cell(35,6,"6. No.ESTABLECIMIENTOS  $no_establecimientos",1,0,'L');
-$pdf->Cell(30,6,"7. CLASIFICACIÓN  $clasificacion",1,1,'L');
-$y += 6;
+<tr>
+<td width="3%">2</td>
+<td width="4%">CC</td><td width="3%" align="center">' . ($tipo_doc_CC ? 'X' : '') . '</td>
+<td width="5%">NIT</td><td width="3%" align="center">' . ($tipo_doc_NIT ? 'X' : '') . '</td>
+<td width="4%">XT</td><td width="3%" align="center">' . ($tipo_doc_XT ? 'X' : '') . '</td>
+<td width="4%">TI</td><td width="3%" align="center">' . ($tipo_doc_TI ? 'X' : '') . '</td>
+<td width="4%">CE</td><td width="3%" align="center">' . ($tipo_doc_CE ? 'X' : '') . '</td>
+<td width="16%">No. ' . htmlspecialchars($numero_documento) . '  DV ' . htmlspecialchars($digito_verif) . '</td>
+<td width="17%">¿Consorcio o unión temporal?</td><td width="3%" align="center">' . ($es_consorcio_un_tv ? 'X' : '') . '</td>
+<td width="18%">¿Patrimonio autónomo?</td><td width="3%" align="center">' . ($realiza_act_traves_patrimonio ? 'X' : '') . '</td>
+</tr>
 
-// fila 5 – Teléfono / correo
-$pdf->SetXY(7,$y);
-$pdf->Cell(7,6,"5",1,0,'C');
-$pdf->Cell(60,6,"TELÉFONO  $telefono_contrib",1,0,'L');
-$pdf->Cell(135,6,"5. CORREO ELECTRÓNICO  $correo_contrib",1,1,'L');
-$y += 6;
+<tr>
+<td width="3%">3</td>
+<td width="20%"><b>DIRECCIÓN DE NOTIFICACIÓN</b></td>
+<td width="77%">' . htmlspecialchars($direccion_notificacion) . '</td>
+</tr>
 
-/* ------------------------------------------------------------
-   BLOQUE: BASE GRAVABLE / INGRESOS (renglones 8–16)
-   ------------------------------------------------------------ */
+<tr>
+<td width="3%">4</td>
+<td width="27%"><b>MUNICIPIO O DISTRITO DE LA DIRECCIÓN</b></td>
+<td width="15%">' . htmlspecialchars($municipio_contrib) . '</td>
+<td width="14%"><b>DEPARTAMENTO</b></td>
+<td width="10%">' . htmlspecialchars($departamento_contrib) . '</td>
+<td width="16%"><b>No. ESTABLECIMIENTOS</b></td>
+<td width="5%">' . $no_establecimientos . '</td>
+<td width="5%"><b>CLASIF.</b></td>
+<td width="5%">' . $clasificacion . '</td>
+</tr>
 
-$pdf->SetFont('helvetica','B',7);
-$pdf->SetXY(7,$y);
-$pdf->Cell(7,6,"",1,0,'C');
-$pdf->Cell(135,6,"BASE GRAVABLE",1,0,'L');
-$pdf->Cell(60,6,"VALOR",1,1,'C');
-$y += 6;
-$pdf->SetFont('helvetica','',7);
+<tr>
+<td width="3%">5</td>
+<td width="15%"><b>TELÉFONO</b></td>
+<td width="15%">' . htmlspecialchars($telefono_contrib) . '</td>
+<td width="17%"><b>CORREO ELECTRÓNICO</b></td>
+<td width="50%">' . htmlspecialchars($correo_contrib) . '</td>
+</tr>
 
-function filaBG($pdf,&$y,$num,$texto,$valor){
-    $pdf->SetXY(7,$y);
-    $pdf->Cell(7,6,$num,1,0,'C');
-    $pdf->Cell(135,6,$texto,1,0,'L');
-    $pdf->Cell(60,6, moneyCol($valor),1,1,'R');
-    $y += 6;
-}
+</table>
 
-filaBG($pdf,$y,"8","TOTAL INGRESOS ORDINARIOS Y EXTRAORDINARIOS DEL PERÍODO EN TODO EL PAÍS",$vlr_8_total_ingresos_pais);
-filaBG($pdf,$y,"9","MENOS INGRESOS FUERA DE ESTE MUNICIPIO O DISTRITO",$vlr_9_menos_fuera_municipio);
-filaBG($pdf,$y,"10","TOTAL INGRESOS ORDINARIOS Y EXTRAORDINARIOS EN ESTE MUNICIPIO (renglón 8 menos 9)",$vlr_10_total_ingresos_municipio);
-filaBG($pdf,$y,"11","MENOS INGRESOS POR DEVOLUCIONES, REBAJAS, DESCUENTOS",$vlr_11_menos_devoluciones);
-filaBG($pdf,$y,"12","MENOS INGRESOS POR EXPORTACIONES",$vlr_12_menos_exportaciones);
-filaBG($pdf,$y,"13","MENOS INGRESOS POR VENTA DE ACTIVOS FIJOS",$vlr_13_menos_venta_activos);
-filaBG($pdf,$y,"14","MENOS INGRESOS POR ACTIVIDADES EXCLUIDAS O NO SUJETAS Y OTROS INGRESOS NO GRAVADOS",$vlr_14_menos_excluidos_no_grav);
-filaBG($pdf,$y,"15","MENOS INGRESOS POR OTRAS ACTIVIDADES EXENTAS EN ESTE MUNICIPIO O DISTRITO (POR ACUERDO)",$vlr_15_menos_otras_actividades);
-filaBG($pdf,$y,"16","TOTAL INGRESOS GRAVABLES (renglón 10 menos 11, 12, 13, 14, 15)",$vlr_16_total_ingresos_gravables);
+<br>
 
-/* ------------------------------------------------------------
-   BLOQUE: ACTIVIDAD GRAVADA (renglón 17–19)
-   ------------------------------------------------------------ */
+<table border="1" cellpadding="2" width="100%">
 
-$pdf->SetFont('helvetica','B',7);
-$pdf->SetXY(7,$y);
-$pdf->Cell(60,6,"ACTIVIDADES GRAVADAS",1,0,'C');
-$pdf->Cell(25,6,"CÓDIGO",1,0,'C');
-$pdf->Cell(55,6,"INGRESOS GRAVADOS",1,0,'C');
-$pdf->Cell(30,6,"TARIFA (por mil)",1,0,'C');
-$pdf->Cell(39,6,"IMPUESTO",1,1,'C');
-$y += 6;
+<tr bgcolor="#e1dada">
+<td width="5%"></td>
+<td width="75%"><b>BASE GRAVABLE</b></td>
+<td width="20%" align="center"><b>VALOR</b></td>
+</tr>
 
-$pdf->SetFont('helvetica','',7);
-$pdf->SetXY(7,$y);
-$pdf->Cell(60,6,$actividad_descripcion,1,0,'L');
-$pdf->Cell(25,6,$actividad_codigo,1,0,'C');
-$pdf->Cell(55,6,moneyCol($actividad_ingresos),1,0,'R');
-$pdf->Cell(30,6,number_format($actividad_tarifa_mil,3,',','.')." ‰",1,0,'C');
-$pdf->Cell(39,6,moneyCol($actividad_impuesto),1,1,'R');
-$y += 6;
+<tr><td>8</td><td>TOTAL INGRESOS ORDINARIOS Y EXTRAORDINARIOS DEL PERÍODO EN TODO EL PAÍS</td><td align="right">' . moneyCol($vlr_8_total_ingresos_pais) . '</td></tr>
+<tr><td>9</td><td>MENOS INGRESOS FUERA DE ESTE MUNICIPIO O DISTRITO</td><td align="right">' . moneyCol($vlr_9_menos_fuera_municipio) . '</td></tr>
+<tr><td>10</td><td>TOTAL INGRESOS EN ESTE MUNICIPIO (renglón 8 menos 9)</td><td align="right">' . moneyCol($vlr_10_total_ingresos_municipio) . '</td></tr>
+<tr><td>11</td><td>MENOS DEVOLUCIONES, REBAJAS, DESCUENTOS</td><td align="right">' . moneyCol($vlr_11_menos_devoluciones) . '</td></tr>
+<tr><td>12</td><td>MENOS EXPORTACIONES</td><td align="right">' . moneyCol($vlr_12_menos_exportaciones) . '</td></tr>
+<tr><td>13</td><td>MENOS VENTA DE ACTIVOS FIJOS</td><td align="right">' . moneyCol($vlr_13_menos_venta_activos) . '</td></tr>
+<tr><td>14</td><td>MENOS ACTIVIDADES EXCLUIDAS O NO SUJETAS Y OTROS INGRESOS NO GRAVADOS</td><td align="right">' . moneyCol($vlr_14_menos_excluidos_no_grav) . '</td></tr>
+<tr><td>15</td><td>MENOS OTRAS ACTIVIDADES EXENTAS EN ESTE MUNICIPIO O DISTRITO (POR ACUERDO)</td><td align="right">' . moneyCol($vlr_15_menos_otras_actividades) . '</td></tr>
+<tr bgcolor="#cae6e7"><td>16</td><td><b>TOTAL INGRESOS GRAVABLES (renglón 10 menos 11,12,13,14,15)</b></td><td align="right"><b>' . moneyCol($vlr_16_total_ingresos_gravables) . '</b></td></tr>
 
-// Total ingresos/ impuesto
-$pdf->SetXY(7,$y);
-$pdf->Cell(85,6,"17. TOTAL INGRESOS GRAVADOS",1,0,'L');
-$pdf->Cell(55,6,moneyCol($actividad_ingresos),1,0,'R');
-$pdf->Cell(30,6,"17. TOTAL IMPUESTO",1,0,'L');
-$pdf->Cell(39,6,moneyCol($total_impuesto_renglon),1,1,'R');
-$y += 6;
+</table>
 
-/* ------------------------------------------------------------
-   BLOQUE: LIQUIDACIÓN DEL IMPUESTO (20–33)
-   ------------------------------------------------------------ */
+<br>
 
-filaBG($pdf,$y,"20","TOTAL IMPUESTO DE INDUSTRIA Y COMERCIO (renglón 17 + 19)",$vlr_20_total_impto_ic);
-filaBG($pdf,$y,"21","IMPUESTO DE AVISOS Y TABLEROS (15% de renglón 20)",$vlr_21_impto_avisos_tableros);
-filaBG($pdf,$y,"22","PAGO POR UNIDADES COMERCIALES ADICIONALES DEL SECTOR FINANCIERO",$vlr_22_pago_unidades_adic);
-filaBG($pdf,$y,"23","SOBRETASA BOMBERIL (Ley 1575 de 2012) si la hay, líquidela según el acuerdo municipal o distrital",$vlr_23_sobretasa_bomberos);
-filaBG($pdf,$y,"24","SOBRETASA DE SEGURIDAD (Ley 1421 de 2010) si la hay, líquidela según el acuerdo municipal o distrital",$vlr_24_sobretasa_seguridad);
-filaBG($pdf,$y,"25","TOTAL IMPUESTO A CARGO (Renglón 20+21+22+23+24)",$vlr_25_total_impto_cargo);
-filaBG($pdf,$y,"26","MENOS VALOR DE EXENCIÓN O EXONERACIÓN SOBRE EL IMPUESTO Y NO SOBRE LOS INGRESOS",$vlr_26_menos_valores_exencion);
-filaBG($pdf,$y,"27","MENOS RETENCIONES QUE LE PRACTICARON A FAVOR DE ESTE MUNICIPIO O DISTRITO EN ESTE PERÍODO",$vlr_27_menos_retenciones);
-filaBG($pdf,$y,"28","MENOS ANTICIPO LIQUIDADO EN EL AÑO ANTERIOR",$vlr_28_menos_anticipo_anterior);
-filaBG($pdf,$y,"29","ANTICIPO DEL AÑO SIGUIENTE (si existe, líqüidelo según el acuerdo municipal o distrital)",$vlr_29_anticipo_anio_sgte);
+<table border="1" cellpadding="2" width="100%">
 
-// Sanciones (30/31) – dejamos línea especial
-$pdf->SetXY(7,$y);
-$pdf->Cell(7,6,"31",1,0,'C');
-$pdf->Cell(135,6,"SANCIONES         Extemporaneidad    Corrección    Inexactitud    Otra   Cual:",1,0,'L');
-$pdf->Cell(60,6,moneyCol($vlr_31_sanciones),1,1,'R');
-$y += 6;
+<tr bgcolor="#e1dada">
+<td width="30%" align="center"><b>ACTIVIDADES GRAVADAS</b></td>
+<td width="12%" align="center"><b>CÓDIGO</b></td>
+<td width="25%" align="center"><b>INGRESOS GRAVADOS</b></td>
+<td width="15%" align="center"><b>TARIFA (por mil)</b></td>
+<td width="18%" align="center"><b>IMPUESTO</b></td>
+</tr>
 
-// Menos saldo favor período anterior
-filaBG($pdf,$y,"32","MENOS SALDO A FAVOR DEL PERÍODO ANTERIOR SIN SOLICITUD DE DEVOLUCIÓN O COMPENSACIÓN",$vlr_32_menos_saldo_favor_ant);
-filaBG($pdf,$y,"33","TOTAL SALDO A CARGO (Renglón 25-26-27-28-29+30+31-32)",$vlr_33_total_saldo_cargo);
-filaBG($pdf,$y,"35","VALOR A PAGAR",$vlr_35_valor_a_pagar);
-filaBG($pdf,$y,"37","INTERESES DE MORA",$vlr_37_intereses_mora);
-filaBG($pdf,$y,"38","TOTAL A PAGAR (renglón 35+36+37)",$vlr_38_total_a_pagar);
+<tr>
+<td>' . htmlspecialchars($actividad_descripcion) . '</td>
+<td align="center">' . htmlspecialchars($actividad_codigo) . '</td>
+<td align="right">' . moneyCol($actividad_ingresos) . '</td>
+<td align="center">' . number_format($actividad_tarifa_mil,3,',','.') . ' ‰</td>
+<td align="right">' . moneyCol($actividad_impuesto) . '</td>
+</tr>
 
-/* ------------------------------------------------------------
-   BLOQUE: PAGO VOLUNTARIO
-   ------------------------------------------------------------ */
-$pdf->SetXY(7,$y);
-$pdf->Cell(107,6,"SECCIÓN PAGO VOLUNTARIO (Solamente donde exista esta opción)",1,0,'L');
-$pdf->Cell(50,6,"39 LIQUÍDE EL VALOR DE PAGO VOLUNTARIO",1,0,'L');
-$pdf->Cell(45,6,moneyCol($vlr_39_aporte_voluntario),1,1,'R');
-$y += 6;
+<tr bgcolor="#cae6e7">
+<td colspan="2"><b>17. TOTAL INGRESOS GRAVADOS</b></td>
+<td align="right"><b>' . moneyCol($actividad_ingresos) . '</b></td>
+<td><b>17. TOTAL IMPUESTO</b></td>
+<td align="right"><b>' . moneyCol($total_impuesto_renglon) . '</b></td>
+</tr>
 
-$pdf->SetXY(7,$y);
-$pdf->Cell(157,6,"40 TOTAL A PAGAR CON PAGO VOLUNTARIO (renglón 38+39)",1,0,'L');
-$pdf->Cell(45,6,moneyCol($vlr_40_total_con_aporte),1,1,'R');
-$y += 6;
+</table>
 
-/* ------------------------------------------------------------
-   BLOQUE: FIRMAS
-   ------------------------------------------------------------ */
-$pdf->SetFont('helvetica','B',7);
-$pdf->SetXY(7,$y);
-$pdf->Cell(202,6,"E. FIRMAS",1,1,'L');
-$y += 6;
-$pdf->SetFont('helvetica','',7);
+<br>
 
-// fila firmas grande
-$pdf->SetXY(7,$y);
-$pdf->Cell(67,6,"FIRMA DEL DECLARANTE",1,0,'C');
-$pdf->Cell(67,6,"FIRMA DEL CONTADOR",1,0,'C');
-$pdf->Cell(68,6,"REVISOR FISCAL",1,1,'C');
+<table border="1" cellpadding="2" width="100%">
 
-// Si la declaracion ya esta firmada digitalmente, se pinta el sello
-// dentro del mismo espacio reservado para la firma manuscrita en vez
-// de dejarlo en blanco (igual que declaracion.php).
+<tr><td width="5%"></td><td width="75%">20 TOTAL IMPUESTO DE INDUSTRIA Y COMERCIO (renglón 17+19)</td><td width="20%" align="right">' . moneyCol($vlr_20_total_impto_ic) . '</td></tr>
+<tr><td></td><td>21 IMPUESTO DE AVISOS Y TABLEROS (15% de renglón 20)</td><td align="right">' . moneyCol($vlr_21_impto_avisos_tableros) . '</td></tr>
+<tr><td></td><td>22 PAGO POR UNIDADES COMERCIALES ADICIONALES DEL SECTOR FINANCIERO</td><td align="right">' . moneyCol($vlr_22_pago_unidades_adic) . '</td></tr>
+<tr><td></td><td>23 SOBRETASA BOMBERIL (Ley 1575 de 2012), según el acuerdo municipal o distrital</td><td align="right">' . moneyCol($vlr_23_sobretasa_bomberos) . '</td></tr>
+<tr><td></td><td>24 SOBRETASA DE SEGURIDAD (Ley 1421 de 2010), según el acuerdo municipal o distrital</td><td align="right">' . moneyCol($vlr_24_sobretasa_seguridad) . '</td></tr>
+<tr bgcolor="#cae6e7"><td></td><td><b>25 TOTAL IMPUESTO A CARGO (Renglón 20+21+22+23+24)</b></td><td align="right"><b>' . moneyCol($vlr_25_total_impto_cargo) . '</b></td></tr>
+<tr><td></td><td>26 MENOS VALOR DE EXENCIÓN O EXONERACIÓN SOBRE EL IMPUESTO Y NO SOBRE LOS INGRESOS</td><td align="right">' . moneyCol($vlr_26_menos_valores_exencion) . '</td></tr>
+<tr><td></td><td>27 MENOS RETENCIONES QUE LE PRACTICARON A FAVOR DE ESTE MUNICIPIO O DISTRITO EN ESTE PERÍODO</td><td align="right">' . moneyCol($vlr_27_menos_retenciones) . '</td></tr>
+<tr><td></td><td>28 MENOS ANTICIPO LIQUIDADO EN EL AÑO ANTERIOR</td><td align="right">' . moneyCol($vlr_28_menos_anticipo_anterior) . '</td></tr>
+<tr><td></td><td>29 ANTICIPO DEL AÑO SIGUIENTE, según el acuerdo municipal o distrital</td><td align="right">' . moneyCol($vlr_29_anticipo_anio_sgte) . '</td></tr>
+<tr><td>31</td><td>SANCIONES: Extemporaneidad&nbsp;&nbsp;&nbsp;Corrección&nbsp;&nbsp;&nbsp;Inexactitud&nbsp;&nbsp;&nbsp;Otra ¿Cuál?</td><td align="right">' . moneyCol($vlr_31_sanciones) . '</td></tr>
+<tr><td>32</td><td>MENOS SALDO A FAVOR DEL PERÍODO ANTERIOR SIN SOLICITUD DE DEVOLUCIÓN O COMPENSACIÓN</td><td align="right">' . moneyCol($vlr_32_menos_saldo_favor_ant) . '</td></tr>
+<tr bgcolor="#cae6e7"><td>33</td><td><b>TOTAL SALDO A CARGO (Renglón 25-26-27-28-29+30+31-32)</b></td><td align="right"><b>' . moneyCol($vlr_33_total_saldo_cargo) . '</b></td></tr>
+<tr><td>35</td><td><b>VALOR A PAGAR</b></td><td align="right"><b>' . moneyCol($vlr_35_valor_a_pagar) . '</b></td></tr>
+<tr><td>37</td><td>INTERESES DE MORA</td><td align="right">' . moneyCol($vlr_37_intereses_mora) . '</td></tr>
+<tr bgcolor="#cae6e7"><td>38</td><td><b>TOTAL A PAGAR (renglón 35+36+37)</b></td><td align="right"><b>' . moneyCol($vlr_38_total_a_pagar) . '</b></td></tr>
+
+</table>
+
+<br>
+
+<table border="1" cellpadding="2" width="100%">
+
+<tr>
+<td width="45%" rowspan="2" bgcolor="#e1dada">SECCIÓN PAGO VOLUNTARIO (solamente donde exista esta opción)</td>
+<td width="40%">39 LIQUIDE EL VALOR DEL PAGO VOLUNTARIO</td>
+<td width="15%" align="right">' . moneyCol($vlr_39_aporte_voluntario) . '</td>
+</tr>
+
+<tr>
+<td width="40%">40 TOTAL A PAGAR CON PAGO VOLUNTARIO (renglón 38+39)</td>
+<td width="15%" align="right">' . moneyCol($vlr_40_total_con_aporte) . '</td>
+</tr>
+
+</table>
+
+<br>
+
+<table border="1" cellpadding="2" width="100%">
+
+<tr>
+<td width="35%" align="center"><b>FIRMA DEL DECLARANTE</b><br>';
+
 if ($firmaData) {
-    $pdf->Image(MUNICIPIO_SELLO_FIRMA, 7 + (67 - 14) / 2, $y + 7, 14, 14, '', '', '', false, 300);
-    $pdf->SetFont('helvetica','',5);
-    $pdf->SetXY(7, $y + 21);
-    $pdf->Cell(67, 3, $firmaData['fd_NombreUsuario'] . ' - ' . $fechaSello, 0, 0, 'C');
-    $pdf->SetFont('helvetica','',7);
+    $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="16" height="16"><br>'
+           . '<span style="font-size:6px;">' . htmlspecialchars($firmaData['fd_NombreUsuario']) . '<br>' . $fechaSello . '</span></div>';
+} else {
+    $html .= '<br><br>';
 }
 
-$y += 18; // espacio para firmas manuscritas
+$html .= '
+</td>
 
-// nombres
-$pdf->SetXY(7,$y);
-$pdf->Cell(67,6,"NOMBRE  $firmante_nombre",1,0,'L');
-$pdf->Cell(67,6,"NOMBRE  $contador_nombre",1,0,'L');
-$pdf->Cell(68,6,"NOMBRE  $revisor_nombre",1,1,'L');
-$y += 6;
+<td width="65%" align="center"><b>FIRMA DEL CONTADOR O REVISOR FISCAL</b><br><br><br>
+</td>
 
-// documentos línea 1
-$pdf->SetXY(7,$y);
-$pdf->Cell(67,6,"C.C.  C.E.  T.I.  NIT",1,0,'L');
-$pdf->Cell(67,6,"C.C.  C.E.  T.I.  T.P.",1,0,'L');
-$pdf->Cell(68,6,"C.C.  C.E.  T.I.  T.P.",1,1,'L');
-$y += 6;
+</tr>
 
-// documentos línea 2 (números)
-$pdf->SetXY(7,$y);
-$pdf->Cell(67,6,"No.  $firmante_num_doc",1,0,'L');
-$pdf->Cell(67,6,"No.  $contador_num_doc",1,0,'L');
-$pdf->Cell(68,6,"No.  $revisor_num_doc",1,1,'L');
-$y += 6;
+<tr>
 
-// código barras / referencia recaudo
-$pdf->SetXY(7,$y);
-$pdf->Cell(101,6,"CÓDIGO DE BARRAS",1,0,'L');
-$pdf->Cell(101,6,"REFERENCIA DE RECAUDO FORMULARIO No.  $referencia_recaudo",1,1,'L');
-$y += 6;
+<td width="35%">
+<b>NOMBRE:</b> ' . htmlspecialchars($firmante_nombre) . '<br>
+C.C./NIT No. ' . htmlspecialchars($firmante_num_doc) . '
+</td>
+
+<td width="65%">
+<b>NOMBRE:</b> ' . htmlspecialchars($nombreFirmanteContadorRevisor) . '<br>
+C.C./T.P. No. ' . htmlspecialchars($docFirmanteContadorRevisor) . '
+</td>
+
+</tr>
+
+</table>
+
+<br>
+
+<table border="1" cellpadding="2" width="100%">
+
+<tr>
+<td width="50%"><b>CÓDIGO DE BARRAS</b></td>
+<td width="50%"><b>REFERENCIA DE RECAUDO FORMULARIO No.</b></td>
+</tr>
+
+<tr>
+<td width="50%" align="center">
+<img src="@' . $barcodeBase64 . '" width="55mm" height="12mm">
+</td>
+<td width="50%">
+<br>' . $referencia_recaudo . '
+</td>
+</tr>
+
+</table>
+
+';
+
+$pdf->writeHTML($html, true, false, true, false, '');
 
 /* ============================================================
    SALIDA PDF

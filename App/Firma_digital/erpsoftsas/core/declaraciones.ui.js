@@ -126,17 +126,24 @@ var DeclaracionesUI = (function () {
                        'title="¿Necesitas declarar de nuevo este período? Esta es la forma correcta: genera una corrección enlazada a la presentada.">' +
                        '<i class="fa fa-pencil"></i> Corregir</a>';
 
-        // Codigo de barras y pago PSE quedan pendientes del convenio de
-        // recaudo con el banco; se muestran deshabilitados para que se vea
-        // que el tramite continua ahi, sin ofrecer algo que aun no funciona.
-        botones += '<button type="button" class="btn btn-secondary btn-sm mr-1" disabled ' +
-                       'title="Código de barras (disponible con el convenio bancario)">' +
-                       '<i class="fa fa-barcode"></i></button>';
+        // Codigo de barras: ya generado dentro de liquidacion.php (referencia
+        // = numero de declaracion, formato provisional Code 128 -ver
+        // comentario en extensiones/liquidacion.php- hasta que quede
+        // definido el convenio de recaudo con el banco).
+        botones += '<a href="../extensiones/liquidacion.php?dec_Id=' + d.dec_Id + '" target="_blank" ' +
+                       'class="btn btn-secondary btn-sm mr-1" title="Código de barras / referencia de pago">' +
+                       '<i class="fa fa-barcode"></i></a>';
 
+        // Pago PSE (PlacetoPay/Avalpaycenter): crearSesion.php crea la sesion
+        // y redirige directo al banco -por eso target="_blank", en vez de
+        // onclick+JS-, igual que "Descargar" y el boton de arriba.
+        // Ahora mismo contra el ambiente de PRUEBAS del banco (ver
+        // config.municipio.php, PLACETOPAY_BASEURL); cambiar a producción
+        // solo cuando el banco entregue las credenciales reales.
         if (clave !== 'pagada') {
-            botones += '<button type="button" class="btn btn-danger btn-sm" disabled ' +
-                           'title="Pago PSE (disponible con el convenio bancario)">' +
-                           '<i class="fa fa-money"></i></button>';
+            botones += '<a href="../extensiones/pse/crearSesion.php?dec_Id=' + d.dec_Id + '" target="_blank" ' +
+                           'class="btn btn-danger btn-sm" title="Pagar por PSE">' +
+                           '<i class="fa fa-money"></i></a>';
         }
 
         return botones;
