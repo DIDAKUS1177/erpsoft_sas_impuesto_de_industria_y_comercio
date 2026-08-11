@@ -532,22 +532,29 @@ private function _insertarActividadesDeclaracionIca(){
             dec_IngresosOtrasActividades = ?,
             dec_BaseGravable = ?,
 
-            dec_CapacidadInstalada = ?,
-            dec_ValorImpuesto = ?
+            -- El JS de Liquidar no manda estos dos campos. Antes se leian
+            -- igual y eso hacia DOS cosas malas: (1) en PHP 8 lanzaba un
+            -- Warning de Undefined array key que en produccion
+            -- (display_errors on) se imprimia ANTES del JSON y rompia el
+            -- parseo, dejando el boton Liquidar sin hacer nada; (2) grababa
+            -- NULL encima del valor que ya tuviera la declaracion.
+            -- COALESCE conserva el valor actual si no viene.
+            dec_CapacidadInstalada = COALESCE(?, dec_CapacidadInstalada),
+            dec_ValorImpuesto      = COALESCE(?, dec_ValorImpuesto)
         WHERE dec_NumeroDeclaracion = ?
         ";
 
         $con->consultar($sqlUpdate, [
-            $totales['dec_TotalIngresos'],
-            $totales['dec_IngresosFueraMunicipio'],
-            $totales['dec_IngresosDevoluciones'],
-            $totales['dec_IngresosExportaciones'],
-            $totales['dec_IngresosVentas'],
-            $totales['dec_IngresosActividades'],
-            $totales['dec_IngresosOtrasActividades'],
-            $totales['dec_BaseGravable'],
-            $totales['dec_CapacidadInstalada'],
-            $totales['dec_ValorImpuesto'],
+            $totales['dec_TotalIngresos']            ?? 0,
+            $totales['dec_IngresosFueraMunicipio']   ?? 0,
+            $totales['dec_IngresosDevoluciones']     ?? 0,
+            $totales['dec_IngresosExportaciones']    ?? 0,
+            $totales['dec_IngresosVentas']           ?? 0,
+            $totales['dec_IngresosActividades']      ?? 0,
+            $totales['dec_IngresosOtrasActividades'] ?? 0,
+            $totales['dec_BaseGravable']             ?? 0,
+            $totales['dec_CapacidadInstalada']       ?? null,
+            $totales['dec_ValorImpuesto']            ?? null,
             $idDeclaracion
         ]);
 

@@ -1806,6 +1806,16 @@ $("#btnGenerarOficial").off("click").on("click", function () {
 
 
 
+        },
+        // Ver nota en icaWebRit.js: sin este error() el boton "Liquidar"
+        // quedaba mudo si el backend no devolvia JSON valido.
+        error: function (xhr) {
+            $('#loading').hide();
+            $('#wrapper').removeClass('body-load');
+            console.error('Liquidar - respuesta del servidor:', xhr.responseText);
+            swal("Error",
+                 "No se pudo liquidar. Intente de nuevo; si persiste, avise a soporte.",
+                 "error");
         }
     })
 

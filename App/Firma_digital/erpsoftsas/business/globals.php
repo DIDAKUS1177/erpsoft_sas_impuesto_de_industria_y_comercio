@@ -1,4 +1,16 @@
 <?php
+   // Los avisos de PHP NUNCA deben imprimirse en la respuesta: casi todos los
+   // controladores que incluyen este archivo contestan JSON, y un simple
+   // "Warning: Undefined array key" impreso antes del json_encode deja la
+   // respuesta invalida. jQuery (dataType:'json') no la puede parsear,
+   // success() no se ejecuta y -si el .ajax() no trae error()- la pantalla se
+   // queda sin hacer nada, sin ningun mensaje. Asi fue justamente como el
+   // boton "Liquidar" parecia estar muerto en produccion (2026-08-11), donde
+   // display_errors esta activo, mientras en local (con display_errors off)
+   // funcionaba perfecto. Se siguen registrando en el log de PHP.
+   @ini_set('display_errors', '0');
+   @ini_set('log_errors', '1');
+
    // Cargar configuracion del municipio ANTES que cualquier conexion a BD se
    // instancie: sin esto, class.conexionSqlServer.php nunca ve las constantes
    // DB_PROD_* y cae a las credenciales de produccion hardcodeadas, sin

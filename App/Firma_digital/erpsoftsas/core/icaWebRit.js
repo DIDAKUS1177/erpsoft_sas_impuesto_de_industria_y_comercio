@@ -1875,6 +1875,18 @@ $("#btnValidarDeclaracion").off("click").on("click", function () {
 
 
 
+        },
+        // Sin este error() el boton quedaba MUDO ante cualquier fallo: si el
+        // backend devolvia algo que no fuera JSON valido (p.ej. un warning de
+        // PHP impreso antes del JSON), success() no corria y no se avisaba
+        // nada. Al usuario le parecia que "Liquidar" simplemente no servia.
+        error: function (xhr) {
+            $('#loading').hide();
+            $('#wrapper').removeClass('body-load');
+            console.error('Liquidar - respuesta del servidor:', xhr.responseText);
+            swal("Error",
+                 "No se pudo liquidar. Intente de nuevo; si persiste, avise a soporte.",
+                 "error");
         }
     })
 

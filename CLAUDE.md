@@ -124,6 +124,26 @@ original no dejaba margen para el código de barras sin cortarse en el borde inf
 de la página (`SetAutoPageBreak` está en `false` en ambos archivos — TCPDF no avisa si
 el contenido se pasa del borde).
 
+## Trampa: warnings de PHP que rompen respuestas JSON (2026-08-11)
+
+`business/globals.php` fuerza `display_errors=0` a proposito. Casi todos los
+controladores contestan JSON, y basta un `Warning: Undefined array key` impreso
+antes del `json_encode` para que la respuesta deje de ser JSON valido; jQuery
+(`dataType:'json'`) no la parsea, `success()` no corre y, si el `.ajax()` no
+trae `error()`, la pantalla se queda **muda**: ni mensaje, ni spinner, nada.
+
+Asi se comporto el boton "Liquidar" en produccion: parecia muerto. En local no
+se reproducia porque ahi `display_errors` ya venia apagado — la diferencia de
+configuracion entre local y produccion era justo lo que ocultaba el bug. El
+disparador concreto: `_insertarActividadesDeclaracionIca()` leia
+`$totales['dec_CapacidadInstalada']` y `$totales['dec_ValorImpuesto']`, dos
+claves que el JS nunca envia (ademas de grabar NULL encima del valor guardado;
+ahora se conserva con `COALESCE`).
+
+Al escribir/tocar un `.ajax()` en este proyecto, **siempre** ponerle `error()`.
+Y ojo con los comentarios SQL `--` dentro de cadenas PHP: si el comentario
+lleva comillas dobles y la cadena tambien, se rompe el parseo.
+
 ## Marca de agua BORRADOR / PRESENTADA (declaracion.php / liquidacion.php)
 
 Ambos PDFs dibujan un texto diagonal semitransparente ("BORRADOR" o "PRESENTADA",
