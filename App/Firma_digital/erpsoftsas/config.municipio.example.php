@@ -16,6 +16,11 @@
 // 1. Datos del Municipio
 if (!defined('MUNICIPIO_NOMBRE')) define('MUNICIPIO_NOMBRE', 'Nombre del Municipio');
 if (!defined('MUNICIPIO_CIUDAD')) define('MUNICIPIO_CIUDAD', 'Ciudad del Municipio');
+// Departamento al que pertenece el municipio. Va en el encabezado de los dos
+// formularios PDF ("DEPARTAMENTO"), que identifica DONDE se declara el
+// impuesto -no donde vive el contribuyente, eso es la direccion de
+// notificacion, que sale de conf_ciudades-.
+if (!defined('MUNICIPIO_DEPARTAMENTO')) define('MUNICIPIO_DEPARTAMENTO', 'Departamento del Municipio');
 
 // Rutas web ABSOLUTAS: la constante se usa desde /erpsoftsas/ y desde
 // /erpsoftsas/dist/, por lo que una ruta relativa no puede servir a ambas.

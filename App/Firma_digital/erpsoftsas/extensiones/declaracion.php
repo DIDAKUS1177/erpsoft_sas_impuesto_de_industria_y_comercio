@@ -16,6 +16,10 @@ if (file_exists($configPath)) {
     require_once $configPath;
 }
 if (!defined('MUNICIPIO_SELLO_FIRMA')) define('MUNICIPIO_SELLO_FIRMA', 'Sello_Firma.png');
+// Departamento donde se declara el impuesto (encabezado del formulario).
+// Fallback a Boyaca por ser el despliegue original (Paipa); cada municipio
+// lo define en su config.municipio.php.
+if (!defined('MUNICIPIO_DEPARTAMENTO')) define('MUNICIPIO_DEPARTAMENTO', 'Boyacá');
 
 
 class ICAPdf extends TCPDF {
@@ -87,7 +91,14 @@ function dibujarMarcaDeAgua($pdf, $texto, $anchoPagina, $altoPagina) {
 
 
 $pdf = new ICAPdf('P','mm',array(215.9, 330.2),true,'UTF-8',false);
-$pdf->SetMargins(10,10,10);
+// Margen superior 5mm (no 10): el formulario completo medido terminaba en
+// 331.2mm sobre una pagina de 330.2mm -es decir, 1mm FUERA del papel-, y el
+// bloque del codigo de barras quedaba cortado contra el borde inferior.
+// Subiendo el arranque 5mm el documento cierra en ~326mm y queda margen real
+// abajo. OJO: las bandas verticales de "E. PAGO" y "F. FIRMAS" usan
+// coordenadas Y fijas (ver mas abajo) y por eso se corrigieron en los mismos
+// 5mm; si se vuelve a tocar este margen, hay que moverlas otra vez.
+$pdf->SetMargins(10,5,10);
 // Sin esto, TCPDF inserta una segunda pagina en cuanto el contenido (p.ej.
 // la fila de la firma) se acerca al margen inferior, dejando el bloque de
 // codigo de barras / referencia de recaudo suelto en una pagina aparte y
@@ -284,14 +295,25 @@ DATOS
 
 $d = [
     // Encabezado entidad / periodo
-    'entidad'     => strtoupper(MUNICIPIO_NOMBRE),
+    'entidad'     => mb_strtoupper(MUNICIPIO_NOMBRE, 'UTF-8'),
     'secretaria'  => 'SECRETARÍA DE HACIENDA',
     'dir'         => ' ',
     'tel'         => ' ',
     'web'         => ' ',
     'email'       => ' ',
-    'mun'         => strtoupper(MUNICIPIO_CIUDAD),
-    'anio'        => '2025',
+    // 'dep' faltaba por completo: el encabezado imprimia $d['dep'] pero
+    // nadie lo definia, asi que la casilla DEPARTAMENTO salia SIEMPRE vacia
+    // (y lanzaba un "Undefined array key" en cada PDF). Es el departamento
+    // donde se declara -Paipa/Boyaca-, no el del contribuyente: ese va mas
+    // abajo en 'dep_notif'.
+    'dep'         => mb_strtoupper(MUNICIPIO_DEPARTAMENTO, 'UTF-8'),
+    'mun'         => mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8'),
+    // Antes esto era el literal '2025'. El año gravable tiene que salir de
+    // la declaracion, no de una constante: con el hardcode, una declaracion
+    // de 2026 se imprimia como 2025 en ESTE formulario mientras que
+    // liquidacion.php -que si lee dec_AnioDeclaracion- mostraba 2026. Dos
+    // documentos de la misma declaracion con años distintos.
+    'anio'        => (string) ($row['dec_AnioDeclaracion'] ?? date('Y')),
     'fecha_max'   => '',
     'num_form' => $row['dec_NumeroDeclaracion'],
 
@@ -928,10 +950,13 @@ $html = '
 // "F. FIRMAS" va desde donde empieza "FIRMA DEL DECLARANTE" (~283mm)
 // hasta donde termina "CODIGO DE BARRAS" (~320.3mm, dejando ~10mm de
 // margen inferior dentro de los 330.2mm de la pagina).
-$ySecE_inicio = 250;
-$ySecE_fin = 268;
-$ySecF_inicio = 282;
-$ySecF_fin = 320;
+// Valores originales (con margen superior 10mm): 250 / 268 / 282 / 320.
+// Al bajar el margen superior a 5mm todo el contenido sube 5mm, asi que
+// estas bandas -que NO se calculan con GetY()- se corrieron lo mismo.
+$ySecE_inicio = 245;
+$ySecE_fin = 263;
+$ySecF_inicio = 277;
+$ySecF_fin = 327;
 
 $html .= '
 <br>
@@ -975,7 +1000,7 @@ if ($firmaData) {
     // crecia tanto que empujaba el bloque de codigo de barras fuera de
     // la pagina (ver nota de SetAutoPageBreak mas arriba). Medido con
     // GetY(): a 30mm el contenido quedaba 4.5mm mas alto que la pagina.
-    $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="18" height="18"><br>';
+    $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="16" height="16"><br>';
 
     // Nombre de quien firmo + fecha/hora de presentacion (ver $fechaSello).
     $html .= '<span style="font-size: 8px;">' . htmlspecialchars($firmaData['fd_NombreUsuario']) . '<br>' . $fechaSello . '</span></div>';
@@ -1006,7 +1031,7 @@ $html .= '
  * correo del contador/revisor.
  */
 if (!empty($firmaContadorData)) {
-    $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="18" height="18"><br>';
+    $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="16" height="16"><br>';
     $html .= '<span style="font-size: 8px;">'
            . htmlspecialchars($firmaContadorData['fd_NombreUsuario'])
            . '<br>' . $fechaSello . '</span></div>';
@@ -1057,57 +1082,67 @@ $html .= '
 
 
 </table>
-
-<br>
-
-<table border="1" cellpadding="2" width="100%">
-
-<tr>
-
-<td width="50%">
-<b>CODIGO DE BARRAS</b>
-</td>
-
-<td width="50%">
-<b>REFERENCIA DE RECAUDO FORMULARIO No.</b>
-</td>
-
-</tr>
-
-
-<tr>
-
-<td width="50%" align="center" height="8">
-</td>
-
-<td width="50%">
-<br>'.$referenciaRecaudo.'
-</td>
-
-</tr>
-
-
-</table>
-
-
 ';
 
 $pdf->writeHTML($html,true,false,true,false,'');
 
 /* ===========================
-CODIGO DE BARRAS
-Se dibuja aqui, encima de la celda vacia que el HTML dejo reservada en la
-ultima fila de la tabla. GetY() tras el writeHTML da el borde inferior de esa
-tabla, asi que la fila del barcode arranca ~8mm mas arriba (la altura que se
-le reservo a la celda). Vectorial: no escribe archivos temporales.
+CODIGO DE BARRAS / REFERENCIA DE RECAUDO
+
+Este bloque se dibuja COMPLETO a mano (recuadro + rotulos + codigo), no como
+tabla HTML. Dos razones:
+
+1. El codigo no puede ir como <img src="@base64"> dentro del writeHTML: para
+   una imagen embebida TCPDF la vuelca antes a un archivo temporal en
+   sys_get_temp_dir(), y el PHP-FPM de Plesk no puede escribir ahi
+   ("TCPDF ERROR: Unable to write file"). write1DBarcode() es vectorial y no
+   toca el disco.
+2. Dibujarlo despues del writeHTML tomando GetY() como referencia tampoco
+   sirve: GetY() NO devuelve el borde inferior de la ultima tabla -TCPDF deja
+   el cursor mas abajo, pasado el salto de bloque-, asi que el codigo
+   terminaba colgando FUERA del recuadro, debajo de la tabla.
+
+Dibujando la caja aqui se controla cada coordenada: el codigo queda centrado
+horizontal y verticalmente dentro de su celda por construccion, sin depender
+de cuanto mida una fila HTML ni de donde quedo el cursor.
 =========================== */
-$yFinTabla = $pdf->GetY();
-// stretch=true hace que el codigo ocupe exactamente el ancho pedido (50mm)
-// en vez de depender del xres; asi la posicion es determinista y queda
-// centrado en la celda "CODIGO DE BARRAS" (que va de x=13 a x=111).
+$margenes  = $pdf->getMargins();
+$anchoUtil = $pdf->getPageWidth() - $margenes['left'] - $margenes['right'];
+$mitad     = $anchoUtil / 2;
+$xBloque   = $margenes['left'];
+// GetY() queda ~3mm por debajo del borde real de la tabla de firmas (TCPDF
+// suma el salto de bloque al cerrar la tabla). Se compensa para que el
+// recuadro quede pegado a la tabla de arriba, como en el formulario oficial,
+// y para que el bloque completo cierre dentro de la pagina: sin esto medimos
+// que terminaba en 332.1mm sobre un papel de 330.2mm -es decir, cortado-.
+$yBloque   = $pdf->GetY() - 3;
+
+$altoRotulo  = 4.5;   // fila de titulos
+$altoCodigo  = 10.5;  // fila que contiene el codigo
+
+// Fila de rotulos
+$pdf->SetXY($xBloque, $yBloque);
+$pdf->SetFont('helvetica', 'B', 7);
+$pdf->Cell($mitad, $altoRotulo, 'CODIGO DE BARRAS', 1, 0, 'L');
+$pdf->Cell($mitad, $altoRotulo, 'REFERENCIA DE RECAUDO FORMULARIO No.', 1, 1, 'L');
+
+// Fila del codigo: celda izquierda vacia (la llena el barcode) y celda
+// derecha con el numero de referencia.
+$pdf->SetXY($xBloque, $yBloque + $altoRotulo);
+$pdf->Cell($mitad, $altoCodigo, '', 1, 0, 'C');
+$pdf->SetFont('helvetica', '', 7);
+$pdf->Cell($mitad, $altoCodigo, $referenciaRecaudo, 1, 1, 'L');
+
+// Codigo centrado dentro de la celda izquierda. stretch=true hace que ocupe
+// exactamente el ancho pedido, asi el centrado es exacto y no aproximado.
+$anchoBarcode = 50;
+$altoBarcode  = 8;
+
 $pdf->write1DBarcode(
     $referenciaRecaudo, 'C128',
-    37, $yFinTabla - 8.5, 50, 7,
+    $xBloque + ($mitad - $anchoBarcode) / 2,
+    $yBloque + $altoRotulo + ($altoCodigo - $altoBarcode) / 2,
+    $anchoBarcode, $altoBarcode,
     '',
     array('position' => '', 'border' => false, 'padding' => 0,
           'fgcolor' => array(0,0,0), 'bgcolor' => false,

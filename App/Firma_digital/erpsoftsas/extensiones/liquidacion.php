@@ -14,6 +14,10 @@ if (file_exists($configPath)) {
     require_once $configPath;
 }
 if (!defined('MUNICIPIO_SELLO_FIRMA')) define('MUNICIPIO_SELLO_FIRMA', 'Sello_Firma.png');
+// Departamento donde se declara el impuesto (encabezado del formulario).
+// Fallback a Boyaca por ser el despliegue original (Paipa); cada municipio
+// lo define en su config.municipio.php.
+if (!defined('MUNICIPIO_DEPARTAMENTO')) define('MUNICIPIO_DEPARTAMENTO', 'Boyacá');
 
 
 class LiquidacionICAComercioPdf extends TCPDF {
@@ -151,11 +155,15 @@ foreach ($actividades as $act) {
 /* ============================================================
    VARIABLES – ENCABEZADO / GENERALES
    ============================================================ */
-$municipio          = strtoupper(MUNICIPIO_CIUDAD);
-$departamento       = "BOYACÁ";
+// mb_strtoupper y NO strtoupper: strtoupper() trabaja byte a byte y en UTF-8
+// deja las vocales acentuadas intactas -"Boyacá" salia "BOYACá"-. Con el
+// despliegue multi-municipio importa aun mas: Bogotá, Nariño, Chocó, Córdoba,
+// Atlántico, Bolívar, Caquetá, Quindío... casi todos llevan tilde.
+$municipio          = mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8');
+$departamento       = mb_strtoupper(MUNICIPIO_DEPARTAMENTO, 'UTF-8');
 $nit_municipio      = "891801240";
 $direccion_mpio     = "Carrera 22 No 25-14";
-$ciudad_mpio        = strtoupper(MUNICIPIO_CIUDAD) . " - BOYACÁ";
+$ciudad_mpio        = mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8') . " - " . mb_strtoupper(MUNICIPIO_DEPARTAMENTO, 'UTF-8');
 
 $fecha_max_presentacion = "";
 $anio_gravable      = $row['dec_AnioDeclaracion'] ?? date('Y');
@@ -372,11 +380,16 @@ IMPUESTO DE INDUSTRIA Y COMERCIO
 
 <table border="1" cellpadding="3" width="100%">
 
+<!-- Este encabezado identifica DONDE se declara el impuesto (el municipio que
+     recauda), no donde vive el contribuyente. Antes usaba las variables del
+     contribuyente, asi que una declaracion de alguien residente en Tunja salia
+     diciendo "MUNICIPIO O DISTRITO: Tunja" siendo una declaracion ante Paipa.
+     La direccion del contribuyente tiene su propia fila mas abajo. -->
 <tr bgcolor="#e1dada">
 <td width="14%"><b>MUNICIPIO O DISTRITO</b></td>
-<td width="12%">' . htmlspecialchars($municipio_contrib) . '</td>
+<td width="12%">' . htmlspecialchars($municipio) . '</td>
 <td width="14%"><b>DEPARTAMENTO</b></td>
-<td width="12%">' . htmlspecialchars($departamento_contrib) . '</td>
+<td width="12%">' . htmlspecialchars($departamento) . '</td>
 <td width="14%"><b>AÑO GRAVABLE</b></td>
 <td width="8%">' . $anio_gravable . '</td>
 <td width="16%"><b>FECHA MÁXIMA PRESENT.</b></td>
@@ -602,46 +615,64 @@ C.C./T.P. No. ' . htmlspecialchars($docFirmanteContadorRevisor) . '
 
 <br>
 
-<table border="1" cellpadding="2" width="100%">
-
-<tr>
-<td width="50%"><b>CÓDIGO DE BARRAS</b></td>
-<td width="50%"><b>REFERENCIA DE RECAUDO FORMULARIO No.</b></td>
-</tr>
-
-<tr>
-<td width="50%" align="center">
-<br><br><br>
-</td>
-<td width="50%">
-<br>' . $referencia_recaudo . '
-</td>
-</tr>
-
-</table>
 
 ';
 
 $pdf->writeHTML($html, true, false, true, false, '');
 
 /* ============================================================
-   CODIGO DE BARRAS
-   Vectorial y despues del writeHTML, por la misma razon que en
-   declaracion.php: un <img src="@base64"> obliga a TCPDF a volcar la imagen
-   a sys_get_temp_dir(), donde el PHP-FPM de Plesk no puede escribir
-   ("TCPDF ERROR: Unable to write file").
+   CODIGO DE BARRAS / REFERENCIA DE RECAUDO
+
+   Bloque dibujado COMPLETO a mano (recuadro + rotulos + codigo), igual que en
+   declaracion.php y por las mismas dos razones:
+
+   1. Como <img src="@base64"> dentro del writeHTML, TCPDF vuelca la imagen a
+      un archivo temporal en sys_get_temp_dir(), donde el PHP-FPM de Plesk no
+      puede escribir ("TCPDF ERROR: Unable to write file"). write1DBarcode()
+      es vectorial y no toca disco.
+   2. Anclarlo con GetY() tras el writeHTML tampoco sirve: GetY() NO devuelve
+      el borde inferior de la tabla -TCPDF deja el cursor mas abajo, pasado el
+      salto de bloque-, asi que el codigo terminaba dibujado FUERA del
+      recuadro, colgando debajo de la tabla.
+
+   Dibujando la caja aqui se controla cada coordenada: el codigo queda
+   centrado horizontal y verticalmente dentro de su celda por construccion.
    ============================================================ */
-$yFinTabla = $pdf->GetY();
+$margenes  = $pdf->getMargins();
+$anchoUtil = $pdf->getPageWidth() - $margenes['left'] - $margenes['right'];
+$mitad     = $anchoUtil / 2;
+$xBloque   = $margenes['left'];
+// -3mm compensa el salto de bloque que TCPDF suma al cerrar la tabla, para
+// que el recuadro quede pegado al de arriba.
+$yBloque   = $pdf->GetY() - 3;
+
+$altoRotulo = 4.5;
+$altoCodigo = 10.5;
+
+$pdf->SetXY($xBloque, $yBloque);
+$pdf->SetFont('helvetica', 'B', 7);
+$pdf->Cell($mitad, $altoRotulo, 'CÓDIGO DE BARRAS', 1, 0, 'L');
+$pdf->Cell($mitad, $altoRotulo, 'REFERENCIA DE RECAUDO FORMULARIO No.', 1, 1, 'L');
+
+$pdf->SetXY($xBloque, $yBloque + $altoRotulo);
+$pdf->Cell($mitad, $altoCodigo, '', 1, 0, 'C');
+$pdf->SetFont('helvetica', '', 7);
+$pdf->Cell($mitad, $altoCodigo, $referencia_recaudo, 1, 1, 'L');
+
+$anchoBarcode = 55;
+$altoBarcode  = 8;
+
 $pdf->write1DBarcode(
     $referencia_recaudo, 'C128',
-    35, $yFinTabla - 10, 55, 8.5,
+    $xBloque + ($mitad - $anchoBarcode) / 2,
+    $yBloque + $altoRotulo + ($altoCodigo - $altoBarcode) / 2,
+    $anchoBarcode, $altoBarcode,
     '',
     array('position' => '', 'border' => false, 'padding' => 0,
           'fgcolor' => array(0,0,0), 'bgcolor' => false,
           'text' => false, 'stretch' => true),
     'N'
 );
-
 /* ============================================================
    SALIDA PDF
    ============================================================ */

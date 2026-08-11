@@ -259,6 +259,39 @@ Al escribir/tocar un `.ajax()` en este proyecto, **siempre** ponerle `error()`.
 Y ojo con los comentarios SQL `--` dentro de cadenas PHP: si el comentario
 lleva comillas dobles y la cadena tambien, se rompe el parseo.
 
+## Trampas de layout en los PDF (aprendidas a golpes, 2026-08-11)
+
+Los dos generadores usan `SetAutoPageBreak(false)` y el formulario ocupa casi
+toda la hoja (oficio, 215.9 × 330.2 mm), así que **TCPDF no avisa cuando algo
+se sale**: simplemente se dibuja fuera del papel y no se ve. Cuatro cosas que
+costaron encontrar:
+
+1. **`GetY()` tras `writeHTML()` NO es el borde inferior de la tabla.** TCPDF
+   deja el cursor más abajo, pasado el salto de bloque (medido: ~3mm). Anclar
+   algo a `GetY()` creyendo que es el fin de la tabla lo deja flotando fuera
+   del recuadro. Por eso el bloque de código de barras se dibuja ahora
+   **completo a mano** (marco + rótulos + código con `Cell()`), controlando
+   cada coordenada, en vez de superponerse a una celda HTML.
+2. **`height="8"` en un `<td>` no reserva alto**: el parser HTML de TCPDF lo
+   ignora y la fila termina midiendo lo que mida la celda más alta. Para
+   reservar espacio hay que usar `<br>` (medido: cada uno aporta 3.1mm).
+3. **`strtoupper()` rompe las tildes en UTF-8** ("Boyacá" → "BOYACá",
+   "Alcaldía" → "ALCALDíA"). Usar siempre `mb_strtoupper($x, 'UTF-8')`.
+   Crítico para multi-municipio: Bogotá, Nariño, Chocó, Córdoba, Atlántico,
+   Bolívar, Caquetá, Quindío… casi todos los departamentos llevan tilde.
+4. **Los PNG con canal alfa hacen que TCPDF escriba archivos temporales**
+   (`ImagePngAlpha()` → dos ficheros en `K_PATH_CACHE`), y el PHP-FPM de
+   Plesk no puede escribir ahí → `TCPDF ERROR: Unable to write file`. El
+   sello `Sello_Firma.png` tenía alfa, así que **cualquier declaración
+   firmada** habría fallado en producción. Se aplanó contra blanco (se
+   imprime sobre celda blanca, se ve idéntico). **Los sellos de los demás
+   municipios tienen que venir SIN canal alfa**; comprobar con el byte 25 del
+   PNG (color type: 2 = RGB sin alfa, 6 = RGB+alfa).
+
+Para verificar cambios de layout, no basta con mirar el PDF: conviene
+imprimir las coordenadas (`$pdf->GetY()`, alto de página) y comprobar que el
+contenido cierra por debajo de 330.2mm.
+
 ## Marca de agua BORRADOR / PRESENTADA (declaracion.php / liquidacion.php)
 
 Ambos PDFs dibujan un texto diagonal semitransparente ("BORRADOR" o "PRESENTADA",
