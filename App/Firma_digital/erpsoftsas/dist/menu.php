@@ -102,7 +102,49 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 						<div id="ddNomUsu" style="font-size: 13px; font-weight: 700; color: #1F2937;"></div>
 						<div id="mailUsu" style="font-size: 11px; color: #6B7280; word-break: break-all;"></div>
 					</div>
+					<a class="dropdown-item" href="javascript:void(0)" id="btnCambiarClave"><i class="dw dw-lock"></i>Cambiar Contraseña</a>
 					<a class="dropdown-item" href="javascript:void(0)" id="btnCerrarSesion"><i class="dw dw-logout" ></i>Cerrar Sesión </a>
+				</div>
+			</div>
+		</div>
+
+		<!-- Modal Cambiar Contraseña. Antes NINGUNA pantalla de cara al rol
+		     contribuyente permitia esto: la unica via era el reseteo por
+		     correo (clave temporal generada por el sistema), sin forma de
+		     volver a asignar una propia despues. -->
+		<div class="modal fade" id="modal-CambiarClave" tabindex="-1" role="dialog" aria-hidden="true">
+			<div class="modal-dialog" role="document">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h5 class="modal-title">Cambiar Contraseña</h5>
+						<button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+					</div>
+					<form id="formCambiarClave" onsubmit="MenuUsuario.postCambiarClave(); return false;">
+						<div class="modal-body">
+							<div class="form-group">
+								<label>* Contraseña Actual</label>
+								<input type="password" class="form-control" id="cc_ClaveActual" required>
+							</div>
+							<div class="form-group">
+								<label>* Nueva Contraseña</label>
+								<input type="password" class="form-control" id="cc_ClaveNueva" required>
+							</div>
+							<div class="form-group">
+								<label>* Confirmar Nueva Contraseña</label>
+								<input type="password" class="form-control" id="cc_ClaveNuevaConfirmar" required>
+							</div>
+							<div style="font-size: 13px;">
+								<div id="cc_req-length" class="text-danger">• Mínimo 8 caracteres</div>
+								<div id="cc_req-upper" class="text-danger">• Al menos una mayúscula</div>
+								<div id="cc_req-lower" class="text-danger">• Al menos una minúscula</div>
+								<div id="cc_req-number" class="text-danger">• Al menos un número</div>
+							</div>
+						</div>
+						<div class="modal-footer">
+							<button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+							<button type="submit" class="btn btn-success" id="btnGuardarCambiarClave">Guardar</button>
+						</div>
+					</form>
 				</div>
 			</div>
 		</div>
@@ -344,6 +386,98 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 		window.location = '../index.php';
     });
 
+    /**
+     * MenuUsuario: cambio de contraseña propio (punto 1 solicitado por el
+     * cliente). Antes solo existia el reseteo por correo con clave temporal
+     * generada por el sistema, sin forma de asignar una propia despues.
+     * Vive aca (inline en menu.php) porque este dropdown de usuario -y el
+     * modal que lo acompaña- se incluye igual en TODAS las pantallas
+     * internas, y ya es el patron que sigue este mismo archivo para
+     * "Cerrar Sesión".
+     */
+    var MenuUsuario = (function () {
+
+        function validarPassword(clave) {
+            var okLength = clave.length >= 8;
+            var okUpper = /[A-Z]/.test(clave);
+            var okLower = /[a-z]/.test(clave);
+            var okNumber = /[0-9]/.test(clave);
+
+            $("#cc_req-length").toggleClass('text-success', okLength).toggleClass('text-danger', !okLength);
+            $("#cc_req-upper").toggleClass('text-success', okUpper).toggleClass('text-danger', !okUpper);
+            $("#cc_req-lower").toggleClass('text-success', okLower).toggleClass('text-danger', !okLower);
+            $("#cc_req-number").toggleClass('text-success', okNumber).toggleClass('text-danger', !okNumber);
+
+            return okLength && okUpper && okLower && okNumber;
+        }
+
+        function abrir() {
+            $("#formCambiarClave").trigger("reset");
+            $("#cc_req-length, #cc_req-upper, #cc_req-lower, #cc_req-number")
+                .removeClass("text-success").addClass("text-danger");
+            $('#modal-CambiarClave').modal({ backdrop: 'static', keyboard: false });
+            $('#modal-CambiarClave').modal('show');
+        }
+
+        function postCambiarClave() {
+            var claveActual = $("#cc_ClaveActual").val();
+            var claveNueva = $("#cc_ClaveNueva").val();
+            var claveConfirmar = $("#cc_ClaveNuevaConfirmar").val();
+            var idUsuario = localStorage.getItem('id_Usuario');
+
+            if (!validarPassword(claveNueva)) {
+                swal({
+                    type: 'warning',
+                    title: 'Contraseña inválida',
+                    text: 'La nueva contraseña debe tener mínimo 8 caracteres, incluir mayúscula, minúscula y número.'
+                });
+                return;
+            }
+
+            if (claveNueva !== claveConfirmar) {
+                swal({
+                    type: 'warning',
+                    title: 'No coinciden',
+                    text: 'La nueva contraseña y su confirmación no son iguales.'
+                });
+                return;
+            }
+
+            $("#btnGuardarCambiarClave").prop("disabled", true).text("Guardando...");
+
+            $.ajax({
+                url: '../business/controller/class.usuarios.php',
+                type: 'POST',
+                dataType: 'json',
+                data: {
+                    funcion: 6,
+                    usu_Id: idUsuario,
+                    claveActual: claveActual,
+                    claveNueva: claveNueva
+                },
+                success: function (arr) {
+                    $("#btnGuardarCambiarClave").prop("disabled", false).text("Guardar");
+
+                    if (arr.ok == 1) {
+                        $("#modal-CambiarClave").modal('hide');
+                        swal({ type: 'success', title: 'Listo', text: 'Su contraseña se actualizó correctamente.' });
+                    } else {
+                        swal({ type: 'error', title: 'No se pudo cambiar', text: arr.mensaje || 'Intente nuevamente.' });
+                    }
+                },
+                error: function () {
+                    $("#btnGuardarCambiarClave").prop("disabled", false).text("Guardar");
+                    swal({ type: 'error', title: 'Error de conexión', text: 'No se pudo cambiar la contraseña.' });
+                }
+            });
+        }
+
+        $("#cc_ClaveNueva").on('input', function () { validarPassword($(this).val()); });
+        $("#btnCambiarClave").click(abrir);
+
+        return { postCambiarClave: postCambiarClave };
+    })();
+
     // Configurar Título del Header Dinámicamente leyendo la opción activa del menú
     $(document).ready(function() {
         var $activeSub = $('.sidebar-menu .submenu a.active');
@@ -528,10 +662,18 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 /* IMPORTANTE: .micon va con position:absolute; left:10px; width:42px.
    El padding-left de 67px es el hueco reservado para ese icono; si se
    reduce, el icono se monta encima del texto. */
+/* La pagina ya carga Google Fonts "Inter" (ver <link> en el <head> de cada
+   pantalla), pero nunca se aplicaba de verdad al menu: sin un font-family
+   explicito aqui, el sidebar caia al stack por defecto de Bootstrap
+   (-apple-system, Segoe UI...) en vez de usar la fuente que se penso para
+   el resto de la marca. De paso se sube un poco el tamano (13.5px -> 14px)
+   y el letter-spacing para que se lea mejor sobre el fondo teal. */
 .sidebar-menu .dropdown-toggle {
 	color: #FFFFFF !important;
-	font-size: 13.5px !important;
+	font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+	font-size: 14px !important;
 	font-weight: 500 !important;
+	letter-spacing: 0.1px;
 	border-radius: 8px;
 	margin: 2px 10px;
 	padding: 12px 15px 12px 67px !important;
@@ -609,7 +751,8 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 
 /* Submenús: un punto de jerarquía por debajo, sin gritar */
 .sidebar-menu .submenu a {
-	font-size: 13px;
+	font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+	font-size: 13.5px;
 	font-weight: 400;
 	color: rgba(255, 255, 255, .82) !important;
 }

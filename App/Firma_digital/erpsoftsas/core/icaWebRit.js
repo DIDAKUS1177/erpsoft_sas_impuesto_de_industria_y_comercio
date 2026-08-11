@@ -61,6 +61,12 @@ class Establecimientos {
                 $("#infoContrib_ind_Email").val(d.ind_Email);
                 $("#infoContrib_ind_Direccion").val(d.ind_Direccion);
 
+                // Se carga el catalogo completo de ciudades y se preselecciona
+                // la actual (d.ind_IdCiudad) DESPUES de tenerla, para que el
+                // select2 ya arranque mostrando el valor correcto en vez de
+                // vacio.
+                establecimientos.cargarCiudadesInfoContribuyente(d.ind_IdCiudad);
+
                 $('#modal-InfoContribuyente').modal({ backdrop: 'static', keyboard: false });
                 $('#modal-InfoContribuyente').modal('show');
             },
@@ -69,6 +75,46 @@ class Establecimientos {
                     type: 'error',
                     title: 'Error de conexión',
                     text: 'No se pudo consultar la información del contribuyente.',
+                });
+            }
+        });
+    }
+
+    /**
+     * cargarCiudadesInfoContribuyente: llena el select2 "Municipio de
+     * Registro" del modal de Informacion del Contribuyente con el catalogo
+     * completo (conf_ciudades), y preselecciona idActual si se pasa.
+     */
+    cargarCiudadesInfoContribuyente(idActual) {
+
+        if ($.fn.select2 && $('#infoContrib_ind_IdCiudad').hasClass("select2-hidden-accessible")) {
+            $('#infoContrib_ind_IdCiudad').select2('destroy');
+        }
+
+        $.ajax({
+            url: '../business/controller/class.ciudades.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { funcion: 1 },
+            success: function (arr) {
+                if (arr.ok != 1) { return; }
+
+                $('#infoContrib_ind_IdCiudad').empty();
+                $('#infoContrib_ind_IdCiudad').append('<option value=""></option>');
+
+                $.each(arr.datos, function (i, ciudad) {
+                    $('#infoContrib_ind_IdCiudad').append(
+                        `<option value="${ciudad.ciu_Id}">${ciudad.ciu_Nombre} - ${ciudad.ciu_Departamento}</option>`
+                    );
+                });
+
+                if (idActual) {
+                    $('#infoContrib_ind_IdCiudad').val(idActual);
+                }
+
+                $('#infoContrib_ind_IdCiudad').select2({
+                    dropdownParent: $('#modal-InfoContribuyente'),
+                    width: '100%'
                 });
             }
         });
@@ -133,6 +179,9 @@ class Establecimientos {
                 ' Crear'
             );
             $("#formCrearEstablecimientos").attr('action', 'javascript:establecimientos.postEstablecimientos()');
+            if (typeof Geografia !== 'undefined') {
+                Geografia.poblar('est_Departamento', 'est_Ciudad');
+            }
             $('#modal-Establecimientos').modal({backdrop: 'static', keyboard: false})
             $("#modal-Establecimientos").modal('show');
         }
@@ -283,9 +332,17 @@ class Establecimientos {
                 }
 
                 $("#est_Direccion").val(d.est_Direccion);
-                $("#est_Pais").val(d.est_Pais);
-                $("#est_Departamento").val(d.est_Departamento);
-                $("#est_Ciudad").val(d.est_Ciudad);
+                $("#est_Pais").val(d.est_Pais || 'Colombia');
+                // Departamento/Ciudad ya no son un unico <option> fijo: se
+                // llenan con el catalogo completo y se preselecciona lo
+                // guardado. Establecimientos creados ANTES de este cambio
+                // tienen "1" guardado como texto (el value del option viejo),
+                // que no matchea ningun departamento real -el select
+                // simplemente queda en blanco para esos, lo cual es correcto:
+                // no hay forma de adivinar cual era su departamento real.
+                if (typeof Geografia !== 'undefined') {
+                    Geografia.poblar('est_Departamento', 'est_Ciudad', d.est_Departamento, d.est_Ciudad);
+                }
                 $("#est_Barrio").val(d.est_Barrio);
                 $("#est_Correo").val(d.est_Correo);
 

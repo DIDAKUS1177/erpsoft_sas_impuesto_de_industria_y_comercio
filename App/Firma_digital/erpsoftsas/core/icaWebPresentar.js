@@ -32,6 +32,9 @@ class Establecimientos {
                 ' Crear'
             );
             $("#formCrearEstablecimientos").attr('action', 'javascript:establecimientos.postEstablecimientos()');
+            if (typeof Geografia !== 'undefined') {
+                Geografia.poblar('est_Departamento', 'est_Ciudad');
+            }
             $('#modal-Establecimientos').modal({backdrop: 'static', keyboard: false})
             $("#modal-Establecimientos").modal('show');
         }
@@ -227,9 +230,11 @@ class Establecimientos {
                 $("#est_Codigo").val(d.est_Codigo);
                 $("#est_Nombre").val(d.est_Nombre);
                 $("#est_Direccion").val(d.est_Direccion);
-                $("#est_Pais").val(d.est_Pais);
-                $("#est_Departamento").val(d.est_Departamento);
-                $("#est_Ciudad").val(d.est_Ciudad);
+                $("#est_Pais").val(d.est_Pais || 'Colombia');
+                // Ver nota en icaWebRit.js: catalogo completo + preseleccion.
+                if (typeof Geografia !== 'undefined') {
+                    Geografia.poblar('est_Departamento', 'est_Ciudad', d.est_Departamento, d.est_Ciudad);
+                }
                 $("#est_Barrio").val(d.est_Barrio);
                 $("#est_Correo").val(d.est_Correo);
 

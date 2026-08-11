@@ -140,21 +140,21 @@
 <div class="col-md-3">
 <label>* País</label>
 <select class="form-control" id="est_Pais" name="est_Pais" required>
-<option value="1">Colombia</option>
+<option value="Colombia">Colombia</option>
 </select>
 </div>
 
 <div class="col-md-3">
 <label>* Departamento</label>
 <select class="form-control" id="est_Departamento" name="est_Departamento" required>
-<option value="1">Boyaca</option>
+<option value="">Seleccione departamento...</option>
 </select>
 </div>
 
 <div class="col-md-3">
 <label>* Ciudad</label>
 <select class="form-control" id="est_Ciudad" name="est_Ciudad" required>
-<option value="1">Paipa</option>
+<option value="">Seleccione municipio...</option>
 </select>
 </div>
 
@@ -1125,6 +1125,7 @@ data-campo="sanciones" value="0">
 		<script src="../src/plugins/switchery/switchery.min.js"></script>
 		<script src="../src/plugins/sweetalert2/sweetalert2.all.js"></script>
 		<script src="../core/declaraciones.ui.js?v=<?php echo time(); ?>"></script>
+		<script src="../core/geografia.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/icaWebPresentar.js?v=<?php echo time(); ?>"></script>
 		<!-- <script src="../core/Permisos.js"></script> -->
         <script>

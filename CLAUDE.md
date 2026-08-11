@@ -124,6 +124,96 @@ original no dejaba margen para el código de barras sin cortarse en el borde inf
 de la página (`SetAutoPageBreak` está en `false` en ambos archivos — TCPDF no avisa si
 el contenido se pasa del borde).
 
+## Cambios solicitados por el cliente, lote 2026-08-11 (puntos 1, 4, 5, 11, 13)
+
+De la lista de 13 sugerencias (`sugerencias ica diego.pdf`), quedan estos por
+documentar (los del lote anterior ya estaban en este archivo):
+
+- **Punto 1 (cambio de contraseña propio)**: antes la única vía era el
+  reseteo por correo (clave temporal generada por el sistema), sin forma de
+  volver a asignar una propia. Se agregó "Cambiar Contraseña" al dropdown de
+  usuario en `dist/menu.php` (compartido por todas las pantallas internas),
+  con backend en `class.usuarios.php` `funcion=6` (`_cambiarClave`). Exige la
+  contraseña actual para autorizar el cambio. **Detalle no obvio**: las
+  claves se guardan con `HASHBYTES('SHA1', texto)` vía `DAO->guardar()`
+  (tipodato `'clave'`), pero `DAO->consultar()` NO aplica ese hash del lado
+  del `WHERE` — hace comparación literal. Por eso, para validar la clave
+  actual, hay que replicar lo que hace el login real
+  (`business/controller/class.login.php`): comparar contra `sha1()` calculado
+  en PHP, no contra el texto plano. Funciona porque SQL Server compara
+  mayúsculas/minúsculas indistintamente por la collation por defecto.
+
+- **Puntos 4 y 5 (catálogos geográficos + municipio de registro incorrecto)**:
+  se resolvieron juntos porque comparten la misma causa. `conf_ciudades` solo
+  tenía 240 municipios (Bogotá/Boyacá/Cundinamarca); se completó con el
+  catálogo DIVIPOLA completo (1.120 municipios, 33 departamentos), tomado de
+  `datos.gov.co`/DANE vía `panchicore/dane_colombia` en GitHub (nombres con
+  tilde cruzados contra un segundo dataset independiente; ~15 casos sin match
+  se corrigieron a mano — ver `CORRECCIONES` en el script de migración, ya
+  no versionado). La causa real del "municipio de registro carga mal": en
+  `business/controller/class.usuarios.php`, la inscripción pública
+  (`Inscribirse`) grababa `ind_IdCiudad = 1` (Tunja) **fijo, a ciegas, para
+  cualquier contribuyente** — el formulario nunca pedía esa ciudad. Se
+  agregó el campo "Municipio de Residencia" (select2) al formulario de
+  inscripción (`index.php`) y al modal "Información del Contribuyente"
+  (para que los ya registrados se corrijan ellos mismos), ambos alimentados
+  por `class.ciudades.php`. Además, los selects de país/departamento/ciudad
+  de la DIRECCIÓN del establecimiento (`est_Pais/est_Departamento/est_Ciudad`
+  — columnas VARCHAR de texto libre, no FK) estaban fijos en un único
+  `<option>` en 4 pantallas (`establecimientos.php`, `icaWebRit.php`,
+  `icaWebConsultar.php`, `icaWebPresentar.php`); se creó `core/geografia.js`
+  (departamento→ciudad en cascada, cacheado, reutilizado en las 4) para
+  reemplazarlos.
+
+- **Punto 13 (la corrección añadía "00000")**: el bug real estaba en
+  `EditarDeclaracion.abrir()` (`core/declaraciones.ui.js`). SQL Server
+  devuelve los totales como texto con PUNTO decimal (`"2500000.00"`), pero
+  esos campos se leen después con `numero()`/`limpiarNumero()`, que tratan el
+  punto como separador de MILES colombiano y lo eliminan:
+  `"2500000.00"` → `250000000`. Cada vez que se abría/corregía una
+  declaración el valor quedaba multiplicado por 100. Se arregló formateando
+  esos valores a formato colombiano (`Math.round` + `toLocaleString('es-CO')`)
+  antes de meterlos al input, igual que ya hacían las actividades gravadas
+  (que nunca tuvieron el bug).
+
+- **Punto 11 (firma de contador obligatoria)**: reemplazó por completo la
+  regla anterior (persona jurídica siempre, persona natural solo sobre 3.500
+  UVT — instrucción explícita del cliente, "la pasada muere"). Regla nueva en
+  `_requiereContador()` (`class.declaracionesICA.php`): si el contribuyente
+  tiene registrado un correo de contador **o** de revisor
+  (`ind_EmailContador`/`ind_EmailRevisor`), la firma de esa persona es
+  obligatoria para presentar — sin importar tipo de persona ni ingresos. Se
+  quitaron `UMBRAL_INGRESOS_CONTADOR_NATURAL_UVT` y
+  `UMBRAL_INGRESOS_REVISOR_FISCAL` de `business/config.tributario.php` por
+  quedar sin uso; `UVT_VALOR`/`UVT_ANIO` se mantienen (uso general, no
+  específico a esta regla).
+
+- **Tipografía del menú lateral**: `Inter` ya se cargaba vía Google Fonts en
+  todas las pantallas pero nunca se aplicaba de verdad al sidebar (caía al
+  stack por defecto de Bootstrap). Se aplicó explícitamente en
+  `dist/menu.php` junto con un leve ajuste de tamaño/letter-spacing.
+
+### Bug de producción encontrado y corregido en el camino (2026-08-11)
+
+El código de barras nativo de TCPDF (`<img src="@base64">`) rompía la
+descarga de PDF en producción con `TCPDF ERROR: Unable to write file`: para
+ese tipo de imagen TCPDF necesita escribir un archivo temporal en
+`sys_get_temp_dir()`, y el PHP-FPM de Plesk no tiene permiso de escritura
+ahí. Localmente no se detectaba porque el contenedor Docker sí permite
+escribir en `/tmp`. Se reemplazó por `write1DBarcode()` (vectorial, no toca
+disco) en `declaracion.php` y `liquidacion.php`.
+
+De paso se encontró y corrigió la causa REAL de que el botón "Liquidar"
+pareciera no hacer nada en producción (el fix anterior sobre `numero()` y la
+coma decimal era un bug real pero no era este): `_insertarActividadesDeclaracionIca()`
+leía `$totales['dec_CapacidadInstalada']`/`dec_ValorImpuesto`, dos claves que
+el JS nunca envía. En PHP 8 eso emite un `Warning`, y en producción
+(`display_errors` activo) el warning se imprime ANTES del `json_encode` —
+la respuesta deja de ser JSON válido, `success()` no corre, y como el
+`.ajax()` no tenía `error()`, la pantalla quedaba muda. `business/globals.php`
+ahora fuerza `display_errors=0` (con `log_errors=1`) para que ningún aviso
+de PHP vuelva a corromper una respuesta JSON en NINGÚN endpoint del sistema.
+
 ## Trampa: warnings de PHP que rompen respuestas JSON (2026-08-11)
 
 `business/globals.php` fuerza `display_errors=0` a proposito. Casi todos los

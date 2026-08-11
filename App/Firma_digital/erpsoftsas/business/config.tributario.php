@@ -20,25 +20,16 @@ if (!defined('UVT_VALOR')) define('UVT_VALOR', 52374);
 
 /*
  * Obligatoriedad de contador / revisor fiscal para presentar la
- * declaración de ICA (confirmado con la Secretaría de Hacienda,
- * 2026-08-05):
+ * declaración de ICA.
  *
- *   - Persona NATURAL: contador obligatorio solo si sus ingresos superan
- *     3.500 UVT.
- *   - Persona JURÍDICA: contador SIEMPRE obligatorio.
- *   - Persona JURÍDICA que además supere ~3.000 millones de ingresos:
- *     también requiere revisor fiscal (Art. 13 Ley 43 de 1990/Código de
- *     Comercio). En este sistema contador y revisor comparten una sola
- *     casilla de firma, así que basta con que UNA de las dos personas
- *     firme para presentar.
+ * 2026-08-11: el cliente reemplazó la regla anterior (persona jurídica
+ * siempre, persona natural solo por encima de 3.500 UVT) por una más
+ * simple: si el contribuyente tiene registrado un correo de contador O de
+ * revisor fiscal (ind_EmailContador / ind_EmailRevisor en
+ * ind_contribuyentes), la firma de esa persona pasa a ser obligatoria para
+ * presentar -sin importar el tipo de persona ni el monto de ingresos-. Ver
+ * _requiereContador() en business/controller/class.declaracionesICA.php,
+ * que es donde vive la regla real. Los umbrales en UVT que existían aquí
+ * (UMBRAL_INGRESOS_CONTADOR_NATURAL_UVT / UMBRAL_INGRESOS_REVISOR_FISCAL) se
+ * quitaron por quedar sin uso.
  */
-if (!defined('UMBRAL_INGRESOS_CONTADOR_NATURAL_UVT')) {
-    define('UMBRAL_INGRESOS_CONTADOR_NATURAL_UVT', 3500);
-}
-
-// Aproximado dado por el cliente ("como 3000 millones"). No hay una cifra
-// exacta en UVT para este umbral en la conversación; si la Secretaría de
-// Hacienda da un valor más preciso, se ajusta aquí.
-if (!defined('UMBRAL_INGRESOS_REVISOR_FISCAL')) {
-    define('UMBRAL_INGRESOS_REVISOR_FISCAL', 3000000000);
-}

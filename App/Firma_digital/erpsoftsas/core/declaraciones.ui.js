@@ -571,13 +571,31 @@ var EditarDeclaracion = (function () {
                 // mapeo, a la inversa, que usa el guardado en
                 // "Finalizar Declaración"); ingresos_municipio e
                 // ingresos_gravables son de solo lectura y se recalculan.
-                $('[data-campo="ingresos_total_pais"]').val(d.dec_TotalIngresos || 0);
-                $('[data-campo="menos_fuera_municipio"]').val(d.dec_IngresosFueraMunicipio || 0);
-                $('[data-campo="devoluciones"]').val(d.dec_IngresosDevoluciones || 0);
-                $('[data-campo="exportaciones"]').val(d.dec_IngresosExportaciones || 0);
-                $('[data-campo="venta_activos"]').val(d.dec_IngresosVentas || 0);
-                $('[data-campo="actividades_excluidas"]').val(d.dec_IngresosActividades || 0);
-                $('[data-campo="otras_exentas"]').val(d.dec_IngresosOtrasActividades || 0);
+                //
+                // OJO: hay que formatearlos a formato colombiano ANTES de
+                // meterlos al input. SQL Server devuelve los decimales como
+                // texto con PUNTO decimal ("2500000.00"), pero estos campos se
+                // leen despues con numero()/limpiarNumero(), que tratan el
+                // punto como separador de MILES y por lo tanto lo eliminan:
+                // "2500000.00" -> 250000000. El valor quedaba multiplicado por
+                // 100 en cada pasada, y como la correccion copia y reabre la
+                // declaracion, los ceros se iban acumulando (el bug de los
+                // "00000" que reporto el cliente). Las actividades, mas abajo,
+                // siempre hicieron bien este parseFloat + formatearCOP.
+                var aCOP = function (v) {
+                    var n = parseFloat(v) || 0;
+                    return (typeof establecimientos !== 'undefined' && establecimientos.formatearCOP)
+                        ? establecimientos.formatearCOP(Math.round(n))
+                        : Math.round(n);
+                };
+
+                $('[data-campo="ingresos_total_pais"]').val(aCOP(d.dec_TotalIngresos));
+                $('[data-campo="menos_fuera_municipio"]').val(aCOP(d.dec_IngresosFueraMunicipio));
+                $('[data-campo="devoluciones"]').val(aCOP(d.dec_IngresosDevoluciones));
+                $('[data-campo="exportaciones"]').val(aCOP(d.dec_IngresosExportaciones));
+                $('[data-campo="venta_activos"]').val(aCOP(d.dec_IngresosVentas));
+                $('[data-campo="actividades_excluidas"]').val(aCOP(d.dec_IngresosActividades));
+                $('[data-campo="otras_exentas"]').val(aCOP(d.dec_IngresosOtrasActividades));
 
                 if (typeof establecimientos !== 'undefined' && establecimientos.calcularIngresos) {
                     establecimientos.calcularIngresos();

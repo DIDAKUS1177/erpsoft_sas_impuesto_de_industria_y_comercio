@@ -172,21 +172,21 @@
 <div class="col-md-3">
 <label>* País</label>
 <select class="form-control" id="est_Pais" name="est_Pais" required>
-<option value="1">Colombia</option>
+<option value="Colombia">Colombia</option>
 </select>
 </div>
 
 <div class="col-md-3">
 <label>* Departamento</label>
 <select class="form-control" id="est_Departamento" name="est_Departamento" required>
-<option value="1">Boyaca</option>
+<option value="">Seleccione departamento...</option>
 </select>
 </div>
 
 <div class="col-md-3">
 <label>* Ciudad</label>
 <select class="form-control" id="est_Ciudad" name="est_Ciudad" required>
-<option value="1">Paipa</option>
+<option value="">Seleccione municipio...</option>
 </select>
 </div>
 
@@ -1281,6 +1281,19 @@ data-campo="sanciones" value="0">
 									<input type="text" class="form-control" id="infoContrib_ind_Direccion" name="ind_Direccion">
 								</div>
 							</div>
+								<!-- ind_IdCiudad: antes ningun formulario de cara al contribuyente
+								permitia corregir esto, asi que quedaba fijo en el valor grabado al
+								inscribirse (a veces "1"/Tunja por un bug ya corregido en
+								class.usuarios.php). Mismo endpoint/patron que ya funciona en el
+								modulo interno (core/contribuyentes.js). -->
+								<div class="col-md-12">
+									<div class="form-group">
+										<label>Municipio de Registro</label>
+										<select class="form-control select2" id="infoContrib_ind_IdCiudad" name="ind_IdCiudad" style="width:100%">
+											<option value="">Seleccione ciudad...</option>
+										</select>
+									</div>
+								</div>
 						</div>
 					</div>
 					<div class="modal-footer">
@@ -1293,6 +1306,10 @@ data-campo="sanciones" value="0">
 		</div>
 
 		<!-- /.modal-dialog -->
+		<!-- select2: usado por "Municipio de Registro" del modal de Informacion
+		     del Contribuyente -mismo CDN que ya usa dist/establecimientos.php-. -->
+		<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+		<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 		<!-- js -->
 		<script src="../vendors/scripts/core.js"></script>
 		<script src="../vendors/scripts/script.min.js"></script>
@@ -1313,6 +1330,7 @@ data-campo="sanciones" value="0">
 		<!-- switchery js -->
 		<script src="../src/plugins/switchery/switchery.min.js"></script>
 		<script src="../src/plugins/sweetalert2/sweetalert2.all.js"></script>
+		<script src="../core/geografia.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/icaWebRit.js?v=<?php echo time(); ?>"></script>
 		<!-- <script src="../core/Permisos.js"></script> -->
         <script>

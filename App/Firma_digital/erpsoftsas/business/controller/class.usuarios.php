@@ -38,6 +38,9 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
                 case 5:
                     $respuesta = $_obj->_recuperarUsuario();
                     break;
+                case 6:
+                    $respuesta = $_obj->_cambiarClave();
+                    break;
             }
             //$con->commit();
             //$_obj->cabeceras();
@@ -134,7 +137,20 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
                     $_objContribuyenteNuevo->set_ind_Telefono($_POST['telefono']);
                     $_objContribuyenteNuevo->set_ind_Email($_POST['email']);
                     $_objContribuyenteNuevo->set_ind_Persona($_POST['tipoPersona']);
-                    $_objContribuyenteNuevo->set_ind_IdCiudad(1);
+                    // Antes esto era set_ind_IdCiudad(1) fijo -Tunja- para
+                    // CUALQUIER contribuyente sin importar donde estuviera
+                    // realmente. El PDF de la declaracion lee esta columna
+                    // para "MUNICIPIO/DEPARTAMENTO DE NOTIFICACION", asi que
+                    // ese hardcode era el bug que el cliente reporto como
+                    // "municipio de registro carga mal" (punto 5). Ahora se
+                    // toma del select agregado en el formulario de
+                    // inscripcion (index.php); si por algun motivo no llega,
+                    // se cae a 1 solo como ultimo recurso para no romper el
+                    // guardado.
+                    $idCiudad = isset($_POST['idCiudad']) && $_POST['idCiudad'] !== ''
+                        ? (int)$_POST['idCiudad']
+                        : 1;
+                    $_objContribuyenteNuevo->set_ind_IdCiudad($idCiudad);
                     $_objContribuyenteNuevo->set_ind_Estado(1);
 
                     if (!$_objContribuyenteNuevo->guardar()) {
@@ -304,6 +320,74 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
         return $_objUsuario->getArray();
     }
 
+
+    /**
+    *** Cambio de contraseña por el propio usuario (punto 1 solicitado por el
+    *** cliente): antes solo existia el reseteo por correo con una clave
+    *** temporal generada por el sistema, y no habia forma de volver a
+    *** asignar una propia despues. Requiere la clave ACTUAL para autorizar
+    *** el cambio -es la unica verificacion de identidad real en este flujo,
+    *** ya que el resto del sistema confia en localStorage para saber quien
+    *** esta logueado, igual que el resto de pantallas de esta app-.
+    ***
+    *** Nota sobre el hash: las contraseñas se guardan con
+    *** HASHBYTES('SHA1', texto) vía DAO->guardar() (ver class.DAO.php,
+    *** tipodato 'clave'), pero DAO->consultar() NO aplica ese mismo hash del
+    *** lado del WHERE -hace una comparación literal-. Por eso, para
+    *** verificar la clave actual, hay que replicar exactamente lo que hace
+    *** el login real (business/controller/class.login.php): comparar contra
+    *** sha1() calculado en PHP, no contra el texto plano. SQL Server hace el
+    *** match sin importar mayusculas/minusculas porque la collation por
+    *** defecto es case-insensitive.
+    **/
+    protected function _cambiarClave() {
+
+        $idUsuario = $_POST['usu_Id'] ?? null;
+        $claveActual = $_POST['claveActual'] ?? '';
+        $claveNueva = $_POST['claveNueva'] ?? '';
+
+        if (empty($idUsuario) || $claveActual === '' || $claveNueva === '') {
+            $this->_ok = 0;
+            $this->_mensaje = 'Datos incompletos';
+            return false;
+        }
+
+        // Misma regla que se valida en el navegador (login.js
+        // validarPassword): min 8, mayuscula, minuscula, numero. Se repite
+        // aqui porque el navegador se puede saltar llamando el endpoint
+        // directamente.
+        if (!preg_match('/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/', $claveNueva)) {
+            $this->_ok = 0;
+            $this->_mensaje = 'La nueva contraseña debe tener mínimo 8 caracteres, incluir mayúscula, minúscula y número.';
+            return false;
+        }
+
+        // Verificar la clave actual (ver nota de clase sobre el hash).
+        $_objVerif = new \erpsoftsas\DAO_Usuario();
+        $_objVerif->set_usu_Id($idUsuario);
+        $_objVerif->set_usu_Password(sha1($claveActual));
+        $encontrado = $_objVerif->consultar();
+
+        if (!$encontrado) {
+            $this->_ok = 0;
+            $this->_mensaje = 'La contraseña actual no es correcta';
+            return false;
+        }
+
+        $_objUsuario = new \erpsoftsas\DAO_Usuario();
+        $_objUsuario->set_usu_Id($idUsuario);
+        $_objUsuario->set_usu_Password($claveNueva);
+
+        if (!$_objUsuario->guardar()) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No se pudo actualizar la contraseña';
+            return false;
+        }
+
+        $this->_ok = 1;
+        $this->_mensaje = 'Contraseña actualizada correctamente';
+        return true;
+    }
 
     /**
     *** Proceso de recuperación de contraseña

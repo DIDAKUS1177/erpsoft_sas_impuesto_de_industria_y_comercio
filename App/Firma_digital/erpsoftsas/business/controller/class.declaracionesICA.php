@@ -718,36 +718,34 @@ private function _actualizarDeclaracionIca(){
 /**
  * ¿Este contribuyente necesita contador/revisor fiscal para presentar?
  *
- * Regla confirmada con la Secretaría de Hacienda (2026-08-05), NO es
- * universal:
- *   - Persona NATURAL: solo si sus ingresos superan 3.500 UVT.
- *   - Persona JURÍDICA: siempre.
- *   - Revisor fiscal (persona jurídica con ingresos > umbral): comparte
- *     casilla con el contador, asi que para "puede presentar" basta con
- *     que UNA de las dos personas firme -no hace falta distinguir aqui
- *     cual de las dos hace falta, con is_signed_contador alcanza-.
+ * Regla vigente desde 2026-08-11 (reemplaza la anterior, basada en tipo de
+ * persona + umbral de 3.500 UVT -esa murió por instrucción explícita del
+ * cliente-): si el contribuyente tiene registrado un correo de contador O
+ * de revisor fiscal, la firma de esa persona es OBLIGATORIA para presentar,
+ * sin importar tipo de persona ni ingresos. Registrar los datos de un
+ * contador/revisor es, en la práctica, decir "esta declaración la tiene que
+ * firmar también mi contador".
  *
- * $totalIngresos es el de la declaracion que se esta evaluando: es el
- * unico dato de ingresos que el sistema tiene en el momento de presentar.
+ * Contador y revisor comparten una sola casilla de firma (ver
+ * ind_EmailContador/ind_EmailRevisor en ind_contribuyentes), así que basta
+ * con que UNA de las dos personas firme -no hace falta distinguir aquí cuál
+ * de las dos hace falta, con is_signed_contador alcanza-.
  */
-private function _requiereContador($idContribuyente, $totalIngresos)
+private function _requiereContador($idContribuyente)
 {
     $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
     $contrib = $con->obnerFila($con->consultar(
-        "SELECT ind_Persona FROM ind_contribuyentes WHERE ind_Id = ?",
+        "SELECT ind_EmailContador, ind_EmailRevisor FROM ind_contribuyentes WHERE ind_Id = ?",
         [$idContribuyente]
     ));
 
-    $esJuridica = $contrib && (int) $contrib['ind_Persona'] === 2;
-
-    if ($esJuridica) {
-        return true;
+    if (!$contrib) {
+        return false;
     }
 
-    $umbralNatural = UMBRAL_INGRESOS_CONTADOR_NATURAL_UVT * UVT_VALOR;
-
-    return (float) $totalIngresos > $umbralNatural;
+    return trim((string) ($contrib['ind_EmailContador'] ?? '')) !== ''
+        || trim((string) ($contrib['ind_EmailRevisor'] ?? '')) !== '';
 }
 
 
@@ -771,7 +769,7 @@ private function _presentarDeclaracion(){
     }
 
     $decl = $con->obnerFila($con->consultar(
-        "SELECT dec_IdContribuyente, dec_TotalIngresos FROM ind_declaraciones_ica WHERE dec_Id = ?",
+        "SELECT dec_IdContribuyente FROM ind_declaraciones_ica WHERE dec_Id = ?",
         [$idDeclaracion]
     ));
 
@@ -800,10 +798,7 @@ private function _presentarDeclaracion(){
     // La firma del contador/revisor SOLO es obligatoria para quien la ley
     // obliga a tenerlo (ver _requiereContador). Un contribuyente que no
     // esta obligado puede presentar con solo su propia firma.
-    $requiereContador = $this->_requiereContador(
-        $decl['dec_IdContribuyente'],
-        $decl['dec_TotalIngresos'] ?? 0
-    );
+    $requiereContador = $this->_requiereContador($decl['dec_IdContribuyente']);
 
     if ($requiereContador && !in_array('contador', $roles, true)) {
         $this->_ok = 0;
@@ -1063,16 +1058,13 @@ private function _consultarDeclaracionesListado(){
 
     $data = [];
 
-    $umbralNatural = UMBRAL_INGRESOS_CONTADOR_NATURAL_UVT * UVT_VALOR;
-
     while($row = $con->obnerFila($res)){
         // El frontend necesita saber, SIN otra llamada, si a esta
         // declaracion le hace falta la firma del contador para poder
-        // presentarse. Misma regla que _requiereContador(), en linea para
-        // no repetir una consulta por fila.
-        $esJuridica = (int) ($row['ind_Persona'] ?? 0) === 2;
-        $row['requiere_contador'] = ($esJuridica || (float) ($row['dec_TotalIngresos'] ?? 0) > $umbralNatural)
-            ? 1 : 0;
+        // presentarse. Misma regla que _requiereContador(): tiene correo de
+        // contador o de revisor registrado -tiene_correo_contador ya trae
+        // ese calculo hecho desde el SQL de arriba-.
+        $row['requiere_contador'] = (int) ($row['tiene_correo_contador'] ?? 0);
 
         $data[] = $row;
     }

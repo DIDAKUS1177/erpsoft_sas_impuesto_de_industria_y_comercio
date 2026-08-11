@@ -308,6 +308,9 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', 'vendors/
 			.login-footer-banner .footer-separator { display: none; }
 		}
 	</style>
+	<!-- select2: usado por el campo "Municipio de Residencia" del registro
+	     publico -mismo CDN que ya usa dist/contribuyentes.php-. -->
+	<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 </head>
 <body class="login-page">
 
@@ -450,9 +453,22 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', 'vendors/
 							<input type="text" class="form-control" id="usu_Telefono" required>
 						</div>
 
-						<div class="form-group col-md-12">
+						<div class="form-group col-md-8">
 							<label>* Dirección</label>
 							<input type="text" class="form-control" id="usu_Direccion" required>
+						</div>
+
+						<!-- usu_IdCiudad: municipio de RESIDENCIA del contribuyente. Antes este
+						formulario no pedia esta ciudad y class.usuarios.php grababa
+						ind_IdCiudad=1 (Tunja) a ciegas para todo el mundo -por eso el PDF de
+						cualquier contribuyente mostraba "Tunja / Boyacá" como municipio de
+						notificacion sin importar donde estuviera realmente-. -->
+						<div class="form-group col-md-4">
+							<label>* Municipio de Residencia</label>
+							<select class="form-control select2" id="usu_IdCiudad" name="usu_IdCiudad"
+								style="width: 100%;" required>
+								<option value="">Seleccione ciudad...</option>
+							</select>
 						</div>
 
 						<div class="form-group col-md-4">
@@ -536,6 +552,7 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', 'vendors/
 	<script src="vendors/scripts/process.js"></script>
 	<script src="vendors/scripts/layout-settings.js"></script>
 	<script src="src/scripts/jquery.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 	<script src="src/plugins/sweetalert2/sweetalert2.all.js"></script>
 	<script src="login.js?v=<?php echo time(); ?>"></script>
 	

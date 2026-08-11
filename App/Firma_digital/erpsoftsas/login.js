@@ -36,10 +36,53 @@ class Login {
             '<span class="ti-plus"></span>' +
             ' Crear'
         );
+
+        login.cargarCiudadesUsuario();
+
         //$("#formCrearUsuario").attr('action', 'javascript:login.postUsuario()');
         $('#modal-Usuario').modal({backdrop: 'static', keyboard: false})
         $("#modal-Usuario").modal('show');
-        
+
+    }
+
+    /**
+     * cargarCiudadesUsuario: llena el select2 de municipio de residencia con
+     * el catalogo completo de conf_ciudades (mismo endpoint y mismo patron
+     * que ya usa el modulo interno de contribuyentes -core/contribuyentes.js-).
+     * Antes este formulario de inscripcion publica no pedia ciudad, y
+     * class.usuarios.php grababa ind_IdCiudad=1 (Tunja) a ciegas para
+     * cualquier contribuyente, sin importar donde estuviera realmente.
+     */
+    cargarCiudadesUsuario() {
+
+        if ($.fn.select2 && $('#usu_IdCiudad').hasClass("select2-hidden-accessible")) {
+            $('#usu_IdCiudad').select2('destroy');
+        }
+
+        $.ajax({
+            url: 'business/controller/class.ciudades.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { funcion: 1 },
+            success: function (arr) {
+
+                if (arr.ok != 1) { return; }
+
+                $('#usu_IdCiudad').empty();
+                $('#usu_IdCiudad').append('<option value=""></option>');
+
+                $.each(arr.datos, function (i, ciudad) {
+                    $('#usu_IdCiudad').append(
+                        `<option value="${ciudad.ciu_Id}">${ciudad.ciu_Nombre} - ${ciudad.ciu_Departamento}</option>`
+                    );
+                });
+
+                $('#usu_IdCiudad').select2({
+                    dropdownParent: $('#modal-Usuario'),
+                    width: '100%'
+                });
+            }
+        });
     }
 
 
@@ -172,14 +215,15 @@ class Login {
         var clave = $("#usu_Clave").val();
         var rol = 4; // Usuario ICA WEB CONTRIBUTUYENTE;
         var usu = $("#usu_Usuario").val();
+        var idCiudad = $("#usu_IdCiudad").val();
 
         console.log('rol ', rol);
 
         $.ajax({
             url: 'business/controller/class.usuarios.php',
-            data: { funcion: 1, nombres: nombres, apellidos: apellidos, telefono: telefono, direccion: direccion, 
+            data: { funcion: 1, nombres: nombres, apellidos: apellidos, telefono: telefono, direccion: direccion,
                     idTipoDocumento: idTipoDocumento, numeroDocumento: documento, tipoPersona: idTipoPersona, DV: DV,
-                    email: mail, id_rol: rol, clave: clave, usuario: usu},
+                    email: mail, id_rol: rol, clave: clave, usuario: usu, idCiudad: idCiudad},
             dataType: "json",
             type: "POST",
             success: function(arr) {
