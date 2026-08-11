@@ -21,6 +21,37 @@ class LiquidacionICAComercioPdf extends TCPDF {
     public function Footer() {}
 }
 
+/**
+ * Marca de agua diagonal ("BORRADOR" / "PRESENTADA"), misma logica que
+ * extensiones/declaracion.php.
+ */
+function dibujarMarcaDeAgua($pdf, $texto, $anchoPagina, $altoPagina) {
+    // Ver nota en declaracion.php: StartTransform()/StopTransform() no
+    // restauran la fuente, hay que guardarla y ponerla de vuelta a mano.
+    $familiaOriginal = $pdf->getFontFamily();
+    $estiloOriginal  = $pdf->getFontStyle();
+    $tamanoOriginal  = $pdf->getFontSizePt();
+
+    $cx = $anchoPagina / 2;
+    $cy = $altoPagina / 2;
+
+    $pdf->SetFont('helvetica', 'B', 70);
+    $anchoTexto = $pdf->GetStringWidth($texto);
+
+    $pdf->StartTransform();
+    $pdf->SetAlpha(0.15);
+    $pdf->SetTextColor(150, 150, 150);
+    $pdf->Rotate(45, $cx, $cy);
+    // Text() con un solo punto de anclaje: mas simple y confiable que
+    // Cell() con ancho grande centrado -con Cell() el rectangulo quedaba
+    // mal ubicado tras la rotacion (probado, solo se veia una esquina).
+    $pdf->Text($cx - ($anchoTexto / 2), $cy, $texto);
+    $pdf->StopTransform();
+    $pdf->SetAlpha(1);
+    $pdf->SetTextColor(0, 0, 0);
+    $pdf->SetFont($familiaOriginal, $estiloOriginal, $tamanoOriginal);
+}
+
 /* ============================================================
    CONEXION Y DATOS REALES (mismo patron que declaracion.php)
    ============================================================ */
@@ -296,6 +327,11 @@ $pdf->SetMargins(10,10,10);
 $pdf->SetAutoPageBreak(false, 0);
 $pdf->AddPage();
 $pdf->SetFont('helvetica','',7);
+
+// Se dibuja al final del archivo, justo antes de Output: ver nota larga
+// en declaracion.php -Rotate()/StartTransform() tan temprano en el
+// documento colgaba el resto del render en pruebas-.
+$textoMarcaAgua = ((int)($row['dec_Estado'] ?? 0) === 2) ? 'PRESENTADA' : 'BORRADOR';
 
 $nombreFirmanteContadorRevisor = $contador_nombre !== '' ? $contador_nombre : $revisor_nombre;
 $docFirmanteContadorRevisor    = $contador_num_doc !== '' ? $contador_num_doc : $revisor_num_doc;
@@ -591,4 +627,6 @@ $pdf->writeHTML($html, true, false, true, false, '');
 /* ============================================================
    SALIDA PDF
    ============================================================ */
+dibujarMarcaDeAgua($pdf, $textoMarcaAgua, 215.9, 330.2);
+
 $pdf->Output('Liquidacion_ICA_Comercio.pdf','I');

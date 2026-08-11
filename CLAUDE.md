@@ -124,6 +124,30 @@ original no dejaba margen para el código de barras sin cortarse en el borde inf
 de la página (`SetAutoPageBreak` está en `false` en ambos archivos — TCPDF no avisa si
 el contenido se pasa del borde).
 
+## Marca de agua BORRADOR / PRESENTADA (declaracion.php / liquidacion.php)
+
+Ambos PDFs dibujan un texto diagonal semitransparente ("BORRADOR" o "PRESENTADA",
+según `dec_Estado`) sobre todo el contenido, vía una función `dibujarMarcaDeAgua()`
+duplicada en cada archivo (mismo patrón que el resto de duplicación entre estos dos
+generadores). Tres bugs de TCPDF encontrados y corregidos al implementarla
+(2026-08-10), por si se reutiliza el patrón en otro PDF:
+
+1. **Fuga de fuente**: `StartTransform()/StopTransform()` **no** restaura el estado de
+   la fuente. Hay que guardar `getFontFamily()/getFontStyle()/getFontSizePt()` antes
+   de `SetFont()` dentro del bloque y restaurarlos explícitamente después, o la fuente
+   grande de la marca de agua se queda pegada al resto del documento.
+2. **Posicionamiento**: dentro de un bloque `Rotate()`, `Cell()`/`SetXY()` interpretan
+   las coordenadas en el espacio YA rotado, no en el espacio original de la página —
+   intentar centrar con `Cell()` + ancho grande solo pinta un fragmento diminuto. Hay
+   que usar `Text($cx - GetStringWidth($texto)/2, $cy, $texto)` (un solo punto de
+   anclaje).
+3. **Cuelgue infinito (el más grave)**: llamar la función justo después de
+   `AddPage()` (antes del resto del contenido) cuelga el worker de PHP-FPM
+   indefinidamente al ~99% CPU — probablemente interacción entre `Rotate()` temprano y
+   el manejo interno de salto de página/HTML de TCPDF más adelante. Se resuelve
+   llamando la función al final del archivo, justo antes de `Output()` (la marca queda
+   dibujada encima del contenido en vez de debajo, visualmente sigue bien).
+
 ## PSE PlacetoPay (pago del impuesto)
 
 Integración construida desde cero contra la documentación pública de PlacetoPay

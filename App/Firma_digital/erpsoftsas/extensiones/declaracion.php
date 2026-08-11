@@ -49,6 +49,42 @@ function dibujarTextoVertical($pdf, $texto, $x, $y_top, $y_bottom) {
     $pdf->StopTransform();
 }
 
+/**
+ * Marca de agua diagonal ("BORRADOR" / "PRESENTADA") centrada en la
+ * pagina, en gris claro semitransparente. Se dibuja ANTES del contenido
+ * (justo despues de AddPage) para que quede detras del texto -en TCPDF
+ * el orden de dibujo es el orden de las llamadas, no hay z-index-.
+ */
+function dibujarMarcaDeAgua($pdf, $texto, $anchoPagina, $altoPagina) {
+    // OJO: StartTransform()/StopTransform() solo restauran la matriz de
+    // transformacion (rotacion) y el alpha -NO la fuente-. Sin guardar y
+    // restaurar la fuente a mano, el SetFont() de aqui se queda pegado en
+    // TODO el resto del documento (paso una vez: rompio el layout completo,
+    // titulos y campos salieron gigantes en 70pt).
+    $familiaOriginal = $pdf->getFontFamily();
+    $estiloOriginal  = $pdf->getFontStyle();
+    $tamanoOriginal  = $pdf->getFontSizePt();
+
+    $cx = $anchoPagina / 2;
+    $cy = $altoPagina / 2;
+
+    $pdf->SetFont('helvetica', 'B', 70);
+    $anchoTexto = $pdf->GetStringWidth($texto);
+
+    $pdf->StartTransform();
+    $pdf->SetAlpha(0.15);
+    $pdf->SetTextColor(150, 150, 150);
+    $pdf->Rotate(45, $cx, $cy);
+    // Text() con un solo punto de anclaje: mas simple y confiable que
+    // Cell() con ancho grande centrado -con Cell() el rectangulo quedaba
+    // mal ubicado tras la rotacion (probado, solo se veia una esquina).
+    $pdf->Text($cx - ($anchoTexto / 2), $cy, $texto);
+    $pdf->StopTransform();
+    $pdf->SetAlpha(1);
+    $pdf->SetTextColor(0, 0, 0);
+    $pdf->SetFont($familiaOriginal, $estiloOriginal, $tamanoOriginal);
+}
+
 
 $pdf = new ICAPdf('P','mm',array(215.9, 330.2),true,'UTF-8',false);
 $pdf->SetMargins(10,10,10);
@@ -97,6 +133,17 @@ if (!$row) {
     http_response_code(404);
     die('Declaración no encontrada.');
 }
+
+// Marca de agua: PRESENTADA si ya tiene fecha de presentacion (dec_Estado
+// = 2), BORRADOR en cualquier otro estado anterior (borrador, firmada,
+// pendiente de firma del contador) -tal como lo pidio el cliente, sin
+// distinguir esos estados intermedios en la marca de agua-. Se dibuja
+// hasta el final del archivo (ver mas abajo, justo antes de Output): se
+// probo dibujarla aqui, temprano, pero el Rotate()/StartTransform() tan
+// pronto en el documento colgaba el resto del render (writeHTML nunca
+// terminaba, worker de PHP al 99% CPU indefinidamente). Al 0.15 de alpha
+// se ve igual de bien encima del contenido que detras.
+$textoMarcaAgua = ((int)($row['dec_Estado'] ?? 0) === 2) ? 'PRESENTADA' : 'BORRADOR';
 
 /* ===========================
 ACTIVIDADES
@@ -1061,5 +1108,7 @@ dibujarTextoVertical($pdf, "C. DISCR.\nACTIVIDADES GRAVADAS", $x - 2, $ySecC_ini
 dibujarTextoVertical($pdf, 'D. LIQUIDACIÓN PRIVADA', $x, $ySecD_inicio, $ySecD_fin);
 dibujarTextoVertical($pdf, 'E. PAGO', $x, $ySecE_inicio, $ySecE_fin);
 dibujarTextoVertical($pdf, 'F. FIRMAS', $x, $ySecF_inicio, $ySecF_fin);
+
+dibujarMarcaDeAgua($pdf, $textoMarcaAgua, 215.9, 330.2);
 
 $pdf->Output('ICA_DECLARACION.pdf','I');
