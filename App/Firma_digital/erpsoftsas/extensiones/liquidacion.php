@@ -310,10 +310,10 @@ function moneyCol($v) {
    Referencia = numero de declaracion. Formato provisional (Code 128): en
    cuanto quede definido el convenio de recaudo con el banco, ajustar aqui
    el armado de la referencia (y el tipo de codigo, si exigen otro).
+
+   Se dibuja con write1DBarcode() despues del writeHTML (ver mas abajo), no
+   como imagen embebida: el vectorial no necesita escribir en disco.
    ============================================================ */
-require_once('./tcpdf/tcpdf_barcodes_1d.php');
-$barcodeObj = new TCPDFBarcode((string)$referencia_recaudo, 'C128');
-$barcodeBase64 = base64_encode($barcodeObj->getBarcodePngData(2, 18));
 
 /* ============================================================
    CREACIÓN PDF
@@ -611,7 +611,7 @@ C.C./T.P. No. ' . htmlspecialchars($docFirmanteContadorRevisor) . '
 
 <tr>
 <td width="50%" align="center">
-<img src="@' . $barcodeBase64 . '" width="55mm" height="12mm">
+<br><br><br>
 </td>
 <td width="50%">
 <br>' . $referencia_recaudo . '
@@ -623,6 +623,24 @@ C.C./T.P. No. ' . htmlspecialchars($docFirmanteContadorRevisor) . '
 ';
 
 $pdf->writeHTML($html, true, false, true, false, '');
+
+/* ============================================================
+   CODIGO DE BARRAS
+   Vectorial y despues del writeHTML, por la misma razon que en
+   declaracion.php: un <img src="@base64"> obliga a TCPDF a volcar la imagen
+   a sys_get_temp_dir(), donde el PHP-FPM de Plesk no puede escribir
+   ("TCPDF ERROR: Unable to write file").
+   ============================================================ */
+$yFinTabla = $pdf->GetY();
+$pdf->write1DBarcode(
+    $referencia_recaudo, 'C128',
+    35, $yFinTabla - 10, 55, 8.5,
+    '',
+    array('position' => '', 'border' => false, 'padding' => 0,
+          'fgcolor' => array(0,0,0), 'bgcolor' => false,
+          'text' => false, 'stretch' => true),
+    'N'
+);
 
 /* ============================================================
    SALIDA PDF

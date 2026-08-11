@@ -480,9 +480,12 @@ Referencia = numero de declaracion. Formato provisional (Code 128): en
 cuanto quede definido el convenio de recaudo con el banco, ajustar aqui
 el armado de la referencia (y el tipo de codigo, si exigen otro).
 =========================== */
+// Se dibuja con write1DBarcode() (vectorial) DESPUES del writeHTML, no como
+// <img src="@base64"> dentro del HTML: TCPDF, para una imagen embebida en
+// base64, la vuelca primero a un archivo temporal en sys_get_temp_dir(), y el
+// PHP-FPM de Plesk no tiene permiso de escritura ahi -> "TCPDF ERROR: Unable
+// to write file". El barcode vectorial no toca el disco.
 $referenciaRecaudo = (string)$d['num_form'];
-$barcodeObj = new TCPDFBarcode($referenciaRecaudo, 'C128');
-$barcodeBase64 = base64_encode($barcodeObj->getBarcodePngData(2, 18));
 
 /* ===========================
 HEADER
@@ -1074,8 +1077,7 @@ $html .= '
 
 <tr>
 
-<td width="50%" align="center">
-<img src="@'.$barcodeBase64.'" width="50mm" height="7mm">
+<td width="50%" align="center" height="8">
 </td>
 
 <td width="50%">
@@ -1091,6 +1093,27 @@ $html .= '
 ';
 
 $pdf->writeHTML($html,true,false,true,false,'');
+
+/* ===========================
+CODIGO DE BARRAS
+Se dibuja aqui, encima de la celda vacia que el HTML dejo reservada en la
+ultima fila de la tabla. GetY() tras el writeHTML da el borde inferior de esa
+tabla, asi que la fila del barcode arranca ~8mm mas arriba (la altura que se
+le reservo a la celda). Vectorial: no escribe archivos temporales.
+=========================== */
+$yFinTabla = $pdf->GetY();
+// stretch=true hace que el codigo ocupe exactamente el ancho pedido (50mm)
+// en vez de depender del xres; asi la posicion es determinista y queda
+// centrado en la celda "CODIGO DE BARRAS" (que va de x=13 a x=111).
+$pdf->write1DBarcode(
+    $referenciaRecaudo, 'C128',
+    37, $yFinTabla - 8.5, 50, 7,
+    '',
+    array('position' => '', 'border' => false, 'padding' => 0,
+          'fgcolor' => array(0,0,0), 'bgcolor' => false,
+          'text' => false, 'stretch' => true),
+    'N'
+);
 
 /* ===========================
 ETIQUETAS VERTICALES (A-F)
