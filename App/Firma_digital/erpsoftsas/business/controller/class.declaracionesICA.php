@@ -795,9 +795,9 @@ private function _presentarDeclaracion(){
         return [];
     }
 
-    // La firma del contador/revisor SOLO es obligatoria para quien la ley
-    // obliga a tenerlo (ver _requiereContador). Un contribuyente que no
-    // esta obligado puede presentar con solo su propia firma.
+    // La firma del contador/revisor es obligatoria solo si el contribuyente
+    // tiene uno registrado (ver _requiereContador). Quien no registro
+    // contador ni revisor presenta con su sola firma.
     $requiereContador = $this->_requiereContador($decl['dec_IdContribuyente']);
 
     if ($requiereContador && !in_array('contador', $roles, true)) {

@@ -339,14 +339,24 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
     *** sha1() calculado en PHP, no contra el texto plano. SQL Server hace el
     *** match sin importar mayusculas/minusculas porque la collation por
     *** defecto es case-insensitive.
+    ***
+    *** OJO con la inyeccion SQL: class.DAO.php arma las consultas
+    *** concatenando strings, NO con parametros. Por eso aqui:
+    ***   - usu_Id se castea a int antes de tocar el DAO (en guardar() va al
+    ***     WHERE del UPDATE sin comillas siquiera: " WHERE usu_Id = $valor").
+    ***   - la clave nueva se escapa duplicando la comilla simple, que es como
+    ***     SQL Server escapa dentro de un literal. Esto NO cambia el hash
+    ***     resultante: SQL Server parsea '' como una sola comilla, asi que
+    ***     HASHBYTES recibe la contraseña original y el login (que hace
+    ***     sha1() en PHP sobre el texto crudo) sigue coincidiendo.
     **/
     protected function _cambiarClave() {
 
-        $idUsuario = $_POST['usu_Id'] ?? null;
+        $idUsuario = isset($_POST['usu_Id']) ? (int) $_POST['usu_Id'] : 0;
         $claveActual = $_POST['claveActual'] ?? '';
         $claveNueva = $_POST['claveNueva'] ?? '';
 
-        if (empty($idUsuario) || $claveActual === '' || $claveNueva === '') {
+        if ($idUsuario <= 0 || $claveActual === '' || $claveNueva === '') {
             $this->_ok = 0;
             $this->_mensaje = 'Datos incompletos';
             return false;
@@ -376,7 +386,7 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
 
         $_objUsuario = new \erpsoftsas\DAO_Usuario();
         $_objUsuario->set_usu_Id($idUsuario);
-        $_objUsuario->set_usu_Password($claveNueva);
+        $_objUsuario->set_usu_Password(str_replace("'", "''", $claveNueva));
 
         if (!$_objUsuario->guardar()) {
             $this->_ok = 0;

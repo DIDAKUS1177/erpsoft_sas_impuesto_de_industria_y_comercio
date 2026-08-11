@@ -12,6 +12,14 @@
 // 8081- mientras que este archivo esta DENTRO de erpsoftsas/, alcanzable
 // desde cualquier despliegue.
 
+// OJO (2026-08-11): hoy NINGUNA regla del sistema consume estas dos
+// constantes. La única que las usaba era el umbral de 3.500 UVT para exigir
+// contador, y esa regla murió (ver nota abajo). Se conservan porque la UVT
+// es un parámetro tributario de uso general y es probable que vuelva a
+// hacer falta, pero mientras tanto actualizarlas en enero NO cambia el
+// comportamiento de nada. Antes de confiar en ellas, verificar quién las
+// lee realmente.
+
 if (!defined('UVT_ANIO')) define('UVT_ANIO', 2026);
 
 // Valor de la UVT para el año de arriba. Resolución DIAN 000238 de 2025:

@@ -332,7 +332,11 @@ class Establecimientos {
                 }
 
                 $("#est_Direccion").val(d.est_Direccion);
-                $("#est_Pais").val(d.est_Pais || 'Colombia');
+                // Unico pais del catalogo. Se fuerza a 'Colombia' en vez de respetar
+                // lo guardado porque los registros viejos tienen "1" (el value del
+                // <option> fijo anterior), que no matchearia ninguna opcion y dejaria
+                // el select en blanco; al guardar, el dato viejo queda saneado.
+                $("#est_Pais").val('Colombia');
                 // Departamento/Ciudad ya no son un unico <option> fijo: se
                 // llenan con el catalogo completo y se preselecciona lo
                 // guardado. Establecimientos creados ANTES de este cambio

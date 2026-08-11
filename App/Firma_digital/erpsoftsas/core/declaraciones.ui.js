@@ -175,13 +175,11 @@ var DeclaracionesUI = (function () {
     };
 
     /*
-     * Presentar exige la firma del declarante y, SOLO CUANDO LA LEY LO
-     * OBLIGA, la del contador o revisor fiscal:
-     *   - persona natural: solo si sus ingresos superan 3.500 UVT
-     *   - persona juridica: siempre
-     * (ver _requiereContador en class.declaracionesICA.php, que es quien
-     * calcula d.requiere_contador -la regla vive una sola vez, en el
-     * backend, para que este archivo no se desactualice si la ley cambia).
+     * Presentar exige la firma del declarante y, cuando el contribuyente
+     * tiene registrado un contador o revisor fiscal, tambien la de esa
+     * persona (ver _requiereContador en class.declaracionesICA.php, que es
+     * quien calcula d.requiere_contador -la regla vive una sola vez, en el
+     * backend, para que este archivo no se desactualice si cambia).
      *
      * Cuando no aplica, "pendienteCont" se salta: firmar el declarante deja
      * la declaracion directo en "firmada".

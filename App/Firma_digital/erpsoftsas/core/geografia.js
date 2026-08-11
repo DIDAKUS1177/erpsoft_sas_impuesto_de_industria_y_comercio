@@ -51,6 +51,14 @@ var Geografia = (function () {
         var $depto = $('#' + idDepartamento);
         var $ciudad = $('#' + idCiudad);
 
+        // Los valores guardados pueden venir como null, o como numero en los
+        // registros viejos (cuando el <select> tenia value="1" fijo), asi que
+        // se normalizan a texto antes de cualquier .trim().
+        var deptoBuscado = (deptoActual === null || deptoActual === undefined)
+            ? '' : String(deptoActual).trim();
+        var ciudadBuscada = (ciudadActual === null || ciudadActual === undefined)
+            ? '' : String(ciudadActual).trim();
+
         cargarCatalogo(function (datos) {
 
             var deptos = [];
@@ -76,7 +84,7 @@ var Geografia = (function () {
                         $ciudad.append('<option value="' + c.ciu_Nombre + '">' + c.ciu_Nombre + '</option>');
                     });
                 if (ciudadPreseleccionada) {
-                    $ciudad.val(ciudadPreseleccionada.trim());
+                    $ciudad.val(ciudadPreseleccionada);
                 }
             }
 
@@ -84,10 +92,17 @@ var Geografia = (function () {
                 repoblarCiudad($(this).val(), null);
             });
 
-            if (deptoActual) {
-                $depto.val(deptoActual.trim());
-                repoblarCiudad(deptoActual.trim(), ciudadActual);
+            // Si lo guardado no corresponde a ningun departamento real -caso
+            // tipico de los registros creados cuando el <select> tenia
+            // value="1" fijo-, .val() no matchea y ambos selects quedan en el
+            // placeholder. Es el comportamiento correcto: no hay forma de
+            // adivinar el departamento real, y como el campo es required el
+            // usuario tiene que elegirlo, lo que de paso sanea el dato viejo.
+            if (deptoBuscado !== '' && deptos.indexOf(deptoBuscado) !== -1) {
+                $depto.val(deptoBuscado);
+                repoblarCiudad(deptoBuscado, ciudadBuscada);
             } else {
+                $depto.val('');
                 $ciudad.empty().append('<option value="">Seleccione municipio...</option>');
             }
         });

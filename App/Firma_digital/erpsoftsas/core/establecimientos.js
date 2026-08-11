@@ -321,7 +321,11 @@ class Establecimientos {
 
                 $("#est_Nombre").val(d.est_Nombre);
                 $("#est_Direccion").val(d.est_Direccion);
-                $("#est_Pais").val(d.est_Pais || 'Colombia');
+                // Unico pais del catalogo. Se fuerza a 'Colombia' en vez de respetar
+                // lo guardado porque los registros viejos tienen "1" (el value del
+                // <option> fijo anterior), que no matchearia ninguna opcion y dejaria
+                // el select en blanco; al guardar, el dato viejo queda saneado.
+                $("#est_Pais").val('Colombia');
                 // Ver nota en icaWebRit.js: catalogo completo + preseleccion.
                 if (typeof Geografia !== 'undefined') {
                     Geografia.poblar('est_Departamento', 'est_Ciudad', d.est_Departamento, d.est_Ciudad);

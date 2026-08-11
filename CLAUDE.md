@@ -84,10 +84,13 @@ Login de prueba: usuario `administrador`, clave `administrador2025`.
   `ind_EmailRevisor` en `ind_contribuyentes`), comparten una sola casilla en el
   formulario (se usa el del contador; el del revisor solo si el del contador está
   vacío).
-- Es obligatorio firmar como contador/revisor **solo** cuando la ley lo exige: persona
-  jurídica siempre; persona natural solo si sus ingresos superan 3.500 UVT (constante
-  en `business/config.tributario.php`, **hay que actualizar el valor de la UVT cada
-  enero** — la de 2026 es $52.374, Resolución DIAN 000238/2025).
+- Es obligatorio firmar como contador/revisor **cuando el contribuyente tiene uno
+  registrado**: si `ind_EmailContador` o `ind_EmailRevisor` tienen valor, esa firma se
+  exige para presentar, sin importar tipo de persona ni ingresos (regla nueva desde
+  2026-08-11, por instrucción explícita del cliente). **Reemplazó** a la regla anterior
+  (jurídica siempre / natural sobre 3.500 UVT), que quedó derogada — si alguien la
+  vuelve a mencionar, está desactualizado. `UVT_VALOR`/`UVT_ANIO` siguen definidos en
+  `business/config.tributario.php` pero **hoy no los lee nadie**.
 - Una declaración ya **presentada** no se edita ni se vuelve a crear una "original"
   para el mismo período — la única vía correcta es "Corregir" (crea una nueva ligada
   por `dec_DeclaracionCorrige`). Esto es un requisito legal, no una limitación técnica.
@@ -192,6 +195,28 @@ documentar (los del lote anterior ya estaban en este archivo):
   todas las pantallas pero nunca se aplicaba de verdad al sidebar (caía al
   stack por defecto de Bootstrap). Se aplicó explícitamente en
   `dist/menu.php` junto con un leve ajuste de tamaño/letter-spacing.
+
+### Inyección SQL: el DAO concatena, NO parametriza (importante)
+
+`business/DAO/class.DAO.php` arma todas sus consultas concatenando strings.
+En `guardar()` la clave primaria va al `WHERE` **sin comillas siquiera**
+(`" WHERE usu_Id = " . $valor`), y los valores de texto van dentro de un
+literal `'...'` sin escapar. Consecuencias al escribir cualquier controlador
+nuevo contra este DAO:
+
+- **Todo id que venga del cliente hay que castearlo** (`(int) $_POST[...]`)
+  antes de pasarlo al DAO. Sin eso hay inyección directa.
+- **Todo texto libre del usuario hay que escaparlo** duplicando la comilla
+  simple (`str_replace("'", "''", $v)`), que es como SQL Server escapa dentro
+  de un literal. Para el campo de contraseña esto **no** altera el hash
+  guardado: SQL Server parsea `''` como una sola comilla, así que
+  `HASHBYTES` recibe el texto original y el login (que hace `sha1()` en PHP
+  sobre el texto crudo) sigue coincidiendo — verificado con una contraseña
+  que contiene comilla, cambiándola y volviendo a entrar.
+
+Ambas cosas están aplicadas en `_cambiarClave()`. El resto de controladores
+viejos **no** las aplica; es deuda conocida, no asumir que un endpoint
+existente ya está protegido.
 
 ### Bug de producción encontrado y corregido en el camino (2026-08-11)
 

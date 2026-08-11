@@ -230,7 +230,11 @@ class Establecimientos {
                 $("#est_Codigo").val(d.est_Codigo);
                 $("#est_Nombre").val(d.est_Nombre);
                 $("#est_Direccion").val(d.est_Direccion);
-                $("#est_Pais").val(d.est_Pais || 'Colombia');
+                // Unico pais del catalogo. Se fuerza a 'Colombia' en vez de respetar
+                // lo guardado porque los registros viejos tienen "1" (el value del
+                // <option> fijo anterior), que no matchearia ninguna opcion y dejaria
+                // el select en blanco; al guardar, el dato viejo queda saneado.
+                $("#est_Pais").val('Colombia');
                 // Ver nota en icaWebRit.js: catalogo completo + preseleccion.
                 if (typeof Geografia !== 'undefined') {
                     Geografia.poblar('est_Departamento', 'est_Ciudad', d.est_Departamento, d.est_Ciudad);
@@ -1915,10 +1919,10 @@ establecimientos.abrirFirmaDigital = function(dec_Id, idEstablecimiento) {
 };
 
 /**
- * Firma del CONTADOR o REVISOR FISCAL. Obligatoria para presentar cuando
- * la ley lo exige (ver requiere_contador en el backend). El codigo viaja
- * al correo del contador/revisor del contribuyente, no al del usuario en
- * pantalla.
+ * Firma del CONTADOR o REVISOR FISCAL. Obligatoria para presentar cuando el
+ * contribuyente tiene uno registrado (ver requiere_contador en el backend).
+ * El codigo viaja al correo del contador/revisor del contribuyente, no al
+ * del usuario en pantalla.
  *
  * Faltaba en esta pantalla: DeclaracionesUI.htmlAcciones() (compartido con
  * Consultar Declaraciones) genera un boton que llama a esta funcion, pero
