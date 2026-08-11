@@ -1460,7 +1460,13 @@ formatearCOP(numero){
 
 numero(valor){
     if(!valor) return 0;
-    return parseFloat(valor.toString().replace(/\./g,'')) || 0;
+    // Formato Colombiano (es-CO): punto = separador de miles, coma = decimal.
+    // Antes solo se quitaba el punto y se dejaba la coma tal cual, asi que
+    // parseFloat cortaba la lectura ahi mismo y CUALQUIER valor con
+    // decimales perdia esa parte silenciosamente (ej. "2.350.000,5" -> 2350000
+    // en vez de 2350000.5). Eso rompia la comparacion estricta de
+    // validarBasesActividades() -> el boton "Liquidar" parecia no hacer nada.
+    return parseFloat(valor.toString().replace(/\./g,'').replace(',', '.')) || 0;
 }
 
 

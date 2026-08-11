@@ -1346,7 +1346,10 @@ formatearCOP(numero){
 
 numero(valor){
     if(!valor) return 0;
-    return parseFloat(valor.toString().replace(/\./g,'')) || 0;
+    // Formato Colombiano (es-CO): punto = separador de miles, coma = decimal.
+    // Ver nota en icaWebRit.js: sin este cambio, cualquier valor con
+    // decimales perdia esa parte silenciosamente al parsear de vuelta.
+    return parseFloat(valor.toString().replace(/\./g,'').replace(',', '.')) || 0;
 }
 
 
