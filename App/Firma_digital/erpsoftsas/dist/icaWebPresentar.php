@@ -77,8 +77,7 @@
 				-->
 				<div class="pd-20 pt-0" id="barraDeclaracionContribuyente" style="display:none;">
 					<div class="d-flex flex-wrap align-items-center" style="gap:14px;background:#F7F9F8;border:1px solid #E5E7EB;border-radius:10px;padding:14px 16px;">
-						<div style="font-weight:700;color:var(--erp-texto,#333);">Declaración de este contribuyente</div>
-						<div id="chipDeclaracionContribuyente"></div>
+						<div id="chipDeclaracionContribuyente" style="font-weight:700;color:var(--erp-texto,#333);"></div>
 						<div id="accionesDeclaracionContribuyente" class="ml-auto"></div>
 					</div>
 				</div>
@@ -559,7 +558,7 @@ Guardar
                                     class="btn btn-sm btn-warning"
                                     id="btnGenerarOficial"
                                     disabled>
-                                <i class="fa fa-check-circle"></i> Finalizar Declaración
+                                <i class="fa fa-check-circle"></i> Guardar Borrador
                             </button>
 
                         </div>
@@ -617,7 +616,6 @@ Guardar
                                     <select id="opcionUso" class="form-control input-sm">
                                         <option value="">Seleccione…</option>
                                         <option value="1">Declaración Inicial</option>
-                                        <option value="2">Solo Pago</option>
                                         <option value="3">Corrección</option>
                                     </select>
                                 </div>

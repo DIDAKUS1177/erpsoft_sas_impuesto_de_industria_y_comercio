@@ -393,7 +393,7 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', 'vendors/
 		<div class="modal-dialog modal-lg" role="document">
 			<div class="modal-content">
 				<div class="modal-header">
-					<h5 class="modal-title">Creación de Usuario</h5>
+					<h5 class="modal-title">Información del Contribuyente</h5>
 					<button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
 				</div>
 				<form id="formCrearUsuario" onsubmit="login.postUsuario(); return false;">

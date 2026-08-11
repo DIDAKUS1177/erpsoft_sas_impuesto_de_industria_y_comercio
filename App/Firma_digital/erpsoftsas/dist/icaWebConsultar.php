@@ -541,7 +541,7 @@ Guardar
                                     class="btn btn-sm btn-warning"
                                     id="btnGenerarOficial"
                                     disabled>
-                                <i class="fa fa-check-circle"></i> Finalizar Declaración
+                                <i class="fa fa-check-circle"></i> Guardar Borrador
                             </button>
 
                         </div>
@@ -599,7 +599,6 @@ Guardar
                                     <select id="opcionUso" class="form-control input-sm">
                                         <option value="">Seleccione…</option>
                                         <option value="1">Declaración Inicial</option>
-                                        <option value="2">Solo Pago</option>
                                         <option value="3">Corrección</option>
                                     </select>
                                 </div>

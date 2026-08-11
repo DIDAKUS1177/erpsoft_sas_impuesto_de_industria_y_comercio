@@ -153,7 +153,7 @@ class Establecimientos {
                 var hayDeclaracion = resp.ok == 1 && Array.isArray(resp.datos) && resp.datos.length > 0;
                 var ultima = hayDeclaracion ? resp.datos[0] : null;
 
-                $chip.html(hayDeclaracion ? DeclaracionesUI.chipEstado(ultima) : '<span class="text-muted">Sin declaración para este período</span>');
+                $chip.html(hayDeclaracion ? DeclaracionesUI.resumenDeclaracion(ultima) : '<span class="text-muted">Sin declaración para este período</span>');
 
                 if (hayDeclaracion) {
                     $acciones.html(DeclaracionesUI.htmlAcciones(ultima, 'establecimientos'));
@@ -1850,6 +1850,40 @@ $(document).on("change", "input[name='tipoSancion']", function(){
 // de "disponible próximamente": no habia ninguna forma real de editar.
 establecimientos.editarDeclaracion = function(dec_Id) {
     EditarDeclaracion.abrir(dec_Id);
+};
+
+// Borra (inactiva) una declaracion en borrador. Solo aparece este boton
+// mientras esta en borrador -ver declaraciones.ui.js htmlAcciones()-, nunca
+// sobre una ya firmada o presentada.
+establecimientos.borrarDeclaracion = function(dec_Id) {
+    swal({
+        type: 'warning',
+        title: '¿Borrar este borrador?',
+        text: 'Esta acción no se puede deshacer.',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, borrar',
+        cancelButtonText: 'Cancelar'
+    }).then(function (result) {
+        if (!result.value) { return; }
+
+        $.ajax({
+            url: '../business/controller/class.declaracionesICA.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { funcion: 4, dec_Id: dec_Id },
+            success: function (arr) {
+                if (arr.ok == 1) {
+                    swal({ type: 'success', title: 'Borrado', text: 'El borrador se eliminó correctamente.' });
+                    establecimientos.pintarAccionesDeclaracionContribuyente();
+                } else {
+                    swal({ type: 'error', title: 'No se pudo borrar', text: arr.mensaje || 'Intente nuevamente.' });
+                }
+            },
+            error: function () {
+                swal({ type: 'error', title: 'Error de conexión', text: 'No se pudo borrar el borrador.' });
+            }
+        });
+    });
 };
 
 establecimientos.abrirFirmaDigital = function(dec_Id, idEstablecimiento) {

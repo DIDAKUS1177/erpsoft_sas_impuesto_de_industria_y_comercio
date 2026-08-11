@@ -36,6 +36,107 @@ class Establecimientos {
         }
     }
 
+    /**
+     * verInformacionContribuyente: abre el modal con los datos del
+     * contribuyente que tiene la sesion actual (localStorage id_Contribuyente),
+     * al lado del boton de "Crear Establecimientos".
+     */
+    verInformacionContribuyente() {
+        var idContribuyente = localStorage.getItem('id_Contribuyente');
+
+        if (!idContribuyente) {
+            swal({
+                type: 'warning',
+                title: 'Sin contribuyente asociado',
+                text: 'No se encontró un contribuyente asociado a esta sesión.',
+            });
+            return;
+        }
+
+        $.ajax({
+            url: '../business/controller/class.contribuyentes.php',
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                funcion: 3, // Consultar Contribuyente
+                ind_Id: idContribuyente
+            },
+            success: function (arr) {
+                if (arr.ok != 1 || !arr.datos || !arr.datos.length) {
+                    swal({
+                        type: 'error',
+                        title: 'No se pudo cargar la información',
+                        text: arr.mensaje || 'Intente nuevamente.',
+                    });
+                    return;
+                }
+
+                var d = arr.datos[0];
+                $("#formInfoContribuyente").trigger("reset");
+                $("#infoContrib_ind_Id").val(d.ind_Id);
+                $("#infoContrib_ind_Persona").val(d.ind_Persona);
+                $("#infoContrib_ind_IdTipoDocumento").val(d.ind_IdTipoDocumento);
+                $("#infoContrib_ind_NumeroIdentificacion").val(d.ind_NumeroIdentificacion);
+                $("#infoContrib_ind_DV").val(d.ind_DV);
+                $("#infoContrib_ind_PrimerNombre").val(d.ind_PrimerNombre);
+                $("#infoContrib_ind_SegundoNombre").val(d.ind_SegundoNombre);
+                $("#infoContrib_ind_PrimerApellido").val(d.ind_PrimerApellido);
+                $("#infoContrib_ind_SegundoApellido").val(d.ind_SegundoApellido);
+                $("#infoContrib_ind_Telefono").val(d.ind_Telefono);
+                $("#infoContrib_ind_Email").val(d.ind_Email);
+                $("#infoContrib_ind_Direccion").val(d.ind_Direccion);
+
+                $('#modal-InfoContribuyente').modal({ backdrop: 'static', keyboard: false });
+                $('#modal-InfoContribuyente').modal('show');
+            },
+            error: function () {
+                swal({
+                    type: 'error',
+                    title: 'Error de conexión',
+                    text: 'No se pudo consultar la información del contribuyente.',
+                });
+            }
+        });
+    }
+
+    /**
+     * guardarInformacionContribuyente: guarda los cambios hechos en el modal
+     * de Información del Contribuyente.
+     */
+    guardarInformacionContribuyente() {
+        var formData = $("#formInfoContribuyente").serialize() + "&funcion=2";
+
+        $.ajax({
+            url: '../business/controller/class.contribuyentes.php',
+            type: 'POST',
+            dataType: 'json',
+            data: formData,
+            success: function (arr) {
+                if (arr.ok == 1) {
+                    swal({
+                        type: 'success',
+                        title: 'Guardado',
+                        text: 'La información del contribuyente se actualizó correctamente.',
+                    });
+                    $("#modal-InfoContribuyente").modal('hide');
+                } else {
+                    swal({
+                        type: 'error',
+                        title: 'No se pudo guardar',
+                        text: arr.mensaje || 'Intente nuevamente.',
+                    });
+                }
+            },
+            error: function () {
+                swal({
+                    type: 'error',
+                    title: 'Error de conexión',
+                    text: 'No se pudo guardar la información del contribuyente.',
+                });
+            }
+        });
+    }
+
     async crearEstablecimientosContribuyentes() {
         swal({
             type: 'info',

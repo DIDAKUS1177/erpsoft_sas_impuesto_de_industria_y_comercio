@@ -65,8 +65,10 @@ var DeclaracionesUI = (function () {
             return '<a href="javascript:void(0);" onclick="' + objJs + '.editarDeclaracion(' + d.dec_Id + ')" ' +
                        'class="btn btn-warning btn-sm mr-1" title="Editar"><i class="fa fa-pencil"></i></a>' +
                    '<a href="javascript:void(0);" onclick="' + objJs + '.abrirFirmaDigital(' + d.dec_Id + ', ' + d.dec_IdEstablecimiento + ')" ' +
-                       'class="btn btn-secondary btn-sm mr-1" title="Firmar"><i class="fa fa-certificate"></i></a>' +
-                   descargar;
+                       'class="btn btn-secondary btn-sm mr-1" title="Firmar"><i class="fa fa-pencil-square-o"></i></a>' +
+                   descargar +
+                   '<a href="javascript:void(0);" onclick="' + objJs + '.borrarDeclaracion(' + d.dec_Id + ')" ' +
+                       'class="btn btn-danger btn-sm mr-1" title="Borrar borrador"><i class="fa fa-trash"></i></a>';
         }
 
         if (clave === 'pendienteCont' || clave === 'firmada') {
@@ -208,6 +210,18 @@ var DeclaracionesUI = (function () {
     }
 
     /**
+     * Resumen "Declaración No. X — Año gravable YYYY" + chip de estado, para
+     * la barra unica de icaWebPresentar (antes solo decia "Declaración de
+     * este contribuyente" sin identificar de cual declaracion se trataba).
+     * Hay declaraciones antiguas con dec_NumeroDeclaracion en NULL: se cae a
+     * dec_Id, igual que ya hace icaWebConsultar.js.
+     */
+    function resumenDeclaracion(d) {
+        var numero = d.dec_NumeroDeclaracion || d.dec_Id;
+        return '<span>Declaración No. ' + numero + ' &mdash; Año gravable ' + d.dec_AnioDeclaracion + '</span> ' + chipEstado(d);
+    }
+
+    /**
      * Barra de progreso del tramite. Responde "que hice, en que voy y que
      * me falta" sin que la persona tenga que preguntar.
      */
@@ -234,6 +248,7 @@ var DeclaracionesUI = (function () {
         htmlAcciones: htmlAcciones,
         estado: estado,
         chipEstado: chipEstado,
+        resumenDeclaracion: resumenDeclaracion,
         stepperHtml: stepperHtml
     };
 

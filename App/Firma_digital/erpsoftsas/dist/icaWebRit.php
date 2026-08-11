@@ -56,8 +56,11 @@
 			<div class="card-box mb-30" id="ltsRol">
 				<div class="pd-20 d-flex justify-content-between">
 					<h4 class="h4">Listado de Establecimientos del Contribuyente</h4>
+					<div>
+					<button type="button" class="btn btn-outline-info mr-1" onclick="establecimientos.verInformacionContribuyente()"><span class="ti-id-badge"></span> Información del Contribuyente</button>
 					<!-- <button type="button" class="btn btn-outline-success" onclick="establecimientos.crearEstablecimientosContribuyentes()"><span class="ti-plus"></span> Crear Establecimientos Contribuyentes</button> -->
                     <button type="button" class="btn btn-outline-success" onclick="establecimientos.crearEstablecimientos()"><span class="ti-plus"></span> Crear Establecimientos </button>
+					</div>
 				</div>
 				<div class="pb-20">
 				<table id="establecimientosRegistrados" class="data-table table stripe hover nowrap">
@@ -650,7 +653,7 @@ Guardar
                                     class="btn btn-sm btn-warning"
                                     id="btnGenerarOficial"
                                     disabled>
-                                <i class="fa fa-check-circle"></i> Finalizar Declaración
+                                <i class="fa fa-check-circle"></i> Guardar Borrador
                             </button>
 
                         </div>
@@ -703,7 +706,6 @@ Guardar
                                     <select id="opcionUso" class="form-control input-sm">
                                         <option value="">Seleccione…</option>
                                         <option value="1">Declaración Inicial</option>
-                                        <option value="2">Solo Pago</option>
                                         <option value="3">Corrección</option>
                                     </select>
                                 </div>
@@ -1192,7 +1194,103 @@ data-campo="sanciones" value="0">
             </div>
         </div>
 
-
+		<!--Modal Información del Contribuyente-->
+		<div class="modal fade" id="modal-InfoContribuyente" tabindex="-1" role="dialog" aria-labelledby="tituloInfoContribuyente" aria-hidden="true">
+			<div class="modal-dialog modal-lg" role="document">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h5 class="modal-title" id="tituloInfoContribuyente">Información del Contribuyente</h5>
+						<button type="button" class="close" data-dismiss="modal" aria-label="Close">
+							<span aria-hidden="true">&times;</span>
+						</button>
+					</div>
+					<form id="formInfoContribuyente" onsubmit="establecimientos.guardarInformacionContribuyente(); return false;">
+					<div class="modal-body">
+						<input type="hidden" id="infoContrib_ind_Id" name="ind_Id">
+						<div class="row">
+							<div class="col-md-6">
+								<div class="form-group">
+									<label>Tipo de Persona</label>
+									<select class="form-control" id="infoContrib_ind_Persona" name="ind_Persona">
+										<option value="1">Natural</option>
+										<option value="2">Jurídica</option>
+									</select>
+								</div>
+							</div>
+							<div class="col-md-6">
+								<div class="form-group">
+									<label>Tipo de Documento</label>
+									<select class="form-control" id="infoContrib_ind_IdTipoDocumento" name="ind_IdTipoDocumento">
+										<option value="1">C.C.</option>
+										<option value="2">NIT</option>
+										<option value="3">C.E.</option>
+									</select>
+								</div>
+							</div>
+							<div class="col-md-6">
+								<div class="form-group">
+									<label>Número de Documento</label>
+									<input type="text" class="form-control" id="infoContrib_ind_NumeroIdentificacion" name="ind_NumeroIdentificacion">
+								</div>
+							</div>
+							<div class="col-md-6">
+								<div class="form-group">
+									<label>DV</label>
+									<input type="text" class="form-control" id="infoContrib_ind_DV" name="ind_DV">
+								</div>
+							</div>
+							<div class="col-md-6">
+								<div class="form-group">
+									<label>Primer Nombre</label>
+									<input type="text" class="form-control" id="infoContrib_ind_PrimerNombre" name="ind_PrimerNombre">
+								</div>
+							</div>
+							<div class="col-md-6">
+								<div class="form-group">
+									<label>Segundo Nombre</label>
+									<input type="text" class="form-control" id="infoContrib_ind_SegundoNombre" name="ind_SegundoNombre">
+								</div>
+							</div>
+							<div class="col-md-6">
+								<div class="form-group">
+									<label>Primer Apellido</label>
+									<input type="text" class="form-control" id="infoContrib_ind_PrimerApellido" name="ind_PrimerApellido">
+								</div>
+							</div>
+							<div class="col-md-6">
+								<div class="form-group">
+									<label>Segundo Apellido</label>
+									<input type="text" class="form-control" id="infoContrib_ind_SegundoApellido" name="ind_SegundoApellido">
+								</div>
+							</div>
+							<div class="col-md-6">
+								<div class="form-group">
+									<label>Teléfono</label>
+									<input type="text" class="form-control" id="infoContrib_ind_Telefono" name="ind_Telefono">
+								</div>
+							</div>
+							<div class="col-md-6">
+								<div class="form-group">
+									<label>Correo Electrónico</label>
+									<input type="email" class="form-control" id="infoContrib_ind_Email" name="ind_Email">
+								</div>
+							</div>
+							<div class="col-md-12">
+								<div class="form-group">
+									<label>Dirección</label>
+									<input type="text" class="form-control" id="infoContrib_ind_Direccion" name="ind_Direccion">
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+						<button type="submit" class="btn btn-success"><span class="ti-save"></span> Guardar</button>
+					</div>
+					</form>
+				</div>
+			</div>
+		</div>
 
 		<!-- /.modal-dialog -->
 		<!-- js -->
