@@ -580,12 +580,8 @@ var EditarDeclaracion = (function () {
                 // declaracion, los ceros se iban acumulando (el bug de los
                 // "00000" que reporto el cliente). Las actividades, mas abajo,
                 // siempre hicieron bien este parseFloat + formatearCOP.
-                var aCOP = function (v) {
-                    var n = parseFloat(v) || 0;
-                    return (typeof establecimientos !== 'undefined' && establecimientos.formatearCOP)
-                        ? establecimientos.formatearCOP(Math.round(n))
-                        : Math.round(n);
-                };
+                // BD -> input: la conversion canonica vive en core/numeros.js.
+                var aCOP = function (v) { return NumerosCOP.deBaseDeDatosAInput(v); };
 
                 $('[data-campo="ingresos_total_pais"]').val(aCOP(d.dec_TotalIngresos));
                 $('[data-campo="menos_fuera_municipio"]').val(aCOP(d.dec_IngresosFueraMunicipio));
@@ -651,7 +647,11 @@ var EditarDeclaracion = (function () {
  * que revisan resp.ok siguen igual); solo cubre el caso de que la
  * peticion ni siquiera haya podido completarse.
  */
-if (typeof $ !== 'undefined') {
+// La bandera window.__erpRedAjax la comparte dist/menu.php, que instala esta
+// misma red en TODAS las pantallas (este archivo solo lo cargan dos). Quien
+// registre primero gana; el otro no duplica el aviso.
+if (typeof $ !== 'undefined' && !window.__erpRedAjax) {
+    window.__erpRedAjax = true;
     $(document).ajaxError(function (event, jqxhr, settings) {
         $('#loading').hide();
         $('#wrapper').removeClass('body-load');
@@ -660,8 +660,11 @@ if (typeof $ !== 'undefined') {
             swal({
                 type: 'error',
                 title: 'Error de conexión',
-                text: 'No se pudo completar la solicitud (' + settings.url + '). Intenta de nuevo.'
+                text: 'No se pudo completar la solicitud. Intenta de nuevo; si persiste, avisa a soporte.'
             });
+        }
+        if (window.console && console.error) {
+            console.error('AJAX fallido:', settings && settings.url, jqxhr && jqxhr.status, jqxhr && jqxhr.responseText);
         }
     });
 }

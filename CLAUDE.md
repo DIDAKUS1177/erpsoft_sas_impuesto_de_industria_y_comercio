@@ -239,6 +239,57 @@ la respuesta deja de ser JSON válido, `success()` no corre, y como el
 ahora fuerza `display_errors=0` (con `log_errors=1`) para que ningún aviso
 de PHP vuelva a corromper una respuesta JSON en NINGÚN endpoint del sistema.
 
+## Cifras en formato colombiano: usar SIEMPRE core/numeros.js
+
+`core/numeros.js` (`NumerosCOP`) es la **única** definición real del manejo de
+cifras. Antes estas funciones estaban copiadas en `icaWebRit.js`,
+`icaWebConsultar.js` e `icaWebPresentar.js`, y eso costó dos bugs de
+producción: se arreglaba una copia y las otras seguían rotas. Las copias
+siguen existiendo como métodos (para no tocar ~200 llamadas) pero **delegan**;
+no volver a poner lógica en ellas.
+
+La distinción crítica es de dónde viene el dato:
+
+| Origen | Función | Por qué |
+|---|---|---|
+| Input que ve el usuario | `NumerosCOP.aCifra()` | Formato es-CO: punto = miles, coma = decimal |
+| Crudo de la base de datos | `NumerosCOP.deBaseDeDatos()` | SQL Server usa PUNTO decimal, igual que JS |
+| BD → input de pantalla | `NumerosCOP.deBaseDeDatosAInput()` | Hace el puente correcto |
+
+Confundir las dos primeras **multiplica el valor por 100** en cada pasada: fue
+exactamente el bug de los "00000" al corregir una declaración.
+
+Hay pruebas en `pruebas/numeros.test.js` (29 casos, incluidas regresiones de
+los dos bugs). Se corren con `node pruebas/numeros.test.js`, sin dependencias.
+**Correrlas antes de tocar cualquier cálculo.**
+
+## Ningún AJAX puede fallar en silencio
+
+`dist/menu.php` instala un `ajaxError` global para las **22 pantallas** que lo
+incluyen. Antes solo existía en `declaraciones.ui.js`, que apenas cargan dos
+pantallas: en el resto, una petición caída (500, timeout, JSON inválido)
+dejaba la pantalla muda. Así fue como el botón "Liquidar" pareció muerto
+durante meses.
+
+La bandera `window.__erpRedAjax` evita el doble registro. Esto **no** reemplaza
+el manejo propio de cada pantalla (los `success` que revisan `resp.ok`), solo
+cubre que la petición ni siquiera se haya completado.
+
+## Migraciones de base de datos: BD/migraciones/
+
+Numeradas, re-ejecutables (con guardas `IF NOT EXISTS` / `IF COL_LENGTH`) y
+auto-registradas en la tabla `conf_migraciones`. Para saber qué le falta a una
+base:
+
+```sql
+SELECT mig_Nombre, mig_FechaAplicada FROM conf_migraciones ORDER BY mig_Nombre;
+```
+
+Existen porque el esquema local y el de producción se desincronizaron sin que
+nadie lo notara (`fd_Rol`, `dec_Estado`, `ind_EmailContador`...), y con varios
+municipios eso pasa de molestia a riesgo. Ver `BD/migraciones/README.md` para
+el orden completo al crear una base nueva.
+
 ## Trampa: warnings de PHP que rompen respuestas JSON (2026-08-11)
 
 `business/globals.php` fuerza `display_errors=0` a proposito. Casi todos los

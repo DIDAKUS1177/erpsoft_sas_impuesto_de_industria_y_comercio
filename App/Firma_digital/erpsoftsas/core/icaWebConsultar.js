@@ -1337,29 +1337,33 @@ calcularIngresos(){
     }
 
 limpiarNumero(valor){
-    if(!valor) return 0;
-    return parseInt(valor.toString().replace(/\./g,'')) || 0;
+    // Delega en core/numeros.js (NumerosCOP), que es la unica definicion
+    // real. Estas cuatro funciones estaban COPIADAS en tres archivos y eso
+    // ya costo dos bugs: se arreglaba una copia y las otras seguian rotas
+    // (ver la cabecera de core/numeros.js). Se conservan como metodos para
+    // no tocar las ~200 llamadas existentes.
+    return NumerosCOP.aEntero(valor);
 }
 
 limpiarEntero(valor){
-    if(!valor) return 0;
-
-    let numero = parseFloat(valor.toString().replace(/,/g,'')) || 0;
-
-    return Math.floor(numero);
+    // OJO: historicamente quitaba las COMAS (no los puntos), porque recibia
+    // valores crudos de la BD con punto decimal. Ese es exactamente el caso
+    // de NumerosCOP.deBaseDeDatos().
+    return Math.floor(NumerosCOP.deBaseDeDatos(valor));
 }
 
 formatearCOP(numero){
-    return numero.toLocaleString('es-CO');
+    return NumerosCOP.formatear(numero);
 }
 
 numero(valor){
-    if(!valor) return 0;
-    // Formato Colombiano (es-CO): punto = separador de miles, coma = decimal.
-    // Ver nota en icaWebRit.js: sin este cambio, cualquier valor con
-    // decimales perdia esa parte silenciosamente al parsear de vuelta.
-    return parseFloat(valor.toString().replace(/\./g,'').replace(',', '.')) || 0;
+    // Valor tal como lo ve el usuario en pantalla (formato es-CO).
+    // Si el dato viene CRUDO de la base de datos hay que usar
+    // NumerosCOP.deBaseDeDatos(); confundirlos multiplica por 100 el valor
+    // (fue el bug de los "00000" al corregir una declaracion).
+    return NumerosCOP.aCifra(valor);
 }
+
 
 
 calcularTotalesActividades(){

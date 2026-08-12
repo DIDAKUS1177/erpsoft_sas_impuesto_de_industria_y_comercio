@@ -1083,5 +1083,40 @@ table.dataTable tbody tr:hover {
 	white-space: nowrap;
 	border: 0;
 }
+</style>
+
+<script>
+/*
+ * Red de seguridad global para peticiones AJAX fallidas, para TODAS las
+ * pantallas (menu.php lo incluyen las 22). Antes solo existia en
+ * declaraciones.ui.js, que apenas cargan Consultar/Presentar: en el resto,
+ * una peticion caida (500, timeout, JSON invalido) dejaba la pantalla muda
+ * -asi fue como el boton "Liquidar" parecio muerto durante meses-.
+ *
+ * jQuery se carga al FINAL de cada pagina (despues de este include), por eso
+ * el registro se difiere a window.load. La bandera window.__erpRedAjax evita
+ * doble registro donde declaraciones.ui.js ya la instala.
+ */
+window.addEventListener('load', function () {
+	if (window.__erpRedAjax || typeof jQuery === 'undefined') { return; }
+	window.__erpRedAjax = true;
+	jQuery(document).ajaxError(function (event, jqxhr, settings) {
+		jQuery('#loading').hide();
+		jQuery('#wrapper').removeClass('body-load');
+		if (typeof swal === 'function') {
+			swal({
+				type: 'error',
+				title: 'Error de conexión',
+				text: 'No se pudo completar la solicitud. Intenta de nuevo; si persiste, avisa a soporte.'
+			});
+		}
+		if (window.console && console.error) {
+			console.error('AJAX fallido:', settings && settings.url, jqxhr && jqxhr.status, jqxhr && jqxhr.responseText);
+		}
+	});
+});
+</script>
+
+<style>
 
 </style>

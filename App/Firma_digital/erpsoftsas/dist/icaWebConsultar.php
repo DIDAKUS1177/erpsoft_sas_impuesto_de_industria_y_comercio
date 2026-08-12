@@ -1129,6 +1129,7 @@ data-campo="sanciones" value="0">
 		<!-- switchery js -->
 		<script src="../src/plugins/switchery/switchery.min.js"></script>
 		<script src="../src/plugins/sweetalert2/sweetalert2.all.js"></script>
+		<script src="../core/numeros.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/declaraciones.ui.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/geografia.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/icaWebConsultar.js?v=<?php echo time(); ?>"></script>
