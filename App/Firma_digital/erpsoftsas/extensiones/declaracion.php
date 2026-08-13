@@ -4,6 +4,7 @@ require_once('tcpdf/tcpdf_barcodes_1d.php');
 
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
+include_once SERVER . '/business/class.codigoBarrasRecaudo.php';
 
 // Cargar configuración del municipio. Ubicación real (Plesk/producción): un
 // nivel arriba de /erpsoftsas; fallback dentro de /erpsoftsas solo para
@@ -1120,6 +1121,24 @@ $yBloque   = $pdf->GetY() - 3;
 $altoRotulo  = 4.5;   // fila de titulos
 $altoCodigo  = 10.5;  // fila que contiene el codigo
 
+/*
+ * Contenido del codigo: si el municipio ya tiene configurado su convenio de
+ * recaudo (MUNICIPIO_EAN_RECAUDO), se codifica la referencia GS1-128 completa
+ * -la misma estructura que el banco ya acepta en el recibo de predial-, que
+ * lleva convenio, referencia, valor y fecha limite. Si no esta configurado,
+ * se sigue imprimiendo solo el numero de declaracion, que es lo que habia
+ * antes: sirve como referencia visual pero NO es pagable en ventanilla.
+ */
+$contenidoBarras = \erpsoftsas\CodigoBarrasRecaudo::construir(
+    $referenciaRecaudo,
+    $row['dec_ValorConcepto20'] ?? 0,
+    $d['fecha_max'] ?: null
+);
+$esRecaudoReal = ($contenidoBarras !== null);
+if (!$esRecaudoReal) {
+    $contenidoBarras = $referenciaRecaudo;
+}
+
 // Fila de rotulos
 $pdf->SetXY($xBloque, $yBloque);
 $pdf->SetFont('helvetica', 'B', 7);
@@ -1139,7 +1158,7 @@ $anchoBarcode = 50;
 $altoBarcode  = 8;
 
 $pdf->write1DBarcode(
-    $referenciaRecaudo, 'C128',
+    $contenidoBarras, 'C128',
     $xBloque + ($mitad - $anchoBarcode) / 2,
     $yBloque + $altoRotulo + ($altoCodigo - $altoBarcode) / 2,
     $anchoBarcode, $altoBarcode,

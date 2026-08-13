@@ -310,6 +310,46 @@ Al escribir/tocar un `.ajax()` en este proyecto, **siempre** ponerle `error()`.
 Y ojo con los comentarios SQL `--` dentro de cadenas PHP: si el comentario
 lleva comillas dobles y la cadena tambien, se rompe el parseo.
 
+## Código de barras de recaudo bancario (GS1-128)
+
+`business/class.codigoBarrasRecaudo.php` construye la referencia de recaudo
+que va en el código de barras de los dos PDF. **Replica la estructura que ya
+usa el sistema de PREDIAL de la misma alcaldía** (Laravel, en
+`paipa.erpsoftsas.com` — otro stack, no este repo), leída de
+`PrediosController.php` y de `facturaPDF_pai.blade.php`. Es el formato que el
+banco ya acepta en ventanilla para el recibo de predial:
+
+```
+FNC1 + "415"  + EAN(13)
+     + "8020" + numeroFactura(24, ceros a la izquierda)
+FNC1 + "3900" + valor(14, ceros a la izquierda, sin decimales)
+FNC1 + "96"   + fechaVencimiento(AAAAMMDD)   [opcional]
+```
+
+FNC1 se escribe como `chr(241)`: así lo entiende el Code128 de TCPDF (ver
+`$fnc_a`/`$fnc_b` en `extensiones/tcpdf/tcpdf_barcodes_1d.php`, donde 241 se
+mapea al carácter 102 = FNC1) y también la librería de predial. El primer
+FNC1 marca el código como GS1-128; los demás cierran los AI de longitud
+variable (8020 y 3900). El 415 no lleva separador porque es de longitud fija.
+
+**Se activa solo con `MUNICIPIO_EAN_RECAUDO` definido** en
+`config.municipio.php`. Sin esa constante el código sigue imprimiendo el
+número de declaración pelado — que se ve bien pero **no es pagable en
+banco**. Ese es el estado por defecto a propósito: no dar por funcional un
+recaudo que el banco no ha certificado.
+
+Pendiente antes de anunciarlo como funcional:
+- El EAN de ICA es **distinto** al de predial (confirmado con el cliente el
+  2026-08-12). Hay que pedírselo al banco.
+- El formato de la fecha del AI 96 no está confirmado (96 no es un AI
+  estándar de GS1, es de uso interno); se asume AAAAMMDD. Hoy el segmento se
+  omite porque ICA todavía no captura la fecha límite.
+- Falta la certificación del banco: imprimir un PDF de prueba y confirmar
+  que el escáner de ventanilla lo lee.
+
+Pruebas: `pruebas/codigoBarrasRecaudo.test.php` (15 casos) —
+`php pruebas/codigoBarrasRecaudo.test.php`.
+
 ## Trampas de layout en los PDF (aprendidas a golpes, 2026-08-11)
 
 Los dos generadores usan `SetAutoPageBreak(false)` y el formulario ocupa casi

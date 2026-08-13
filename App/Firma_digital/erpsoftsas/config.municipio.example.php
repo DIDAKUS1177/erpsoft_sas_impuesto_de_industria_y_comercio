@@ -22,6 +22,19 @@ if (!defined('MUNICIPIO_CIUDAD')) define('MUNICIPIO_CIUDAD', 'Ciudad del Municip
 // notificacion, que sale de conf_ciudades-.
 if (!defined('MUNICIPIO_DEPARTAMENTO')) define('MUNICIPIO_DEPARTAMENTO', 'Departamento del Municipio');
 
+// Convenio de recaudo bancario (EAN / GLN de 13 digitos que asigna el banco
+// al municipio). Con esto definido, el codigo de barras de los PDF pasa a ser
+// la referencia GS1-128 completa -convenio, referencia, valor y fecha limite-,
+// que es la que el cajero del banco puede escanear para recibir el pago.
+//
+// Mientras NO este definido, el codigo de barras sigue imprimiendo solo el
+// numero de declaracion: sirve como referencia visual pero NO es pagable en
+// ventanilla. Es el estado por defecto, a proposito, para no dar por
+// funcional un recaudo que el banco todavia no ha certificado.
+//
+// Ver business/class.codigoBarrasRecaudo.php.
+// if (!defined('MUNICIPIO_EAN_RECAUDO')) define('MUNICIPIO_EAN_RECAUDO', '7709999999999');
+
 // Rutas web ABSOLUTAS: la constante se usa desde /erpsoftsas/ y desde
 // /erpsoftsas/dist/, por lo que una ruta relativa no puede servir a ambas.
 // MUNICIPIO_LOGO      -> escudo cuadrado, para slots pequenos (32-56 px).
