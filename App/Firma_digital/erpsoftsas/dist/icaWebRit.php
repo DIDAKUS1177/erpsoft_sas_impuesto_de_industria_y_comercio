@@ -67,10 +67,11 @@
 						<thead>
 							<tr>
                                 <th>Establecimiento</th>
+                                <th>Estado</th>
                                 <th>Contribuyente</th>
                                 <th># Documento</th>	
 								<th>Dirección</th>								
-								<th>Editar Establecimiento</th>
+								<th>Acciones</th>
                                 <th>Descargar RIT</th>
 							</tr>
 						</thead>
@@ -86,9 +87,24 @@
 		<div class="modal fade" id="modal-Establecimientos" tabindex="-1" role="dialog" aria-labelledby="exampleModalFormTitle" aria-hidden="true">
 			<div class="modal-dialog modal-xl" role="document">
 				<div class="modal-content ">
-					<div class="modal-header">
-						<h5 class="modal-title" id="exampleModalFormTitle">Establecimiento</h5>
-						<button type="button" class="close" data-dismiss="modal" aria-label="Close">
+					<!-- Cambio 7 del cliente: este formulario es el RIT, no
+					     "Establecimiento". Cambio 6: los botones de accion pasan
+					     aqui arriba, para que se vean sin tener que bajar por todo
+					     el formulario -que es largo- antes de poder guardar. -->
+					<div class="modal-header" style="align-items: center;">
+						<h5 class="modal-title" id="exampleModalFormTitle" style="margin-right:auto;">RIT</h5>
+
+						<button type="button" class="btn btn-danger btn-pill btn-sm" data-dismiss="modal" style="margin-right:8px;">
+							<span class="ti-close"></span> Cancelar
+						</button>
+						<!-- Conserva el id original a proposito: core/icaWebRit.js le
+						     cambia la etiqueta entre "Crear" y "Actualizar" segun el
+						     modal se abra para uno u otro caso. -->
+						<button type="submit" form="formCrearEstablecimientos" class="btn btn-success btn-pill btn-sm" id="btnCrearEstablecimientos" style="margin-right:8px;">
+							<span class="ti-reload"></span> Actualizar
+						</button>
+
+						<button type="button" class="close" data-dismiss="modal" aria-label="Close" style="margin-left:0;">
 							<span aria-hidden="true">&times;</span>
 						</button>
 					</div>
@@ -595,15 +611,6 @@ Autorizo que la Administración Tributaria me notifique los actos administrativo
 
 </div>
 
-<div class="modal-footer">
-<button type="button" class="btn btn-danger btn-pill" data-dismiss="modal">
-<span class="ti-close"></span> Cancelar
-</button>
-
-<button type="submit" class="btn btn-success btn-pill" id="btnCrearEstablecimientos">
-Guardar
-</button>
-</div>
 
 </form>
 

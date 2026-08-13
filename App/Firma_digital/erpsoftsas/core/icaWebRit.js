@@ -234,11 +234,20 @@ class Establecimientos {
                 }
 
 
+                // Cambio 13 del cliente: distinguir de un vistazo los
+                // establecimientos activos de los cerrados. est_Activo ya
+                // existia en la tabla; lo unico que faltaba era mostrarlo.
+                var estaActivo = Number(dep.est_Activo) === 1;
+                var chipEstado = estaActivo
+                    ? '<span style="background:#e6f2ea;color:#2c6b45;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600;">Activo</span>'
+                    : '<span style="background:#fbeceb;color:#a32a20;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600;">Cerrado</span>';
+
                 $('#bodyEstablecimientosRegistrados').append(
-                    '<tr>' +
+                    '<tr' + (estaActivo ? '' : ' style="opacity:.72;"') + '>' +
                     '<td>' +
                     dep.est_Nombre + 
                     '</td>' +
+                    '<td>' + chipEstado + '</td>' +
                     '<td>' +
                     dep.strNombreContribuyente +
                     '</td>' +
@@ -255,7 +264,18 @@ class Establecimientos {
                         'onclick="establecimientos.editarEstablecimiento(' + dep.est_Id + ')">' +
                         '<i class="fa fa-pencil"></i>' +
                     '</button>' +
-                           
+
+                    // Cambio 12: el establecimiento se cierra, no se borra -su
+                    // historial de declaraciones tiene que seguir existiendo-.
+                    // Solo tiene sentido en los que aun estan activos.
+                    (estaActivo
+                        ? '<button type="button" class="btn btn-danger btn-sm" ' +
+                              'data-toggle="tooltip" title="Cerrar Establecimiento" ' +
+                              'onclick="establecimientos.cerrarEstablecimiento(' + dep.est_Id + ')">' +
+                              '<i class="fa fa-ban"></i>' +
+                          '</button>'
+                        : '') +
+
                     '</td>'+      
                     '<td align="center" style="white-space:nowrap;">' +       
                     soporteRit +
@@ -830,6 +850,54 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
     /**
      * getDependencia: Método para consultar conceptos
      */
+    /**
+     * Cierra un establecimiento (cambio 12 del cliente).
+     *
+     * NO lo borra: marca est_Activo = 0 usando el endpoint que ya existia
+     * (funcion 4). Un establecimiento con declaraciones presentadas no puede
+     * desaparecer -su historial tributario tiene que seguir consultable-, por
+     * eso se cierra en vez de eliminarse.
+     */
+    cerrarEstablecimiento(id) {
+        swal({
+            type: 'warning',
+            title: '¿Cerrar este establecimiento?',
+            text: 'Dejará de estar activo, pero se conserva junto con sus declaraciones. Podrá seguir consultándolo.',
+            showCancelButton: true,
+            confirmButtonColor: '#a32a20',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Sí, cerrar',
+            cancelButtonText: 'Cancelar'
+        }).then(function (resultado) {
+            if (!resultado.value) { return; }
+
+            $.ajax({
+                url: '../business/controller/class.establecimientos.php',
+                type: 'POST',
+                dataType: 'json',
+                data: { funcion: 4, est_Id: id },
+                success: function (arr) {
+                    if (arr.ok == 1) {
+                        swal({
+                            type: 'success',
+                            title: 'Establecimiento cerrado',
+                            text: 'Quedó marcado como cerrado.'
+                        });
+                        establecimientos.getEstablecimientos();
+                    } else {
+                        swal({
+                            type: 'error',
+                            title: 'No se pudo cerrar',
+                            text: arr.mensaje || 'Intente nuevamente.'
+                        });
+                    }
+                }
+                // El error de red lo cubre la red de seguridad global de
+                // dist/menu.php (ajaxError), que ya avisa al usuario.
+            });
+        });
+    }
+
     getEstablecimientos() {
         
         $.ajax({
@@ -1244,9 +1312,11 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
         $("#accordion-menu li").removeClass("active show");
         $("#accordion-menu .submenu").css("display", "none");
 
-        $("#MICAWeb").addClass("active show");
-        $("#SubICAWeb").css("display", "block");
-        $("#ICAWeb_RIT").addClass("active");
+        // El RIT dejo de ser un item dentro de "Industria y Comercio" y pasó
+        // a ser un modulo propio de primer nivel (#MRIT), porque el Registro
+        // de Informacion Tributaria aplica a todos los modulos. Antes esto
+        // marcaba #MICAWeb y abria #SubICAWeb, que ya no corresponde.
+        $("#MRIT").addClass("active");
     }
 
 

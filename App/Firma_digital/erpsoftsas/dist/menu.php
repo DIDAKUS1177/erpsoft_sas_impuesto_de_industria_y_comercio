@@ -173,6 +173,16 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 					</a>
 				</li>
 
+				<!-- RIT: el cliente pidio sacarlo de "Industria y Comercio" porque el
+				     Registro de Informacion Tributaria aplica a TODOS los modulos, no
+				     solo a ICA. Va de primero, justo despues de Inicio. -->
+				<li class="dropdown" id="MRIT">
+					<a id="ICAWeb_RIT" onclick="menu.validarIngreso(1641,101)" class="dropdown-toggle no-arrow" style="cursor:pointer;">
+						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="7" y1="16" x2="13" y2="16"/></svg></span>
+						<span class="mtext">Registro de Identificación Tributaria</span>
+					</a>
+				</li>
+
 				<!-- CONSULTAS EXTERNAS -->
 				<li class="dropdown" id="MConsultasExternas">
 					<a href="javascript:;" class="dropdown-toggle">
@@ -256,12 +266,6 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 					</a>
 
 					<ul class="submenu" id="SubICAWeb">
-
-						<li class="menu_1641">
-							<a id="ICAWeb_RIT" onclick="menu.validarIngreso(1641,101)">
-								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="7" y1="16" x2="13" y2="16"/></svg></i> RIT
-							</a>
-						</li>
 
 						<li class="menu_1641">
 							<a id="ICAWeb_Presentar" onclick="menu.validarIngreso(1641,103)">
