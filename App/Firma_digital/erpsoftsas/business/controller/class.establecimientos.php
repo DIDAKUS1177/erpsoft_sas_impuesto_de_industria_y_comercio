@@ -153,35 +153,68 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
                 $this->_mensaje = $_obj->getMysqlError();
             } else {
                 $id = $_obj->get_est_Id();
-                
-                $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
-                $sql = "
-                    DELETE FROM ind_actividad_establecimiento
-                    WHERE ace_IdEstablecimiento = ?
-                ";
+                /*
+                 * ACTIVIDADES ECONOMICAS
+                 *
+                 * Antes esto era un DELETE incondicional seguido de un
+                 * "if (isset($_POST['actividades']))" para reinsertar. El
+                 * problema: las 4 pantallas que editan mandan SIEMPRE la
+                 * clave (formData.actividades = JSON.stringify(actividades)),
+                 * asi que isset() es true incluso cuando el arreglo llega
+                 * VACIO -que es lo que pasa si el modal se guarda antes de
+                 * que cargarActividades() termine de pintar la tabla-. El
+                 * DELETE corria, el foreach no insertaba nada, y las
+                 * actividades se perdian sin aviso. Reproducido: un
+                 * establecimiento con 2 actividades quedo en 0 enviando
+                 * actividades=[].
+                 *
+                 * Ahora solo se reemplazan cuando llega al menos una. Un
+                 * arreglo vacio se trata como "esta pantalla no trae
+                 * actividades", no como "borralas todas": quitar todas las
+                 * actividades dejaria al establecimiento sin poder declarar,
+                 * y no es algo que deba pasar por accidente. Si mas adelante
+                 * hace falta esa accion, debe ser explicita (un flag propio),
+                 * nunca el efecto colateral de un arreglo vacio.
+                 */
+                $actividades = [];
+                if (isset($_POST['actividades'])) {
+                    $decodificadas = json_decode($_POST['actividades'], true);
+                    if (is_array($decodificadas)) {
+                        $actividades = $decodificadas;
+                    }
+                }
 
-                $con->consultar($sql, [$id]);
+                if (count($actividades) > 0) {
+                    $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
-                  // GUARDAR ACTIVIDADES
-                if(isset($_POST['actividades'])){
-                    $actividades = json_decode($_POST['actividades'], true);
-                    foreach($actividades as $a){
+                    $con->consultar(
+                        "DELETE FROM ind_actividad_establecimiento WHERE ace_IdEstablecimiento = ?",
+                        [$id]
+                    );
 
+                    foreach ($actividades as $a) {
                         $_objAct = new \erpsoftsas\DAO_ActividadEstablecimiento();
-
                         $_objAct->set_ace_IdCodigoActividad($a['ace_IdCodigoActividad']);
                         $_objAct->set_ace_IdEstablecimiento($id);
                         $_objAct->set_ace_Anio($a['ace_Anio']);
                         $_objAct->guardar();
                     }
+                } elseif (isset($_POST['actividades'])) {
+                    error_log(
+                        "establecimientos: se recibio actividades vacio para est_Id=$id; "
+                        . "no se tocaron las actividades existentes (ver nota en _editarEstablecimientos)."
+                    );
                 }
 
 
                 $this->_ok = 1;
                 $this->_mensaje = "Establecimiento ID $id editado correctamente";
+                $return = true;
             }
-            $return= $_obj->guardar();
+            // Antes aqui habia un segundo $_obj->guardar(): el UPDATE se
+            // ejecutaba DOS veces por cada edicion, y ademas corria tambien
+            // cuando el primero habia fallado, pisando el mensaje de error.
         }
         return $return;
     }
