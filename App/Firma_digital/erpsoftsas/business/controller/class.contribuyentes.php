@@ -40,6 +40,12 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
                 case 5:
                     $respuesta = $_obj->_buscarContribuyentes();
                      break;
+                case 6: // Consultar el RIT del contribuyente
+                    $respuesta = $_obj->_consultarRIT();
+                    break;
+                case 7: // Guardar el RIT del contribuyente
+                    $respuesta = $_obj->_guardarRIT();
+                    break;
                 default:
                     throw new \erpsoftsas\ContribuyentesException("Función no válida", 0);
             }
@@ -387,6 +393,182 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         }
 
     }
+
+    /* ======================================================================
+       RIT (Registro de Identificacion Tributaria) del contribuyente
+       ----------------------------------------------------------------------
+       El RIT no es un registro aparte: es el propio contribuyente. Hasta la
+       migracion 003 sus datos -matricula, representante legal, contador y
+       revisor- vivian repetidos en cada establecimiento; ahora estan donde
+       corresponde y estas dos funciones son las que los leen y los graban.
+
+       Van con SQL parametrizado a proposito, sin pasar por el DAO: ese
+       concatena cadenas y obligaria a escapar a mano cada campo (ver la nota
+       de inyeccion en CLAUDE.md). Es el mismo camino que ya usaba
+       _guardarCorreosContadorRevisor.
+       ====================================================================== */
+
+    /** Columnas del RIT que el formulario puede grabar. */
+    private static function _camposRIT()
+    {
+        return [
+            'ind_Matricula', 'ind_Fecha_matricula', 'ind_Fecha_inicio',
+            'ind_Ind_camara_comercio',
+            'ind_Cedula_representante', 'ind_Nombre_representante', 'ind_Email_representante',
+            'ind_Cedula_contador', 'ind_Nombre_contador', 'ind_Tarjeta_profesional',
+            'ind_Cedula_revisor', 'ind_Nombre_revisor', 'ind_Tarjeta_profesional_revisor',
+            'ind_EmailContador', 'ind_EmailRevisor',
+        ];
+    }
+
+    protected function _consultarRIT()
+    {
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+
+        $idContribuyente = (int) ($_POST['ind_Id'] ?? 0);
+        if ($idContribuyente <= 0) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No se indico el contribuyente';
+            return [];
+        }
+
+        // consultar() devuelve un statement de sqlsrv, no un arreglo: hay que
+        // pasarlo por obnerFila(), igual que hace el resto del sistema.
+        $fila = $con->obnerFila($con->consultar(
+            "SELECT c.*, ciu.ciu_Nombre, ciu.ciu_Departamento
+               FROM ind_contribuyentes c
+               LEFT JOIN conf_ciudades ciu ON ciu.ciu_Id = c.ind_IdCiudad
+              WHERE c.ind_Id = ?",
+            [$idContribuyente]
+        ));
+
+        if (!$fila) {
+            $this->_ok = 0;
+            $this->_mensaje = 'El contribuyente no existe';
+            return [];
+        }
+
+        // Punto 10: el RIT se da por inicializado en el primer ingreso. No se
+        // crea nada nuevo -el contribuyente ya existe desde la inscripcion-,
+        // solo se deja constancia de cuando el sistema lo abrio por primera
+        // vez, para poder auditarlo y para no repetirlo.
+        if (empty($fila['ind_RIT_FechaCreacion'])) {
+            $con->consultar(
+                "UPDATE ind_contribuyentes
+                    SET ind_RIT_FechaCreacion = GETDATE()
+                  WHERE ind_Id = ? AND ind_RIT_FechaCreacion IS NULL",
+                [$idContribuyente]
+            );
+            $fila['ind_RIT_FechaCreacion']  = date('Y-m-d H:i:s');
+            $fila['rit_recien_inicializado'] = 1;
+        }
+
+        // Las fechas salen como DateTime del driver y asi no le sirven a un
+        // <input type="date">.
+        foreach (['ind_Fecha_matricula', 'ind_Fecha_inicio', 'ind_RIT_FechaCreacion',
+                  'ind_FechaCreacion', 'ind_FechaActualizacion'] as $campoFecha) {
+            if (isset($fila[$campoFecha]) && $fila[$campoFecha] instanceof \DateTime) {
+                $fila[$campoFecha] = $fila[$campoFecha]->format('Y-m-d');
+            }
+        }
+
+        // Punto 9: el RIT debe mostrar las actividades economicas. Se toman
+        // las del año mas reciente que el contribuyente tenga registrado en
+        // cualquiera de sus establecimientos; un año fijo dejaba la lista
+        // vacia, que es el mismo fallo que traia el certificado.
+        $stmtActividades = $con->consultar(
+            "SELECT ca.acc_Codigo, ca.acc_Nombre, a.ace_Anio,
+                    e.est_Id, e.est_Nombre
+               FROM ind_actividad_establecimiento a
+               INNER JOIN ind_establecimientos e ON e.est_Id = a.ace_IdEstablecimiento
+               LEFT JOIN ind_actividadescomercio ca ON ca.acc_Id = a.ace_IdCodigoActividad
+              WHERE e.est_IdContribuyente = ?
+                AND a.ace_Anio = (
+                        SELECT MAX(a2.ace_Anio)
+                          FROM ind_actividad_establecimiento a2
+                          INNER JOIN ind_establecimientos e2 ON e2.est_Id = a2.ace_IdEstablecimiento
+                         WHERE e2.est_IdContribuyente = ?
+                    )
+              ORDER BY ca.acc_Codigo",
+            [$idContribuyente, $idContribuyente]
+        );
+
+        $fila['actividades'] = [];
+        while ($act = $con->obnerFila($stmtActividades)) {
+            $fila['actividades'][] = $act;
+        }
+
+        $this->_ok = 1;
+        $this->_mensaje = 'RIT consultado';
+
+        return $fila;
+    }
+
+    protected function _guardarRIT()
+    {
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+
+        $idContribuyente = (int) ($_POST['ind_Id'] ?? 0);
+        if ($idContribuyente <= 0) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No se indico el contribuyente';
+            return [];
+        }
+
+        $sets    = [];
+        $valores = [];
+
+        foreach (self::_camposRIT() as $campo) {
+            if (!array_key_exists($campo, $_POST)) { continue; }
+
+            $valor = trim((string) $_POST[$campo]);
+
+            // Un correo mal escrito deja al contribuyente sin poder firmar,
+            // porque el OTP no llega a ningun lado.
+            if (in_array($campo, ['ind_EmailContador', 'ind_EmailRevisor', 'ind_Email_representante'], true)) {
+                if ($valor !== '' && !filter_var($valor, FILTER_VALIDATE_EMAIL)) {
+                    $this->_ok = 0;
+                    $this->_mensaje = 'El correo "' . $valor . '" no es válido';
+                    return [];
+                }
+            }
+
+            // Una fecha vacia tiene que quedar NULL, no cadena vacia: SQL
+            // Server convierte '' en 1900-01-01, que es justo la basura que la
+            // migracion 003 se ocupo de no arrastrar.
+            if (in_array($campo, ['ind_Fecha_matricula', 'ind_Fecha_inicio'], true)) {
+                $valor = ($valor === '') ? null : $valor;
+            }
+
+            if ($campo === 'ind_Ind_camara_comercio') {
+                $valor = ($valor === '') ? null : (int) $valor;
+            }
+
+            $sets[]    = $campo . ' = ?';
+            $valores[] = $valor;
+        }
+
+        if (!$sets) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No se recibió ningún dato del RIT';
+            return [];
+        }
+
+        $valores[] = $idContribuyente;
+
+        $con->consultar(
+            "UPDATE ind_contribuyentes SET " . implode(', ', $sets) . ",
+                    ind_FechaActualizacion = GETDATE()
+              WHERE ind_Id = ?",
+            $valores
+        );
+
+        $this->_ok = 1;
+        $this->_mensaje = 'RIT actualizado';
+
+        return ['ind_Id' => $idContribuyente];
+    }
+
 }
 
 // Clase de excepción específica para Contribuyentes
