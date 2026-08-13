@@ -55,29 +55,63 @@
 
 		<div class="main-container">
 	
-			<!-- Simple Datatable start -->
+			<!--
+			  Antes esta pantalla abria con la tabla de ESTABLECIMIENTOS y las
+			  declaraciones quedaban escondidas en un modal, al que solo se
+			  llegaba haciendo clic en un establecimiento. Como la declaracion
+			  es del contribuyente y no del establecimiento, ese rodeo no
+			  aportaba nada y confundia cuando habia mas de un local. Ahora el
+			  listado de declaraciones es lo primero que se ve.
+			-->
 			<div class="card-box mb-30" id="ltsRol">
-				<div class="pd-20 d-flex justify-content-between">
-					<h4 class="h4">Establecimientos del Contribuyente</h4>
-<!--					
-					<button type="button" class="btn btn-outline-success" onclick="establecimientos.crearEstablecimientosContribuyentes()"><span class="ti-plus"></span> Crear Establecimientos Contribuyentes</button>
-                    <button type="button" class="btn btn-outline-success" onclick="establecimientos.crearEstablecimientos()"><span class="ti-plus"></span> Crear Establecimientos </button>
--->
+				<div class="pd-20">
+					<h4 class="h4">Declaraciones Presentadas</h4>
 				</div>
-				<div class="pb-20">
-				<table id="establecimientosRegistrados" class="data-table table stripe hover nowrap">
-						<thead>
-							<tr>
-                                <th>Establecimiento</th>
-                                <th>Contribuyente</th>
-                                <th># Documento</th>	
-								<th>Dirección</th>
-								<th class="text-center" style="width:320px;">Acciones</th>
-							</tr>
-						</thead>
-						<tbody id="bodyEstablecimientosRegistrados">
-						</tbody>
-					</table>
+				<div class="pb-20 px-3">
+
+
+                        <!-- Filtros: el listado abre en el año en curso en vez de
+                             volcar todo el historico (un establecimiento de prueba
+                             ya acumula 131 declaraciones). -->
+                        <div class="filtros-declaraciones">
+                            <div class="campo">
+                                <label for="filtroAnioDecl">Año</label>
+                                <select id="filtroAnioDecl">
+                                    <option value="">Todos los años</option>
+                                </select>
+                            </div>
+                            <div class="campo">
+                                <label for="filtroEstadoDecl">Estado</label>
+                                <select id="filtroEstadoDecl">
+                                    <!-- Borrador y Firmada no se ofrecen: esta
+                                         pantalla solo lista las ya presentadas. -->
+                                    <option value="">Todos los estados</option>
+                                    <option value="presentada">Presentada</option>
+                                    <option value="pagada">Pagada</option>
+                                </select>
+                            </div>
+                            <span class="conteo" id="conteoDeclaraciones"></span>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-striped table-sm" id="tablaDeclaraciones">
+                                <thead style="background:#e9ecef; font-weight:600;">
+                                    <tr>
+                                        <th>Año</th>
+                                        <th>Mes</th>
+                                        <th>N° Declaración</th>
+                                        <th>Estado</th>
+                                        <th>Fecha Pago</th>
+                                        <th>Banco</th>
+                                        <th>Valor Pago</th>
+                                        <th class="text-center" style="width:280px;">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbodyDeclaraciones">
+                                    <!-- dinámico -->
+                                </tbody>
+                            </table>
+                        </div>
 				</div>
 			</div>
 		</div>
@@ -1005,75 +1039,6 @@ data-campo="sanciones" value="0">
 
 
 
-
-        <!-- MODAL CONSULTAR DECLARACIONES -->
-        <div class="modal fade" id="modal-ConsultarDeclaraciones" role="dialog">
-            <div class="modal-dialog modal-xl" role="document">
-                <div class="modal-content">
-
-                    <div class="modal-header">
-                        <h4 class="modal-title">Declaraciones del Establecimiento</h4>
-                        <button type="button" class="close" data-dismiss="modal">
-                            <span>&times;</span>
-                        </button>
-                    </div>
-
-                    <div class="modal-body">
-
-                        <!-- Filtros: el listado abre en el año en curso en vez de
-                             volcar todo el historico (un establecimiento de prueba
-                             ya acumula 131 declaraciones). -->
-                        <div class="filtros-declaraciones">
-                            <div class="campo">
-                                <label for="filtroAnioDecl">Año</label>
-                                <select id="filtroAnioDecl">
-                                    <option value="">Todos los años</option>
-                                </select>
-                            </div>
-                            <div class="campo">
-                                <label for="filtroEstadoDecl">Estado</label>
-                                <select id="filtroEstadoDecl">
-                                    <option value="">Todos los estados</option>
-                                    <option value="borrador">Borrador</option>
-                                    <option value="firmada">Firmada</option>
-                                    <option value="presentada">Presentada</option>
-                                    <option value="pagada">Pagada</option>
-                                </select>
-                            </div>
-                            <span class="conteo" id="conteoDeclaraciones"></span>
-                        </div>
-
-                        <div class="table-responsive">
-                            <table class="table table-bordered table-striped table-sm" id="tablaDeclaraciones">
-                                <thead style="background:#e9ecef; font-weight:600;">
-                                    <tr>
-                                        <th>Año</th>
-                                        <th>Mes</th>
-                                        <th>N° Declaración</th>
-                                        <th>Estado</th>
-                                        <th>Fecha Pago</th>
-                                        <th>Banco</th>
-                                        <th>Valor Pago</th>
-                                        <th class="text-center" style="width:280px;">Acciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="tbodyDeclaraciones">
-                                    <!-- dinámico -->
-                                </tbody>
-                            </table>
-                        </div>
-
-                    </div>
-
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">
-                            Cerrar
-                        </button>
-                    </div>
-
-                </div>
-            </div>
-        </div>
 
         <!-- MODAL FIRMA DIGITAL -->
         <div class="modal fade" id="modal-FirmaDigital" role="dialog" aria-hidden="true" data-backdrop="static">

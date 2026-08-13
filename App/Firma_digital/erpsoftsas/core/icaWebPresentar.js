@@ -136,51 +136,12 @@ class Establecimientos {
      */
     pintarAccionesDeclaracionContribuyente() {
 
-        var $barra = $('#barraDeclaracionContribuyente');
-        var $chip = $('#chipDeclaracionContribuyente');
-        var $acciones = $('#accionesDeclaracionContribuyente');
-
-        if (!idContribuyente) { $barra.hide(); return; }
-
-        $barra.show();
-        $chip.html('<i class="fa fa-spinner fa-spin text-muted"></i>');
-        $acciones.empty();
-
-        $.ajax({
-            url: '../business/controller/class.declaracionesICA.php',
-            type: 'POST',
-            dataType: 'json',
-            data: { funcion: 8, dec_IdContribuyente: idContribuyente },
-            success: function (resp) {
-
-                var hayDeclaracion = resp.ok == 1 && Array.isArray(resp.datos) && resp.datos.length > 0;
-                var ultima = hayDeclaracion ? resp.datos[0] : null;
-
-                $chip.html(hayDeclaracion ? DeclaracionesUI.resumenDeclaracion(ultima) : '<span class="text-muted">Sin declaración para este período</span>');
-
-                if (hayDeclaracion) {
-                    $acciones.html(DeclaracionesUI.htmlAcciones(ultima, 'establecimientos'));
-                } else {
-                    // Sin declaracion todavia: el unico boton posible es
-                    // crearla. No hace falta un establecimiento especifico
-                    // -la declaracion es del contribuyente-, pero se manda
-                    // el primero solo como referencia de auditoria.
-                    var filas = establecimientos._ultimoListado || [];
-                    var primerEst = filas.length ? filas[0].est_Id : '';
-                    $acciones.html(
-                        '<button type="button" class="btn btn-primary btn-sm" ' +
-                            'onclick="establecimientos.crearDeclaracion(' + (primerEst || 'null') + ', ' + idContribuyente + ')">' +
-                            '<i class="fa fa-file-text-o"></i> Crear Declaración' +
-                        '</button>'
-                    );
-                }
-            },
-            error: function () {
-                $chip.html('<span class="text-danger">No se pudo cargar</span>');
-            }
-        });
+        // Antes esto pintaba una barra con SOLO la ultima declaracion. Esa
+        // barra la reemplazo el listado completo, pero la funcion se conserva
+        // con el mismo nombre porque es la que llaman los flujos de firmar,
+        // presentar y corregir para refrescar la pantalla al terminar.
+        establecimientos.consultarDeclaraciones(null, idContribuyente);
     }
-
 
     /**
      * Devuelve el HTML de las acciones de la ULTIMA declaracion de un
@@ -599,57 +560,76 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
     });
 }
 
-consultarDeclaraciones(idEstablecimiento) {
+consultarDeclaraciones(idEstablecimiento, idContribuyente) {
 
-    $("#tbodyDeclaraciones").empty();
+    // Se guarda para que las acciones de la tabla (firmar, presentar,
+    // corregir...) sepan a que contribuyente refrescar.
+    establecimientos._idContribuyenteActual = idContribuyente || null;
+
+    $("#tbodyDeclaraciones").html(
+        '<tr><td colspan="8" class="text-center text-muted py-4">' +
+            '<i class="fa fa-spinner fa-spin"></i> Cargando declaraciones...' +
+        '</td></tr>'
+    );
 
     $.ajax({
         url: '../business/controller/class.declaracionesIca.php',
         type: 'POST',
         dataType: 'json',
-        data: {
-            funcion: 8,
-            dec_IdEstablecimiento: idEstablecimiento
-        },
+        // La declaracion es del contribuyente, no del establecimiento: se
+        // filtra por ahi cuando se conoce.
+        data: idContribuyente
+            ? { funcion: 8, dec_IdContribuyente: idContribuyente }
+            : { funcion: 8, dec_IdEstablecimiento: idEstablecimiento },
         success: function(resp){
-            console.log(resp);
 
-            // Sin respuesta valida o sin registros: la tabla tiene 7 columnas.
             if(resp.ok != 1 || !Array.isArray(resp.datos) || resp.datos.length === 0){
-                $("#tbodyDeclaraciones").append(`
-                    <tr>
-                        <td colspan="7" class="text-center">No hay declaraciones</td>
-                    </tr>
-                `);
+                $("#tbodyDeclaraciones").html(
+                    '<tr><td colspan="8" class="text-center text-muted py-4">' +
+                        'Aún no hay declaraciones. Usa "Crear Declaración" para empezar.' +
+                    '</td></tr>'
+                );
                 return;
             }
 
-            let d = resp.datos[0]; // Solo la última declaración realizada
+            // Antes solo se pintaba resp.datos[0] -la ultima-, asi que las
+            // declaraciones de periodos anteriores no se veian por ningun
+            // lado. Ademas se emitian 7 celdas contra una cabecera de 8
+            // (faltaba Estado), y las columnas salian corridas.
+            var filas = '';
+            resp.datos.forEach(function (d) {
 
-            let fechaPago = d.dec_FechaPago ?? 'No Aplica';
-            let banco = d.dec_BancoPago ?? 'No Aplica';
-            let valor = d.dec_ValorPago ?? 0;
+                var fechaPago = d.dec_FechaPago || 'No aplica';
+                var banco     = d.dec_BancoPago || 'No aplica';
+                var valor     = d.dec_ValorPago || 0;
 
-            $("#tbodyDeclaraciones").append(`
-                <tr>
-                    <td>${d.dec_AnioDeclaracion}</td>
-                    <td>${DeclaracionesUI.nombreMes(d.dec_MesDeclaracion)}</td>
-                    <td>${d.dec_NumeroDeclaracion}</td>
-                    <td>${fechaPago}</td>
-                    <td>${banco}</td>
-                    <td style="text-align:right;">$ ${Number(valor).toLocaleString()}</td>
+                // Hay declaraciones antiguas con dec_NumeroDeclaracion en
+                // NULL, que se pintaban con el texto literal "null".
+                var numero = d.dec_NumeroDeclaracion || d.dec_Id;
 
-                    <td class="text-center" style="white-space:nowrap;">
-                        ${DeclaracionesUI.htmlAcciones(d, 'establecimientos')}
-                    </td>
-                </tr>
-            `);
+                filas +=
+                    '<tr>' +
+                        '<td>' + d.dec_AnioDeclaracion + '</td>' +
+                        '<td>' + DeclaracionesUI.nombreMes(d.dec_MesDeclaracion) + '</td>' +
+                        '<td>' + numero + '</td>' +
+                        '<td>' + DeclaracionesUI.chipEstado(d) + '</td>' +
+                        '<td>' + fechaPago + '</td>' +
+                        '<td>' + banco + '</td>' +
+                        '<td style="text-align:right;">$ ' + Number(valor).toLocaleString() + '</td>' +
+                        '<td class="text-center" style="white-space:nowrap;">' +
+                            DeclaracionesUI.htmlAcciones(d, 'establecimientos') +
+                        '</td>' +
+                    '</tr>';
+            });
 
-            $('#modal-ConsultarDeclaraciones').modal({
-                backdrop: 'static',
-                keyboard: false
-            }).modal('show');
-
+            $("#tbodyDeclaraciones").html(filas);
+        },
+        error: function(){
+            $("#tbodyDeclaraciones").html(
+                '<tr><td colspan="8" class="text-center text-danger py-4">' +
+                    '<i class="fa fa-exclamation-triangle"></i> No se pudieron cargar las declaraciones.' +
+                '</td></tr>'
+            );
         }
     });
 }
@@ -720,6 +700,12 @@ consultarDeclaraciones(idEstablecimiento) {
      * getDependencia: Método para consultar conceptos
      */
     getEstablecimientos() {
+
+        // La tabla de establecimientos se quito de esta pantalla. Quedan
+        // llamadas a esta funcion en los flujos de guardado del modal de
+        // establecimiento (hoy sin boton que los abra); sin esta guarda
+        // reventarian contra un elemento que ya no existe.
+        if ($("#bodyEstablecimientosRegistrados").length === 0) { return; }
 
         // Antes la tabla se quedaba completamente vacia (sin ninguna fila)
         // mientras llegaba la respuesta, lo que se sentia como una pantalla
@@ -1567,8 +1553,17 @@ actualizarDeclaracionIca(valor, numeroCampo){
 
 const establecimientos = new Establecimientos();
 
-establecimientos.getEstablecimientos();
+// La pantalla abre directo en el listado de declaraciones del
+// contribuyente. Ya no se pasa por la tabla de establecimientos.
+establecimientos.consultarDeclaraciones(null, idContribuyente);
 establecimientos.UsuarioActivo();
+
+// Crear declaracion dejo de depender de que NO exista ninguna: antes el
+// boton solo aparecia cuando el contribuyente no tenia declaracion, asi
+// que no habia forma de crear la del periodo siguiente desde aqui.
+$(document).on('click', '#btnNuevaDeclaracion', function () {
+    establecimientos.crearDeclaracion(null, idContribuyente);
+});
 
 $(document).ready(function(){
     establecimientos.cargarAniosActividades();
@@ -1917,7 +1912,6 @@ establecimientos.abrirFirmaDigital = function(dec_Id, idEstablecimiento) {
     // firma) vive en FirmaOTP, dentro de core/declaraciones.ui.js, y lo
     // comparten esta pantalla y Consultar Declaraciones.
     FirmaOTP.abrir(dec_Id, idEstablecimiento, function () {
-        $('#modal-ConsultarDeclaraciones').modal('hide');
         establecimientos.pintarAccionesDeclaracionContribuyente();
     });
 };
@@ -2057,7 +2051,6 @@ establecimientos._intentarPresentar = function(dec_Id, idEstablecimiento) {
                 return;
             }
             swal('¡Presentada!', 'La declaración ha sido presentada con éxito.', 'success').then(() => {
-                $('#modal-ConsultarDeclaraciones').modal('hide');
                 // Refresca los botones de la tabla para reflejar el nuevo estado,
                 // en vez de dejarlos desactualizados hasta que se recargue la pagina.
                 establecimientos.pintarAccionesDeclaracionContribuyente();

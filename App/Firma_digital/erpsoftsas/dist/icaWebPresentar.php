@@ -55,46 +55,44 @@
 
 		<div class="main-container">
 	
-			<!-- Simple Datatable start -->
+			<!--
+			  Antes esta pantalla abria con la tabla de ESTABLECIMIENTOS y una
+			  barra que mostraba SOLO la ultima declaracion; el resto quedaba
+			  escondido en un modal al que se llegaba desde un establecimiento.
+			  Como la declaracion es del contribuyente y no del establecimiento,
+			  ahora se lista directamente y desde aqui se puede crear una nueva
+			  en cualquier momento, no solo cuando no existe ninguna.
+			-->
 			<div class="card-box mb-30" id="ltsRol">
-				<div class="pd-20 d-flex justify-content-between">
-					<h4 class="h4">Establecimientos del Contribuyente</h4>
-<!--
-					<button type="button" class="btn btn-outline-success" onclick="establecimientos.crearEstablecimientosContribuyentes()"><span class="ti-plus"></span> Crear Establecimientos Contribuyentes</button>
-                    <button type="button" class="btn btn-outline-success" onclick="establecimientos.crearEstablecimientos()"><span class="ti-plus"></span> Crear Establecimientos </button>
--->
+				<div class="pd-20 d-flex justify-content-between align-items-center">
+					<h4 class="h4 mb-0">Declaraciones del Contribuyente</h4>
+					<button type="button" class="btn btn-primary" id="btnNuevaDeclaracion">
+						<i class="fa fa-file-text-o"></i> Crear Declaración
+					</button>
 				</div>
+				<div class="pb-20 px-3">
 
-				<!--
-				  Declaración del contribuyente: UNA sola, sin importar cuantos
-				  establecimientos tenga (ver Fase 2 - la declaracion cuelga del
-				  contribuyente, no del establecimiento). Antes el boton "Crear
-				  Declaración" y el estado/acciones se repetian en CADA fila de
-				  establecimiento, como si cada uno tuviera su propia
-				  declaracion -confuso con mas de un establecimiento, porque en
-				  realidad la misma declaracion aparecia N veces-. Ahora es una
-				  sola barra, arriba de la tabla, junto al buscador.
-				-->
-				<div class="pd-20 pt-0" id="barraDeclaracionContribuyente" style="display:none;">
-					<div class="d-flex flex-wrap align-items-center" style="gap:14px;background:#F7F9F8;border:1px solid #E5E7EB;border-radius:10px;padding:14px 16px;">
-						<div id="chipDeclaracionContribuyente" style="font-weight:700;color:var(--erp-texto,#333);"></div>
-						<div id="accionesDeclaracionContribuyente" class="ml-auto"></div>
-					</div>
-				</div>
 
-				<div class="pb-20">
-				<table id="establecimientosRegistrados" class="data-table table stripe hover nowrap">
-						<thead>
-							<tr>
-                                <th>Establecimiento</th>
-                                <th>Contribuyente</th>
-                                <th># Documento</th>
-								<th>Dirección</th>
-							</tr>
-						</thead>
-						<tbody id="bodyEstablecimientosRegistrados">
-						</tbody>
-					</table>
+
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-striped table-sm" id="tablaDeclaraciones">
+                                <thead style="background:#e9ecef; font-weight:600;">
+                                    <tr>
+                                        <th>Año</th>
+                                        <th>Mes</th>
+                                        <th>N° Declaración</th>
+                                        <th>Estado</th>
+                                        <th>Fecha Pago</th>
+                                        <th>Banco</th>
+                                        <th>Valor Pago</th>
+                                        <th class="text-center" style="width:280px;">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbodyDeclaraciones">
+                                    <!-- dinámico -->
+                                </tbody>
+                            </table>
+                        </div>
 				</div>
 			</div>
 		</div>
@@ -1022,53 +1020,6 @@ data-campo="sanciones" value="0">
 
 
 
-
-        <!-- MODAL CONSULTAR DECLARACIONES -->
-        <div class="modal fade" id="modal-ConsultarDeclaraciones" role="dialog">
-            <div class="modal-dialog modal-xl" role="document">
-                <div class="modal-content">
-
-                    <div class="modal-header">
-                        <h4 class="modal-title">Declaraciones del Establecimiento</h4>
-                        <button type="button" class="close" data-dismiss="modal">
-                            <span>&times;</span>
-                        </button>
-                    </div>
-
-                    <div class="modal-body">
-
-
-                        <div class="table-responsive">
-                            <table class="table table-bordered table-striped table-sm" id="tablaDeclaraciones">
-                                <thead style="background:#e9ecef; font-weight:600;">
-                                    <tr>
-                                        <th>Año</th>
-                                        <th>Mes</th>
-                                        <th>N° Declaración</th>
-                                        <th>Estado</th>
-                                        <th>Fecha Pago</th>
-                                        <th>Banco</th>
-                                        <th>Valor Pago</th>
-                                        <th class="text-center" style="width:280px;">Acciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="tbodyDeclaraciones">
-                                    <!-- dinámico -->
-                                </tbody>
-                            </table>
-                        </div>
-
-                    </div>
-
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">
-                            Cerrar
-                        </button>
-                    </div>
-
-                </div>
-            </div>
-        </div>
 
         <!-- MODAL FIRMA DIGITAL -->
         <div class="modal fade" id="modal-FirmaDigital" role="dialog" aria-hidden="true" data-backdrop="static">

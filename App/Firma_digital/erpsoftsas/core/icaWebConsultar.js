@@ -529,7 +529,6 @@ consultarDeclaraciones(idEstablecimiento, idContribuyente) {
         '</td></tr>'
     );
 
-    $('#modal-ConsultarDeclaraciones').modal({ backdrop: 'static', keyboard: false }).modal('show');
 
     // La declaracion es del contribuyente (una sola, sin importar cuantos
     // establecimientos tenga): se filtra por ahi cuando se conoce.
@@ -550,8 +549,8 @@ consultarDeclaraciones(idEstablecimiento, idContribuyente) {
                     '<tr><td colspan="8">' +
                         '<div class="estado-vacio">' +
                             '<div class="ev-icono"><i class="fa fa-file-text-o"></i></div>' +
-                            '<div class="ev-titulo">Este establecimiento aún no tiene declaraciones</div>' +
-                            '<div class="ev-texto">Cuando se cree la primera declaración aparecerá aquí con su estado.</div>' +
+                            '<div class="ev-titulo">Aún no hay declaraciones presentadas</div>' +
+                            '<div class="ev-texto">Aquí aparecerán las declaraciones una vez se presenten.</div>' +
                         '</div>' +
                     '</td></tr>'
                 );
@@ -591,15 +590,24 @@ pintarDeclaracionesFiltradas() {
     var estado = $('#filtroEstadoDecl').val();
 
     var filtradas = todas.filter(function (d) {
+        // Esta pantalla es de CONSULTA: solo se listan las declaraciones que
+        // ya se presentaron. 'paso' viene de DeclaracionesUI.ESTADOS y vale 5
+        // en presentada y 6 en pagada; borrador, falta-contador y firmada
+        // quedan por debajo y no se muestran aqui.
+        if (DeclaracionesUI.estado(d).paso < 5)                       { return false; }
         if (anio   && String(d.dec_AnioDeclaracion) !== String(anio)) { return false; }
         if (estado && DeclaracionesUI.estado(d).clave !== estado)     { return false; }
         return true;
     });
 
+    var presentadas = todas.filter(function (d) {
+        return DeclaracionesUI.estado(d).paso >= 5;
+    }).length;
+
     $('#conteoDeclaraciones').text(
-        filtradas.length === todas.length
-            ? todas.length + (todas.length === 1 ? ' declaración' : ' declaraciones')
-            : 'Mostrando ' + filtradas.length + ' de ' + todas.length
+        filtradas.length === presentadas
+            ? presentadas + (presentadas === 1 ? ' declaración' : ' declaraciones')
+            : 'Mostrando ' + filtradas.length + ' de ' + presentadas
     );
 
     if (filtradas.length === 0) {
@@ -712,6 +720,12 @@ pintarDeclaracionesFiltradas() {
      * getDependencia: Método para consultar conceptos
      */
     getEstablecimientos() {
+
+        // La tabla de establecimientos se quito de esta pantalla. Quedan
+        // llamadas a esta funcion en los flujos de guardado del modal de
+        // establecimiento (hoy sin boton que los abra); sin esta guarda
+        // reventarian contra un elemento que ya no existe.
+        if ($("#bodyEstablecimientosRegistrados").length === 0) { return; }
 
         // Antes la tabla se quedaba completamente vacia (sin ninguna fila)
         // mientras llegaba la respuesta, lo que se sentia como una pantalla
@@ -1481,7 +1495,9 @@ $(document).on('change', '#filtroAnioDecl, #filtroEstadoDecl', function () {
     establecimientos.pintarDeclaracionesFiltradas();
 });
 
-establecimientos.getEstablecimientos();
+// La pantalla abre directo en el listado de declaraciones del
+// contribuyente. Ya no se pasa por la tabla de establecimientos.
+establecimientos.consultarDeclaraciones(null, idContribuyente);
 establecimientos.UsuarioActivo();
 
 $(document).ready(function(){
@@ -1862,7 +1878,6 @@ establecimientos.borrarDeclaracion = function(dec_Id) {
             success: function (arr) {
                 if (arr.ok == 1) {
                     swal({ type: 'success', title: 'Borrado', text: 'El borrador se eliminó correctamente.' });
-                    $('#modal-ConsultarDeclaraciones').modal('hide');
                 } else {
                     swal({ type: 'error', title: 'No se pudo borrar', text: arr.mensaje || 'Intente nuevamente.' });
                 }
@@ -1882,7 +1897,6 @@ establecimientos.abrirFirmaDigital = function(dec_Id, idEstablecimiento) {
         if (idEst) {
             establecimientos.consultarDeclaraciones(idEst, establecimientos._idContribuyenteActual);
         } else {
-            $('#modal-ConsultarDeclaraciones').modal('hide');
         }
     });
 };
@@ -1933,7 +1947,6 @@ establecimientos._intentarPresentar = function(dec_Id, idEstablecimiento) {
                 if (idEstablecimiento) {
                     establecimientos.consultarDeclaraciones(idEstablecimiento, establecimientos._idContribuyenteActual);
                 } else {
-                    $('#modal-ConsultarDeclaraciones').modal('hide');
                 }
             });
         }
