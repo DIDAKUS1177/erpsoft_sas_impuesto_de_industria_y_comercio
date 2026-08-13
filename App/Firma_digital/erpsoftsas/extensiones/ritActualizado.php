@@ -27,7 +27,14 @@ $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 $idEstablecimiento = $_GET['codigo']; // o como lo recibas
 
 //$sql = "SELECT * FROM ind_establecimientos WHERE est_Id = ?";
-$anioActual = date('Y');
+// Mismo patron que declaracion.php: si el config del municipio no trae estos
+// datos, el certificado sale con el campo vacio en vez de reventar. El NIT NO
+// hereda el de Paipa a proposito: un NIT ajeno en un certificado tributario es
+// peor que uno en blanco.
+if (!defined('MUNICIPIO_DEPARTAMENTO')) define('MUNICIPIO_DEPARTAMENTO', '');
+if (!defined('MUNICIPIO_NIT'))          define('MUNICIPIO_NIT', '');
+if (!defined('MUNICIPIO_DIRECCION'))    define('MUNICIPIO_DIRECCION', '');
+
 
 $sql = "
 SELECT 
@@ -46,7 +53,16 @@ LEFT JOIN conf_ciudades ciu
     ON ciu.ciu_Id = c.ind_IdCiudad
 LEFT JOIN ind_actividad_establecimiento a 
     ON a.ace_IdEstablecimiento = e.est_Id
-    AND a.ace_Anio = 2026
+    -- Se toma el año MAS RECIENTE que tenga registrado ESE establecimiento, no
+    -- un año fijo ni el año en curso. Con el 2026 que estaba escrito a mano, 3
+    -- de los 6 establecimientos con actividades salian con la tabla vacia
+    -- porque las tenian registradas en 2025: esa era la queja de que el RIT no
+    -- cargaba las actividades economicas.
+    AND a.ace_Anio = (
+        SELECT MAX(a2.ace_Anio)
+        FROM ind_actividad_establecimiento a2
+        WHERE a2.ace_IdEstablecimiento = e.est_Id
+    )
 LEFT JOIN ind_actividadescomercio ca
     ON ca.acc_Id = a.ace_IdCodigoActividad
 WHERE e.est_Id = ?
@@ -81,10 +97,12 @@ $nombreCompleto = trim(
 
 $d = [
 
-'entidad' => 'MUNICIPIO DE PAIPA',
-'nit_entidad' => '891801240',
-'direccion_entidad' => 'Carrera 22 No 25-14',
-'ciudad_entidad' => 'PAIPA - BOYACÁ',
+// Estos cuatro iban fijos en Paipa. Con varios municipios sobre el mismo
+// codigo, el certificado de Guateque salia diciendo "MUNICIPIO DE PAIPA".
+'entidad' => 'MUNICIPIO DE ' . mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8'),
+'nit_entidad' => MUNICIPIO_NIT,
+'direccion_entidad' => MUNICIPIO_DIRECCION,
+'ciudad_entidad' => mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8') . ' - ' . mb_strtoupper(MUNICIPIO_DEPARTAMENTO, 'UTF-8'),
 
 // OPCIÓN USO
 'opcion_inscripcion' => $row['est_Opcion_uso'] == 1,
@@ -390,9 +408,9 @@ SECRETARIA DE HACIENDA
 
 <tr>
 <td width="40%"><b>15. Número de Matricula Mercantil del Contribuyente:</b></td>
-<td width="10%"></td>
+<td width="10%">'.$d['matricula'].'</td>
 <td width="39%"><b>16. Fecha de la Matricula mercantil:</b></td>
-<td width="11%"></td>
+<td width="11%">'.$d['fecha_matricula'].'</td>
 
 </tr>
 
