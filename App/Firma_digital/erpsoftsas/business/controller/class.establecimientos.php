@@ -249,14 +249,26 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
                 // con los demas datos del establecimiento.
                 // ============================
 
-                $correos = $con->obnerFila($con->consultar(
-                    "SELECT ind_EmailContador, ind_EmailRevisor
+                // Punto 16: contador y revisor tienen que verse tanto en el
+                // RIT como en el establecimiento. Desde la migracion 003 el
+                // dato vive en el contribuyente -antes estaba repetido en cada
+                // local, sin nada que garantizara que las copias coincidieran-,
+                // asi que aqui se lee de alli y viaja con el establecimiento.
+                $datosContador = $con->obnerFila($con->consultar(
+                    "SELECT ind_EmailContador, ind_EmailRevisor,
+                            ind_Cedula_contador, ind_Nombre_contador, ind_Tarjeta_profesional,
+                            ind_Cedula_revisor, ind_Nombre_revisor, ind_Tarjeta_profesional_revisor
                        FROM ind_contribuyentes WHERE ind_Id = ?",
                     [$est['est_IdContribuyente']]
                 ));
 
-                $est['ind_EmailContador'] = $correos['ind_EmailContador'] ?? '';
-                $est['ind_EmailRevisor']  = $correos['ind_EmailRevisor']  ?? '';
+                foreach ([
+                    'ind_EmailContador', 'ind_EmailRevisor',
+                    'ind_Cedula_contador', 'ind_Nombre_contador', 'ind_Tarjeta_profesional',
+                    'ind_Cedula_revisor', 'ind_Nombre_revisor', 'ind_Tarjeta_profesional_revisor',
+                ] as $campoContador) {
+                    $est[$campoContador] = $datosContador[$campoContador] ?? '';
+                }
 
                 // ============================
                 // CONSULTAR ACTIVIDADES

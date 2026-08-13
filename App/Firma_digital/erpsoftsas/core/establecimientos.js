@@ -217,14 +217,11 @@ class Establecimientos {
                 var titulo = "Activar Establecimiento";
             }
 
-           // var soporteRit = '<a href="../extensiones/soporterit.php?codigo=' + dep.est_Id + '" target="_blank" title="Descargar RIT" class="btn btn-info btn-pill"><i class="fa fa-download"></i> RIT</a>';
-            var soporteRit =
-                '<a href="../extensiones/soporterit.php?codigo=' + dep.est_Id + '" ' +
-                'target="_blank" ' +
-                'class="btn btn-info btn-sm mr-1" ' +
-                'data-toggle="tooltip" title="Descargar RIT">' +
-                '<i class="fa fa-download"></i>' +
-                '</a>';
+            // Punto 5: los establecimientos ya no descargan el RIT. El RIT es
+            // del contribuyente, no de cada local, asi que un boton por fila
+            // sugeria que cada establecimiento tenia el suyo. La descarga vive
+            // ahora en la pantalla del RIT.
+            var soporteRit = '';
 
 
                 $('#bodyEstablecimientosRegistrados').append(

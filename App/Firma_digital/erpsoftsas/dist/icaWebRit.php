@@ -69,6 +69,9 @@
 						<small class="text-muted" id="ritEstadoCarga">Cargando…</small>
 					</div>
 					<div>
+						<a class="btn btn-outline-info" id="btnDescargarRIT" href="#" target="_blank">
+							<i class="fa fa-download"></i> Descargar RIT
+						</a>
 						<button type="button" class="btn btn-outline-secondary" id="btnCancelarRIT">Cancelar</button>
 						<button type="submit" class="btn btn-primary" form="formRIT" id="btnGuardarRIT">Actualizar</button>
 					</div>

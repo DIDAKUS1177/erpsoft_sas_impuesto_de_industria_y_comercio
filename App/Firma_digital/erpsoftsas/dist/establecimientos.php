@@ -288,8 +288,11 @@
 </div>
 -->
 
+<!-- Punto 11: esta matricula es la DEL ESTABLECIMIENTO. La de la persona
+     natural o juridica es otra y se llena en el RIT. Sin el rotulo las dos
+     se confundian, que fue justo lo que reporto el cliente. -->
 <div class="col-md-3">
-<label>* Matrícula</label>
+<label>* Matrícula <small class="text-muted">(del establecimiento)</small></label>
 <input type="text" class="form-control" id="est_Matricula" name="est_Matricula">
 </div>
 

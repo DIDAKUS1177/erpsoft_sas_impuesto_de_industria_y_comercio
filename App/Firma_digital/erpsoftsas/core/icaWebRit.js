@@ -1773,6 +1773,12 @@ actualizarDeclaracionIca(valor, numeroCampo){
                 establecimientos.cargarCiudadesRIT(d.ind_IdCiudad);
 
                 establecimientos.pintarActividadesRIT(d.actividades || []);
+
+                // La descarga del certificado vive ahora aqui y va por
+                // contribuyente, no por establecimiento (punto 5).
+                $('#btnDescargarRIT').attr(
+                    'href', '../extensiones/ritActualizado.php?contribuyente=' + d.ind_Id
+                );
                 establecimientos.aplicarPermisosRIT();
 
                 // Punto 10: el RIT queda inicializado en el primer ingreso, sin

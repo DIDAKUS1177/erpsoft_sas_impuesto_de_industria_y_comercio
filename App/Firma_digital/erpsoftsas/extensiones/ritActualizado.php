@@ -24,7 +24,33 @@ DATOS DE PRUEBA
 
 $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
-$idEstablecimiento = $_GET['codigo']; // o como lo recibas
+// El certificado se puede pedir de dos maneras:
+//   ?codigo=<est_Id>          -> como siempre, desde un establecimiento
+//   ?contribuyente=<ind_Id>   -> desde el RIT, que ahora es del contribuyente
+// En el segundo caso se toma su establecimiento mas antiguo como base para
+// los datos de ubicacion; los datos de la PERSONA (matricula, representante,
+// contador, revisor) ya no salen del establecimiento sino de
+// ind_contribuyentes, que es donde los dejo la migracion 003.
+$idEstablecimiento = $_GET['codigo'] ?? null;
+$idContribuyente   = isset($_GET['contribuyente']) ? (int) $_GET['contribuyente'] : null;
+
+if (!$idEstablecimiento && $idContribuyente) {
+    $fila = $con->obnerFila($con->consultar(
+        "SELECT TOP 1 est_Id FROM ind_establecimientos
+          WHERE est_IdContribuyente = ? ORDER BY est_Id",
+        [$idContribuyente]
+    ));
+    $idEstablecimiento = $fila['est_Id'] ?? null;
+
+    if (!$idEstablecimiento) {
+        exit('Este contribuyente todavía no tiene establecimientos registrados, '
+           . 'así que no se puede generar el certificado.');
+    }
+}
+
+if (!$idEstablecimiento) {
+    exit('No se indicó de qué registro generar el certificado.');
+}
 
 //$sql = "SELECT * FROM ind_establecimientos WHERE est_Id = ?";
 // Mismo patron que declaracion.php: si el config del municipio no trae estos
@@ -126,7 +152,10 @@ $d = [
 'correo' => $row['ind_Email'],
 
 // MATRÍCULA
-'matricula' => $row['est_Matricula'],
+// Punto 8: la matricula de la PERSONA vive ahora en el
+// contribuyente. Se cae a la del establecimiento solo para las
+// bases donde la migracion 003 todavia no dejo el dato.
+'matricula' => $row['ind_Matricula'] ?: $row['est_Matricula'],
 'fecha_matricula' => !empty($row['est_Fecha_matricula']) 
     ? $row['est_Fecha_matricula']->format('d-m-Y') 
     : '',
@@ -142,7 +171,7 @@ $d = [
 'direccion_actividad' => $row['est_Direccion'],
 
 // REPRESENTANTE
-'representante' => $row['est_Nombre_representante'],
+'representante' => $row['ind_Nombre_representante'] ?: $row['est_Nombre_representante'],
 'cc_representante' => $row['est_Cedula_representante'],
 'email_representante' => $row['est_Email_representante'],
 
@@ -152,12 +181,12 @@ $d = [
 
 
 // CONTADOR
-'contador_nombre' => $row['est_Nombre_contador'],
+'contador_nombre' => $row['ind_Nombre_contador'] ?: $row['est_Nombre_contador'],
 'contador_cc' => $row['est_Cedula_contador'],
 'contador_tp' => $row['est_Tarjeta_profesional'],
 
 // REVISOR
-'revisor_nombre' => $row['est_Nombre_revisor'],
+'revisor_nombre' => $row['ind_Nombre_revisor'] ?: $row['est_Nombre_revisor'],
 'revisor_cc' => $row['est_Cedula_revisor'],
 'revisor_tp' => $row['est_Tarjeta_profesional_revisor'],
 
@@ -224,6 +253,44 @@ if (!empty($d['actividades'])) {
     <tr>
         <td width="100%">No registra actividades</td>
     </tr>';
+}
+
+/* ===========================
+   Punto 19: el certificado debe incluir nombre, matricula, direccion y fecha
+   de inicio de LOS ESTABLECIMIENTOS -en plural-. Antes solo salia el
+   establecimiento por el que se habia entrado, asi que un contribuyente con
+   varios locales no tenia forma de verlos todos en un mismo documento.
+   =========================== */
+
+$establecimientosHtml = '';
+$stmtEst = $con->consultar(
+    "SELECT est_Nombre, est_Matricula, est_Direccion, est_Fecha_inicio, est_Activo
+       FROM ind_establecimientos
+      WHERE est_IdContribuyente = ?
+      ORDER BY est_Id",
+    [$row['est_IdContribuyente']]
+);
+
+while ($e = $con->obnerFila($stmtEst)) {
+
+    // 1900-01-01 es el centinela de "nunca se lleno", no una fecha real.
+    $fechaIni = '';
+    if (!empty($e['est_Fecha_inicio']) && $e['est_Fecha_inicio'] instanceof \DateTime
+        && $e['est_Fecha_inicio']->format('Y') > 1900) {
+        $fechaIni = $e['est_Fecha_inicio']->format('d-m-Y');
+    }
+
+    $establecimientosHtml .= '
+    <tr>
+        <td width="34%">'.htmlspecialchars((string) $e['est_Nombre'], ENT_QUOTES, 'UTF-8').'</td>
+        <td width="16%">'.htmlspecialchars((string) $e['est_Matricula'], ENT_QUOTES, 'UTF-8').'</td>
+        <td width="34%">'.htmlspecialchars((string) $e['est_Direccion'], ENT_QUOTES, 'UTF-8').'</td>
+        <td width="16%">'.$fechaIni.'</td>
+    </tr>';
+}
+
+if ($establecimientosHtml === '') {
+    $establecimientosHtml = '<tr><td width="100%">No registra establecimientos</td></tr>';
 }
 
 /* ===========================
@@ -420,6 +487,19 @@ SECRETARIA DE HACIENDA
 
 
 '.$actividadesHtml.'
+
+<tr>
+<td class="titulo" width="100%">Establecimientos del Contribuyente</td>
+</tr>
+
+<tr>
+<td width="34%"><b>Nombre</b></td>
+<td width="16%"><b>Matrícula</b></td>
+<td width="34%"><b>Dirección</b></td>
+<td width="16%"><b>Fecha inicio</b></td>
+</tr>
+
+'.$establecimientosHtml.'
 
 <tr>
 <td width="15%"><b>19. Fecha inicio actividades</b></td>
