@@ -136,6 +136,10 @@
        
 
 <form id="formCrearEstablecimientos" action="" enctype="multipart/form-data">
+<!-- El id del establecimiento que se esta editando. No existia: el codigo
+     lo pasaba de funcion en funcion como parametro, asi que los anexos no
+     tenian forma de saber a que establecimiento colgarse. -->
+<input type="hidden" id="est_Id" name="est_Id">
 
 <div class="modal-body">
 
@@ -407,24 +411,53 @@
 <div class="titulo-bloque">Documentos Adjuntos</div>
 <div class="row">
 
-<div class="col-md-6">
-<label>* Documento RUT</label>
-<input type="file" class="form-control" id="est_Pdf1" name="est_Pdf1" accept="application/pdf">
+<!-- Antes habia cuatro <input type="file"> sueltos (est_Pdf1..4) que no
+     subian nada: el JS que los leia estaba dentro de un bloque comentado y el
+     controlador no tenia $_FILES. Ahora se sube de verdad, contra
+     class.anexos.php, y sobre todo se puede VER lo ya cargado, que es lo que
+     pidio el cliente (punto 17). La carga es aparte del guardado del
+     formulario: el establecimiento tiene que existir para colgarle archivos. -->
+
+<div class="col-md-4">
+<label>Tipo de documento</label>
+<select class="form-control" id="anexoTipo">
+    <option value="rut">RUT</option>
+    <option value="camara">Cámara de Comercio o Acta de Constitución</option>
+    <option value="cedula">Cédula</option>
+    <option value="usosuelo">Uso de Suelos</option>
+    <option value="cese">Soporte de cese</option>
+    <option value="otro">Otro</option>
+</select>
 </div>
 
-<div class="col-md-6">
-<label>* Cámara de Comercio o Acta de Constitución</label>
-<input type="file" class="form-control" id="est_Pdf2" name="est_Pdf2" accept="application/pdf">
+<div class="col-md-5">
+<label>Archivo <small class="text-muted">(PDF, JPG o PNG, hasta 10 MB)</small></label>
+<input type="file" class="form-control" id="anexoArchivo" accept=".pdf,.jpg,.jpeg,.png" multiple>
 </div>
 
-<div class="col-md-6">
-<label>* Documento Cedula</label>
-<input type="file" class="form-control" id="est_Pdf3" name="est_Pdf3" accept="application/pdf">
+<div class="col-md-3">
+<label>&nbsp;</label>
+<button type="button" class="btn btn-primary btn-block" id="btnSubirAnexo">
+    <i class="fa fa-upload"></i> Cargar
+</button>
 </div>
 
-<div class="col-md-6">
-<label>Documento Uso de Suelos</label>
-<input type="file" class="form-control" id="est_Pdf4" name="est_Pdf4" accept="application/pdf">
+<div class="col-md-12 mt-3">
+    <label>Archivos cargados</label>
+    <div class="table-responsive">
+        <table class="table table-bordered table-sm">
+            <thead style="background:#e9ecef; font-weight:600;">
+                <tr>
+                    <th style="width:130px;">Tipo</th>
+                    <th>Archivo</th>
+                    <th style="width:110px;">Tamaño</th>
+                    <th style="width:140px;">Cargado</th>
+                    <th style="width:120px;" class="text-center">Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="tbodyAnexos"></tbody>
+        </table>
+    </div>
 </div>
 
 </div>

@@ -28,3 +28,8 @@ vendor/
 # (nunca borrados) durante las sesiones de orden. Son solo respaldo local,
 # no deben terminar en el historial de git.
 _archivo_obsoleto_*/
+# Anexos subidos por los contribuyentes (RUT, camara de comercio, cedula...).
+# En Plesk la carpeta cae dentro del checkout, un nivel arriba de erpsoftsas/.
+# Son documentos de personas: no van al repositorio.
+anexos_establecimientos/
+App/Firma_digital/anexos_establecimientos/

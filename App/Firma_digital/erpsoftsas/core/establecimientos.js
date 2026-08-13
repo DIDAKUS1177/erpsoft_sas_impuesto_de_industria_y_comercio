@@ -292,6 +292,11 @@ class Establecimientos {
                 $('#loading').hide();
                 $('#wrapper').removeClass('body-load');
 
+                // Se deja el id a mano para los anexos, y se listan los que ya
+                // tenga cargados (punto 17).
+                $('#est_Id').val(id);
+                establecimientos.listarAnexos(id);
+
                 if (arr.ok !== 1) {
                     swal({
                         type: 'error',
@@ -1429,6 +1434,161 @@ liquidarDeclaracion() {
 }
 
 
+
+    /* ======================================================================
+       Anexos del establecimiento (puntos 17 y 18)
+       ----------------------------------------------------------------------
+       Los archivos NO viajan con $.ajax normal: hay que usar FormData y
+       apagar processData/contentType, o jQuery los convierte en la cadena
+       "[object File]". Esa es la razon de que la carga nunca funcionara: el
+       formulario mandaba los campos como objeto plano.
+       ====================================================================== */
+
+    subirAnexos() {
+
+        var idEstablecimiento = $('#est_Id').val();
+        if (!idEstablecimiento) {
+            swal({ type: 'info', title: 'Primero guarde el establecimiento',
+                   text: 'Los archivos se cargan una vez el establecimiento existe.' });
+            return;
+        }
+
+        var archivos = $('#anexoArchivo')[0].files;
+        if (!archivos.length) {
+            swal({ type: 'info', title: 'No eligió ningún archivo' });
+            return;
+        }
+
+        var datos = new FormData();
+        datos.append('funcion', 1);
+        datos.append('est_Id', idEstablecimiento);
+        datos.append('tipo', $('#anexoTipo').val());
+        for (var i = 0; i < archivos.length; i++) {
+            datos.append('anexos[]', archivos[i]);
+        }
+
+        var $boton = $('#btnSubirAnexo');
+        $boton.prop('disabled', true);
+
+        $.ajax({
+            url: '../business/controller/class.anexos.php',
+            type: 'POST',
+            data: datos,
+            processData: false,   // sin esto jQuery serializa y pierde el archivo
+            contentType: false,   // el navegador pone el boundary del multipart
+            dataType: 'json',
+            success: function (resp) {
+                $boton.prop('disabled', false);
+                $('#anexoArchivo').val('');
+
+                swal({
+                    type: resp.ok == 1 ? 'success' : 'error',
+                    title: resp.ok == 1 ? 'Archivos cargados' : 'No se pudo cargar',
+                    text: resp.mensaje
+                });
+
+                establecimientos.listarAnexos(idEstablecimiento);
+            },
+            error: function () {
+                $boton.prop('disabled', false);
+                swal({ type: 'error', title: 'Error de conexión',
+                       text: 'No se pudieron cargar los archivos.' });
+            }
+        });
+    }
+
+    /** Punto 17: ver lo que ya esta cargado, no solo poder cargar. */
+    listarAnexos(idEstablecimiento) {
+
+        if (!idEstablecimiento) {
+            $('#tbodyAnexos').html(
+                '<tr><td colspan="5" class="text-center text-muted py-3">' +
+                    'Guarde el establecimiento para poder adjuntar archivos.' +
+                '</td></tr>'
+            );
+            return;
+        }
+
+        $.ajax({
+            url: '../business/controller/class.anexos.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { funcion: 2, est_Id: idEstablecimiento },
+            success: function (resp) {
+
+                if (resp.ok != 1 || !resp.datos || !resp.datos.length) {
+                    $('#tbodyAnexos').html(
+                        '<tr><td colspan="5" class="text-center text-muted py-3">' +
+                            'Todavía no hay archivos cargados.' +
+                        '</td></tr>'
+                    );
+                    return;
+                }
+
+                var etiquetas = {
+                    rut: 'RUT', camara: 'Cámara de Comercio', cedula: 'Cédula',
+                    usosuelo: 'Uso de Suelos', cese: 'Cese', otro: 'Otro'
+                };
+
+                var filas = '';
+                resp.datos.forEach(function (a) {
+                    var kb = Math.max(1, Math.round((a.anx_Tamano || 0) / 1024));
+                    filas +=
+                        '<tr>' +
+                            '<td>' + (etiquetas[a.anx_Tipo] || a.anx_Tipo || '') + '</td>' +
+                            '<td>' + a.anx_NombreOriginal + '</td>' +
+                            '<td>' + kb + ' KB</td>' +
+                            '<td>' + a.anx_FechaCarga + '</td>' +
+                            '<td class="text-center" style="white-space:nowrap;">' +
+                                '<a class="btn btn-info btn-sm mr-1" target="_blank" ' +
+                                   'href="../extensiones/anexo.php?id=' + a.anx_Id + '" ' +
+                                   'title="Ver archivo"><i class="fa fa-eye"></i></a>' +
+                                '<button type="button" class="btn btn-danger btn-sm" ' +
+                                   'title="Quitar" ' +
+                                   'onclick="establecimientos.quitarAnexo(' + a.anx_Id + ')">' +
+                                   '<i class="fa fa-trash"></i></button>' +
+                            '</td>' +
+                        '</tr>';
+                });
+
+                $('#tbodyAnexos').html(filas);
+            },
+            error: function () {
+                $('#tbodyAnexos').html(
+                    '<tr><td colspan="5" class="text-center text-danger py-3">' +
+                        'No se pudo consultar los archivos.' +
+                    '</td></tr>'
+                );
+            }
+        });
+    }
+
+    quitarAnexo(idAnexo) {
+
+        swal({
+            title: '¿Quitar este archivo?',
+            text: 'Dejará de aparecer en el establecimiento.',
+            type: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, quitar',
+            cancelButtonText: 'Cancelar'
+        }).then(function (r) {
+            if (!r.value) { return; }
+
+            $.ajax({
+                url: '../business/controller/class.anexos.php',
+                type: 'POST',
+                dataType: 'json',
+                data: { funcion: 3, anx_Id: idAnexo },
+                success: function () {
+                    establecimientos.listarAnexos($('#est_Id').val());
+                },
+                error: function () {
+                    swal({ type: 'error', title: 'No se pudo quitar el archivo' });
+                }
+            });
+        });
+    }
 }
 
 const establecimientos = new Establecimientos();
@@ -1660,4 +1820,10 @@ $("#btnValidarDeclaracion").on("click", function () {
         title: 'Liquidación realizada',
         text: 'Cálculos aplicados correctamente'
     });
+});
+
+// Anexos: la carga va aparte del guardado del formulario porque necesita que
+// el establecimiento ya exista para colgarle los archivos.
+$(document).on('click', '#btnSubirAnexo', function () {
+    establecimientos.subirAnexos();
 });
