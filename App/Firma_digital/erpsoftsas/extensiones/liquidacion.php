@@ -648,7 +648,7 @@ $xBloque   = $margenes['left'];
 $yBloque   = $pdf->GetY() - 3;
 
 $altoRotulo = 4.5;
-$altoCodigo = 10.5;
+$altoCodigo = 12.5;  // barras + linea legible debajo
 
 /*
  * Ver nota en business/class.codigoBarrasRecaudo.php: con el convenio de
@@ -679,16 +679,35 @@ $pdf->Cell($mitad, $altoCodigo, $referencia_recaudo, 1, 1, 'L');
 $anchoBarcode = 55;
 $altoBarcode  = 8;
 
+// Ver nota en declaracion.php: el codigo va arriba para dejar sitio a la
+// linea legible, que es la que digita el cajero si el escaner falla.
+$yBarcode = $yBloque + $altoRotulo + 1.2;
+
 $pdf->write1DBarcode(
     $contenidoBarras, 'C128',
     $xBloque + ($mitad - $anchoBarcode) / 2,
-    $yBloque + $altoRotulo + ($altoCodigo - $altoBarcode) / 2,
+    $yBarcode,
     $anchoBarcode, $altoBarcode,
     '',
     array('position' => '', 'border' => false, 'padding' => 0,
           'fgcolor' => array(0,0,0), 'bgcolor' => false,
           'text' => false, 'stretch' => true),
     'N'
+);
+
+// Version legible (HRI): identificadores entre parentesis. No se puede usar
+// 'text' => true de TCPDF porque imprimiria los FNC1, que no son visibles.
+$pdf->SetFont('helvetica', '', 5);
+$pdf->SetXY($xBloque, $yBarcode + $altoBarcode + 0.3);
+$pdf->Cell(
+    $mitad,
+    2.6,
+    \erpsoftsas\CodigoBarrasRecaudo::textoLegible(
+        $referencia_recaudo,
+        $row['dec_ValorConcepto20'] ?? 0,
+        $fecha_max_presentacion ?: null
+    ),
+    0, 0, 'C'
 );
 /* ============================================================
    SALIDA PDF

@@ -1119,7 +1119,7 @@ $xBloque   = $margenes['left'];
 $yBloque   = $pdf->GetY() - 3;
 
 $altoRotulo  = 4.5;   // fila de titulos
-$altoCodigo  = 10.5;  // fila que contiene el codigo
+$altoCodigo  = 12.5;  // barras + linea legible debajo
 
 /*
  * Contenido del codigo: si el municipio ya tiene configurado su convenio de
@@ -1157,16 +1157,38 @@ $pdf->Cell($mitad, $altoCodigo, $referenciaRecaudo, 1, 1, 'L');
 $anchoBarcode = 50;
 $altoBarcode  = 8;
 
+// El codigo se apoya en la parte alta de la celda para dejar sitio abajo a la
+// linea legible. Esa linea NO es decorativa: si el escaner del banco falla, el
+// cajero digita ese numero a mano. Un codigo sin su version legible deja el
+// pago bloqueado cuando la impresion sale sucia o corrida.
+$yBarcode = $yBloque + $altoRotulo + 1.2;
+
 $pdf->write1DBarcode(
     $contenidoBarras, 'C128',
     $xBloque + ($mitad - $anchoBarcode) / 2,
-    $yBloque + $altoRotulo + ($altoCodigo - $altoBarcode) / 2,
+    $yBarcode,
     $anchoBarcode, $altoBarcode,
     '',
     array('position' => '', 'border' => false, 'padding' => 0,
           'fgcolor' => array(0,0,0), 'bgcolor' => false,
           'text' => false, 'stretch' => true),
     'N'
+);
+
+// Version legible del codigo (HRI). En GS1-128 se escriben los
+// identificadores entre parentesis; los FNC1 no son imprimibles, asi que no
+// se puede usar el 'text' => true de TCPDF -imprimiria basura-.
+$pdf->SetFont('helvetica', '', 5);
+$pdf->SetXY($xBloque, $yBarcode + $altoBarcode + 0.3);
+$pdf->Cell(
+    $mitad,
+    2.6,
+    \erpsoftsas\CodigoBarrasRecaudo::textoLegible(
+        $referenciaRecaudo,
+        $row['dec_ValorConcepto20'] ?? 0,
+        $d['fecha_max'] ?: null
+    ),
+    0, 0, 'C'
 );
 
 /* ===========================
