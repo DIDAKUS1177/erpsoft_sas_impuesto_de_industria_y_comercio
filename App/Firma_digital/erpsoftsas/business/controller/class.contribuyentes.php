@@ -408,10 +408,25 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
        _guardarCorreosContadorRevisor.
        ====================================================================== */
 
-    /** Columnas del RIT que el formulario puede grabar. */
+    /**
+     * Columnas que el formulario del RIT puede grabar.
+     *
+     * NO estan aqui, a proposito: ind_NumeroIdentificacion, ind_DV,
+     * ind_IdTipoDocumento y ind_Estado. Son la identidad tributaria del
+     * contribuyente; dejar que se cambien desde el formulario que el propio
+     * contribuyente llena permitiria que una declaracion firmada quedara
+     * atada a un documento distinto del que la firmo. Se cambian por el
+     * camino de siempre (funcion 2, solo administrador).
+     */
     private static function _camposRIT()
     {
         return [
+            // Datos generales
+            'ind_PrimerNombre', 'ind_SegundoNombre',
+            'ind_PrimerApellido', 'ind_SegundoApellido',
+            'ind_Direccion', 'ind_IdCiudad', 'ind_Telefono', 'ind_Email',
+            'ind_Persona',
+            // Propios del RIT
             'ind_Matricula', 'ind_Fecha_matricula', 'ind_Fecha_inicio',
             'ind_Ind_camara_comercio',
             'ind_Cedula_representante', 'ind_Nombre_representante', 'ind_Email_representante',
@@ -419,6 +434,32 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             'ind_Cedula_revisor', 'ind_Nombre_revisor', 'ind_Tarjeta_profesional_revisor',
             'ind_EmailContador', 'ind_EmailRevisor',
         ];
+    }
+
+    /**
+     * Contador y revisor fiscal solo los registra el administrador (punto 14);
+     * el contribuyente los ve en modo lectura (punto 15). El formulario ya los
+     * pinta deshabilitados, pero eso es solo la pantalla: sin esta comprobacion
+     * en el servidor bastaria un POST a mano para saltarsela.
+     */
+    private static function _camposSoloAdministrador()
+    {
+        return [
+            'ind_Cedula_contador', 'ind_Nombre_contador', 'ind_Tarjeta_profesional',
+            'ind_Cedula_revisor', 'ind_Nombre_revisor', 'ind_Tarjeta_profesional_revisor',
+            'ind_EmailContador', 'ind_EmailRevisor',
+        ];
+    }
+
+    private static function _esAdministrador()
+    {
+        // La sesion se abre en class.sessions.php, pero este controlador puede
+        // entrar sin que se haya llamado todavia. Sin este arranque, $_SESSION
+        // llega vacio y TODO el mundo pareceria no-administrador.
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+
+        // Rol 1 = Administrador en conf_rol.
+        return isset($_SESSION['id_Rol']) && (int) $_SESSION['id_Rol'] === 1;
     }
 
     protected function _consultarRIT()
@@ -518,10 +559,28 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         $sets    = [];
         $valores = [];
 
+        $soloAdmin  = self::_camposSoloAdministrador();
+        $esAdmin    = self::_esAdministrador();
+        $ignorados  = [];
+
         foreach (self::_camposRIT() as $campo) {
             if (!array_key_exists($campo, $_POST)) { continue; }
 
+            // Puntos 14 y 15: los datos de contador y revisor solo los graba
+            // el administrador. Si llegan de otro rol se descartan en silencio
+            // en vez de fallar, para que el contribuyente si pueda guardar el
+            // resto de su RIT.
+            if (in_array($campo, $soloAdmin, true) && !$esAdmin) {
+                $ignorados[] = $campo;
+                continue;
+            }
+
             $valor = trim((string) $_POST[$campo]);
+
+            // Las columnas numericas no pueden recibir cadena vacia.
+            if (in_array($campo, ['ind_IdCiudad', 'ind_Telefono', 'ind_Persona'], true)) {
+                $valor = ($valor === '') ? null : (int) $valor;
+            }
 
             // Un correo mal escrito deja al contribuyente sin poder firmar,
             // porque el OTP no llega a ningun lado.
@@ -564,9 +623,11 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         );
 
         $this->_ok = 1;
-        $this->_mensaje = 'RIT actualizado';
+        $this->_mensaje = $ignorados
+            ? 'RIT actualizado. Los datos de contador y revisor solo los puede cambiar el administrador.'
+            : 'RIT actualizado';
 
-        return ['ind_Id' => $idContribuyente];
+        return ['ind_Id' => $idContribuyente, 'ignorados' => $ignorados];
     }
 
 }

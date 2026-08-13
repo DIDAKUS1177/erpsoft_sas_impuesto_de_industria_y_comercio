@@ -52,33 +52,207 @@
 
 		<div class="main-container">
 	
-			<!-- Simple Datatable start -->
-			<div class="card-box mb-30" id="ltsRol">
-				<div class="pd-20 d-flex justify-content-between">
-					<h4 class="h4">Listado de Establecimientos del Contribuyente</h4>
+			<!--
+			  Punto 4: el RIT es SOLO formulario. Antes esta pantalla abria con
+			  la tabla de establecimientos y el RIT era un modal que habia que
+			  ir a buscar. Los establecimientos ahora viven en su propio modulo
+			  (punto 5); aqui queda el formulario del contribuyente, que es lo
+			  que el RIT realmente es.
+			-->
+			<div class="card-box mb-30">
+
+				<!-- Punto 6: los botones arriba, para no tener que recorrer
+				     todo el formulario antes de poder guardar. -->
+				<div class="pd-20 d-flex justify-content-between align-items-center flex-wrap" style="gap:10px;">
 					<div>
-					<button type="button" class="btn btn-outline-info mr-1" onclick="establecimientos.verInformacionContribuyente()"><span class="ti-id-badge"></span> Información del Contribuyente</button>
-					<!-- <button type="button" class="btn btn-outline-success" onclick="establecimientos.crearEstablecimientosContribuyentes()"><span class="ti-plus"></span> Crear Establecimientos Contribuyentes</button> -->
-                    <button type="button" class="btn btn-outline-success" onclick="establecimientos.crearEstablecimientos()"><span class="ti-plus"></span> Crear Establecimientos </button>
+						<h4 class="h4 mb-0">Registro de Identificación Tributaria</h4>
+						<small class="text-muted" id="ritEstadoCarga">Cargando…</small>
+					</div>
+					<div>
+						<button type="button" class="btn btn-outline-secondary" id="btnCancelarRIT">Cancelar</button>
+						<button type="submit" class="btn btn-primary" form="formRIT" id="btnGuardarRIT">Actualizar</button>
 					</div>
 				</div>
-				<div class="pb-20">
-				<table id="establecimientosRegistrados" class="data-table table stripe hover nowrap">
-						<thead>
-							<tr>
-                                <th>Establecimiento</th>
-                                <th>Estado</th>
-                                <th>Contribuyente</th>
-                                <th># Documento</th>	
-								<th>Dirección</th>								
-								<th>Acciones</th>
-                                <th>Descargar RIT</th>
-							</tr>
-						</thead>
-						<tbody id="bodyEstablecimientosRegistrados">
-						</tbody>
-					</table>
-				</div>
+
+				<form id="formRIT" class="pd-20 pt-0" onsubmit="establecimientos.guardarRIT(); return false;">
+					<input type="hidden" name="ind_Id" id="rit_ind_Id">
+
+					<h5 class="mb-3" style="font-weight:600;">Identificación</h5>
+					<div class="row">
+						<!-- Documento, DV y tipo van solo de lectura: son la
+						     identidad tributaria y una declaracion ya firmada
+						     quedaria atada a un documento distinto del que la
+						     firmo. Se cambian por el camino de administrador. -->
+						<div class="col-md-3 form-group">
+							<label>Tipo de documento</label>
+							<input type="text" class="form-control" id="rit_TipoDocumento" readonly>
+						</div>
+						<div class="col-md-3 form-group">
+							<label>Número de documento</label>
+							<input type="text" class="form-control" id="rit_ind_NumeroIdentificacion" readonly>
+						</div>
+						<div class="col-md-1 form-group">
+							<label>DV</label>
+							<input type="text" class="form-control" id="rit_ind_DV" readonly>
+						</div>
+						<div class="col-md-5 form-group">
+							<label>Tipo de persona</label>
+							<select class="form-control" name="ind_Persona" id="rit_ind_Persona">
+								<option value="1">Natural</option>
+								<option value="2">Jurídica</option>
+							</select>
+						</div>
+					</div>
+
+					<div class="row">
+						<div class="col-md-3 form-group">
+							<label>Primer nombre</label>
+							<input type="text" class="form-control" name="ind_PrimerNombre" id="rit_ind_PrimerNombre" maxlength="100">
+						</div>
+						<div class="col-md-3 form-group">
+							<label>Segundo nombre</label>
+							<input type="text" class="form-control" name="ind_SegundoNombre" id="rit_ind_SegundoNombre" maxlength="100">
+						</div>
+						<div class="col-md-3 form-group">
+							<label>Primer apellido</label>
+							<input type="text" class="form-control" name="ind_PrimerApellido" id="rit_ind_PrimerApellido" maxlength="100">
+						</div>
+						<div class="col-md-3 form-group">
+							<label>Segundo apellido</label>
+							<input type="text" class="form-control" name="ind_SegundoApellido" id="rit_ind_SegundoApellido" maxlength="100">
+						</div>
+					</div>
+
+					<div class="row">
+						<div class="col-md-5 form-group">
+							<label>Dirección</label>
+							<input type="text" class="form-control" name="ind_Direccion" id="rit_ind_Direccion" maxlength="200">
+						</div>
+						<div class="col-md-3 form-group">
+							<label>Municipio de residencia</label>
+							<select class="form-control" name="ind_IdCiudad" id="rit_ind_IdCiudad"></select>
+						</div>
+						<div class="col-md-2 form-group">
+							<label>Teléfono</label>
+							<input type="text" class="form-control" name="ind_Telefono" id="rit_ind_Telefono">
+						</div>
+						<div class="col-md-2 form-group">
+							<label>Correo</label>
+							<input type="email" class="form-control" name="ind_Email" id="rit_ind_Email" maxlength="500">
+						</div>
+					</div>
+
+					<hr>
+					<h5 class="mb-3" style="font-weight:600;">Datos del registro</h5>
+					<div class="row">
+						<!-- Punto 8: esta matricula es la de la PERSONA natural
+						     o juridica. La del establecimiento es otra y vive en
+						     el modulo de establecimientos. -->
+						<div class="col-md-3 form-group">
+							<label>Matrícula mercantil <small class="text-muted">(de la persona)</small></label>
+							<input type="text" class="form-control" name="ind_Matricula" id="rit_ind_Matricula" maxlength="50">
+						</div>
+						<div class="col-md-3 form-group">
+							<label>Fecha de matrícula</label>
+							<input type="date" class="form-control" name="ind_Fecha_matricula" id="rit_ind_Fecha_matricula">
+						</div>
+						<div class="col-md-3 form-group">
+							<label>Fecha de inicio de actividades</label>
+							<input type="date" class="form-control" name="ind_Fecha_inicio" id="rit_ind_Fecha_inicio">
+						</div>
+						<div class="col-md-3 form-group">
+							<label>¿Registrado en cámara de comercio?</label>
+							<select class="form-control" name="ind_Ind_camara_comercio" id="rit_ind_Ind_camara_comercio">
+								<option value="">Sin especificar</option>
+								<option value="1">Sí</option>
+								<option value="0">No</option>
+							</select>
+						</div>
+					</div>
+
+					<hr>
+					<h5 class="mb-3" style="font-weight:600;">Representante legal</h5>
+					<div class="row">
+						<div class="col-md-3 form-group">
+							<label>Cédula</label>
+							<input type="text" class="form-control" name="ind_Cedula_representante" id="rit_ind_Cedula_representante" maxlength="20">
+						</div>
+						<div class="col-md-5 form-group">
+							<label>Nombre</label>
+							<input type="text" class="form-control" name="ind_Nombre_representante" id="rit_ind_Nombre_representante" maxlength="100">
+						</div>
+						<div class="col-md-4 form-group">
+							<label>Correo</label>
+							<input type="email" class="form-control" name="ind_Email_representante" id="rit_ind_Email_representante" maxlength="150">
+						</div>
+					</div>
+
+					<hr>
+					<!-- Puntos 14 y 15: esto lo registra solo el administrador;
+					     el contribuyente lo ve pero no lo edita. El bloqueo real
+					     esta en el servidor (_camposSoloAdministrador); lo de
+					     aqui es para que se entienda a la vista. -->
+					<h5 class="mb-1" style="font-weight:600;">Contador y revisor fiscal</h5>
+					<p class="text-muted" id="ritAvisoContador" style="display:none;">
+						<i class="fa fa-lock"></i> Solo la Alcaldía puede modificar estos datos.
+					</p>
+					<div class="row">
+						<div class="col-md-3 form-group">
+							<label>Cédula del contador</label>
+							<input type="text" class="form-control campo-solo-admin" name="ind_Cedula_contador" id="rit_ind_Cedula_contador" maxlength="20">
+						</div>
+						<div class="col-md-3 form-group">
+							<label>Nombre del contador</label>
+							<input type="text" class="form-control campo-solo-admin" name="ind_Nombre_contador" id="rit_ind_Nombre_contador" maxlength="100">
+						</div>
+						<div class="col-md-3 form-group">
+							<label>Tarjeta profesional</label>
+							<input type="text" class="form-control campo-solo-admin" name="ind_Tarjeta_profesional" id="rit_ind_Tarjeta_profesional" maxlength="50">
+						</div>
+						<div class="col-md-3 form-group">
+							<label>Correo del contador</label>
+							<input type="email" class="form-control campo-solo-admin" name="ind_EmailContador" id="rit_ind_EmailContador" maxlength="150">
+						</div>
+					</div>
+					<div class="row">
+						<div class="col-md-3 form-group">
+							<label>Cédula del revisor fiscal</label>
+							<input type="text" class="form-control campo-solo-admin" name="ind_Cedula_revisor" id="rit_ind_Cedula_revisor" maxlength="20">
+						</div>
+						<div class="col-md-3 form-group">
+							<label>Nombre del revisor fiscal</label>
+							<input type="text" class="form-control campo-solo-admin" name="ind_Nombre_revisor" id="rit_ind_Nombre_revisor" maxlength="100">
+						</div>
+						<div class="col-md-3 form-group">
+							<label>Tarjeta profesional</label>
+							<input type="text" class="form-control campo-solo-admin" name="ind_Tarjeta_profesional_revisor" id="rit_ind_Tarjeta_profesional_revisor" maxlength="50">
+						</div>
+						<div class="col-md-3 form-group">
+							<label>Correo del revisor fiscal</label>
+							<input type="email" class="form-control campo-solo-admin" name="ind_EmailRevisor" id="rit_ind_EmailRevisor" maxlength="150">
+						</div>
+					</div>
+
+					<hr>
+					<!-- Punto 9: el RIT tiene que mostrar las actividades. Se
+					     listan las del año mas reciente que el contribuyente
+					     tenga registrado; se editan en el establecimiento al
+					     que pertenecen, por eso aqui van solo de lectura. -->
+					<h5 class="mb-3" style="font-weight:600;">Actividades económicas</h5>
+					<div class="table-responsive">
+						<table class="table table-bordered table-sm">
+							<thead style="background:#e9ecef; font-weight:600;">
+								<tr>
+									<th style="width:90px;">Código</th>
+									<th>Actividad</th>
+									<th style="width:220px;">Establecimiento</th>
+									<th style="width:80px;">Año</th>
+								</tr>
+							</thead>
+							<tbody id="tbodyActividadesRIT"></tbody>
+						</table>
+					</div>
+				</form>
 			</div>
 		</div>
     

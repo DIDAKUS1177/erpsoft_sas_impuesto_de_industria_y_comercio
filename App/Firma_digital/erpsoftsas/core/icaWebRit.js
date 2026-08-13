@@ -899,6 +899,11 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
     }
 
     getEstablecimientos() {
+
+        // La tabla de establecimientos salio de esta pantalla (punto 5).
+        // Quedan llamadas a esta funcion en flujos del modal; sin esta guarda
+        // reventarian contra un elemento que ya no existe.
+        if ($("#bodyEstablecimientosRegistrados").length === 0) { return; }
         
         $.ajax({
             url: '../business/controller/class.establecimientos.php',
@@ -1707,11 +1712,194 @@ actualizarDeclaracionIca(valor, numeroCampo){
 
 
 
+
+    /* ======================================================================
+       Formulario del RIT (puntos 4, 8, 9, 10, 14, 15)
+       ----------------------------------------------------------------------
+       El RIT es el contribuyente, no el establecimiento. Estas dos funciones
+       son las que llenan el formulario de la pantalla y lo graban.
+       ====================================================================== */
+
+    cargarRIT() {
+
+        if (!idContribuyente) {
+            $('#ritEstadoCarga').text('No se pudo identificar al contribuyente.');
+            return;
+        }
+
+        $('#ritEstadoCarga').text('Cargando…');
+
+        $.ajax({
+            url: '../business/controller/class.contribuyentes.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { funcion: 6, ind_Id: idContribuyente },
+            success: function (resp) {
+
+                if (resp.ok != 1 || !resp.datos) {
+                    $('#ritEstadoCarga').text(resp.mensaje || 'No se pudo cargar el RIT.');
+                    return;
+                }
+
+                var d = resp.datos;
+                establecimientos._rit = d;
+
+                $('#rit_ind_Id').val(d.ind_Id);
+
+                // Los de solo lectura se pintan como texto.
+                $('#rit_ind_NumeroIdentificacion').val(d.ind_NumeroIdentificacion || '');
+                $('#rit_ind_DV').val(d.ind_DV != null ? d.ind_DV : '');
+                $('#rit_TipoDocumento').val(establecimientos.nombreTipoDocumento(d.ind_IdTipoDocumento));
+
+                var campos = [
+                    'ind_Persona', 'ind_PrimerNombre', 'ind_SegundoNombre',
+                    'ind_PrimerApellido', 'ind_SegundoApellido', 'ind_Direccion',
+                    'ind_Telefono', 'ind_Email', 'ind_Matricula',
+                    'ind_Fecha_matricula', 'ind_Fecha_inicio', 'ind_Ind_camara_comercio',
+                    'ind_Cedula_representante', 'ind_Nombre_representante', 'ind_Email_representante',
+                    'ind_Cedula_contador', 'ind_Nombre_contador', 'ind_Tarjeta_profesional',
+                    'ind_Cedula_revisor', 'ind_Nombre_revisor', 'ind_Tarjeta_profesional_revisor',
+                    'ind_EmailContador', 'ind_EmailRevisor'
+                ];
+                campos.forEach(function (campo) {
+                    var v = d[campo];
+                    $('#rit_' + campo).val(v == null ? '' : v);
+                });
+
+                // Geografia.poblar() es la cascada departamento -> ciudad y
+                // necesita DOS selects; aqui solo hay uno, asi que se usa el
+                // mismo camino del select unico que ya usa el modal de
+                // Informacion del Contribuyente.
+                establecimientos.cargarCiudadesRIT(d.ind_IdCiudad);
+
+                establecimientos.pintarActividadesRIT(d.actividades || []);
+                establecimientos.aplicarPermisosRIT();
+
+                // Punto 10: el RIT queda inicializado en el primer ingreso, sin
+                // que nadie tenga que crearlo.
+                $('#ritEstadoCarga').text(
+                    d.rit_recien_inicializado == 1
+                        ? 'Registro creado en este ingreso. Complete los datos y guarde.'
+                        : 'Última actualización: ' + (d.ind_FechaActualizacion || 'sin registro')
+                );
+            },
+            error: function () {
+                $('#ritEstadoCarga').text('No se pudo cargar el RIT. Intenta de nuevo.');
+            }
+        });
+    }
+
+    /** Llena el municipio del RIT con el catalogo completo (conf_ciudades). */
+    cargarCiudadesRIT(idActual) {
+
+        $.ajax({
+            url: '../business/controller/class.ciudades.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { funcion: 1 },
+            success: function (arr) {
+                if (arr.ok != 1) { return; }
+
+                var opciones = '<option value=""></option>';
+                $.each(arr.datos, function (i, ciudad) {
+                    opciones += '<option value="' + ciudad.ciu_Id + '">' +
+                                ciudad.ciu_Nombre + ' - ' + ciudad.ciu_Departamento +
+                                '</option>';
+                });
+
+                $('#rit_ind_IdCiudad').html(opciones);
+                if (idActual) { $('#rit_ind_IdCiudad').val(idActual); }
+            },
+            error: function () {
+                // Sin catalogo, al menos se conserva el municipio actual en vez
+                // de dejar el select vacio y que al guardar se borre.
+                $('#rit_ind_IdCiudad').html(
+                    '<option value="' + (idActual || '') + '" selected>Municipio actual</option>'
+                );
+            }
+        });
+    }
+
+    nombreTipoDocumento(id) {
+        var tipos = { 1: 'Cédula de Ciudadanía', 3: 'Cédula de Extranjería', 4: 'Pasaporte', 5: 'NIT' };
+        return tipos[id] || '';
+    }
+
+    /** Punto 9: las actividades se muestran, pero se editan en su establecimiento. */
+    pintarActividadesRIT(actividades) {
+
+        if (!actividades.length) {
+            $('#tbodyActividadesRIT').html(
+                '<tr><td colspan="4" class="text-center text-muted py-3">' +
+                    'No hay actividades económicas registradas.' +
+                '</td></tr>'
+            );
+            return;
+        }
+
+        var filas = '';
+        actividades.forEach(function (a) {
+            filas +=
+                '<tr>' +
+                    '<td>' + (a.acc_Codigo || '') + '</td>' +
+                    '<td>' + (a.acc_Nombre || '') + '</td>' +
+                    '<td>' + (a.est_Nombre || '') + '</td>' +
+                    '<td>' + (a.ace_Anio || '') + '</td>' +
+                '</tr>';
+        });
+        $('#tbodyActividadesRIT').html(filas);
+    }
+
+    /**
+     * Puntos 14 y 15: contador y revisor solo los edita el administrador.
+     * Esto es la parte visible; quien de verdad decide es el servidor
+     * (_camposSoloAdministrador en class.contribuyentes.php), porque un
+     * readonly del navegador se quita con la consola.
+     */
+    aplicarPermisosRIT() {
+        var esAdmin = String(idRol) === '1';
+        $('.campo-solo-admin').prop('readonly', !esAdmin);
+        $('#ritAvisoContador').toggle(!esAdmin);
+    }
+
+    guardarRIT() {
+
+        var $boton = $('#btnGuardarRIT');
+        $boton.prop('disabled', true);
+
+        $.ajax({
+            url: '../business/controller/class.contribuyentes.php',
+            type: 'POST',
+            dataType: 'json',
+            data: $('#formRIT').serialize() + '&funcion=7',
+            success: function (resp) {
+                $boton.prop('disabled', false);
+
+                if (resp.ok != 1) {
+                    swal({ type: 'error', title: 'No se pudo guardar', text: resp.mensaje || 'Intenta de nuevo.' });
+                    return;
+                }
+
+                swal({ type: 'success', title: 'RIT actualizado', text: resp.mensaje, timer: 2200 });
+                establecimientos.cargarRIT();
+            },
+            error: function () {
+                $boton.prop('disabled', false);
+                swal({ type: 'error', title: 'Error de conexión', text: 'No se pudo guardar el RIT.' });
+            }
+        });
+    }
 }
 
 const establecimientos = new Establecimientos();
 
-establecimientos.getEstablecimientos();
+// Punto 4: la pantalla abre con el formulario del RIT, no con la
+// tabla de establecimientos (que paso a su propio modulo).
+establecimientos.cargarRIT();
+
+$(document).on('click', '#btnCancelarRIT', function () {
+    establecimientos.cargarRIT();   // descarta lo escrito y recarga
+});
 establecimientos.UsuarioActivo();
 
 $(document).ready(function(){
