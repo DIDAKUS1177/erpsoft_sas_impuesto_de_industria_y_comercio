@@ -52,13 +52,34 @@ BEGIN
         anx_Activo            INT           NOT NULL DEFAULT 1
     );
 
-    CREATE INDEX IX_anexos_establecimiento
-        ON dbo.ind_establecimiento_anexos (anx_IdEstablecimiento, anx_Activo);
-
     PRINT 'ind_establecimiento_anexos creada.';
 END
 ELSE
     PRINT 'ind_establecimiento_anexos ya existia.';
+GO
+
+/* Guarda PROPIA para el indice, independiente de la de la tabla. Antes
+   compartian una sola guarda (IF OBJECT_ID(tabla) IS NULL): si CREATE INDEX
+   fallaba (corte de conexion a mitad de batch, disco sin espacio durante el
+   build, permisos insuficientes solo para indices) DESPUES de que la tabla
+   ya se hubiera creado con exito, la tabla quedaba en pie pero sin su unico
+   indice -y una re-corrida posterior nunca lo intentaba de nuevo, porque
+   OBJECT_ID(tabla) ya no era NULL-. Reproducido y confirmado: forzando ese
+   fallo, el indice quedaba perdido para siempre pese a correr la migracion
+   otra vez. Con su propia guarda, se reintenta en cualquier corrida
+   posterior mientras no exista. */
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+     WHERE name = 'IX_anexos_establecimiento'
+       AND object_id = OBJECT_ID('dbo.ind_establecimiento_anexos')
+)
+BEGIN
+    CREATE INDEX IX_anexos_establecimiento
+        ON dbo.ind_establecimiento_anexos (anx_IdEstablecimiento, anx_Activo);
+    PRINT 'IX_anexos_establecimiento creado.';
+END
+ELSE
+    PRINT 'IX_anexos_establecimiento ya existia.';
 GO
 
 IF NOT EXISTS (SELECT 1 FROM dbo.conf_migraciones WHERE mig_Nombre = '004_anexos_establecimiento')
