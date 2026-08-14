@@ -47,6 +47,18 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
 
     const TAMANO_MAXIMO = 10485760; // 10 MB
 
+    /**
+     * Tope de archivos activos por establecimiento. Sin esto, un usuario
+     * autenticado y legitimo (rol "Externos - ICA" incluido, no hace falta
+     * privilegio especial) podia subir en bucle sin limite de cantidad ni
+     * frecuencia -solo el tamaño individual estaba acotado-, agotando el
+     * disco compartido entre municipios. Reproducido: 30 subidas seguidas de
+     * 192 bytes, las 30 aceptadas. Un RUT, una Camara de Comercio, una
+     * Cedula y un soporte de Cese caben de sobra en 20; se puede subir un
+     * numero mas alto si el cliente lo pide.
+     */
+    const MAX_ANEXOS_POR_ESTABLECIMIENTO = 20;
+
     public static function run()
     {
         $_obj = new self();
@@ -219,6 +231,18 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
 
         if (!isset($_FILES['anexos'])) {
             $this->_mensaje = 'No llegó ningún archivo';
+            return [];
+        }
+
+        $yaActivos = $con->obnerFila($con->consultar(
+            "SELECT COUNT(*) AS n FROM ind_establecimiento_anexos
+              WHERE anx_IdEstablecimiento = ? AND anx_Activo = 1",
+            [$idEstablecimiento]
+        ));
+        $cantidadNueva = count((array) $_FILES['anexos']['name']);
+        if ((int) ($yaActivos['n'] ?? 0) + $cantidadNueva > self::MAX_ANEXOS_POR_ESTABLECIMIENTO) {
+            $this->_mensaje = 'Este establecimiento ya tiene el máximo de '
+                . self::MAX_ANEXOS_POR_ESTABLECIMIENTO . ' archivos. Retire alguno antes de subir otro.';
             return [];
         }
 
