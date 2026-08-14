@@ -64,7 +64,16 @@ $ruta = \erpsoftsas\ControladorAnexos::carpetaBase() . '/' . $anexo['anx_Ruta'];
 $rutaReal = realpath($ruta);
 $baseReal = realpath(\erpsoftsas\ControladorAnexos::carpetaBase());
 
-if (!$rutaReal || !$baseReal || strpos($rutaReal, $baseReal) !== 0 || !is_file($rutaReal)) {
+// strpos($rutaReal, $baseReal) !== 0 sin el separador final es el bypass
+// clasico de prefijo: "/var/.../anexos_establecimientos_EVIL/x" tambien
+// empieza por "/var/.../anexos_establecimientos", pero es una carpeta
+// HERMANA, no un hijo. Hoy anx_Ruta siempre la genera el servidor (nunca
+// trae "..", no hay forma normal de inyectarlo), asi que no es explotable
+// por la via de subida actual -pero el chequeo en si estaba mal, y
+// reproducido a mano (una fila con anx_Ruta manipulada) si se colaba.
+if (!$rutaReal || !$baseReal
+    || ($rutaReal !== $baseReal && strpos($rutaReal, $baseReal . DIRECTORY_SEPARATOR) !== 0)
+    || !is_file($rutaReal)) {
     http_response_code(404);
     exit('El archivo no está disponible.');
 }

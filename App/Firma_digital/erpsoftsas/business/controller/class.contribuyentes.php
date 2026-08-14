@@ -656,6 +656,24 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             return [];
         }
 
+        // puedeOperarSobreContribuyente() ya verifica existencia para
+        // cualquier rol que NO sea administrador (el cruce por documento no
+        // encuentra nada si el ind_Id no existe). Pero para rol 1/2 devuelve
+        // true de inmediato sin comprobar nada mas: un administrador podia
+        // "guardar" un ind_Id inexistente, el UPDATE de mas abajo afectaba 0
+        // filas sin que sqlsrv marcara error, y la respuesta seguia siendo
+        // ok:1 "RIT actualizado" -exito falso sobre un contribuyente que no
+        // existe-.
+        $existe = $con->obnerFila($con->consultar(
+            "SELECT ind_Id FROM ind_contribuyentes WHERE ind_Id = ?",
+            [$idContribuyente]
+        ));
+        if (!$existe) {
+            $this->_ok = 0;
+            $this->_mensaje = 'El contribuyente no existe';
+            return [];
+        }
+
         $sets    = [];
         $valores = [];
 
