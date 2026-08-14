@@ -97,55 +97,99 @@ GO
 
 /* ---------------------------------------------------------------------------
    4. Contador y revisor fiscal (puntos 14, 15, 16)
-   Los correos (ind_EmailContador / ind_EmailRevisor) ya existen desde la
-   migracion 001; aqui se completan los demas datos de esas dos personas.
+   ----------------------------------------------------------------------------
+   CORREGIDO 2026-08-14 (encontrado en el chequeo exhaustivo de esta sesion):
+   la primera version de esta seccion creaba ind_Cedula_contador,
+   ind_Nombre_contador, ind_Tarjeta_profesional, ind_Cedula_revisor,
+   ind_Nombre_revisor, ind_Tarjeta_profesional_revisor -un juego de columnas
+   PARALELO, con otro nombre, a uno que ya existe en produccion desde
+   migracion_2026-08_contribuyente.sql BLOQUE 4 (aplicada en Paipa el
+   2026-08-04): ind_NombreContador, ind_CedulaContador,
+   ind_TarjetaProfContador, ind_NombreRevisor, ind_CedulaRevisor,
+   ind_TarjetaProfRevisor. declaracion.php y microservicios/firmas/api.php
+   leen EXCLUSIVAMENTE ese juego viejo. Si esta migracion hubiera creado el
+   juego nuevo en produccion, cualquier edicion de contador/revisor hecha
+   desde el RIT se habria guardado en columnas que el PDF y el microservicio
+   de firma nunca leen -una divergencia silenciosa entre lo que el
+   contribuyente ve y lo que de verdad aplica para su firma tributaria-.
+   Esta migracion NUNCA se desplego a ningun lado (solo corrio en la copia
+   local de pruebas), asi que se corrige aqui mismo en vez de arrastrar el
+   error con una migracion aparte.
+
+   Los correos (ind_EmailContador / ind_EmailRevisor) no cambian: esos ya
+   estaban bien -mismo nombre en las dos migraciones- desde el principio.
    --------------------------------------------------------------------------- */
-IF COL_LENGTH('dbo.ind_contribuyentes', 'ind_Cedula_contador') IS NULL
+IF COL_LENGTH('dbo.ind_contribuyentes', 'ind_CedulaContador') IS NULL
 BEGIN
-    ALTER TABLE dbo.ind_contribuyentes ADD ind_Cedula_contador VARCHAR(20) NULL;
-    PRINT 'ind_Cedula_contador agregada.';
+    ALTER TABLE dbo.ind_contribuyentes ADD ind_CedulaContador VARCHAR(20) NULL;
+    PRINT 'ind_CedulaContador agregada.';
 END
-ELSE PRINT 'ind_Cedula_contador ya existia.';
+ELSE PRINT 'ind_CedulaContador ya existia.';
 GO
 
-IF COL_LENGTH('dbo.ind_contribuyentes', 'ind_Nombre_contador') IS NULL
+IF COL_LENGTH('dbo.ind_contribuyentes', 'ind_NombreContador') IS NULL
 BEGIN
-    ALTER TABLE dbo.ind_contribuyentes ADD ind_Nombre_contador VARCHAR(100) NULL;
-    PRINT 'ind_Nombre_contador agregada.';
+    ALTER TABLE dbo.ind_contribuyentes ADD ind_NombreContador VARCHAR(100) NULL;
+    PRINT 'ind_NombreContador agregada.';
 END
-ELSE PRINT 'ind_Nombre_contador ya existia.';
+ELSE PRINT 'ind_NombreContador ya existia.';
 GO
 
-IF COL_LENGTH('dbo.ind_contribuyentes', 'ind_Tarjeta_profesional') IS NULL
+IF COL_LENGTH('dbo.ind_contribuyentes', 'ind_TarjetaProfContador') IS NULL
 BEGIN
-    ALTER TABLE dbo.ind_contribuyentes ADD ind_Tarjeta_profesional VARCHAR(50) NULL;
-    PRINT 'ind_Tarjeta_profesional agregada.';
+    ALTER TABLE dbo.ind_contribuyentes ADD ind_TarjetaProfContador VARCHAR(50) NULL;
+    PRINT 'ind_TarjetaProfContador agregada.';
 END
-ELSE PRINT 'ind_Tarjeta_profesional ya existia.';
+ELSE PRINT 'ind_TarjetaProfContador ya existia.';
 GO
 
-IF COL_LENGTH('dbo.ind_contribuyentes', 'ind_Cedula_revisor') IS NULL
+IF COL_LENGTH('dbo.ind_contribuyentes', 'ind_CedulaRevisor') IS NULL
 BEGIN
-    ALTER TABLE dbo.ind_contribuyentes ADD ind_Cedula_revisor VARCHAR(20) NULL;
-    PRINT 'ind_Cedula_revisor agregada.';
+    ALTER TABLE dbo.ind_contribuyentes ADD ind_CedulaRevisor VARCHAR(20) NULL;
+    PRINT 'ind_CedulaRevisor agregada.';
 END
-ELSE PRINT 'ind_Cedula_revisor ya existia.';
+ELSE PRINT 'ind_CedulaRevisor ya existia.';
 GO
 
-IF COL_LENGTH('dbo.ind_contribuyentes', 'ind_Nombre_revisor') IS NULL
+IF COL_LENGTH('dbo.ind_contribuyentes', 'ind_NombreRevisor') IS NULL
 BEGIN
-    ALTER TABLE dbo.ind_contribuyentes ADD ind_Nombre_revisor VARCHAR(100) NULL;
-    PRINT 'ind_Nombre_revisor agregada.';
+    ALTER TABLE dbo.ind_contribuyentes ADD ind_NombreRevisor VARCHAR(100) NULL;
+    PRINT 'ind_NombreRevisor agregada.';
 END
-ELSE PRINT 'ind_Nombre_revisor ya existia.';
+ELSE PRINT 'ind_NombreRevisor ya existia.';
 GO
 
-IF COL_LENGTH('dbo.ind_contribuyentes', 'ind_Tarjeta_profesional_revisor') IS NULL
+IF COL_LENGTH('dbo.ind_contribuyentes', 'ind_TarjetaProfRevisor') IS NULL
 BEGIN
-    ALTER TABLE dbo.ind_contribuyentes ADD ind_Tarjeta_profesional_revisor VARCHAR(50) NULL;
-    PRINT 'ind_Tarjeta_profesional_revisor agregada.';
+    ALTER TABLE dbo.ind_contribuyentes ADD ind_TarjetaProfRevisor VARCHAR(50) NULL;
+    PRINT 'ind_TarjetaProfRevisor agregada.';
 END
-ELSE PRINT 'ind_Tarjeta_profesional_revisor ya existia.';
+ELSE PRINT 'ind_TarjetaProfRevisor ya existia.';
+GO
+
+/* Correccion de bases que ya corrieron la version anterior (con el nombre
+   equivocado): se copia el dato a la columna correcta -solo si esta vacia,
+   para no pisar nada que ya se haya corregido a mano- y se retiran las
+   columnas equivocadas. Si esas columnas nunca existieron aqui (caso normal
+   en produccion, que nunca corrio la version con el error), este bloque no
+   hace nada. */
+IF COL_LENGTH('dbo.ind_contribuyentes', 'ind_Nombre_contador') IS NOT NULL
+BEGIN
+    UPDATE dbo.ind_contribuyentes SET
+        ind_CedulaContador      = COALESCE(ind_CedulaContador,      ind_Cedula_contador),
+        ind_NombreContador      = COALESCE(ind_NombreContador,      ind_Nombre_contador),
+        ind_TarjetaProfContador = COALESCE(ind_TarjetaProfContador, ind_Tarjeta_profesional),
+        ind_CedulaRevisor       = COALESCE(ind_CedulaRevisor,       ind_Cedula_revisor),
+        ind_NombreRevisor       = COALESCE(ind_NombreRevisor,       ind_Nombre_revisor),
+        ind_TarjetaProfRevisor  = COALESCE(ind_TarjetaProfRevisor,  ind_Tarjeta_profesional_revisor);
+
+    ALTER TABLE dbo.ind_contribuyentes
+        DROP COLUMN ind_Cedula_contador, ind_Nombre_contador, ind_Tarjeta_profesional,
+                    ind_Cedula_revisor, ind_Nombre_revisor, ind_Tarjeta_profesional_revisor;
+
+    PRINT 'Columnas equivocadas de una corrida anterior: datos trasladados y columnas retiradas.';
+END
+ELSE PRINT 'No habia columnas equivocadas que corregir.';
 GO
 
 
@@ -186,6 +230,8 @@ GO
         est_IdContribuyente AS ind_Id,
         MIN(NULLIF(LTRIM(RTRIM(est_Matricula)), ''))              AS matricula,
         COUNT(DISTINCT NULLIF(LTRIM(RTRIM(est_Matricula)), ''))   AS n_matricula,
+        MIN(est_Ind_camara_comercio)                              AS camara,
+        COUNT(DISTINCT est_Ind_camara_comercio)                   AS n_camara,
         MIN(NULLIF(LTRIM(RTRIM(est_Cedula_representante)), ''))            AS ced_rep,
         COUNT(DISTINCT NULLIF(LTRIM(RTRIM(est_Cedula_representante)), '')) AS n_ced_rep,
         MIN(NULLIF(LTRIM(RTRIM(est_Nombre_representante)), ''))            AS nom_rep,
@@ -210,15 +256,16 @@ GO
 UPDATE c SET
     /* Solo se rellena si la columna esta vacia Y el valor de origen es unico. */
     c.ind_Matricula                    = CASE WHEN v.n_matricula  = 1 THEN COALESCE(c.ind_Matricula,  v.matricula) ELSE c.ind_Matricula  END,
+    c.ind_Ind_camara_comercio          = CASE WHEN v.n_camara     = 1 THEN COALESCE(c.ind_Ind_camara_comercio, v.camara) ELSE c.ind_Ind_camara_comercio END,
     c.ind_Cedula_representante         = CASE WHEN v.n_ced_rep    = 1 THEN COALESCE(c.ind_Cedula_representante, v.ced_rep)  ELSE c.ind_Cedula_representante END,
     c.ind_Nombre_representante         = CASE WHEN v.n_nom_rep    = 1 THEN COALESCE(c.ind_Nombre_representante, v.nom_rep)  ELSE c.ind_Nombre_representante END,
     c.ind_Email_representante          = CASE WHEN v.n_mail_rep   = 1 THEN COALESCE(c.ind_Email_representante,  v.mail_rep) ELSE c.ind_Email_representante  END,
-    c.ind_Cedula_contador              = CASE WHEN v.n_ced_cont   = 1 THEN COALESCE(c.ind_Cedula_contador, v.ced_cont) ELSE c.ind_Cedula_contador END,
-    c.ind_Nombre_contador              = CASE WHEN v.n_nom_cont   = 1 THEN COALESCE(c.ind_Nombre_contador, v.nom_cont) ELSE c.ind_Nombre_contador END,
-    c.ind_Tarjeta_profesional          = CASE WHEN v.n_tp_cont    = 1 THEN COALESCE(c.ind_Tarjeta_profesional, v.tp_cont) ELSE c.ind_Tarjeta_profesional END,
-    c.ind_Cedula_revisor               = CASE WHEN v.n_ced_rev    = 1 THEN COALESCE(c.ind_Cedula_revisor, v.ced_rev) ELSE c.ind_Cedula_revisor END,
-    c.ind_Nombre_revisor               = CASE WHEN v.n_nom_rev    = 1 THEN COALESCE(c.ind_Nombre_revisor, v.nom_rev) ELSE c.ind_Nombre_revisor END,
-    c.ind_Tarjeta_profesional_revisor  = CASE WHEN v.n_tp_rev     = 1 THEN COALESCE(c.ind_Tarjeta_profesional_revisor, v.tp_rev) ELSE c.ind_Tarjeta_profesional_revisor END
+    c.ind_CedulaContador               = CASE WHEN v.n_ced_cont   = 1 THEN COALESCE(c.ind_CedulaContador, v.ced_cont) ELSE c.ind_CedulaContador END,
+    c.ind_NombreContador               = CASE WHEN v.n_nom_cont   = 1 THEN COALESCE(c.ind_NombreContador, v.nom_cont) ELSE c.ind_NombreContador END,
+    c.ind_TarjetaProfContador          = CASE WHEN v.n_tp_cont    = 1 THEN COALESCE(c.ind_TarjetaProfContador, v.tp_cont) ELSE c.ind_TarjetaProfContador END,
+    c.ind_CedulaRevisor                = CASE WHEN v.n_ced_rev    = 1 THEN COALESCE(c.ind_CedulaRevisor, v.ced_rev) ELSE c.ind_CedulaRevisor END,
+    c.ind_NombreRevisor                = CASE WHEN v.n_nom_rev    = 1 THEN COALESCE(c.ind_NombreRevisor, v.nom_rev) ELSE c.ind_NombreRevisor END,
+    c.ind_TarjetaProfRevisor           = CASE WHEN v.n_tp_rev     = 1 THEN COALESCE(c.ind_TarjetaProfRevisor, v.tp_rev) ELSE c.ind_TarjetaProfRevisor END
 FROM dbo.ind_contribuyentes c
 INNER JOIN valores v ON v.ind_Id = c.ind_Id;
 GO
@@ -262,17 +309,31 @@ GO
    Hay que decidir a mano cual es el dato bueno y cargarlo en el RIT.
    ============================================================================ */
 SELECT
-    e.est_IdContribuyente                                                   AS contribuyente,
-    COUNT(*)                                                                AS establecimientos,
-    COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Matricula)), ''))               AS matriculas_distintas,
-    COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Nombre_representante)), ''))    AS representantes_distintos,
-    COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Nombre_contador)), ''))         AS contadores_distintos,
-    COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Nombre_revisor)), ''))          AS revisores_distintos
+    e.est_IdContribuyente                                                        AS contribuyente,
+    COUNT(*)                                                                     AS establecimientos,
+    COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Matricula)), ''))                    AS matriculas_distintas,
+    COUNT(DISTINCT e.est_Ind_camara_comercio)                                    AS camara_comercio_distintos,
+    COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Cedula_representante)), ''))         AS cedulas_representante_distintas,
+    COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Nombre_representante)), ''))         AS representantes_distintos,
+    COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Email_representante)), ''))          AS correos_representante_distintos,
+    COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Cedula_contador)), ''))              AS cedulas_contador_distintas,
+    COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Nombre_contador)), ''))              AS contadores_distintos,
+    COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Tarjeta_profesional)), ''))          AS tarjetas_contador_distintas,
+    COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Cedula_revisor)), ''))               AS cedulas_revisor_distintas,
+    COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Nombre_revisor)), ''))               AS revisores_distintos,
+    COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Tarjeta_profesional_revisor)), ''))  AS tarjetas_revisor_distintas
 FROM dbo.ind_establecimientos e
 GROUP BY e.est_IdContribuyente
-HAVING COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Matricula)), ''))            > 1
-    OR COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Nombre_representante)), '')) > 1
-    OR COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Nombre_contador)), ''))      > 1
-    OR COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Nombre_revisor)), ''))       > 1
+HAVING COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Matricula)), ''))                    > 1
+    OR COUNT(DISTINCT e.est_Ind_camara_comercio)                                    > 1
+    OR COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Cedula_representante)), ''))         > 1
+    OR COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Nombre_representante)), ''))         > 1
+    OR COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Email_representante)), ''))          > 1
+    OR COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Cedula_contador)), ''))              > 1
+    OR COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Nombre_contador)), ''))              > 1
+    OR COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Tarjeta_profesional)), ''))          > 1
+    OR COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Cedula_revisor)), ''))               > 1
+    OR COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Nombre_revisor)), ''))               > 1
+    OR COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Tarjeta_profesional_revisor)), ''))  > 1
 ORDER BY e.est_IdContribuyente;
 GO

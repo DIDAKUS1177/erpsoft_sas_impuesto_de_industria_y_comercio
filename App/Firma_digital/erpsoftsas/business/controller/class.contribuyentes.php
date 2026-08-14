@@ -467,6 +467,36 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         ];
     }
 
+    /**
+     * Mapa nombre-del-formulario -> columna real de ind_contribuyentes, SOLO
+     * para los 6 campos donde difieren.
+     *
+     * La migracion 003 habia creado ind_Cedula_contador, ind_Nombre_contador,
+     * ind_Tarjeta_profesional, ind_Cedula_revisor, ind_Nombre_revisor,
+     * ind_Tarjeta_profesional_revisor como columnas NUEVAS -pero produccion
+     * ya tenia, desde el 2026-08-04 (migracion_2026-08_contribuyente.sql
+     * BLOQUE 4), un juego con el MISMO significado y otro nombre:
+     * ind_NombreContador, ind_CedulaContador, ind_TarjetaProfContador,
+     * ind_NombreRevisor, ind_CedulaRevisor, ind_TarjetaProfRevisor -que es lo
+     * que declaracion.php y microservicios/firmas/api.php ya leen-. La
+     * migracion 003 se corrigio para usar esos nombres (ver el archivo), pero
+     * el formulario del RIT (dist/icaWebRit.php, core/icaWebRit.js) sigue
+     * mandando/esperando los nombres viejos -no hacia falta tocar la vista
+     * para esto-, asi que aqui se traduce en el unico punto que habla con la
+     * base de datos.
+     */
+    private static function _mapaColumnaReal()
+    {
+        return [
+            'ind_Cedula_contador'             => 'ind_CedulaContador',
+            'ind_Nombre_contador'             => 'ind_NombreContador',
+            'ind_Tarjeta_profesional'         => 'ind_TarjetaProfContador',
+            'ind_Cedula_revisor'              => 'ind_CedulaRevisor',
+            'ind_Nombre_revisor'              => 'ind_NombreRevisor',
+            'ind_Tarjeta_profesional_revisor' => 'ind_TarjetaProfRevisor',
+        ];
+    }
+
     private static function _esAdministrador()
     {
         // La sesion se abre en class.sessions.php, pero este controlador puede
@@ -544,6 +574,13 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             $this->_ok = 0;
             $this->_mensaje = 'El contribuyente no existe';
             return [];
+        }
+
+        // El SELECT trae las columnas reales (ind_NombreContador, etc); se
+        // alias hacia los nombres que el formulario del RIT espera, sin tener
+        // que tocar la vista. Ver _mapaColumnaReal().
+        foreach (self::_mapaColumnaReal() as $nombreFormulario => $columnaReal) {
+            $fila[$nombreFormulario] = $fila[$columnaReal] ?? null;
         }
 
         // Punto 10: el RIT se da por inicializado en el primer ingreso. No se
@@ -673,7 +710,11 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
                 $valor = ($valor === '') ? null : (int) $valor;
             }
 
-            $sets[]    = $campo . ' = ?';
+            // Ver _mapaColumnaReal(): 6 de estos campos usan un nombre en el
+            // formulario distinto al de la columna real en la base.
+            $columnaReal = self::_mapaColumnaReal()[$campo] ?? $campo;
+
+            $sets[]    = $columnaReal . ' = ?';
             $valores[] = $valor;
         }
 

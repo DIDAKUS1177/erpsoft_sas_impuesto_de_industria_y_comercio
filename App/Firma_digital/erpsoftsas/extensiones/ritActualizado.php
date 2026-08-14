@@ -229,14 +229,19 @@ $d = [
 
 
 // CONTADOR
-'contador_nombre' => $esc($row['ind_Nombre_contador'] ?: $row['est_Nombre_contador']),
-'contador_cc' => $esc($row['ind_Cedula_contador'] ?: $row['est_Cedula_contador']),
-'contador_tp' => $esc($row['ind_Tarjeta_profesional'] ?: $row['est_Tarjeta_profesional']),
+// Los nombres de columna son ind_NombreContador (sin guion bajo entre
+// palabras), no ind_Nombre_contador: son los que ya trae produccion desde
+// migracion_2026-08_contribuyente.sql BLOQUE 4 (2026-08-04). La migracion
+// 003 habia creado un juego paralelo con otro nombre; se corrigio para usar
+// estos (ver el propio archivo de esa migracion).
+'contador_nombre' => $esc($row['ind_NombreContador'] ?: $row['est_Nombre_contador']),
+'contador_cc' => $esc($row['ind_CedulaContador'] ?: $row['est_Cedula_contador']),
+'contador_tp' => $esc($row['ind_TarjetaProfContador'] ?: $row['est_Tarjeta_profesional']),
 
 // REVISOR
-'revisor_nombre' => $esc($row['ind_Nombre_revisor'] ?: $row['est_Nombre_revisor']),
-'revisor_cc' => $esc($row['ind_Cedula_revisor'] ?: $row['est_Cedula_revisor']),
-'revisor_tp' => $esc($row['ind_Tarjeta_profesional_revisor'] ?: $row['est_Tarjeta_profesional_revisor']),
+'revisor_nombre' => $esc($row['ind_NombreRevisor'] ?: $row['est_Nombre_revisor']),
+'revisor_cc' => $esc($row['ind_CedulaRevisor'] ?: $row['est_Cedula_revisor']),
+'revisor_tp' => $esc($row['ind_TarjetaProfRevisor'] ?: $row['est_Tarjeta_profesional_revisor']),
 
 // CATASTRAL
 'codigo_catastral' => $esc($row['est_Codigo_catastral']),
