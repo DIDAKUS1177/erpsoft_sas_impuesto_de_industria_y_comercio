@@ -121,6 +121,14 @@ class Menu {
                     $(`.menu_${p.per_IdBoton}`).closest("li.dropdown").show();
                 }
             });
+
+            // "Inicio" no es un modulo con permiso propio -es la portada, un
+            // enlace directo a dashboard.php-, asi que no tiene ninguna clase
+            // menu_XXXX que lo pueda revelar y quedaba oculto para todos los
+            // roles menos el administrador. Se muestra siempre: si el usuario
+            // llego hasta aqui ya tiene sesion, y sin esto los roles externos
+            // se quedan sin forma de volver al tablero.
+            $("#MInicio").show();
         }
     }
 

@@ -220,8 +220,57 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
     }
 
     
+    /**
+     * Contribuyente al que esta atado el usuario de la sesion, o null si no
+     * hay sesion / no se puede resolver.
+     *
+     * Mismo criterio que ControladorAnexos::puedeOperarSobreEstablecimiento()
+     * y ControladorContribuyentes::puedeOperarSobreContribuyente(): el vinculo
+     * es conf_usuarios.usu_NumeroDocumento = ind_contribuyentes.ind_NumeroIdentificacion.
+     * Se repite aqui en vez de reutilizarse porque class.contribuyentes.php
+     * llama a run() al final del archivo: incluirlo desde otro controlador
+     * dispararia su respuesta JSON.
+     */
+    private static function _contribuyenteDeLaSesion($con)
+    {
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+        if (empty($_SESSION['id_usuario'])) { return null; }
+
+        $fila = $con->obnerFila($con->consultar(
+            "SELECT c.ind_Id
+               FROM ind_contribuyentes c
+               INNER JOIN conf_usuarios u ON u.usu_NumeroDocumento = c.ind_NumeroIdentificacion
+              WHERE u.usu_Id = ?",
+            [(int) $_SESSION['id_usuario']]
+        ));
+
+        return isset($fila['ind_Id']) ? (int) $fila['ind_Id'] : null;
+    }
+
     private function _consultarEstablecimientos()
     {
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+
+        // El filtro venia entero del cliente: quien no mandara
+        // est_IdContribuyente recibia TODOS los establecimientos del
+        // municipio, y quien mandara el de otro recibia los de ese otro
+        // (comprobado: el usuario externo de prueba listaba 12
+        // establecimientos de 6 contribuyentes distintos). Para todo rol que
+        // no sea Alcaldia el filtro se fija aqui, en el servidor, pisando lo
+        // que haya mandado el navegador.
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
+
+        if (!in_array($rol, [1, 2], true)) {
+            $propio = self::_contribuyenteDeLaSesion($con);
+            if (!$propio) {
+                $this->_ok = 0;
+                $this->_mensaje = 'No se pudo establecer de qué contribuyente son los establecimientos';
+                return [];
+            }
+            $_POST['est_IdContribuyente'] = $propio;
+        }
+
         $_obj = new \erpsoftsas\DAO_Establecimientos();
 
         foreach ($_POST as $campo => $valor) {
@@ -254,10 +303,23 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
                 // dato vive en el contribuyente -antes estaba repetido en cada
                 // local, sin nada que garantizara que las copias coincidieran-,
                 // asi que aqui se lee de alli y viaja con el establecimiento.
+                // Los nombres REALES de las columnas son ind_CedulaContador,
+                // ind_NombreContador, etc. -asi los trae produccion desde antes
+                // de este lote-. Las pantallas siguen hablando en los nombres
+                // largos (ind_Cedula_contador...), que es como se llaman los
+                // campos del formulario, asi que se traducen aqui con un alias
+                // igual que hace _consultarRIT() en class.contribuyentes.php.
+                // Sin este alias la consulta pedia columnas inexistentes y el
+                // endpoint devolvia 500 con cuerpo vacio: la pantalla de
+                // establecimientos solo mostraba "error de conexion".
                 $datosContador = $con->obnerFila($con->consultar(
                     "SELECT ind_EmailContador, ind_EmailRevisor,
-                            ind_Cedula_contador, ind_Nombre_contador, ind_Tarjeta_profesional,
-                            ind_Cedula_revisor, ind_Nombre_revisor, ind_Tarjeta_profesional_revisor
+                            ind_CedulaContador      AS ind_Cedula_contador,
+                            ind_NombreContador      AS ind_Nombre_contador,
+                            ind_TarjetaProfContador AS ind_Tarjeta_profesional,
+                            ind_CedulaRevisor       AS ind_Cedula_revisor,
+                            ind_NombreRevisor       AS ind_Nombre_revisor,
+                            ind_TarjetaProfRevisor  AS ind_Tarjeta_profesional_revisor
                        FROM ind_contribuyentes WHERE ind_Id = ?",
                     [$est['est_IdContribuyente']]
                 ));

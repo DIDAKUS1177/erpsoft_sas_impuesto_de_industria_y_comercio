@@ -176,7 +176,16 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 				<!-- RIT: el cliente pidio sacarlo de "Industria y Comercio" porque el
 				     Registro de Informacion Tributaria aplica a TODOS los modulos, no
 				     solo a ICA. Va de primero, justo despues de Inicio. -->
-				<li class="dropdown" id="MRIT">
+				<!-- La clase menu_XXXX NO es decorativa: menu.js
+				     (mostrarMenuPorPermisos) arranca ocultando TODO el menu y
+				     solo vuelve a mostrar los <li> que tengan la clase
+				     menu_<idBoton> de un permiso activo del rol. Un item sin
+				     esa clase queda invisible para cualquier rol que no sea el
+				     administrador (rol 1), que se muestra entero por atajo.
+				     Por eso RIT y Establecimientos, que se agregaron como items
+				     de primer nivel en la Fase 4, no aparecian para el usuario
+				     externo aunque su rol SI tuviera los permisos 1641 y 1640. -->
+				<li class="dropdown menu_1641" id="MRIT">
 					<a id="ICAWeb_RIT" onclick="menu.validarIngreso(1641,101)" class="dropdown-toggle no-arrow" style="cursor:pointer;" title="Registro de Identificación Tributaria">
 						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="7" y1="16" x2="13" y2="16"/></svg></span>
 						<!-- El nombre completo no cabe en el ancho del menu lateral y se
@@ -190,7 +199,7 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 					</a>
 				</li>
 
-				<li class="dropdown" id="MEstablecimientos">
+				<li class="dropdown menu_1640" id="MEstablecimientos">
 					<a id="ICAWeb_Establecimientos" onclick="menu.validarIngreso(1640,7)" class="dropdown-toggle no-arrow" style="cursor:pointer;">
 						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><line x1="9" y1="9" x2="9" y2="9.01"/><line x1="9" y1="13" x2="9" y2="13.01"/><line x1="9" y1="17" x2="9" y2="17.01"/><line x1="15" y1="9" x2="15" y2="9.01"/><line x1="15" y1="13" x2="15" y2="13.01"/><line x1="15" y1="17" x2="15" y2="17.01"/></svg></span>
 						<span class="mtext">Establecimientos</span>
