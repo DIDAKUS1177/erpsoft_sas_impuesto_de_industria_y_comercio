@@ -3,6 +3,10 @@ require_once('tcpdf/tcpdf.php');
 
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
+// Trae ControladorAnexos::puedeOperarSobreEstablecimiento(), ya blindado
+// contra auto-ejecutarse al incluirse desde otro archivo (mismo patron que
+// usa extensiones/anexo.php).
+include_once SERVER . '/business/controller/class.anexos.php';
 
 use ConexionMysqlUsuariosSqlServer\ConexionSQLServer;
 
@@ -11,18 +15,23 @@ class ICAPdf extends TCPDF {
     public function Footer(){}
 }
 
-$pdf = new ICAPdf('P','mm','LETTER',true,'UTF-8',false);
-$pdf->SetMargins(8,8,8);
-$pdf->AddPage();
-
-$pdf->SetFont('helvetica','',8);
-
+$con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
 /* ===========================
-DATOS DE PRUEBA
-=========================== */
-
-$con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+   Sesion y permiso
+   ----------------------------------------------------------------------
+   Este archivo no comprobaba NADA: ni sesion, ni de quien era el
+   establecimiento/contribuyente pedido. Confirmado en vivo: un curl sin
+   ninguna cookie descargaba el certificado completo (NIT, direccion,
+   telefono, representante legal, contador, revisor con sus cedulas) de
+   CUALQUIER contribuyente, solo cambiando un entero secuencial en la URL.
+   Mismo chequeo que ya usa extensiones/anexo.php para los anexos.
+   =========================== */
+if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+if (empty($_SESSION['id_usuario'])) {
+    http_response_code(401);
+    exit('Debe iniciar sesión para descargar este certificado.');
+}
 
 // El certificado se puede pedir de dos maneras:
 //   ?codigo=<est_Id>          -> como siempre, desde un establecimiento
@@ -31,8 +40,17 @@ $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 // los datos de ubicacion; los datos de la PERSONA (matricula, representante,
 // contador, revisor) ya no salen del establecimiento sino de
 // ind_contribuyentes, que es donde los dejo la migracion 003.
-$idEstablecimiento = $_GET['codigo'] ?? null;
-$idContribuyente   = isset($_GET['contribuyente']) ? (int) $_GET['contribuyente'] : null;
+//
+// 'codigo' se valida como numerico ANTES de castear: pasarlo tal cual a un
+// parametro ligado contra una columna int (est_Id) hacia que un valor no
+// numerico reventara con una excepcion sin capturar (500 en blanco) en vez
+// del mensaje claro que ya se usa para los demas casos de esta seccion.
+$idEstablecimientoCrudo = $_GET['codigo'] ?? null;
+if ($idEstablecimientoCrudo !== null && !ctype_digit((string) $idEstablecimientoCrudo)) {
+    exit('El identificador del registro no es válido.');
+}
+$idEstablecimiento = $idEstablecimientoCrudo !== null ? (int) $idEstablecimientoCrudo : null;
+$idContribuyente    = isset($_GET['contribuyente']) ? (int) $_GET['contribuyente'] : null;
 
 if (!$idEstablecimiento && $idContribuyente) {
     $fila = $con->obnerFila($con->consultar(
@@ -52,6 +70,23 @@ if (!$idEstablecimiento) {
     exit('No se indicó de qué registro generar el certificado.');
 }
 
+// El chequeo de pertenencia se hace sobre el establecimiento YA resuelto: si
+// se entro por ?contribuyente=, ese establecimiento ya se filtro por
+// est_IdContribuyente = ese contribuyente, asi que comprobar su dueño cubre
+// los dos caminos de entrada con una sola llamada -y de paso resuelve el caso
+// de parametros contradictorios (?codigo=1&contribuyente=999): si el
+// establecimiento 1 no es de la sesion actual, se rechaza igual.
+if (!\erpsoftsas\ControladorAnexos::puedeOperarSobreEstablecimiento($idEstablecimiento, $con)) {
+    http_response_code(403);
+    exit('No tiene permiso para ver este registro.');
+}
+
+$pdf = new ICAPdf('P','mm','LETTER',true,'UTF-8',false);
+$pdf->SetMargins(8,8,8);
+$pdf->AddPage();
+
+$pdf->SetFont('helvetica','',8);
+
 //$sql = "SELECT * FROM ind_establecimientos WHERE est_Id = ?";
 // Mismo patron que declaracion.php: si el config del municipio no trae estos
 // datos, el certificado sale con el campo vacio en vez de reventar. El NIT NO
@@ -63,53 +98,52 @@ if (!defined('MUNICIPIO_DIRECCION'))    define('MUNICIPIO_DIRECCION', '');
 
 
 $sql = "
-SELECT 
+SELECT
     e.*,
     c.*,
-    a.ace_Anio,
-    ca.acc_Codigo,
-    ca.acc_Nombre,
-    a.ace_IdCodigoActividad,
     ciu.ciu_Nombre,
     ciu.ciu_Departamento
 FROM ind_establecimientos e
-INNER JOIN ind_contribuyentes c 
+INNER JOIN ind_contribuyentes c
     ON c.ind_Id = e.est_IdContribuyente
 LEFT JOIN conf_ciudades ciu
     ON ciu.ciu_Id = c.ind_IdCiudad
-LEFT JOIN ind_actividad_establecimiento a 
-    ON a.ace_IdEstablecimiento = e.est_Id
-    -- Se toma el año MAS RECIENTE que tenga registrado ESE establecimiento, no
-    -- un año fijo ni el año en curso. Con el 2026 que estaba escrito a mano, 3
-    -- de los 6 establecimientos con actividades salian con la tabla vacia
-    -- porque las tenian registradas en 2025: esa era la queja de que el RIT no
-    -- cargaba las actividades economicas.
-    AND a.ace_Anio = (
-        SELECT MAX(a2.ace_Anio)
-        FROM ind_actividad_establecimiento a2
-        WHERE a2.ace_IdEstablecimiento = e.est_Id
-    )
-LEFT JOIN ind_actividadescomercio ca
-    ON ca.acc_Id = a.ace_IdCodigoActividad
 WHERE e.est_Id = ?
 ";
 
-$stmt = $con->consultar($sql, [$idEstablecimiento]);
+$row = $con->obnerFila($con->consultar($sql, [$idEstablecimiento]));
 
-$row = null;
+if (!$row) {
+    exit('No existe información para el registro solicitado.');
+}
+
+// Punto 18 dice "Actividades Economicas DEL CONTRIBUYENTE" -en plural, de
+// todos sus establecimientos-, pero esta consulta estaba anclada a
+// a.ace_IdEstablecimiento = e.est_Id: un contribuyente con actividades
+// repartidas en mas de un establecimiento perdia en silencio las de
+// cualquiera que no fuera el "ancla" resuelta arriba. Se agrega por
+// est_IdContribuyente, mismo patron que ya usa _consultarRIT() en
+// class.contribuyentes.php y el bloque de "Establecimientos del
+// Contribuyente" mas abajo en este mismo archivo.
 $actividades = [];
-
-while($r = $con->obnerFila($stmt)){
-    
-    if (!$row) {
-        $row = $r; // datos principales (solo una vez)
-    }
-
-    if (!empty($r['ace_IdCodigoActividad'])) {
-        $actividades[] = [
-                'codigo' => $r['acc_Codigo'],
-                'nombre' => $r['acc_Nombre']
-            ];
+$stmtAct = $con->consultar(
+    "SELECT ca.acc_Codigo, ca.acc_Nombre
+       FROM ind_actividad_establecimiento a
+       INNER JOIN ind_establecimientos e2 ON e2.est_Id = a.ace_IdEstablecimiento
+       LEFT JOIN ind_actividadescomercio ca ON ca.acc_Id = a.ace_IdCodigoActividad
+      WHERE e2.est_IdContribuyente = ?
+        AND a.ace_Anio = (
+                SELECT MAX(a2.ace_Anio)
+                  FROM ind_actividad_establecimiento a2
+                  INNER JOIN ind_establecimientos e3 ON e3.est_Id = a2.ace_IdEstablecimiento
+                 WHERE e3.est_IdContribuyente = ?
+            )
+      ORDER BY ca.acc_Codigo",
+    [$row['est_IdContribuyente'], $row['est_IdContribuyente']]
+);
+while ($a = $con->obnerFila($stmtAct)) {
+    if (!empty($a['acc_Codigo'])) {
+        $actividades[] = ['codigo' => $a['acc_Codigo'], 'nombre' => $a['acc_Nombre']];
     }
 }
 
@@ -121,14 +155,25 @@ $nombreCompleto = trim(
 );
 
 
+// Todo campo de texto libre que pueda venir de datos guardados por un
+// contribuyente (varios de estos los escribe directamente el formulario del
+// RIT, sin ser administrador) se escapa aqui, UNA sola vez, antes de entrar a
+// $d[]. Antes se interpolaban crudos dentro de writeHTML(): un
+// ind_Nombre_representante como '</td></tr><tr><td colspan=99>HACKED'
+// rompia literalmente la tabla del certificado oficial -reproducido y
+// confirmado, no es un riesgo teorico-.
+$esc = function ($v) {
+    return htmlspecialchars((string) ($v ?? ''), ENT_QUOTES, 'UTF-8');
+};
+
 $d = [
 
 // Estos cuatro iban fijos en Paipa. Con varios municipios sobre el mismo
 // codigo, el certificado de Guateque salia diciendo "MUNICIPIO DE PAIPA".
-'entidad' => 'MUNICIPIO DE ' . mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8'),
-'nit_entidad' => MUNICIPIO_NIT,
-'direccion_entidad' => MUNICIPIO_DIRECCION,
-'ciudad_entidad' => mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8') . ' - ' . mb_strtoupper(MUNICIPIO_DEPARTAMENTO, 'UTF-8'),
+'entidad' => $esc('MUNICIPIO DE ' . mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8')),
+'nit_entidad' => $esc(MUNICIPIO_NIT),
+'direccion_entidad' => $esc(MUNICIPIO_DIRECCION),
+'ciudad_entidad' => $esc(mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8') . ' - ' . mb_strtoupper(MUNICIPIO_DEPARTAMENTO, 'UTF-8')),
 
 // OPCIÓN USO
 'opcion_inscripcion' => $row['est_Opcion_uso'] == 1,
@@ -136,69 +181,72 @@ $d = [
 'opcion_cese' => $row['est_Opcion_uso'] == 3,
 
 // IDENTIFICACIÓN
-'nit' => $row['ind_NumeroIdentificacion'],
-'dv' => $row['ind_DV'],
+'nit' => $esc($row['ind_NumeroIdentificacion']),
+'dv' => $esc($row['ind_DV']),
 
 // PERSONA
-'razon' => $row['ind_Persona'] == 1 
-    ? $nombreCompleto 
-    : $row['est_Nombre'],
+'razon' => $esc($row['ind_Persona'] == 1 ? $nombreCompleto : $row['est_Nombre']),
 
-'direccion' => $row['ind_Direccion'],
-'municipio' => $row['ciu_Nombre'],
-'departamento' => $row['ciu_Departamento'],
+'direccion' => $esc($row['ind_Direccion']),
+'municipio' => $esc($row['ciu_Nombre']),
+'departamento' => $esc($row['ciu_Departamento']),
 
-'telefono' => $row['ind_Telefono'],
-'correo' => $row['ind_Email'],
+'telefono' => $esc($row['ind_Telefono']),
+'correo' => $esc($row['ind_Email']),
 
 // MATRÍCULA
 // Punto 8: la matricula de la PERSONA vive ahora en el
 // contribuyente. Se cae a la del establecimiento solo para las
 // bases donde la migracion 003 todavia no dejo el dato.
-'matricula' => $row['ind_Matricula'] ?: $row['est_Matricula'],
-'fecha_matricula' => !empty($row['est_Fecha_matricula']) 
-    ? $row['est_Fecha_matricula']->format('d-m-Y') 
+'matricula' => $esc($row['ind_Matricula'] ?: $row['est_Matricula']),
+'fecha_matricula' => !empty($row['est_Fecha_matricula'])
+    ? $row['est_Fecha_matricula']->format('d-m-Y')
     : '',
 
 // ACTIVIDAD
-'fecha_inicio' => !empty($row['est_Fecha_inicio']) 
-    ? $row['est_Fecha_inicio']->format('d-m-Y') 
+'fecha_inicio' => !empty($row['est_Fecha_inicio'])
+    ? $row['est_Fecha_inicio']->format('d-m-Y')
     : '',
 
 'actividades' => $actividades,
 
-'nombre_comercial' => $row['est_Nombre'],
-'direccion_actividad' => $row['est_Direccion'],
+'nombre_comercial' => $esc($row['est_Nombre']),
+'direccion_actividad' => $esc($row['est_Direccion']),
 
 // REPRESENTANTE
-'representante' => $row['ind_Nombre_representante'] ?: $row['est_Nombre_representante'],
-'cc_representante' => $row['est_Cedula_representante'],
-'email_representante' => $row['est_Email_representante'],
+'representante' => $esc($row['ind_Nombre_representante'] ?: $row['est_Nombre_representante']),
+// Los tres campos de abajo solo leian la columna legacy est_*, nunca su
+// equivalente ind_* -que es el que _guardarRIT() (class.contribuyentes.php)
+// SI actualiza-. Cualquier correccion de cedula/correo del representante
+// hecha desde el RIT nunca se veia reflejada en el certificado. Mismo
+// patron ind_X ?: est_X que ya se aplicaba en 'representante'.
+'cc_representante' => $esc($row['ind_Cedula_representante'] ?: $row['est_Cedula_representante']),
+'email_representante' => $esc($row['ind_Email_representante'] ?: $row['est_Email_representante']),
 
 // REPRESENTANTE
-'nombre_funcionario' => 'JUAN GABRIEL SUAREZ AVENDAÑO',
-'cc_funcionario' => '10101010',
+'nombre_funcionario' => $esc('JUAN GABRIEL SUAREZ AVENDAÑO'),
+'cc_funcionario' => $esc('10101010'),
 
 
 // CONTADOR
-'contador_nombre' => $row['ind_Nombre_contador'] ?: $row['est_Nombre_contador'],
-'contador_cc' => $row['est_Cedula_contador'],
-'contador_tp' => $row['est_Tarjeta_profesional'],
+'contador_nombre' => $esc($row['ind_Nombre_contador'] ?: $row['est_Nombre_contador']),
+'contador_cc' => $esc($row['ind_Cedula_contador'] ?: $row['est_Cedula_contador']),
+'contador_tp' => $esc($row['ind_Tarjeta_profesional'] ?: $row['est_Tarjeta_profesional']),
 
 // REVISOR
-'revisor_nombre' => $row['ind_Nombre_revisor'] ?: $row['est_Nombre_revisor'],
-'revisor_cc' => $row['est_Cedula_revisor'],
-'revisor_tp' => $row['est_Tarjeta_profesional_revisor'],
+'revisor_nombre' => $esc($row['ind_Nombre_revisor'] ?: $row['est_Nombre_revisor']),
+'revisor_cc' => $esc($row['ind_Cedula_revisor'] ?: $row['est_Cedula_revisor']),
+'revisor_tp' => $esc($row['ind_Tarjeta_profesional_revisor'] ?: $row['est_Tarjeta_profesional_revisor']),
 
 // CATASTRAL
-'codigo_catastral' => $row['est_Codigo_catastral'],
+'codigo_catastral' => $esc($row['est_Codigo_catastral']),
 
 // CESE
-'fecha_cese' => !empty($row['est_Fecha_cierre']) 
-    ? $row['est_Fecha_cierre']->format('d-m-Y') 
+'fecha_cese' => !empty($row['est_Fecha_cierre'])
+    ? $row['est_Fecha_cierre']->format('d-m-Y')
     : '',
 
-'causal' => $row['est_Causal']
+'causal' => $esc($row['est_Causal'])
 
 ];
 
