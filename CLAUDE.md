@@ -73,7 +73,17 @@ ni admin ni reinicio de Windows logran borrar por las vías normales). Solución
 funcionó: `Rename-Item` de la carpeta contenedora completa (no del archivo individual)
 para sacarla del paso, dejar que Docker Desktop recree una limpia.
 
-Login de prueba: usuario `administrador`, clave `administrador2025`.
+Login de prueba: usuario `administrador`, clave `AdminPruebaLocal2026` (reseteada
+2026-08-14 en esta copia local; el hash guardado no coincidía con
+`administrador2025`, que puede seguir siendo la real de producción — no se
+comprobó ahí. El reseteo se hizo por el camino legítimo de la app,
+`DAO_Usuario->guardar()` con tipodato `'clave'`, igual que usa
+`_cambiarClave()`).
+
+Usuario de prueba con rol "Externos - ICA": `pruebaica`, clave
+`PruebaICA2026` (creado 2026-08-14, atado al contribuyente 30 — PRUEBA
+Manrique Duran, doc 1052400237 — que tiene el establecimiento 43/DigitSoft y
+ya trae datos de RIT).
 
 ## Reglas de negocio confirmadas por el cliente (no inventar, no asumir)
 
