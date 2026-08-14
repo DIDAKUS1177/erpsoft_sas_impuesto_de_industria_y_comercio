@@ -640,23 +640,20 @@ est_NoResolucion: $("#est_NoResolucion").val(),
             $('#loading').hide();
             $('#wrapper').removeClass('body-load');
 
-            $("#formCrearEstablecimientos").trigger("reset");
-            $("#modal-Establecimientos").modal('hide');
-                //establecimientos.getEstablecimientos();
-
-                swal({
-                    type: 'success',
-                    title: 'Establecimiento actualizado',
-                    text: 'La información fue actualizada correctamente'
-                });
-
-/*
+            // Antes esto reseteaba el formulario, cerraba el modal y
+            // mostraba un swal de EXITO -en el camino de ERROR-. Cualquier
+            // fallo real (caida de red, 500, un Warning de PHP rompiendo el
+            // JSON, el mismo modo de falla que ya tumbo el boton "Liquidar"
+            // en produccion) se veia identico a un guardado exitoso, sin
+            // ninguna señal de que el cambio NO se guardo. El formulario ya
+            // NO se resetea ni el modal se cierra, para que la persona no
+            // pierda lo que escribio y pueda reintentar.
             swal({
                 type: 'error',
-                title: 'Error del servidor',
-                text: 'No se recibió respuesta válida'
+                title: 'No se pudo guardar',
+                text: 'No se pudo actualizar el establecimiento. Revise su conexión e intente de nuevo; si persiste, avise a soporte.'
             });
-*/
+
             console.log(XMLHttpRequest.responseText);
         }
     });

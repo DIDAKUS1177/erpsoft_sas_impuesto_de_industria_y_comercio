@@ -342,6 +342,22 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
      */
     private function _guardarCorreosContadorRevisor()
     {
+        // Estas dos columnas son el correo al que se manda el OTP de firma
+        // (microservicios/firmas/api.php) -las mismas que _camposSoloAdministrador()
+        // protege en el RIT (class.contribuyentes.php)-. Esta funcion no
+        // comprobaba sesion NI rol en ningun punto: confirmado en vivo, un
+        // POST sin ninguna cookie a funcion=20 secuestraba el correo del
+        // contador/revisor de cualquier contribuyente. Mismo umbral que usa
+        // _esAdministrador() en class.contribuyentes.php (rol 1 exacto, no
+        // basta con estar logueado).
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+        $esAdmin = isset($_SESSION['id_Rol']) && (int) $_SESSION['id_Rol'] === 1;
+        if (!$esAdmin) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No tiene permiso para cambiar el correo de contador/revisor';
+            return [];
+        }
+
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
         $idEstablecimiento = $_POST['est_Id'] ?? null;
