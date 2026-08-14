@@ -64,8 +64,25 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
         }
     }
 
-    protected function _agregarEstablecimientos() 
+    protected function _agregarEstablecimientos()
     {
+        // est_IdContribuyente llegaba tal cual del navegador: un contribuyente
+        // podia crear locales a nombre de otro con solo cambiar ese campo.
+        // Para todo rol que no sea Alcaldia se fija al de la propia sesion.
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
+
+        if (!in_array($rol, [1, 2], true)) {
+            $propio = self::_contribuyenteDeLaSesion($con);
+            if (!$propio) {
+                $this->_ok = 0;
+                $this->_mensaje = 'No se pudo establecer a qué contribuyente pertenece el establecimiento';
+                return [];
+            }
+            $_POST['est_IdContribuyente'] = $propio;
+        }
+
         $_obj = new \erpsoftsas\DAO_Establecimientos();
 
         foreach ($_POST as $campo => $valor) {
@@ -123,6 +140,22 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
 
     protected function _editarEstablecimientos()
     {
+        // Se editaba por est_Id sin mirar de quien era: cualquiera con sesion
+        // podia modificar el local de otro contribuyente cambiando ese id.
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        if (!self::_puedeSobreEstablecimiento($_POST['est_Id'] ?? 0, $con)) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No tiene permiso para modificar este establecimiento';
+            return [];
+        }
+
+        // Tampoco puede reasignarse a otro dueño por la puerta de atras.
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
+        if (!in_array($rol, [1, 2], true)) {
+            unset($_POST['est_IdContribuyente']);
+        }
+
         $_obj = new \erpsoftsas\DAO_Establecimientos();
         $_obj->set_est_Id($_POST['est_Id'] ?? null);
 
@@ -245,6 +278,30 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
         ));
 
         return isset($fila['ind_Id']) ? (int) $fila['ind_Id'] : null;
+    }
+
+    /**
+     * true si la sesion actual puede tocar ESE establecimiento.
+     * Alcaldia (rol 1 y 2) puede con todos; los demas solo con los suyos.
+     */
+    private static function _puedeSobreEstablecimiento($idEstablecimiento, $con)
+    {
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+        if (empty($_SESSION['id_usuario'])) { return false; }
+
+        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
+        if (in_array($rol, [1, 2], true)) { return true; }
+
+        $propio = self::_contribuyenteDeLaSesion($con);
+        if (!$propio) { return false; }
+
+        $fila = $con->obnerFila($con->consultar(
+            "SELECT est_Id FROM ind_establecimientos
+              WHERE est_Id = ? AND est_IdContribuyente = ?",
+            [(int) $idEstablecimiento, $propio]
+        ));
+
+        return (bool) $fila;
     }
 
     private function _consultarEstablecimientos()
@@ -375,6 +432,13 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
 
     protected function _inactivarEstablecimientos()
     {
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        if (!self::_puedeSobreEstablecimiento($_POST['est_Id'] ?? 0, $con)) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No tiene permiso para retirar este establecimiento';
+            return [];
+        }
+
         $_obj = new \erpsoftsas\DAO_Establecimientos();
         $_obj->set_est_Id($_POST['est_Id'] ?? null);
         $_obj->set_est_Activo(0);
