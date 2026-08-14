@@ -340,7 +340,8 @@ $pdf->SetFont('helvetica','',7);
 // Se dibuja al final del archivo, justo antes de Output: ver nota larga
 // en declaracion.php -Rotate()/StartTransform() tan temprano en el
 // documento colgaba el resto del render en pruebas-.
-$textoMarcaAgua = ((int)($row['dec_Estado'] ?? 0) === 2) ? 'PRESENTADA' : 'BORRADOR';
+$estaPresentada = ((int)($row['dec_Estado'] ?? 0) === 2);
+$textoMarcaAgua = $estaPresentada ? 'PRESENTADA' : 'BORRADOR';
 
 $nombreFirmanteContadorRevisor = $contador_nombre !== '' ? $contador_nombre : $revisor_nombre;
 $docFirmanteContadorRevisor    = $contador_num_doc !== '' ? $contador_num_doc : $revisor_num_doc;
@@ -683,32 +684,42 @@ $altoBarcode  = 8;
 // linea legible, que es la que digita el cajero si el escaner falla.
 $yBarcode = $yBloque + $altoRotulo + 1.2;
 
-$pdf->write1DBarcode(
-    $contenidoBarras, 'C128',
-    $xBloque + ($mitad - $anchoBarcode) / 2,
-    $yBarcode,
-    $anchoBarcode, $altoBarcode,
-    '',
-    array('position' => '', 'border' => false, 'padding' => 0,
-          'fgcolor' => array(0,0,0), 'bgcolor' => false,
-          'text' => false, 'stretch' => true),
-    'N'
-);
+// El codigo escaneable solo se dibuja si la declaracion YA esta presentada
+// (ver el mismo razonamiento en declaracion.php). El marco, los rotulos y
+// el numero de referencia se mantienen siempre.
+if ($estaPresentada) {
+    $pdf->write1DBarcode(
+        $contenidoBarras, 'C128',
+        $xBloque + ($mitad - $anchoBarcode) / 2,
+        $yBarcode,
+        $anchoBarcode, $altoBarcode,
+        '',
+        array('position' => '', 'border' => false, 'padding' => 0,
+              'fgcolor' => array(0,0,0), 'bgcolor' => false,
+              'text' => false, 'stretch' => true),
+        'N'
+    );
 
-// Version legible (HRI): identificadores entre parentesis. No se puede usar
-// 'text' => true de TCPDF porque imprimiria los FNC1, que no son visibles.
-$pdf->SetFont('helvetica', '', 5);
-$pdf->SetXY($xBloque, $yBarcode + $altoBarcode + 0.3);
-$pdf->Cell(
-    $mitad,
-    2.6,
-    \erpsoftsas\CodigoBarrasRecaudo::textoLegible(
-        $referencia_recaudo,
-        $row['dec_ValorConcepto20'] ?? 0,
-        $fecha_max_presentacion ?: null
-    ),
-    0, 0, 'C'
-);
+    // Version legible (HRI): identificadores entre parentesis. No se puede
+    // usar 'text' => true de TCPDF porque imprimiria los FNC1, que no son
+    // visibles.
+    $pdf->SetFont('helvetica', '', 5);
+    $pdf->SetXY($xBloque, $yBarcode + $altoBarcode + 0.3);
+    $pdf->Cell(
+        $mitad,
+        2.6,
+        \erpsoftsas\CodigoBarrasRecaudo::textoLegible(
+            $referencia_recaudo,
+            $row['dec_ValorConcepto20'] ?? 0,
+            $fecha_max_presentacion ?: null
+        ),
+        0, 0, 'C'
+    );
+} else {
+    $pdf->SetFont('helvetica', 'I', 6);
+    $pdf->SetXY($xBloque, $yBarcode + ($altoBarcode / 2) - 2);
+    $pdf->MultiCell($mitad, 4, "Disponible al presentar\nla declaración", 0, 'C');
+}
 /* ============================================================
    SALIDA PDF
    ============================================================ */

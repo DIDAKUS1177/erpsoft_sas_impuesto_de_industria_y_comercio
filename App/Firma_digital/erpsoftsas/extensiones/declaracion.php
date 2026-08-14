@@ -155,7 +155,8 @@ if (!$row) {
 // pronto en el documento colgaba el resto del render (writeHTML nunca
 // terminaba, worker de PHP al 99% CPU indefinidamente). Al 0.15 de alpha
 // se ve igual de bien encima del contenido que detras.
-$textoMarcaAgua = ((int)($row['dec_Estado'] ?? 0) === 2) ? 'PRESENTADA' : 'BORRADOR';
+$estaPresentada = ((int)($row['dec_Estado'] ?? 0) === 2);
+$textoMarcaAgua = $estaPresentada ? 'PRESENTADA' : 'BORRADOR';
 
 /* ===========================
 ACTIVIDADES
@@ -939,25 +940,35 @@ $html = '
 // hace que el contenido de la ULTIMA tabla (codigo de barras) se pierda
 // silenciosamente -sin ningun error ni advertencia-, sin importar cuanto
 // se reduzca su contenido (se probo quitando la imagen del sello por
-// completo y el problema persistia). Con una sola llamada para todo el
-// tramo el contenido siempre sale completo, asi que las etiquetas E y F
-// se ubican con coordenadas fijas, medidas directamente sobre el PDF ya
-// renderizado (con un dec_Id real) en vez de con GetY().
-// Medido sobre un render real (dec_Id=94, fuente 6px). OJO: la banda de
-// "E. PAGO" es SOLO el recuadro de los renglones 35-38 (fila 35 empieza
-// ~251.5mm, fila 38 termina ~268.4mm) -- la tabla de "Seccion pago
-// voluntario" (39/40) que sigue ya trae su propio rotulo en la celda y
-// NO debe incluirse en esta banda, o el texto rotado le pasa por encima.
-// "F. FIRMAS" va desde donde empieza "FIRMA DEL DECLARANTE" (~283mm)
-// hasta donde termina "CODIGO DE BARRAS" (~320.3mm, dejando ~10mm de
-// margen inferior dentro de los 330.2mm de la pagina).
-// Valores originales (con margen superior 10mm): 250 / 268 / 282 / 320.
-// Al bajar el margen superior a 5mm todo el contenido sube 5mm, asi que
-// estas bandas -que NO se calculan con GetY()- se corrieron lo mismo.
-$ySecE_inicio = 245;
-$ySecE_fin = 263;
-$ySecF_inicio = 277;
-$ySecF_fin = 327;
+// completo y el problema persistia). Por eso este tramo se sigue
+// escribiendo en una sola llamada.
+//
+// Las bandas de E y F SI estuvieron con coordenadas fijas en algun momento
+// (245/263/277/327, medidas a mano sobre un render con dec_Id=94), pero eso
+// asumia que la Seccion A-D de CUALQUIER declaracion mide siempre lo mismo
+// que la de esa persona en particular. No es asi: el nombre, la direccion
+// de notificacion y demas texto libre de la Seccion A varian por
+// contribuyente, y si esos campos envuelven a mas lineas, toda la Seccion
+// A-D crece -pero las bandas fijas de E y F se quedaban donde estaban,
+// desalineadas del contenido real ("A y F salen del cuadro", reportado por
+// el cliente 2026-08-14). $ySecD_fin ya se captura con GetY() sin coste
+// (no agrega una llamada a writeHTML() nueva), asi que las bandas de E y F
+// se anclan a ese valor real en vez de a un numero fijo. El ancla del final
+// de F se calcula mas abajo, sobre la posicion real del codigo de barras
+// (tambien ya calculada con GetY(), sin llamadas nuevas).
+//
+// Los numeros 245/263/277/327 no se pierden: quedan como la referencia de
+// cuanto media cada banda sobre el render original (dec_Id=94, fuente 6px,
+// $ySecD_fin=246.04 ese dia), y las bandas actuales se calculan como ese
+// mismo ancho aplicado desde la posicion REAL de D_fin de esta declaracion.
+$ySecD_fin_referencia = 246.04; // $ySecD_fin medido sobre dec_Id=94
+$ySecE_inicio = $ySecD_fin + (245 - $ySecD_fin_referencia);
+$ySecE_fin    = $ySecD_fin + (263 - $ySecD_fin_referencia);
+$ySecF_inicio = $ySecD_fin + (277 - $ySecD_fin_referencia);
+// $ySecF_fin se recalcula mas abajo con la posicion real del codigo de
+// barras; este valor de respaldo solo se usa si por algun motivo esa
+// seccion no llega a dibujarse.
+$ySecF_fin    = $ySecD_fin + (327 - $ySecD_fin_referencia);
 
 $html .= '
 <br>
@@ -1163,33 +1174,51 @@ $altoBarcode  = 8;
 // pago bloqueado cuando la impresion sale sucia o corrida.
 $yBarcode = $yBloque + $altoRotulo + 1.2;
 
-$pdf->write1DBarcode(
-    $contenidoBarras, 'C128',
-    $xBloque + ($mitad - $anchoBarcode) / 2,
-    $yBarcode,
-    $anchoBarcode, $altoBarcode,
-    '',
-    array('position' => '', 'border' => false, 'padding' => 0,
-          'fgcolor' => array(0,0,0), 'bgcolor' => false,
-          'text' => false, 'stretch' => true),
-    'N'
-);
+// El codigo escaneable solo se dibuja si la declaracion YA esta presentada.
+// Antes se imprimia igual en un borrador -un codigo con apariencia de
+// pagable sobre un documento que todavia puede cambiar de valor o
+// actividades antes de presentarse-. El marco, los rotulos y el numero de
+// referencia (arriba) se mantienen siempre: sirven de vista previa aunque
+// no se pueda pagar todavia.
+if ($estaPresentada) {
+    $pdf->write1DBarcode(
+        $contenidoBarras, 'C128',
+        $xBloque + ($mitad - $anchoBarcode) / 2,
+        $yBarcode,
+        $anchoBarcode, $altoBarcode,
+        '',
+        array('position' => '', 'border' => false, 'padding' => 0,
+              'fgcolor' => array(0,0,0), 'bgcolor' => false,
+              'text' => false, 'stretch' => true),
+        'N'
+    );
 
-// Version legible del codigo (HRI). En GS1-128 se escriben los
-// identificadores entre parentesis; los FNC1 no son imprimibles, asi que no
-// se puede usar el 'text' => true de TCPDF -imprimiria basura-.
-$pdf->SetFont('helvetica', '', 5);
-$pdf->SetXY($xBloque, $yBarcode + $altoBarcode + 0.3);
-$pdf->Cell(
-    $mitad,
-    2.6,
-    \erpsoftsas\CodigoBarrasRecaudo::textoLegible(
-        $referenciaRecaudo,
-        $row['dec_ValorConcepto20'] ?? 0,
-        $d['fecha_max'] ?: null
-    ),
-    0, 0, 'C'
-);
+    // Version legible del codigo (HRI). En GS1-128 se escriben los
+    // identificadores entre parentesis; los FNC1 no son imprimibles, asi
+    // que no se puede usar el 'text' => true de TCPDF -imprimiria basura-.
+    $pdf->SetFont('helvetica', '', 5);
+    $pdf->SetXY($xBloque, $yBarcode + $altoBarcode + 0.3);
+    $pdf->Cell(
+        $mitad,
+        2.6,
+        \erpsoftsas\CodigoBarrasRecaudo::textoLegible(
+            $referenciaRecaudo,
+            $row['dec_ValorConcepto20'] ?? 0,
+            $d['fecha_max'] ?: null
+        ),
+        0, 0, 'C'
+    );
+} else {
+    $pdf->SetFont('helvetica', 'I', 6);
+    $pdf->SetXY($xBloque, $yBarcode + ($altoBarcode / 2) - 2);
+    $pdf->MultiCell($mitad, 4, "Disponible al presentar\nla declaración", 0, 'C');
+}
+
+// El final real de "F. FIRMAS" es el borde inferior del recuadro del
+// codigo de barras, ya calculado en geometria (no con GetY(), que aqui no
+// serviria: los Cell() del bloque no siempre dejan el cursor en el punto
+// que interesa). Reemplaza al valor de respaldo fijado mas arriba.
+$ySecF_fin = $yBloque + $altoRotulo + $altoCodigo;
 
 /* ===========================
 ETIQUETAS VERTICALES (A-F)
