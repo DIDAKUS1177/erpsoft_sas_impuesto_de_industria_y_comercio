@@ -2,11 +2,14 @@
 /**
  * Entrega un anexo de establecimiento (punto 17).
  *
- * Los archivos viven FUERA de la raiz web, asi que esta es la unica via para
- * llegar a ellos. Por eso aqui es donde se comprueba quien pide que:
+ * Los archivos viven FUERA de la raiz web (con .htaccess de respaldo, ver
+ * class.anexos.php::blindarCarpeta), asi que este es el unico camino para
+ * DESCARGARLOS. Se comprueba quien pide que via
+ * ControladorAnexos::puedeOperarSobreEstablecimiento(), la misma regla que
+ * usan subir/listar/eliminar en class.anexos.php:
  *
  *   - hay que haber iniciado sesion;
- *   - un contribuyente solo puede bajar anexos de SUS establecimientos.
+ *   - un contribuyente solo opera sobre SUS establecimientos.
  *
  * Sin la segunda comprobacion bastaria con ir cambiando el numero en la URL
  * para bajarse el RUT y la camara de comercio de todos los contribuyentes del
@@ -33,10 +36,9 @@ if ($idAnexo <= 0) {
 $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
 $anexo = $con->obnerFila($con->consultar(
-    "SELECT a.anx_NombreOriginal, a.anx_Ruta, a.anx_Extension, a.anx_Activo,
-            e.est_IdContribuyente
+    "SELECT a.anx_IdEstablecimiento, a.anx_NombreOriginal, a.anx_Ruta,
+            a.anx_Extension, a.anx_Activo
        FROM ind_establecimiento_anexos a
-       INNER JOIN ind_establecimientos e ON e.est_Id = a.anx_IdEstablecimiento
       WHERE a.anx_Id = ?",
     [$idAnexo]
 ));
@@ -46,33 +48,12 @@ if (!$anexo || (int) $anexo['anx_Activo'] !== 1) {
     exit('El archivo no existe.');
 }
 
-/* ---- Quien puede verlo -------------------------------------------------
-   Rol 1 (Administrador) y 2 (Internos Alcaldia) ven cualquiera, que es su
-   trabajo. Los demas, solo lo suyo: se compara el contribuyente del anexo
-   contra el del usuario que tiene la sesion abierta. */
-$rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
-
-if (!in_array($rol, [1, 2], true)) {
-
-    // No hay columna que ate el usuario al contribuyente: el sistema los cruza
-    // por numero de documento (ver el 'sql' de usu_idContibuyente en
-    // DAO_Usuario.php, que hace exactamente esta subconsulta).
-    $propio = $con->obnerFila($con->consultar(
-        "SELECT c.ind_Id
-           FROM ind_contribuyentes c
-           INNER JOIN conf_usuarios u
-                   ON u.usu_NumeroDocumento = c.ind_NumeroIdentificacion
-          WHERE u.usu_Id = ?",
-        [(int) $_SESSION['id_usuario']]
-    ));
-
-    $idContribuyenteSesion = $propio['ind_Id'] ?? null;
-
-    if (!$idContribuyenteSesion
-        || (int) $idContribuyenteSesion !== (int) $anexo['est_IdContribuyente']) {
-        http_response_code(403);
-        exit('Este archivo pertenece a otro contribuyente.');
-    }
+/* ---- Quien puede verlo --------------------------------------------------
+   Misma regla que subir/listar/eliminar (class.anexos.php), centralizada ahi
+   para que las cuatro vias no se desalineen con el tiempo. */
+if (!\erpsoftsas\ControladorAnexos::puedeOperarSobreEstablecimiento($anexo['anx_IdEstablecimiento'], $con)) {
+    http_response_code(403);
+    exit('Este archivo pertenece a otro contribuyente.');
 }
 
 /* ---- Entrega ---------------------------------------------------------- */

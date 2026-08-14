@@ -136,6 +136,44 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
         return isset($_SESSION['id_usuario']) ? (int) $_SESSION['id_usuario'] : null;
     }
 
+    /**
+     * ¿Puede la sesión actual operar sobre este establecimiento?
+     *
+     * Esta comprobación SOLO existía en extensiones/anexo.php (para VER un
+     * archivo ya cargado). Subir, listar y borrar no tenían ninguna: sin
+     * este método, cualquiera -sin sesión siquiera- podía subir archivos a
+     * cualquier establecimiento, ver los nombres de archivo de cualquiera, o
+     * retirar (borrado lógico) los anexos de cualquiera con solo adivinar un
+     * anx_Id consecutivo. Se centraliza aquí para que las cuatro vías
+     * (subir, listar, eliminar, ver) usen la misma regla y no se desalineen
+     * con el tiempo, como ya pasó una vez con NumerosCOP.
+     */
+    public static function puedeOperarSobreEstablecimiento($idEstablecimiento, $con)
+    {
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+
+        if (empty($_SESSION['id_usuario'])) { return false; }
+
+        // Rol 1 (Administrador) y 2 (Internos Alcaldia) operan sobre
+        // cualquier establecimiento; es su trabajo.
+        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
+        if (in_array($rol, [1, 2], true)) { return true; }
+
+        // No hay columna que ate el usuario al contribuyente: el sistema los
+        // cruza por número de documento (igual que usu_idContibuyente en
+        // DAO_Usuario.php).
+        $propio = $con->obnerFila($con->consultar(
+            "SELECT e.est_Id
+               FROM ind_establecimientos e
+               INNER JOIN ind_contribuyentes c ON c.ind_Id = e.est_IdContribuyente
+               INNER JOIN conf_usuarios u ON u.usu_NumeroDocumento = c.ind_NumeroIdentificacion
+              WHERE u.usu_Id = ? AND e.est_Id = ?",
+            [(int) $_SESSION['id_usuario'], (int) $idEstablecimiento]
+        ));
+
+        return (bool) $propio;
+    }
+
     private function _subir()
     {
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
@@ -154,6 +192,11 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
         ));
         if (!$est) {
             $this->_mensaje = 'El establecimiento no existe';
+            return [];
+        }
+
+        if (!self::puedeOperarSobreEstablecimiento($idEstablecimiento, $con)) {
+            $this->_mensaje = 'No tiene permiso para cargar archivos en este establecimiento';
             return [];
         }
 
@@ -265,6 +308,11 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
             return [];
         }
 
+        if (!self::puedeOperarSobreEstablecimiento($idEstablecimiento, $con)) {
+            $this->_mensaje = 'No tiene permiso para ver los anexos de este establecimiento';
+            return [];
+        }
+
         $stmt = $con->consultar(
             "SELECT anx_Id, anx_Tipo, anx_NombreOriginal, anx_Extension,
                     anx_Tamano, anx_FechaCarga
@@ -300,6 +348,20 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
         $idAnexo = (int) ($_POST['anx_Id'] ?? 0);
         if ($idAnexo <= 0) {
             $this->_mensaje = 'No se indicó el anexo';
+            return [];
+        }
+
+        $anexo = $con->obnerFila($con->consultar(
+            "SELECT anx_IdEstablecimiento FROM ind_establecimiento_anexos WHERE anx_Id = ?",
+            [$idAnexo]
+        ));
+        if (!$anexo) {
+            $this->_mensaje = 'El anexo no existe';
+            return [];
+        }
+
+        if (!self::puedeOperarSobreEstablecimiento($anexo['anx_IdEstablecimiento'], $con)) {
+            $this->_mensaje = 'No tiene permiso para quitar este anexo';
             return [];
         }
 
