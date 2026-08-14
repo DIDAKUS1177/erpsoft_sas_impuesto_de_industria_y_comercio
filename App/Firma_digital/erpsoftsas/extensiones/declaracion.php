@@ -38,18 +38,54 @@ class ICAPdf extends TCPDF {
  * (pivote - $anchoCaja/2), no en el pivote mismo. Por eso el pivote debe
  * ser el centro de la banda MAS la mitad de esa caja (no la mitad del
  * texto real, que es lo que se probo primero y quedaba descuadrado).
- * $anchoCaja=40 porque es mayor que la etiqueta mas larga ("A. INFORMACIÓN
- * DEL CONTRIBUYENTE" ~34.6mm a 5pt), asi ninguna hace wrap a 2 lineas.
+ *
+ * $anchoCaja son 40mm por defecto -mas que cualquier etiqueta a 5pt, asi que
+ * salen en un solo renglon-, salvo cuando la etiqueta no deja holgura
+ * suficiente contra el alto de su banda: ahi se recorta la caja para que
+ * MultiCell la parta en dos renglones (ver el comentario de mas abajo).
+ *
+ * Medidas reales del formulario (dec_Id=197, verificadas con getNumLines):
+ *   A 39.33mm de banda / 29.33 de texto en 2 renglones   holgura 5.00mm
+ *   B 44.98 / 17.54 en 1                                  holgura 13.72
+ *   C 34.57 / 22.54 en 2 (corte manual)                   holgura  6.02
+ *   D 71.97 / 22.34 en 1                                  holgura 24.81
+ *   E 18.00 /  7.35 en 1                                  holgura  5.32
+ *   F 48.02 /  8.82 en 1                                  holgura 19.60
  */
 function dibujarTextoVertical($pdf, $texto, $x, $y_top, $y_bottom) {
 
-    $anchoCaja = 40;
+    $pdf->SetFont('helvetica','B',5);
+
+    $altoBanda = $y_bottom - $y_top;
+
+    // Como la caja va rotada 90 grados, su "ancho" corre A LO LARGO de la
+    // banda: compite contra el ALTO de la seccion, no contra el ancho de la
+    // hoja. Cuando la etiqueta ocupa casi toda la banda, la holgura que queda
+    // es menor que el desfase de GetY() -TCPDF deja el cursor ~3mm por debajo
+    // del borde real de la tabla, ver CLAUDE.md- y el rotulo termina cruzando
+    // la linea hacia la seccion de abajo. Es lo que pasaba con
+    // "A. INFORMACIÓN DEL CONTRIBUYENTE": 34.59mm de texto en una banda de
+    // 39.33mm, apenas 4.7mm de margen para un desfase de 3mm. Partiendola en
+    // dos renglones la holgura pasa a ser de varios milimetros por lado.
+    //
+    // Una etiqueta que ya trae salto de linea propio (seccion C) se respeta
+    // tal cual: ahi el llamador ya decidio el corte y ya ajusto su x.
+    $tieneCorteManual = strpos($texto, "\n") !== false;
+
+    // Se recorta 10mm (5mm por lado) y no lo justo: el desfase de GetY() es de
+    // ~3mm, asi que con menos margen el rotulo sigue rozando la linea.
+    if (!$tieneCorteManual && $pdf->GetStringWidth($texto) > $altoBanda * 0.85) {
+        $anchoCaja = max(12, $altoBanda - 10);
+        $x = $x - 2;   // los renglones de mas crecen hacia la izquierda
+    } else {
+        $anchoCaja = 40;
+    }
+
     $pivote = ($y_top + $y_bottom) / 2 + $anchoCaja / 2;
 
     $pdf->StartTransform();
     $pdf->Rotate(90, $x, $pivote);
     $pdf->SetXY($x, $pivote);
-    $pdf->SetFont('helvetica','B',5);
     $pdf->MultiCell($anchoCaja, 4, $texto, 0, 'C');
     $pdf->StopTransform();
 }
