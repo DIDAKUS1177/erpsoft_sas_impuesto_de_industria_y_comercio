@@ -1497,6 +1497,23 @@ liquidarDeclaracion() {
         });
     }
 
+    /**
+     * El nombre del archivo lo escribe quien sube (class.anexos.php solo le
+     * quita la ruta con basename(), no etiquetas HTML). Confirmado en vivo:
+     * un archivo subido con nombre "<svg onload=alert(document.cookie)>.pdf"
+     * se ejecutaba de verdad al listarlo -robo de la cookie de sesion real de
+     * quien lo viera, incluido personal interno revisando anexos ajenos-,
+     * porque listarAnexos() insertaba el nombre crudo con $().html().
+     */
+    escapeHtml(texto) {
+        return String(texto == null ? '' : texto)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     /** Punto 17: ver lo que ya esta cargado, no solo poder cargar. */
     listarAnexos(idEstablecimiento) {
 
@@ -1535,10 +1552,10 @@ liquidarDeclaracion() {
                     var kb = Math.max(1, Math.round((a.anx_Tamano || 0) / 1024));
                     filas +=
                         '<tr>' +
-                            '<td>' + (etiquetas[a.anx_Tipo] || a.anx_Tipo || '') + '</td>' +
-                            '<td>' + a.anx_NombreOriginal + '</td>' +
+                            '<td>' + establecimientos.escapeHtml(etiquetas[a.anx_Tipo] || a.anx_Tipo || '') + '</td>' +
+                            '<td>' + establecimientos.escapeHtml(a.anx_NombreOriginal) + '</td>' +
                             '<td>' + kb + ' KB</td>' +
-                            '<td>' + a.anx_FechaCarga + '</td>' +
+                            '<td>' + establecimientos.escapeHtml(a.anx_FechaCarga) + '</td>' +
                             '<td class="text-center" style="white-space:nowrap;">' +
                                 '<a class="btn btn-info btn-sm mr-1" target="_blank" ' +
                                    'href="../extensiones/anexo.php?id=' + a.anx_Id + '" ' +
