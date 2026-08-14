@@ -25,6 +25,42 @@
    IMPORTANTE: hacer respaldo de la base antes de correrla en produccion.
    ============================================================================ */
 
+/* ---------------------------------------------------------------------------
+   0. Candado contra corridas simultaneas
+   ----------------------------------------------------------------------------
+   Cada bloque de aqui abajo sigue el patron "IF COL_LENGTH(...) IS NULL
+   BEGIN ALTER TABLE ... ADD ... END": la comprobacion y el ALTER no son
+   atomicos entre si. Si dos sesiones corren esta migracion al mismo tiempo,
+   ambas pueden pasar la comprobacion antes de que cualquiera ejecute su
+   ALTER; la segunda que llegue falla con "Column names in each table must
+   be unique" y aborta su corrida a mitad de camino. Reproducido: con
+   concurrencia real, ~40% de las corridas fallaban asi.
+
+   sp_getapplock con @LockOwner='Session' sirve exactamente para esto: se
+   toma una sola vez aqui y se mantiene mientras dure la conexion, sin
+   importar que el resto del archivo este partido en lotes por "GO" (GO es
+   una señal para el cliente que ejecuta el script, no llega al servidor;
+   todos los lotes siguen corriendo sobre la misma sesion). Se libera
+   explicitamente al final del archivo.
+
+   @LockTimeout=10000 (10s): si otra corrida ya tiene el candado, se falla
+   rapido con un mensaje claro en vez de quedar colgado indefinidamente.
+   --------------------------------------------------------------------------- */
+DECLARE @lockResult INT;
+EXEC @lockResult = sp_getapplock
+    @Resource    = 'migracion_003_rit_nivel_contribuyente',
+    @LockMode    = 'Exclusive',
+    @LockOwner   = 'Session',
+    @LockTimeout = 10000;
+
+IF @lockResult < 0
+BEGIN
+    RAISERROR('No se pudo tomar el candado de la migracion 003 (codigo %d). ¿Hay otra corrida de esta misma migracion en curso? Reintente en unos segundos.', 16, 1, @lockResult);
+END
+ELSE
+    PRINT 'Candado de migracion tomado.';
+GO
+
 
 /* ---------------------------------------------------------------------------
    1. Matricula mercantil de la PERSONA (punto 8)
@@ -172,20 +208,31 @@ GO
    para no pisar nada que ya se haya corregido a mano- y se retiran las
    columnas equivocadas. Si esas columnas nunca existieron aqui (caso normal
    en produccion, que nunca corrio la version con el error), este bloque no
-   hace nada. */
+   hace nada.
+
+   Va en SQL DINAMICO a proposito: un UPDATE/ALTER escrito literal referencia
+   las columnas equivocadas por nombre, y SQL Server resuelve esos nombres al
+   COMPILAR el batch -no solo al ejecutarlo-, sin importar que este dentro de
+   un IF que nunca se cumpla. Reproducido: en una segunda corrida, ya sin las
+   columnas equivocadas (la primera corrida las habia retirado), el batch
+   fallaba con "Invalid column name" al compilar, pese a que el IF de afuera
+   jamas iba a dejarlo ejecutar. EXEC() con el texto armado como string se
+   compila solo si de verdad se ejecuta. */
 IF COL_LENGTH('dbo.ind_contribuyentes', 'ind_Nombre_contador') IS NOT NULL
 BEGIN
-    UPDATE dbo.ind_contribuyentes SET
-        ind_CedulaContador      = COALESCE(ind_CedulaContador,      ind_Cedula_contador),
-        ind_NombreContador      = COALESCE(ind_NombreContador,      ind_Nombre_contador),
-        ind_TarjetaProfContador = COALESCE(ind_TarjetaProfContador, ind_Tarjeta_profesional),
-        ind_CedulaRevisor       = COALESCE(ind_CedulaRevisor,       ind_Cedula_revisor),
-        ind_NombreRevisor       = COALESCE(ind_NombreRevisor,       ind_Nombre_revisor),
-        ind_TarjetaProfRevisor  = COALESCE(ind_TarjetaProfRevisor,  ind_Tarjeta_profesional_revisor);
+    EXEC('
+        UPDATE dbo.ind_contribuyentes SET
+            ind_CedulaContador      = COALESCE(ind_CedulaContador,      ind_Cedula_contador),
+            ind_NombreContador      = COALESCE(ind_NombreContador,      ind_Nombre_contador),
+            ind_TarjetaProfContador = COALESCE(ind_TarjetaProfContador, ind_Tarjeta_profesional),
+            ind_CedulaRevisor       = COALESCE(ind_CedulaRevisor,       ind_Cedula_revisor),
+            ind_NombreRevisor       = COALESCE(ind_NombreRevisor,       ind_Nombre_revisor),
+            ind_TarjetaProfRevisor  = COALESCE(ind_TarjetaProfRevisor,  ind_Tarjeta_profesional_revisor);
 
-    ALTER TABLE dbo.ind_contribuyentes
-        DROP COLUMN ind_Cedula_contador, ind_Nombre_contador, ind_Tarjeta_profesional,
-                    ind_Cedula_revisor, ind_Nombre_revisor, ind_Tarjeta_profesional_revisor;
+        ALTER TABLE dbo.ind_contribuyentes
+            DROP COLUMN ind_Cedula_contador, ind_Nombre_contador, ind_Tarjeta_profesional,
+                        ind_Cedula_revisor, ind_Nombre_revisor, ind_Tarjeta_profesional_revisor;
+    ');
 
     PRINT 'Columnas equivocadas de una corrida anterior: datos trasladados y columnas retiradas.';
 END
@@ -336,4 +383,11 @@ HAVING COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Matricula)), ''))                
     OR COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Nombre_revisor)), ''))               > 1
     OR COUNT(DISTINCT NULLIF(LTRIM(RTRIM(e.est_Tarjeta_profesional_revisor)), ''))  > 1
 ORDER BY e.est_IdContribuyente;
+GO
+
+
+/* ---------------------------------------------------------------------------
+   9. Liberar el candado (ver seccion 0)
+   --------------------------------------------------------------------------- */
+EXEC sp_releaseapplock @Resource = 'migracion_003_rit_nivel_contribuyente', @LockOwner = 'Session';
 GO
