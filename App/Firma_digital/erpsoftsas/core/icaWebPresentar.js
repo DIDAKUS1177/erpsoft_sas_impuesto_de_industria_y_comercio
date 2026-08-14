@@ -534,6 +534,18 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
             // liquidacion completa quedaba imposible de guardar.
             $("#btnGenerarOficial").prop("disabled", false);
 
+            // "Liquidar" nace disabled en el HTML y aqui nadie lo volvia a
+            // habilitar: en esta pantalla solo lo hacia el manejador de
+            // #btnCrearDeclaracion, que es codigo muerto de maqueta (inventa
+            // el numero con Math.random y no llama a ningun servicio). Es
+            // decir, en "Presentar Declaración" el boton quedaba gris para
+            // siempre, mientras que en "Consultar Declaraciones" -mismo modal-
+            // si se habilitaba al abrir. Se iguala el comportamiento: Liquidar
+            // solo recalcula en pantalla (ICA + avisos y tableros + bomberil)
+            // para ver el total antes de guardar; quien graba de verdad sigue
+            // siendo "Finalizar Declaración".
+            $("#btnValidarDeclaracion").prop("disabled", false);
+
               // 🔥 AQUÍ ESTÁ LA CLAVE
             $("#btnDescargarPDF")
                 .prop("disabled", true)
