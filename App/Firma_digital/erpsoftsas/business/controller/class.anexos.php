@@ -107,17 +107,27 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
      * sesion, solo conociendo el nombre. La unica via legitima es
      * extensiones/anexo.php, que si verifica de quien es el archivo.
      */
+    /**
+     * Devuelve true solo si el .htaccess quedo escrito (ya existia o se
+     * acaba de crear). Antes el @ tragaba cualquier fallo de escritura sin
+     * que nadie se enterara -ni un log, ni un aviso-, y _subir() seguia
+     * aceptando el archivo igual: si el permiso de Plesk no alcanzaba para
+     * escribir fuera del docroot de la app, cada subida quedaba
+     * silenciosamente sin blindar, dejando el documento (RUT, Camara de
+     * Comercio) alcanzable por URL directa sin sesion -el mismo problema que
+     * este blindaje existe para evitar-.
+     */
     public static function blindarCarpeta()
     {
         $base = self::carpetaBase();
-        if (!is_dir($base)) { return; }
+        if (!is_dir($base)) { return false; }
 
         $htaccess = $base . '/.htaccess';
-        if (is_file($htaccess)) { return; }
+        if (is_file($htaccess)) { return true; }
 
         // 'Require all denied' es Apache 2.4; las dos lineas de Order/Deny son
         // para 2.2. Tener las dos no estorba: cada version ignora la ajena.
-        @file_put_contents($htaccess,
+        $escrito = @file_put_contents($htaccess,
             "# Los anexos solo se entregan por extensiones/anexo.php, que\n" .
             "# comprueba la sesion y el dueño del archivo.\n" .
             "<IfModule mod_authz_core.c>\n" .
@@ -128,6 +138,13 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
             "    Deny from all\n" .
             "</IfModule>\n"
         );
+
+        if ($escrito === false) {
+            error_log("ANEXOS: no se pudo escribir .htaccess en $base -carpeta de anexos SIN blindar-.");
+            return false;
+        }
+
+        return true;
     }
 
     private function _idUsuario()
@@ -212,7 +229,15 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
             $this->_mensaje = 'No se pudo crear la carpeta de anexos';
             return [];
         }
-        self::blindarCarpeta();
+        if (!self::blindarCarpeta()) {
+            // Sin el .htaccess, cualquier archivo que se suba aqui queda
+            // alcanzable por URL directa sin sesion (confirmado: se probo
+            // quitando el permiso de escritura y el archivo subido quedo
+            // descargable con un curl limpio). Mejor rechazar la subida con
+            // un mensaje claro que aceptarla "exitosamente" sin proteccion.
+            $this->_mensaje = 'No se pudo proteger la carpeta de anexos. Contacte a soporte antes de volver a intentar.';
+            return [];
+        }
 
         // Un solo archivo llega como cadena; varios, como arreglo. Se
         // normaliza para no escribir el bucle dos veces.
