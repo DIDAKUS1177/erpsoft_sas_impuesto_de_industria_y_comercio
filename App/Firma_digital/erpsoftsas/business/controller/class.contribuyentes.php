@@ -64,12 +64,25 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             // En caso de error, se realiza rollback
             //$con->rollback();
             $arrRespu = array(
-                "ok"      => $e->getCode(), 
-                "mensaje" => "Error: " . $e->getMessage(), 
+                "ok"      => $e->getCode(),
+                "mensaje" => "Error: " . $e->getMessage(),
                 "datos"   => ""
             );
             header('Content-type: application/json');
             echo json_encode($arrRespu);
+        } catch (\Exception $e) {
+            // Antes solo se atrapaba ContribuyentesException: un error real de
+            // SQL Server (por ejemplo, una fecha con formato invalido o un
+            // texto mas largo que la columna) se propagaba sin capturar y
+            // terminaba en un 500 con cuerpo vacio -sin JSON, sin mensaje-.
+            // Con esto, cualquier fallo del driver responde igual que un
+            // error de negocio normal.
+            header('Content-type: application/json');
+            echo json_encode(array(
+                "ok"      => 0,
+                "mensaje" => "No se pudo procesar la solicitud. Verifique los datos e intente de nuevo.",
+                "datos"   => "",
+            ));
         }
     }
 
@@ -351,9 +364,11 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
 
     protected function _buscarContribuyentes(){
 
-        $buscar = $_POST['buscar'];
-
-        $_obj = new \erpsoftsas\DAO_Contribuyentes();
+        // $_POST['buscar'] iba interpolado directo en el LIKE, sin parametrizar
+        // (a diferencia de _consultarRIT/_guardarRIT, que si usan '?'). Un
+        // valor como "x%' OR ind_Id=30 --" devolvia filas de OTRO contribuyente:
+        // inyeccion SQL clasica, confirmada con extraccion real de datos.
+        $buscar = (string) ($_POST['buscar'] ?? '');
 
         $sql = "
             SELECT TOP 20
@@ -363,15 +378,16 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
                 ind_PrimerApellido
             FROM ind_contribuyentes
             WHERE
-                ind_NumeroIdentificacion LIKE '%$buscar%'
-                OR ind_PrimerNombre LIKE '%$buscar%'
-                OR ind_PrimerApellido LIKE '%$buscar%'
+                ind_NumeroIdentificacion LIKE ?
+                OR ind_PrimerNombre LIKE ?
+                OR ind_PrimerApellido LIKE ?
             ORDER BY ind_PrimerNombre
         ";
+        $comodin = '%' . $buscar . '%';
 
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
-        $id = $con->consultar($sql, []);
+        $id = $con->consultar($sql, [$comodin, $comodin, $comodin]);
 
         $datos = [];
 
@@ -462,6 +478,41 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         return isset($_SESSION['id_Rol']) && (int) $_SESSION['id_Rol'] === 1;
     }
 
+    /**
+     * ¿Puede la sesión actual leer/escribir el RIT de este contribuyente?
+     *
+     * Hasta encontrarse esto, _consultarRIT() y _guardarRIT() no comprobaban
+     * NADA: ni que hubiera sesión, ni que el ind_Id pedido fuera el del
+     * usuario logueado. Confirmado en vivo: un POST sin ninguna cookie leía
+     * el RIT completo (cédula, dirección, teléfono, representante legal) de
+     * cualquier contribuyente, y otro POST sin cookie lo modificaba. Con
+     * sesión de un contribuyente ajeno el resultado era el mismo. Rol 1
+     * (Administrador) y 2 (Internos Alcaldía) operan sobre cualquiera; el
+     * resto, solo sobre el contribuyente que les corresponde por número de
+     * documento -mismo cruce que ya usa ControladorAnexos::
+     * puedeOperarSobreEstablecimiento(), que es el patrón que se replica
+     * aquí para no reinventarlo distinto en cada controlador.
+     */
+    public static function puedeOperarSobreContribuyente($idContribuyente, $con)
+    {
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+
+        if (empty($_SESSION['id_usuario'])) { return false; }
+
+        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
+        if (in_array($rol, [1, 2], true)) { return true; }
+
+        $propio = $con->obnerFila($con->consultar(
+            "SELECT c.ind_Id
+               FROM ind_contribuyentes c
+               INNER JOIN conf_usuarios u ON u.usu_NumeroDocumento = c.ind_NumeroIdentificacion
+              WHERE u.usu_Id = ? AND c.ind_Id = ?",
+            [(int) $_SESSION['id_usuario'], (int) $idContribuyente]
+        ));
+
+        return (bool) $propio;
+    }
+
     protected function _consultarRIT()
     {
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
@@ -470,6 +521,12 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         if ($idContribuyente <= 0) {
             $this->_ok = 0;
             $this->_mensaje = 'No se indico el contribuyente';
+            return [];
+        }
+
+        if (!self::puedeOperarSobreContribuyente($idContribuyente, $con)) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No tiene permiso para ver este RIT';
             return [];
         }
 
@@ -556,6 +613,12 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             return [];
         }
 
+        if (!self::puedeOperarSobreContribuyente($idContribuyente, $con)) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No tiene permiso para editar este RIT';
+            return [];
+        }
+
         $sets    = [];
         $valores = [];
 
@@ -577,8 +640,15 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
 
             $valor = trim((string) $_POST[$campo]);
 
-            // Las columnas numericas no pueden recibir cadena vacia.
-            if (in_array($campo, ['ind_IdCiudad', 'ind_Telefono', 'ind_Persona'], true)) {
+            // ind_Telefono es bigint, pero un (int) crudo corta el string en
+            // el primer caracter no numerico tras un signo -"+57 312 566 6656"
+            // quedaba guardado como "57"-. Se extraen solo los digitos en vez
+            // de castear a ciegas, para no destruir un numero con indicativo,
+            // espacios o guiones (formato normal en Colombia).
+            if ($campo === 'ind_Telefono') {
+                $soloDigitos = preg_replace('/\D/', '', $valor);
+                $valor = ($soloDigitos === '') ? null : $soloDigitos;
+            } elseif (in_array($campo, ['ind_IdCiudad', 'ind_Persona'], true)) {
                 $valor = ($valor === '') ? null : (int) $valor;
             }
 
