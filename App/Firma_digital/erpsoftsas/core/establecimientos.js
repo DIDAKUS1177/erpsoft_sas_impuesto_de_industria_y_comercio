@@ -1225,9 +1225,12 @@ est_NoResolucion: $("#est_NoResolucion").val(),
         $("#accordion-menu li").removeClass("active show");
         $("#accordion-menu .submenu").css("display", "none");
 
-        $("#MICAWeb").addClass("active show");
-        $("#SubICAWeb").css("display", "block");
-        $("#ICAWeb_RIT").addClass("active");
+        // Antes marcaba #MICAWeb (Industria y Comercio) y #ICAWeb_RIT: un
+        // resto de cuando el RIT vivia dentro de ese submenu. Desde que el
+        // RIT paso a ser un item de primer nivel aparte, esto marcaba el
+        // enlace equivocado como activo. Establecimientos ahora tambien es
+        // un item de primer nivel propio (#MEstablecimientos).
+        $("#MEstablecimientos").addClass("active");
     }
 
     cargarAniosActividades(){

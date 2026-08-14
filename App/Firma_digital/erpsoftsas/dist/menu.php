@@ -177,9 +177,23 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 				     Registro de Informacion Tributaria aplica a TODOS los modulos, no
 				     solo a ICA. Va de primero, justo despues de Inicio. -->
 				<li class="dropdown" id="MRIT">
-					<a id="ICAWeb_RIT" onclick="menu.validarIngreso(1641,101)" class="dropdown-toggle no-arrow" style="cursor:pointer;">
+					<a id="ICAWeb_RIT" onclick="menu.validarIngreso(1641,101)" class="dropdown-toggle no-arrow" style="cursor:pointer;" title="Registro de Identificación Tributaria">
 						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="7" y1="16" x2="13" y2="16"/></svg></span>
-						<span class="mtext">Registro de Identificación Tributaria</span>
+						<!-- El nombre completo no cabe en el ancho del menu lateral y se
+						     veia cortado a la mitad ("Registro de Identificación Tri...").
+						     Se deja "RIT" aqui (con el nombre completo como title, y ya
+						     escrito completo como titulo de la propia pagina) y se
+						     agrega un item nuevo de Establecimientos justo debajo, para
+						     que se encuentre sin tener que buscarlo dentro de
+						     Administración ICA > Procesos. -->
+						<span class="mtext">RIT</span>
+					</a>
+				</li>
+
+				<li class="dropdown" id="MEstablecimientos">
+					<a id="ICAWeb_Establecimientos" onclick="menu.validarIngreso(1640,7)" class="dropdown-toggle no-arrow" style="cursor:pointer;">
+						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><line x1="9" y1="9" x2="9" y2="9.01"/><line x1="9" y1="13" x2="9" y2="13.01"/><line x1="9" y1="17" x2="9" y2="17.01"/><line x1="15" y1="9" x2="15" y2="9.01"/><line x1="15" y1="13" x2="15" y2="13.01"/><line x1="15" y1="17" x2="15" y2="17.01"/></svg></span>
+						<span class="mtext">Establecimientos</span>
 					</a>
 				</li>
 
