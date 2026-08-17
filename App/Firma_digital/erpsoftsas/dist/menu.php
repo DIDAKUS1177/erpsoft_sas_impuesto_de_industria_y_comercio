@@ -654,6 +654,15 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 }
 
 /* ---------- Pantalla de carga ---------- */
+/* Arranca oculta a proposito. vendors/scripts/process.js la muestra solo si
+   la pagina sigue cargando pasado su umbral (~350ms). Antes salia en CADA
+   navegacion -y aqui toda navegacion es una carga de pagina completa-, con
+   una espera minima obligatoria que hacia sentir el sistema mas lento de lo
+   que es. Si se quita esta regla, vuelve a salir siempre. */
+.pre-loader {
+	display: none;
+}
+
 .pre-loader .bar {
 	background: var(--erp-primario) !important;
 }
