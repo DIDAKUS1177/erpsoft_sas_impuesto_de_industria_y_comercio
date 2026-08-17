@@ -13,10 +13,99 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
     private $_ok;
     private $_mensaje;
 
-    public static function run() 
+    /**
+     * Contribuyente al que esta atado el usuario de la sesion, o null.
+     * Mismo vinculo que usan los demas controladores:
+     * conf_usuarios.usu_NumeroDocumento = ind_contribuyentes.ind_NumeroIdentificacion.
+     */
+    private static function _contribuyenteDeLaSesion($con)
+    {
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+        if (empty($_SESSION['id_usuario'])) { return null; }
+
+        $fila = $con->obnerFila($con->consultar(
+            "SELECT c.ind_Id
+               FROM ind_contribuyentes c
+               INNER JOIN conf_usuarios u ON u.usu_NumeroDocumento = c.ind_NumeroIdentificacion
+              WHERE u.usu_Id = ?",
+            [(int) $_SESSION['id_usuario']]
+        ));
+
+        return isset($fila['ind_Id']) ? (int) $fila['ind_Id'] : null;
+    }
+
+    /**
+     * Punto UNICO de control de acceso del modulo de declaraciones.
+     *
+     * Antes ninguna de las funciones de este controlador miraba de quien era
+     * la declaracion: bastaba tener sesion y cambiar dec_IdContribuyente o
+     * dec_Id en la peticion para leer -y modificar- las declaraciones de otro
+     * contribuyente. Comprobado con el usuario externo de prueba: pidiendo el
+     * contribuyente 31 devolvia sus 13 declaraciones con ingresos e impuesto.
+     * Sobre datos con reserva tributaria eso no es un detalle.
+     *
+     * Se resuelve aqui, en el despacho, y no funcion por funcion, porque son
+     * mas de quince y cualquiera nueva heredaria el agujero. Para los roles de
+     * Alcaldia (1 y 2) no cambia nada.
+     *
+     * Devuelve null si todo bien, o el mensaje de rechazo.
+     */
+    private static function _verificarAcceso()
+    {
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+
+        if (empty($_SESSION['id_usuario'])) {
+            return 'Debe iniciar sesión.';
+        }
+
+        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
+        if (in_array($rol, [1, 2], true)) { return null; }
+
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        $propio = self::_contribuyenteDeLaSesion($con);
+        if (!$propio) {
+            return 'No se pudo establecer a qué contribuyente corresponde la sesión.';
+        }
+
+        // El filtro por contribuyente se fija: se ignora el que venga.
+        if (array_key_exists('dec_IdContribuyente', $_POST)) {
+            $_POST['dec_IdContribuyente'] = $propio;
+        }
+
+        // Una declaracion concreta tiene que ser suya.
+        if (!empty($_POST['dec_Id'])) {
+            $fila = $con->obnerFila($con->consultar(
+                "SELECT dec_Id FROM ind_declaraciones_ica
+                  WHERE dec_Id = ? AND dec_IdContribuyente = ?",
+                [(int) $_POST['dec_Id'], $propio]
+            ));
+            if (!$fila) { return 'No tiene permiso sobre esta declaración.'; }
+        }
+
+        // Un establecimiento concreto tambien.
+        if (!empty($_POST['dec_IdEstablecimiento'])) {
+            $fila = $con->obnerFila($con->consultar(
+                "SELECT est_Id FROM ind_establecimientos
+                  WHERE est_Id = ? AND est_IdContribuyente = ?",
+                [(int) $_POST['dec_IdEstablecimiento'], $propio]
+            ));
+            if (!$fila) { return 'No tiene permiso sobre este establecimiento.'; }
+        }
+
+        return null;
+    }
+
+    public static function run()
     {
         $_obj = new self();
         $_obj->_funcion = isset($_POST['funcion']) ? $_POST['funcion'] : null;
+
+        $negado = self::_verificarAcceso();
+        if ($negado !== null) {
+            header('Content-type: application/json');
+            echo json_encode(["ok" => 0, "mensaje" => $negado, "datos" => []]);
+            return;
+        }
 
         try {
 
