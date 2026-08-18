@@ -241,7 +241,16 @@ class Establecimientos {
         $("#establecimientosRegistrados").DataTable().destroy();
         $("#bodyEstablecimientosRegistrados").empty();
         for (let dep of arrFilter) {
-            if (dep.est_Activos == 1) {
+            // OJO: son DOS columnas distintas con nombres casi iguales.
+            //   est_Activo  (int)   1/0  -> activo o inactivo. Es la que
+            //                             escribe _inactivarEstablecimientos.
+            //   est_Activos (float)      -> el monto de ACTIVOS (patrimonio)
+            //                             que se captura en el formulario.
+            // Este boton venia mirando est_Activos, o sea el patrimonio: como
+            // los 12 establecimientos lo tienen en 0, todos se pintaban como
+            // "inactivos" (rojo, "Activar") aunque los 12 estaban activos, y
+            // el boton nunca reflejaba lo que hacia.
+            if (dep.est_Activo == 1) {
                 var icono = "dw dw-checked";
                 var clase = "btn-success";
                 var titulo = "Inactivar Establecimiento";
@@ -269,7 +278,7 @@ class Establecimientos {
                 estadoTexto = 'Cesado';
                 estadoFondo = '#FEF3C7';
                 estadoColor = '#92400E';
-            } else if (dep.est_Activos == 1) {
+            } else if (dep.est_Activo == 1) {
                 estadoTexto = 'Activo';
                 estadoFondo = '#D1FAE5';
                 estadoColor = '#065F46';

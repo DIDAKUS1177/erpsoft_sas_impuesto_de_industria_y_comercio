@@ -640,7 +640,10 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         // se registra desde el modulo de establecimientos y unicamente la
         // Alcaldia (punto 14).
         $stmtEstablecimientos = $con->consultar(
-            "SELECT est_Id, est_Nombre, est_Direccion, est_Activos,
+            // est_Activo (int) es el indicador activo/inactivo. NO confundir con
+            // est_Activos (float), que es el monto de activos del formulario:
+            // son dos columnas distintas con nombres casi iguales.
+            "SELECT est_Id, est_Nombre, est_Direccion, est_Activo,
                     est_Fecha_cierre, est_Causal, est_Resolucion_cierre
                FROM ind_establecimientos
               WHERE est_IdContribuyente = ?

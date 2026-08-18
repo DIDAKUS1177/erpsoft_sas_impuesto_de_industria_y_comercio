@@ -1901,7 +1901,7 @@ actualizarDeclaracionIca(valor, numeroCampo){
             // dato que importa. Mismo criterio que la tabla de establecimientos.
             if (fechaCese) {
                 texto = 'Cesado';  fondo = '#FEF3C7'; color = '#92400E';
-            } else if (String(e.est_Activos) === '1') {
+            } else if (String(e.est_Activo) === '1') {
                 texto = 'Activo';  fondo = '#D1FAE5'; color = '#065F46';
             } else {
                 texto = 'Cerrado'; fondo = '#FEE2E2'; color = '#991B1B';
