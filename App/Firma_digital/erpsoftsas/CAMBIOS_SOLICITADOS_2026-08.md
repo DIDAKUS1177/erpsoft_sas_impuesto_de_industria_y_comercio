@@ -204,10 +204,10 @@ Revisión punto por punto contra el código, no contra los mensajes de commit.
 
 | Estado | Puntos |
 |---|---|
-| **Hechos** | 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, **13**, **14**, **15**, **16**, 17, 18, 19, 20, 21, 22, 23 |
-| **Pendiente del cliente** | 24 |
+| **Hechos** | 1 a 23 |
+| **Cerrado sin cambio de código** | **24** (ver abajo) |
 
-**23 de 24.** Falta únicamente el punto 24.
+**24 de 24.**
 
 ### Corrección de un error de seguimiento
 
@@ -217,14 +217,41 @@ En este documento esos números son **cese de actividades**, que es otra cosa y
 seguía sin existir. Se detectó revisando el documento contra el código y se
 implementó en `ea9d40b`.
 
-### Punto 24 — qué se necesita del cliente
+### Punto 24 — cerrado: era el mismo problema de los puntos 18 y 23
 
-"Se borra la información del formulario al editar" no se ha podido reproducir.
-Las dos pérdidas de datos que sí estaban confirmadas (actividades económicas y
-archivos adjuntos) se corrigieron en la Fase 0 y son los puntos 18 y 23.
+"Se borra la información del formulario al editar" **no es un tercer error
+aparte**. Es la misma pérdida de datos que ya describían los puntos 18
+(adjuntos) y 23 (actividades económicas), contada por el cliente con otras
+palabras — y con razón: cuando se levantó la lista, **12 de 12**
+establecimientos tenían los anexos vacíos y **6 de 12** habían perdido sus
+actividades. Desde la pantalla eso se ve exactamente como "se borró la
+información del formulario".
 
-Para cerrarlo hace falta que el cliente indique **en qué pantalla** y **qué
-campo** se borra. Sin eso no hay nada que reproducir.
+El mecanismo que lo causaba era real y está descrito en la sección 1: el
+guardado recorría todo `$_POST` y lo escribía sin filtrar, así que un campo que
+viajaba vacío pisaba el valor guardado. Se corrigió en la Fase 0.
+
+**Comprobación (2026-08-17).** Se verificó de dos formas que hoy ya no ocurre:
+
+1. *Análisis estático.* Se comparó, en los dos formularios que edita el
+   contribuyente, qué campos se **envían** al guardar contra cuáles se
+   **rellenan** al abrir. No hay ninguno huérfano: todo lo que se manda se
+   carga primero, así que nada viaja vacío por descuido.
+   - Establecimientos: 39 campos enviados, los 39 se cargan.
+   - RIT: 25 campos en el formulario, los 25 se cargan (`cargarRIT` los
+     recorre en un arreglo).
+
+2. *Prueba de ida y vuelta.* Se abrió cada formulario y se guardó **sin tocar
+   nada**, pasando por los endpoints reales, comparando después la fila
+   completa en la base:
+
+   | Formulario | Resultado |
+   |---|---|
+   | RIT (contribuyente 30) | Ningún dato perdido. Solo cambia `ind_FechaActualizacion`, que es lo esperado |
+   | Establecimiento 43 | Ningún dato perdido |
+
+Si el cliente vuelve a reportarlo, hay que pedirle **pantalla y campo
+concretos**: con el comportamiento actual no se reproduce.
 
 ### Decisión de diseño: el cese va sobre `ind_establecimientos`
 
