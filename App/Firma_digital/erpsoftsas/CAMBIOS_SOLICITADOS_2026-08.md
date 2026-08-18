@@ -195,3 +195,52 @@ La estructura técnica ya está resuelta y documentada (ver
 `erpsoftsas-ica-paipa-proyecto` en la memoria del proyecto); queda pendiente únicamente
 que el banco entregue el número de convenio y la especificación de la referencia. Se
 estima un día de trabajo a partir de ese momento.
+
+---
+
+## 7. Estado de ejecución (actualizado 2026-08-17)
+
+Revisión punto por punto contra el código, no contra los mensajes de commit.
+
+| Estado | Puntos |
+|---|---|
+| **Hechos** | 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, **13**, **14**, **15**, **16**, 17, 18, 19, 20, 21, 22, 23 |
+| **Pendiente del cliente** | 24 |
+
+**23 de 24.** Falta únicamente el punto 24.
+
+### Corrección de un error de seguimiento
+
+Los commits `a339f65` y `9918dd7` dieron por cerrados los puntos 14, 15 y 16,
+pero lo que implementaron con esos números fue **contador y revisor fiscal**.
+En este documento esos números son **cese de actividades**, que es otra cosa y
+seguía sin existir. Se detectó revisando el documento contra el código y se
+implementó en `ea9d40b`.
+
+### Punto 24 — qué se necesita del cliente
+
+"Se borra la información del formulario al editar" no se ha podido reproducir.
+Las dos pérdidas de datos que sí estaban confirmadas (actividades económicas y
+archivos adjuntos) se corrigieron en la Fase 0 y son los puntos 18 y 23.
+
+Para cerrarlo hace falta que el cliente indique **en qué pantalla** y **qué
+campo** se borra. Sin eso no hay nada que reproducir.
+
+### Decisión de diseño: el cese va sobre `ind_establecimientos`
+
+El documento planteaba subir el cese a `ind_contribuyentes` junto con el resto
+del RIT. Se decidió dejarlo en `ind_establecimientos` porque:
+
+- las columnas ya existían ahí (`est_Fecha_cierre`, `est_Causal`,
+  `est_Resolucion_cierre`, `est_Observacion_cierre`), así que no hace falta
+  migración;
+- el cese es **de cada local**, no de la persona: un contribuyente puede
+  cerrar un establecimiento y seguir operando los demás. A nivel de
+  contribuyente no habría forma de expresar eso.
+
+El RIT lo muestra agregado, de solo lectura, para cumplir el punto 16.
+
+`est_Causal` guarda el código: `1` Fusión, `2` Escisión, `3` Liquidación,
+`4` Otro. Es `varchar(1)`, así que el controlador valida contra esos cuatro
+valores — cualquier otro texto tumbaba el guardado con un 500 de cuerpo vacío,
+que en pantalla se veía como el genérico "error de conexión".
