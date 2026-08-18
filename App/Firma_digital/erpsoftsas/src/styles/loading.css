@@ -2,21 +2,50 @@
     opacity: 0.5;
 }
 
-
-/* .swal2-popup {
-    font-size: 1.5rem !important;
-} */
-
 .btn-margin {
     margin-right: 5px;
 }
 
+/* ---------- Capa de carga (#loading) ----------
+   Antes esta capa pintaba su indicador con
+   background: url('../images/load/load.svg'), pero ese archivo NO existe en
+   el repo: la peticion devolvia 404 en todas las pantallas. La capa seguia
+   ahi -100% de ancho y alto, z-index 9999999- pero sin nada que mostrar, y
+   cuando alguna peticion la dejaba abierta quedaba un recuadro suelto encima
+   del contenido sin que se entendiera que era.
+
+   Ahora el indicador es CSS puro: no depende de ningun archivo, no puede
+   volver a dar 404 y se ve igual en cualquier despliegue. */
 .loading {
-    background: url('../images/load/load.svg') no-repeat center center;
     position: absolute;
     top: 0;
     left: 0;
     height: 100%;
     width: 100%;
     z-index: 9999999;
+    background: rgba(255, 255, 255, 0.55);
+}
+
+.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 42px;
+    height: 42px;
+    margin: -21px 0 0 -21px;
+    border: 4px solid rgba(31, 164, 157, 0.25);
+    border-top-color: #1fa49d;
+    border-radius: 50%;
+    animation: erp-giro 0.7s linear infinite;
+}
+
+@keyframes erp-giro {
+    to { transform: rotate(360deg); }
+}
+
+/* Respeta el atributo hidden del HTML: sin esto, basta una regla de display
+   para que la capa aparezca aunque el marcado la declare oculta. */
+.loading[hidden] {
+    display: none !important;
 }

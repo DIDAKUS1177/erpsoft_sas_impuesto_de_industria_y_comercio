@@ -91,7 +91,7 @@ function dibujarTextoVertical($pdf, $texto, $x, $y_top, $y_bottom) {
 }
 
 /**
- * Marca de agua diagonal ("BORRADOR" / "PRESENTADA") centrada en la
+ * Marca de agua diagonal ("BORRADOR" / "PRESENTADA" / "PAGADA") centrada en la
  * pagina, en gris claro semitransparente. Se dibuja ANTES del contenido
  * (justo despues de AddPage) para que quede detras del texto -en TCPDF
  * el orden de dibujo es el orden de las llamadas, no hay z-index-.
@@ -192,7 +192,13 @@ if (!$row) {
 // terminaba, worker de PHP al 99% CPU indefinidamente). Al 0.15 de alpha
 // se ve igual de bien encima del contenido que detras.
 $estaPresentada = ((int)($row['dec_Estado'] ?? 0) === 2);
-$textoMarcaAgua = $estaPresentada ? 'PRESENTADA' : 'BORRADOR';
+
+// La marca de agua distingue tres momentos, no dos. Antes una declaracion ya
+// PAGADA seguia diciendo "PRESENTADA": el contribuyente descargaba su
+// comprobante de pago y el documento no reflejaba que estuviera pagado, que es
+// justo el dato que le importa cuando lo tiene que mostrar.
+$estaPagada     = ((int)($row['dec_Pagado'] ?? 0) === 1);
+$textoMarcaAgua = $estaPagada ? 'PAGADA' : ($estaPresentada ? 'PRESENTADA' : 'BORRADOR');
 
 /* ===========================
 ACTIVIDADES

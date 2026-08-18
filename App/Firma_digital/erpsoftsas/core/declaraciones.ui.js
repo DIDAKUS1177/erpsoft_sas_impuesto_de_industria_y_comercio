@@ -241,13 +241,39 @@ var DeclaracionesUI = (function () {
         return html + '</div>';
     }
 
+    /**
+     * Fecha de SQL Server -> texto dd/mm/aaaa para mostrar.
+     *
+     * El driver sqlsrv no devuelve las fechas como cadena sino como objeto
+     * ({date, timezone_type, timezone}), asi que concatenarlas directamente
+     * imprimia "[object Object]" -es lo que salia en la columna Fecha Pago de
+     * "Consultar Declaraciones" en cuanto una declaracion estaba pagada-.
+     *
+     * 1900-01-01 es el centinela de "nunca se lleno" de esta base y se trata
+     * como vacio, igual que en el resto del sistema.
+     */
+    function fechaTexto(valor, siVacio) {
+        var vacio = (siVacio === undefined) ? 'No aplica' : siVacio;
+        if (!valor) { return vacio; }
+
+        var texto = (typeof valor === 'string') ? valor : (valor.date || '');
+        if (!texto) { return vacio; }
+
+        var soloFecha = texto.substring(0, 10);          // AAAA-MM-DD
+        if (soloFecha === '1900-01-01') { return vacio; }
+
+        var p = soloFecha.split('-');
+        return (p.length === 3) ? (p[2] + '/' + p[1] + '/' + p[0]) : soloFecha;
+    }
+
     return {
         nombreMes: nombreMes,
         htmlAcciones: htmlAcciones,
         estado: estado,
         chipEstado: chipEstado,
         resumenDeclaracion: resumenDeclaracion,
-        stepperHtml: stepperHtml
+        stepperHtml: stepperHtml,
+        fechaTexto: fechaTexto
     };
 
 })();

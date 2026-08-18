@@ -1150,6 +1150,23 @@ window.addEventListener('load', function () {
 			console.error('AJAX fallido:', settings && settings.url, jqxhr && jqxhr.status, jqxhr && jqxhr.responseText);
 		}
 	});
+
+	/*
+	 * Red de seguridad de la capa de carga.
+	 *
+	 * #loading se abre con $('#loading').show() en decenas de sitios y se
+	 * cierra a mano en cada success/error. Basta que un camino se salga antes
+	 * -un return temprano, una validacion que corta, una excepcion- para que
+	 * la capa quede abierta: cubre la pantalla entera con z-index 9999999 y
+	 * deja un recuadro encima del contenido que no se va con nada.
+	 *
+	 * ajaxStop dispara cuando NO queda ninguna peticion en curso, asi que
+	 * cerrar aqui no interrumpe nada que siga trabajando.
+	 */
+	jQuery(document).ajaxStop(function () {
+		jQuery('#loading').hide();
+		jQuery('#wrapper').removeClass('body-load');
+	});
 });
 </script>
 

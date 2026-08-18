@@ -341,7 +341,13 @@ $pdf->SetFont('helvetica','',7);
 // en declaracion.php -Rotate()/StartTransform() tan temprano en el
 // documento colgaba el resto del render en pruebas-.
 $estaPresentada = ((int)($row['dec_Estado'] ?? 0) === 2);
-$textoMarcaAgua = $estaPresentada ? 'PRESENTADA' : 'BORRADOR';
+
+// La marca de agua distingue tres momentos, no dos. Antes una declaracion ya
+// PAGADA seguia diciendo "PRESENTADA": el contribuyente descargaba su
+// comprobante de pago y el documento no reflejaba que estuviera pagado, que es
+// justo el dato que le importa cuando lo tiene que mostrar.
+$estaPagada     = ((int)($row['dec_Pagado'] ?? 0) === 1);
+$textoMarcaAgua = $estaPagada ? 'PAGADA' : ($estaPresentada ? 'PRESENTADA' : 'BORRADOR');
 
 $nombreFirmanteContadorRevisor = $contador_nombre !== '' ? $contador_nombre : $revisor_nombre;
 $docFirmanteContadorRevisor    = $contador_num_doc !== '' ? $contador_num_doc : $revisor_num_doc;

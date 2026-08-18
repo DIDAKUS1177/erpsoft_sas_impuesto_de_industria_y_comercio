@@ -608,7 +608,9 @@ consultarDeclaraciones(idEstablecimiento, idContribuyente) {
             var filas = '';
             resp.datos.forEach(function (d) {
 
-                var fechaPago = d.dec_FechaPago || 'No aplica';
+                // dec_FechaPago llega como objeto del driver sqlsrv, no como
+        // cadena: concatenarlo pintaba "[object Object]".
+        var fechaPago = DeclaracionesUI.fechaTexto(d.dec_FechaPago);
                 var banco     = d.dec_BancoPago || 'No aplica';
                 var valor     = d.dec_ValorPago || 0;
 
