@@ -633,6 +633,31 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             $fila['actividades'][] = $act;
         }
 
+        // Punto 16: el cese de actividades tiene que verse tanto en el
+        // establecimiento como en el RIT. El cese es por local -las columnas
+        // viven en ind_establecimientos-, asi que aqui se listan todos los
+        // establecimientos del contribuyente con su estado. De solo lectura:
+        // se registra desde el modulo de establecimientos y unicamente la
+        // Alcaldia (punto 14).
+        $stmtEstablecimientos = $con->consultar(
+            "SELECT est_Id, est_Nombre, est_Direccion, est_Activos,
+                    est_Fecha_cierre, est_Causal, est_Resolucion_cierre
+               FROM ind_establecimientos
+              WHERE est_IdContribuyente = ?
+              ORDER BY est_Id",
+            [$idContribuyente]
+        );
+
+        $fila['establecimientos'] = [];
+        while ($est = $con->obnerFila($stmtEstablecimientos)) {
+            // 1900-01-01 es el centinela de "nunca se lleno" de esta base.
+            if ($est['est_Fecha_cierre'] instanceof \DateTime) {
+                $f = $est['est_Fecha_cierre']->format('Y-m-d');
+                $est['est_Fecha_cierre'] = ($f === '1900-01-01') ? '' : $f;
+            }
+            $fila['establecimientos'][] = $est;
+        }
+
         $this->_ok = 1;
         $this->_mensaje = 'RIT consultado';
 

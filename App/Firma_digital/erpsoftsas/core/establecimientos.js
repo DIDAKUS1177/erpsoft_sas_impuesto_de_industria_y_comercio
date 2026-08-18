@@ -8,6 +8,40 @@ class Establecimientos {
     constructor() {}
 
     /**
+     * Fecha de SQL Server -> valor para un <input type="date">.
+     *
+     * El driver devuelve las fechas como {date: "AAAA-MM-DD hh:mm:ss...", ...}.
+     * 1900-01-01 es el centinela de "nunca se lleno" que usa esta base: se
+     * muestra vacio, igual que ya hace el certificado en PDF, para no dar a
+     * entender que un establecimiento cerro en 1900.
+     */
+    fechaParaInput(valor) {
+        if (!valor) { return ''; }
+        var texto = typeof valor === 'string' ? valor : (valor.date || '');
+        if (!texto) { return ''; }
+        var soloFecha = texto.substring(0, 10);
+        return soloFecha === '1900-01-01' ? '' : soloFecha;
+    }
+
+    /**
+     * Punto 15: el contribuyente ve el cese, pero no lo edita. Solo la
+     * Alcaldia (rol 1) puede tocarlo.
+     *
+     * Esto es presentacion, no seguridad: el control real esta en
+     * _filtrarCese() del controlador, porque un readonly se quita desde la
+     * consola del navegador. Aqui solo se evita que el usuario escriba algo
+     * que despues el servidor le va a descartar sin avisar.
+     */
+    aplicarPermisosCese() {
+        var esAdmin = String(idRol) === '1';
+
+        $('#est_Fecha_cierre, #est_Resolucion_cierre, #est_Observacion_cierre')
+            .prop('readonly', !esAdmin);
+        $('#est_Causal').prop('disabled', !esAdmin);
+        $('#avisoCese').toggle(!esAdmin);
+    }
+
+    /**
      * crearUsuario: Método para abrir modal de creación de ActividadesComercio.
      */
     async crearEstablecimientos() {
@@ -223,11 +257,40 @@ class Establecimientos {
             // ahora en la pantalla del RIT.
             var soporteRit = '';
 
+            // Punto 13: distintivo de estado. El color nunca va solo, lleva
+            // texto -mismo criterio que los estados de las declaraciones-,
+            // para que se entienda tambien en blanco y negro o con daltonismo.
+            // "Cesado" manda sobre "Inactivo": si tiene fecha de cese, eso es
+            // lo que le importa al funcionario que mira la lista.
+            var fechaCese = establecimientos.fechaParaInput(dep.est_Fecha_cierre);
+            var estadoTexto, estadoFondo, estadoColor;
+
+            if (fechaCese) {
+                estadoTexto = 'Cesado';
+                estadoFondo = '#FEF3C7';
+                estadoColor = '#92400E';
+            } else if (dep.est_Activos == 1) {
+                estadoTexto = 'Activo';
+                estadoFondo = '#D1FAE5';
+                estadoColor = '#065F46';
+            } else {
+                estadoTexto = 'Cerrado';
+                estadoFondo = '#FEE2E2';
+                estadoColor = '#991B1B';
+            }
+
+            var chipEstado =
+                '<span style="display:inline-block; padding:2px 10px; border-radius:999px;' +
+                ' font-size:12px; font-weight:600; white-space:nowrap;' +
+                ' background:' + estadoFondo + '; color:' + estadoColor + ';">' +
+                estadoTexto + '</span>' +
+                (fechaCese ? '<br><span style="font-size:11px; color:#6B7280;">' + fechaCese + '</span>' : '');
+
 
                 $('#bodyEstablecimientosRegistrados').append(
                     '<tr>' +
                     '<td>' +
-                    dep.est_Nombre + 
+                    dep.est_Nombre +
                     '</td>' +
                     '<td>' +
                     dep.strNombreContribuyente +
@@ -237,6 +300,9 @@ class Establecimientos {
                     '</td>' +
                     '<td>' +
                     dep.est_Direccion +
+                    '</td>' +
+                    '<td align="center">' +
+                    chipEstado +
                     '</td>' +
                     '<td align="center" style="white-space:nowrap;">' +
                     
@@ -341,7 +407,15 @@ class Establecimientos {
                 // $("#est_Persona").val(d.est_Persona);
 
                 $("#est_OpcionUso").val(d.est_Opcion_uso);
-                //$("#est_Causal").val(d.est_Causal);
+
+                // Cese de actividades (puntos 14/15/16). Las fechas centinela
+                // 1900-01-01 significan "nunca se lleno": se muestran vacias,
+                // igual que hace el certificado en PDF.
+                $("#est_Causal").val(d.est_Causal || '');
+                $("#est_Resolucion_cierre").val(d.est_Resolucion_cierre || '');
+                $("#est_Observacion_cierre").val(d.est_Observacion_cierre || '');
+                $("#est_Fecha_cierre").val(establecimientos.fechaParaInput(d.est_Fecha_cierre));
+                establecimientos.aplicarPermisosCese();
 
                 $("#est_Cedula_representante").val(d.est_Cedula_representante);
                 $("#est_Nombre_representante").val(d.est_Nombre_representante);
@@ -506,7 +580,14 @@ $("#est_NoResolucion").val(d.est_NoResolucion);
         //est_Persona: $("#est_Persona").val(),
 
         est_Opcion_uso: $("#est_OpcionUso").val(),
-        //est_Causal: $("#est_Causal").val(),
+
+        // Cese de actividades. Se mandan siempre; si quien envia no es la
+        // Alcaldia, el servidor los descarta (_filtrarCese). No se confia en
+        // el readonly de la pantalla, que se quita desde la consola.
+        est_Fecha_cierre: $("#est_Fecha_cierre").val(),
+        est_Causal: $("#est_Causal").val(),
+        est_Resolucion_cierre: $("#est_Resolucion_cierre").val(),
+        est_Observacion_cierre: $("#est_Observacion_cierre").val(),
         
         est_Cedula_representante: $("#est_Cedula_representante").val(),
         est_Nombre_representante: $("#est_Nombre_representante").val(),
@@ -957,7 +1038,15 @@ est_NoResolucion: $("#est_NoResolucion").val(),
             //est_Persona: $("#est_Persona").val(),
 
             est_Opcion_uso: $("#est_OpcionUso").val(),
-            //est_Causal: $("#est_Causal").val(),
+
+            // Cese de actividades: van tambien al crear, por si la Alcaldia
+            // registra un establecimiento que ya viene cesado. Si quien envia
+            // no es administrador el servidor los descarta (_filtrarCese).
+            est_Fecha_cierre: $("#est_Fecha_cierre").val(),
+            est_Causal: $("#est_Causal").val(),
+            est_Resolucion_cierre: $("#est_Resolucion_cierre").val(),
+            est_Observacion_cierre: $("#est_Observacion_cierre").val(),
+
             est_Cedula_representante: $("#est_Cedula_representante").val(),
             est_Nombre_representante: $("#est_Nombre_representante").val(),
             est_Email_representante: $("#est_Email_representante").val(),

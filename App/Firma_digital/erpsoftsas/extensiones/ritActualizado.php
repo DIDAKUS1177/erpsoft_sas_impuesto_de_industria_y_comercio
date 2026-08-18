@@ -247,11 +247,21 @@ $d = [
 'codigo_catastral' => $esc($row['est_Codigo_catastral']),
 
 // CESE
-'fecha_cese' => !empty($row['est_Fecha_cierre'])
+// 1900-01-01 es el centinela de "nunca se lleno" de esta base: se imprime
+// vacio, igual que ya se hace con las fechas de los establecimientos. Sin
+// esto el certificado afirmaba que el negocio ceso actividades en 1900.
+'fecha_cese' => (!empty($row['est_Fecha_cierre'])
+                 && $row['est_Fecha_cierre'] instanceof \DateTime
+                 && $row['est_Fecha_cierre']->format('Y-m-d') !== '1900-01-01')
     ? $row['est_Fecha_cierre']->format('d-m-Y')
     : '',
 
-'causal' => $esc($row['est_Causal'])
+// est_Causal guarda el codigo (1 Fusion, 2 Escision, 3 Liquidacion, 4 Otro).
+// Las cuatro casillas del formulario se imprimian SIEMPRE vacias: el valor se
+// leia pero no se usaba para marcar ninguna.
+'causal' => trim((string) $row['est_Causal']),
+
+'resolucion_cese' => $esc($row['est_Resolucion_cierre'])
 
 ];
 
@@ -608,15 +618,15 @@ SECRETARIA DE HACIENDA
 <td width="9%">'.$d['fecha_cese'].'</td>
 <td width="10%"><b>28. Causal:</b></td>
 <td width="7%">Fusión</td>
-<td width="3%"></td>
+<td width="3%">'.($d['causal'] === '1' ? 'X' : '').'</td>
 <td width="8%">Escision</td>
-<td width="3%"></td>
+<td width="3%">'.($d['causal'] === '2' ? 'X' : '').'</td>
 <td width="10%">Liquidación</td>
-<td width="3%"></td>
+<td width="3%">'.($d['causal'] === '3' ? 'X' : '').'</td>
 <td width="5%">Otro</td>
-<td width="3%"></td>
+<td width="3%">'.($d['causal'] === '4' ? 'X' : '').'</td>
 <td width="19%"><b>29. Número de Establecimiento que clausura</b></td>
-<td width="5%"></td>
+<td width="5%">'.($d['fecha_cese'] !== '' ? $esc($idEstablecimiento) : '').'</td>
 </tr>
 
 </table>

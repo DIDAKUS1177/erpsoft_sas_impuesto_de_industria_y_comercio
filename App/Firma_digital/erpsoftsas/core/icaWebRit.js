@@ -1770,6 +1770,7 @@ actualizarDeclaracionIca(valor, numeroCampo){
                 establecimientos.cargarCiudadesRIT(d.ind_IdCiudad);
 
                 establecimientos.pintarActividadesRIT(d.actividades || []);
+                establecimientos.pintarEstablecimientosRIT(d.establecimientos || []);
 
                 // La descarga del certificado vive ahora aqui y va por
                 // contribuyente, no por establecimiento (punto 5).
@@ -1840,17 +1841,87 @@ actualizarDeclaracionIca(valor, numeroCampo){
             return;
         }
 
+        var esc = establecimientos.escaparHtml;
         var filas = '';
         actividades.forEach(function (a) {
             filas +=
                 '<tr>' +
-                    '<td>' + (a.acc_Codigo || '') + '</td>' +
-                    '<td>' + (a.acc_Nombre || '') + '</td>' +
-                    '<td>' + (a.est_Nombre || '') + '</td>' +
-                    '<td>' + (a.ace_Anio || '') + '</td>' +
+                    '<td>' + esc(a.acc_Codigo) + '</td>' +
+                    '<td>' + esc(a.acc_Nombre) + '</td>' +
+                    '<td>' + esc(a.est_Nombre) + '</td>' +
+                    '<td>' + esc(a.ace_Anio) + '</td>' +
                 '</tr>';
         });
         $('#tbodyActividadesRIT').html(filas);
+    }
+
+    /**
+     * El nombre y la direccion de un establecimiento los escribe el propio
+     * contribuyente, asi que no pueden concatenarse crudos dentro de .html():
+     * es la misma via por la que se colo un XSS almacenado en el listado de
+     * anexos (commit 16d98f8). No hay utilidad de escape en el proyecto, asi
+     * que va aqui.
+     */
+    escaparHtml(valor) {
+        if (valor === null || valor === undefined) { return ''; }
+        return String(valor)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    /**
+     * Punto 16: los establecimientos del contribuyente con su estado de cese.
+     * Solo lectura: el cese lo registra la Alcaldia desde el modulo de
+     * establecimientos (punto 14), no desde aqui.
+     */
+    pintarEstablecimientosRIT(establecimientosLista) {
+
+        var CAUSALES = { '1': 'Fusión', '2': 'Escisión', '3': 'Liquidación', '4': 'Otro' };
+
+        if (!establecimientosLista.length) {
+            $('#tbodyEstablecimientosRIT').html(
+                '<tr><td colspan="6" class="text-center text-muted py-3">' +
+                    'No hay establecimientos registrados.' +
+                '</td></tr>'
+            );
+            return;
+        }
+
+        var esc = establecimientos.escaparHtml;
+        var filas = '';
+
+        establecimientosLista.forEach(function (e) {
+            var fechaCese = e.est_Fecha_cierre || '';
+            var texto, fondo, color;
+
+            // "Cesado" manda sobre "Cerrado": si hay fecha de cese, ese es el
+            // dato que importa. Mismo criterio que la tabla de establecimientos.
+            if (fechaCese) {
+                texto = 'Cesado';  fondo = '#FEF3C7'; color = '#92400E';
+            } else if (String(e.est_Activos) === '1') {
+                texto = 'Activo';  fondo = '#D1FAE5'; color = '#065F46';
+            } else {
+                texto = 'Cerrado'; fondo = '#FEE2E2'; color = '#991B1B';
+            }
+
+            filas +=
+                '<tr>' +
+                    '<td>' + esc(e.est_Nombre) + '</td>' +
+                    '<td>' + esc(e.est_Direccion) + '</td>' +
+                    '<td><span style="display:inline-block; padding:2px 10px;' +
+                        ' border-radius:999px; font-size:12px; font-weight:600;' +
+                        ' background:' + fondo + '; color:' + color + ';">' +
+                        texto + '</span></td>' +
+                    '<td>' + esc(fechaCese || '—') + '</td>' +
+                    '<td>' + esc(CAUSALES[e.est_Causal] || '—') + '</td>' +
+                    '<td>' + esc(e.est_Resolucion_cierre || '—') + '</td>' +
+                '</tr>';
+        });
+
+        $('#tbodyEstablecimientosRIT').html(filas);
     }
 
     /**

@@ -67,8 +67,13 @@
 							<tr>
                                 <th>Establecimiento</th>
                                 <th>Contribuyente</th>
-                                <th># Documento</th>	
-								<th>Dirección</th>								
+                                <th># Documento</th>
+								<th>Dirección</th>
+								<!-- Punto 13: el estado tenia que poder distinguirse de un
+								     vistazo. Antes solo se deducia del color del boton de
+								     accion, que ademas confunde: verde significaba "esta
+								     activo", pero al pulsarlo lo inactiva. -->
+								<th>Estado</th>
 								<th>Acciones</th>
 							</tr>
 						</thead>
@@ -463,11 +468,66 @@
 </div>
 </div>
 
+<!-- ===================== CESE DE ACTIVIDADES ===================== -->
+<!--
+     Puntos 14, 15 y 16. Las columnas (est_Fecha_cierre, est_Causal,
+     est_Resolucion_cierre, est_Observacion_cierre) existian desde antes en
+     ind_establecimientos, pero los campos estaban comentados en este archivo
+     y el select se llamaba con_Causal, que no corresponde a ninguna columna:
+     el cese no llegaba a guardarse nunca.
+
+     La clase campo-solo-admin es la que usa el JS para dejarlos de solo
+     lectura cuando quien mira no es la Alcaldia (punto 15). El bloqueo de
+     verdad esta en el servidor (_filtrarCese en class.establecimientos.php):
+     un readonly se quita desde la consola del navegador.
+-->
+<div class="bloque-form">
+<div class="titulo-bloque">Cese de Actividades</div>
+
+<div id="avisoCese" class="mb-3" style="display:none; font-size:13px; color:#6B7280;">
+    <i class="fa fa-lock"></i> Solo la Alcaldía puede registrar el cese de actividades.
+</div>
+
+<div class="row">
+    <div class="col-sm-12 col-md-3">
+        <div class="form-group" style="width: 95%">
+            <label>Fecha de cese</label>
+            <input type="date" class="form-control campo-solo-admin"
+                   id="est_Fecha_cierre" name="est_Fecha_cierre">
+        </div>
+    </div>
+
+    <div class="col-sm-12 col-md-3">
+        <div class="form-group" style="width: 95%">
+            <label>Causal</label>
+            <select class="form-control campo-solo-admin" id="est_Causal" name="est_Causal">
+                <option value="">Sin cese</option>
+                <option value="1">Fusión</option>
+                <option value="2">Escisión</option>
+                <option value="3">Liquidación</option>
+                <option value="4">Otro</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="col-sm-12 col-md-3">
+        <div class="form-group" style="width: 95%">
+            <label>No. Resolución</label>
+            <input type="text" class="form-control campo-solo-admin" maxlength="50"
+                   id="est_Resolucion_cierre" name="est_Resolucion_cierre">
+        </div>
+    </div>
+</div>
+
+</div>
+
 <!-- ===================== OBSERVACIÓN Y AUTORIZACIÓN ===================== -->
 <div class="bloque-form">
 <div class="titulo-bloque">Observación y Autorización</div>
 
-<input type="text" class="form-control mb-3" id="est_Observacion_cierre" name="est_Observacion_cierre">
+<label for="est_Observacion_cierre">Observación</label>
+<input type="text" class="form-control mb-3 campo-solo-admin" maxlength="255"
+       id="est_Observacion_cierre" name="est_Observacion_cierre">
 
 <div class="form-check">
 <input type="checkbox" id="est_Autorizacion" name="est_Autorizacion" data-toggle="switch"> 

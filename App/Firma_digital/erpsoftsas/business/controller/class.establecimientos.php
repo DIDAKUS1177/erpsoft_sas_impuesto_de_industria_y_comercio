@@ -83,13 +83,15 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
             $_POST['est_IdContribuyente'] = $propio;
         }
 
+        self::_filtrarCese();
+
         $_obj = new \erpsoftsas\DAO_Establecimientos();
 
         foreach ($_POST as $campo => $valor) {
             $metodo = 'set_' . $campo;
             $_obj->$metodo($valor);
         }
-        
+
         $nomUsurio = $_obj->listarRegistros($_obj->get_est_Id());
         $longitud = count($nomUsurio);
         $nomduplicado=0;
@@ -155,6 +157,8 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
         if (!in_array($rol, [1, 2], true)) {
             unset($_POST['est_IdContribuyente']);
         }
+
+        self::_filtrarCese();
 
         $_obj = new \erpsoftsas\DAO_Establecimientos();
         $_obj->set_est_Id($_POST['est_Id'] ?? null);
@@ -284,6 +288,58 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
      * true si la sesion actual puede tocar ESE establecimiento.
      * Alcaldia (rol 1 y 2) puede con todos; los demas solo con los suyos.
      */
+    /**
+     * Cese de actividades (puntos 14, 15 y 16 de la lista del cliente).
+     *
+     * Las columnas ya existian en ind_establecimientos desde antes; lo que
+     * faltaba era conectarlas: en el formulario los campos estaban comentados
+     * y el select se llamaba con_Causal, que no corresponde a ninguna columna,
+     * asi que el cese nunca llegaba a guardarse.
+     */
+    private static function _camposCese()
+    {
+        return [
+            'est_Fecha_cierre',
+            'est_Causal',
+            'est_Resolucion_cierre',
+            'est_Observacion_cierre',
+        ];
+    }
+
+    /** Rol 1 = Administrador en conf_rol, igual que en class.contribuyentes.php. */
+    private static function _esAdministrador()
+    {
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+        return isset($_SESSION['id_Rol']) && (int) $_SESSION['id_Rol'] === 1;
+    }
+
+    /**
+     * Punto 14: el cese lo registra UNICAMENTE el administrador. Si los campos
+     * llegan desde otro rol se descartan en silencio -no se falla- para que el
+     * contribuyente pueda seguir guardando el resto de su establecimiento.
+     * Comprobado que hacia falta: antes un contribuyente podia fijarse su
+     * propia fecha de cierre mandando el POST a mano.
+     *
+     * De paso se valida est_Causal, que en la base es varchar(1): cualquier
+     * texto mas largo hacia fallar el guardado con un 500 de cuerpo vacio, que
+     * en pantalla se ve como el generico "error de conexion".
+     */
+    private static function _filtrarCese()
+    {
+        if (!self::_esAdministrador()) {
+            foreach (self::_camposCese() as $campo) {
+                unset($_POST[$campo]);
+            }
+            return;
+        }
+
+        if (isset($_POST['est_Causal'])) {
+            $causal = trim((string) $_POST['est_Causal']);
+            // 1 Fusion, 2 Escision, 3 Liquidacion, 4 Otro.
+            $_POST['est_Causal'] = in_array($causal, ['1', '2', '3', '4'], true) ? $causal : '';
+        }
+    }
+
     private static function _puedeSobreEstablecimiento($idEstablecimiento, $con)
     {
         if (session_status() === PHP_SESSION_NONE) { @session_start(); }
