@@ -237,19 +237,64 @@
 					</div>
 
 					<hr>
-					<!-- Punto 9: el RIT tiene que mostrar las actividades. Se
-					     listan las del año mas reciente que el contribuyente
-					     tenga registrado; se editan en el establecimiento al
-					     que pertenecen, por eso aqui van solo de lectura. -->
-					<h5 class="mb-3" style="font-weight:600;">Actividades económicas</h5>
+					<!--
+					     Puntos 6 y 11 (reunion 2026-08-18): los codigos del RUT son de la
+					     PERSONA, no de cada local. La migracion 005 los subio a
+					     ind_contribuyentes (ind_Rut, ind_Rut_segundo, ind_Rut_tercero);
+					     antes estaban copiados en cada establecimiento sin nada que
+					     garantizara que las copias coincidieran.
+					-->
+					<h5 class="mb-3" style="font-weight:600;">Información del RUT</h5>
+					<div class="row">
+						<div class="col-md-3 form-group">
+							<label>Código actividad principal <small class="text-muted">(RUT)</small></label>
+							<input type="text" class="form-control" name="ind_Rut" id="rit_ind_Rut" maxlength="6">
+						</div>
+						<div class="col-md-3 form-group">
+							<label>Código actividad secundaria</label>
+							<input type="text" class="form-control" name="ind_Rut_segundo" id="rit_ind_Rut_segundo" maxlength="6">
+						</div>
+						<div class="col-md-3 form-group">
+							<label>Otra actividad</label>
+							<input type="text" class="form-control" name="ind_Rut_tercero" id="rit_ind_Rut_tercero" maxlength="6">
+						</div>
+					</div>
+
+					<hr>
+					<!--
+					     Punto 11: las actividades economicas se registran AQUI, no en el
+					     establecimiento. Desde la migracion 005 pertenecen al
+					     contribuyente (ind_actividad_contribuyente), que es como el
+					     negocio ya las usaba: la declaracion es una por contribuyente y
+					     agrega por codigo CIIU.
+
+					     Se guardan con su propio boton (funcion 8) y no con el resto del
+					     formulario: son filas de otra tabla, no campos del contribuyente.
+					-->
+					<div class="d-flex justify-content-between align-items-center flex-wrap mb-3" style="gap:10px;">
+						<h5 class="mb-0" style="font-weight:600;">Actividades económicas</h5>
+						<div class="d-flex align-items-center" style="gap:8px;">
+							<label class="mb-0" for="ritAnioActividades">Año</label>
+							<select class="form-control form-control-sm" id="ritAnioActividades" style="width:auto;"></select>
+							<select class="form-control form-control-sm" id="ritCatalogoActividades" style="min-width:320px;">
+								<option value="">Agregar actividad…</option>
+							</select>
+							<button type="button" class="btn btn-sm btn-outline-success" id="btnAgregarActividadRIT">
+								<span class="ti-plus"></span> Agregar
+							</button>
+							<button type="button" class="btn btn-sm btn-primary" id="btnGuardarActividadesRIT">
+								Guardar actividades
+							</button>
+						</div>
+					</div>
 					<div class="table-responsive">
 						<table class="table table-bordered table-sm">
 							<thead style="background:#e9ecef; font-weight:600;">
 								<tr>
-									<th style="width:90px;">Código</th>
-									<th>Actividad</th>
-									<th style="width:220px;">Establecimiento</th>
-									<th style="width:80px;">Año</th>
+									<th style="width:110px;">Código</th>
+									<th>Descripción</th>
+									<th style="width:90px;">Tarifa</th>
+									<th style="width:70px;"></th>
 								</tr>
 							</thead>
 							<tbody id="tbodyActividadesRIT"></tbody>

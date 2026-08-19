@@ -1756,7 +1756,9 @@ actualizarDeclaracionIca(valor, numeroCampo){
                     'ind_Cedula_representante', 'ind_Nombre_representante', 'ind_Email_representante',
                     'ind_Cedula_contador', 'ind_Nombre_contador', 'ind_Tarjeta_profesional',
                     'ind_Cedula_revisor', 'ind_Nombre_revisor', 'ind_Tarjeta_profesional_revisor',
-                    'ind_EmailContador', 'ind_EmailRevisor'
+                    'ind_EmailContador', 'ind_EmailRevisor',
+                    // Codigos del RUT: subieron al contribuyente en la 005.
+                    'ind_Rut', 'ind_Rut_segundo', 'ind_Rut_tercero'
                 ];
                 campos.forEach(function (campo) {
                     var v = d[campo];
@@ -1770,6 +1772,7 @@ actualizarDeclaracionIca(valor, numeroCampo){
                 establecimientos.cargarCiudadesRIT(d.ind_IdCiudad);
 
                 establecimientos.pintarActividadesRIT(d.actividades || []);
+                establecimientos.prepararEditorActividades(d.actividades || []);
 
                 // La descarga del certificado vive ahora aqui y va por
                 // contribuyente, no por establecimiento (punto 5).
@@ -1843,15 +1846,112 @@ actualizarDeclaracionIca(valor, numeroCampo){
         var esc = establecimientos.escaparHtml;
         var filas = '';
         actividades.forEach(function (a) {
+            // La columna "Establecimiento" desaparecio: desde la migracion 005
+            // la actividad es del contribuyente, no de un local concreto.
             filas +=
-                '<tr>' +
+                '<tr data-actividad="' + esc(a.atc_IdCodigoActividad) + '">' +
                     '<td>' + esc(a.acc_Codigo) + '</td>' +
                     '<td>' + esc(a.acc_Nombre) + '</td>' +
-                    '<td>' + esc(a.est_Nombre) + '</td>' +
-                    '<td>' + esc(a.ace_Anio) + '</td>' +
+                    '<td>' + esc(a.acc_Tarifa) + '</td>' +
+                    '<td class="text-center">' +
+                        '<button type="button" class="btn btn-sm btn-outline-danger btn-quitar-actividad" ' +
+                                'title="Quitar esta actividad">&times;</button>' +
+                    '</td>' +
                 '</tr>';
         });
         $('#tbodyActividadesRIT').html(filas);
+    }
+
+    /**
+     * Punto 11: el contribuyente registra sus propias actividades desde el RIT.
+     *
+     * El catalogo se pide una sola vez y se cachea: son ~1.900 filas y volver a
+     * bajarlas en cada apertura del RIT no aporta nada.
+     */
+    prepararEditorActividades(actividades) {
+
+        // Año: el del juego cargado, o el actual si el contribuyente no tiene
+        // ninguna registrada todavia.
+        var anioActual = new Date().getFullYear();
+        var anioCargado = actividades.length ? parseInt(actividades[0].ace_Anio, 10) : anioActual;
+        var $anio = $('#ritAnioActividades');
+
+        if (!$anio.children().length) {
+            var opciones = '';
+            for (var y = anioActual + 1; y >= anioActual - 6; y--) {
+                opciones += '<option value="' + y + '">' + y + '</option>';
+            }
+            $anio.html(opciones);
+        }
+        $anio.val(String(anioCargado));
+
+        if (establecimientos._catalogoActividades) {
+            establecimientos._pintarCatalogo();
+            return;
+        }
+
+        $.ajax({
+            url: '../business/controller/class.actividadesComercio.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { funcion: 3 },
+            success: function (resp) {
+                establecimientos._catalogoActividades = (resp && resp.ok == 1 && resp.datos) ? resp.datos : [];
+                establecimientos._pintarCatalogo();
+            },
+            error: function () {
+                // Sin catalogo el usuario no puede agregar, pero lo ya
+                // registrado se sigue viendo.
+                establecimientos._catalogoActividades = [];
+            }
+        });
+    }
+
+    _pintarCatalogo() {
+        var esc = establecimientos.escaparHtml;
+        var html = '<option value="">Agregar actividad…</option>';
+        (establecimientos._catalogoActividades || []).forEach(function (a) {
+            html += '<option value="' + esc(a.acc_Id) + '" data-codigo="' + esc(a.acc_Codigo) +
+                    '" data-tarifa="' + esc(a.acc_Tarifa) + '">' +
+                    esc(a.acc_Codigo) + ' — ' + esc(a.acc_Nombre) + '</option>';
+        });
+        $('#ritCatalogoActividades').html(html);
+    }
+
+    /** Ids de las actividades que hay ahora mismo en la tabla. */
+    _actividadesEnPantalla() {
+        var ids = [];
+        $('#tbodyActividadesRIT tr[data-actividad]').each(function () {
+            ids.push($(this).data('actividad'));
+        });
+        return ids;
+    }
+
+    guardarActividadesRIT() {
+        var ids = establecimientos._actividadesEnPantalla();
+        $.ajax({
+            url: '../business/controller/class.contribuyentes.php',
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                funcion: 8,
+                ind_Id: idContribuyente,
+                anio: $('#ritAnioActividades').val(),
+                actividades: ids
+            },
+            success: function (resp) {
+                swal({
+                    type: (resp && resp.ok == 1) ? 'success' : 'warning',
+                    title: (resp && resp.ok == 1) ? 'Listo' : 'No se guardó',
+                    text: (resp && resp.mensaje) ? resp.mensaje : ''
+                });
+                if (resp && resp.ok == 1) { establecimientos.cargarRIT(); }
+            },
+            error: function () {
+                swal({ type: 'error', title: 'Error',
+                       text: 'No se pudieron guardar las actividades. Intenta de nuevo.' });
+            }
+        });
     }
 
     /**
@@ -2338,3 +2438,53 @@ $("#btnGuardarCese").on("click", function(){
     $("#modalCeseActividades").modal("hide");
 });
 */
+
+/* ============================================================================
+   Editor de actividades economicas del RIT (punto 11, reunion 2026-08-18)
+   ----------------------------------------------------------------------------
+   Los tres manejadores van delegados sobre document: la tabla se repinta
+   entera en cada carga del RIT, asi que atarlos a las filas directamente los
+   dejaria muertos tras el primer repintado.
+   ============================================================================ */
+
+$(document).on('click', '#btnAgregarActividadRIT', function () {
+
+    var $sel = $('#ritCatalogoActividades');
+    var id   = $sel.val();
+    if (!id) { return; }
+
+    // No repetir: la tabla tiene indice UNICO por (contribuyente, actividad,
+    // año) y un duplicado abortaria el guardado entero.
+    if ($('#tbodyActividadesRIT tr[data-actividad="' + id + '"]').length) {
+        swal({ type: 'info', title: 'Ya está en la lista',
+               text: 'Esa actividad ya está registrada para el año seleccionado.' });
+        return;
+    }
+
+    var $op    = $sel.find('option:selected');
+    var esc    = establecimientos.escaparHtml;
+    var texto  = $op.text();
+    var nombre = texto.indexOf(' — ') >= 0 ? texto.split(' — ').slice(1).join(' — ') : texto;
+
+    $('#tbodyActividadesRIT').append(
+        '<tr data-actividad="' + esc(id) + '">' +
+            '<td>' + esc($op.data('codigo')) + '</td>' +
+            '<td>' + esc(nombre) + '</td>' +
+            '<td>' + esc($op.data('tarifa')) + '</td>' +
+            '<td class="text-center">' +
+                '<button type="button" class="btn btn-sm btn-outline-danger btn-quitar-actividad" ' +
+                        'title="Quitar esta actividad">&times;</button>' +
+            '</td>' +
+        '</tr>'
+    );
+
+    $sel.val('');
+});
+
+$(document).on('click', '.btn-quitar-actividad', function () {
+    $(this).closest('tr').remove();
+});
+
+$(document).on('click', '#btnGuardarActividadesRIT', function () {
+    establecimientos.guardarActividadesRIT();
+});

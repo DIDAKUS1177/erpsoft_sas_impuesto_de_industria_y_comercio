@@ -46,6 +46,9 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
                 case 7: // Guardar el RIT del contribuyente
                     $respuesta = $_obj->_guardarRIT();
                     break;
+                case 8: // Guardar las actividades economicas del contribuyente
+                    $respuesta = $_obj->_guardarActividadesRIT();
+                    break;
                 default:
                     throw new \erpsoftsas\ContribuyentesException("Función no válida", 0);
             }
@@ -448,6 +451,10 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             'ind_Cedula_representante', 'ind_Nombre_representante', 'ind_Email_representante',
             'ind_Cedula_contador', 'ind_Nombre_contador', 'ind_Tarjeta_profesional',
             'ind_Cedula_revisor', 'ind_Nombre_revisor', 'ind_Tarjeta_profesional_revisor',
+            // Codigos de actividad economica del RUT. Subieron del
+            // establecimiento al contribuyente en la migracion 005: son de
+            // la persona y estaban copiados en cada local.
+            'ind_Rut', 'ind_Rut_segundo', 'ind_Rut_tercero',
             'ind_EmailContador', 'ind_EmailRevisor',
         ];
     }
@@ -616,18 +623,20 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         // las del año mas reciente que el contribuyente tenga registrado en
         // cualquiera de sus establecimientos; un año fijo dejaba la lista
         // vacia, que es el mismo fallo que traia el certificado.
+        // Desde la migracion 005 las actividades son del CONTRIBUYENTE, no de
+        // cada local: se leen de ind_actividad_contribuyente. Antes habia que
+        // unir todos sus establecimientos y deducirlas, y el mismo codigo podia
+        // salir repetido -el contribuyente 30 tenia el 103 en sus dos locales-.
         $stmtActividades = $con->consultar(
-            "SELECT ca.acc_Codigo, ca.acc_Nombre, a.ace_Anio,
-                    e.est_Id, e.est_Nombre
-               FROM ind_actividad_establecimiento a
-               INNER JOIN ind_establecimientos e ON e.est_Id = a.ace_IdEstablecimiento
-               LEFT JOIN ind_actividadescomercio ca ON ca.acc_Id = a.ace_IdCodigoActividad
-              WHERE e.est_IdContribuyente = ?
-                AND a.ace_Anio = (
-                        SELECT MAX(a2.ace_Anio)
-                          FROM ind_actividad_establecimiento a2
-                          INNER JOIN ind_establecimientos e2 ON e2.est_Id = a2.ace_IdEstablecimiento
-                         WHERE e2.est_IdContribuyente = ?
+            "SELECT ca.acc_Codigo, ca.acc_Nombre, ca.acc_Tarifa,
+                    a.atc_Anio AS ace_Anio, a.atc_IdCodigoActividad
+               FROM ind_actividad_contribuyente a
+               LEFT JOIN ind_actividadescomercio ca ON ca.acc_Id = a.atc_IdCodigoActividad
+              WHERE a.atc_IdContribuyente = ?
+                AND a.atc_Anio = (
+                        SELECT MAX(a2.atc_Anio)
+                          FROM ind_actividad_contribuyente a2
+                         WHERE a2.atc_IdContribuyente = ?
                     )
               ORDER BY ca.acc_Codigo",
             [$idContribuyente, $idContribuyente]
@@ -790,6 +799,76 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             : 'RIT actualizado';
 
         return ['ind_Id' => $idContribuyente, 'ignorados' => $ignorados];
+    }
+
+    /**
+     * Punto 11 (reunion 2026-08-18): las actividades economicas las registra el
+     * contribuyente desde su RIT.
+     *
+     * Antes se guardaban por establecimiento (ind_actividad_establecimiento) y
+     * el RIT solo las mostraba de lectura; la migracion 005 las subio a
+     * ind_actividad_contribuyente, que es donde el negocio ya las usaba: la
+     * declaracion es una por contribuyente y agrega por codigo CIIU.
+     *
+     * Se reemplaza el juego completo del año en una sola pasada. El DELETE va
+     * acotado al año que se esta editando para no borrar el historico de otros
+     * periodos, que es exactamente el error que costo las actividades perdidas
+     * de la Fase 0 (punto 23).
+     */
+    protected function _guardarActividadesRIT()
+    {
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+
+        $idContribuyente = (int) ($_POST['ind_Id'] ?? 0);
+        $anio            = (int) ($_POST['anio'] ?? 0);
+
+        if ($idContribuyente <= 0 || $anio <= 0) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Falta el contribuyente o el año';
+            return [];
+        }
+
+        if (!self::puedeOperarSobreContribuyente($idContribuyente, $con)) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No tiene permiso para editar este RIT';
+            return [];
+        }
+
+        // Se aceptan solo codigos que existan en el catalogo, y sin repetir:
+        // la tabla tiene indice UNICO por (contribuyente, actividad, año) y un
+        // duplicado abortaria el guardado entero.
+        $enviadas = (array) ($_POST['actividades'] ?? []);
+        $limpias  = [];
+        foreach ($enviadas as $id) {
+            $id = (int) $id;
+            if ($id <= 0 || isset($limpias[$id])) { continue; }
+            $existe = $con->obnerFila($con->consultar(
+                "SELECT acc_Id FROM ind_actividadescomercio WHERE acc_Id = ?", [$id]
+            ));
+            if ($existe) { $limpias[$id] = true; }
+        }
+
+        $con->consultar(
+            "DELETE FROM ind_actividad_contribuyente
+              WHERE atc_IdContribuyente = ? AND atc_Anio = ?",
+            [$idContribuyente, $anio]
+        );
+
+        foreach (array_keys($limpias) as $id) {
+            $con->consultar(
+                "INSERT INTO ind_actividad_contribuyente
+                     (atc_IdContribuyente, atc_IdCodigoActividad, atc_Anio)
+                 VALUES (?, ?, ?)",
+                [$idContribuyente, $id, $anio]
+            );
+        }
+
+        $this->_ok = 1;
+        $this->_mensaje = count($limpias)
+            ? 'Actividades económicas actualizadas'
+            : 'Se retiraron todas las actividades de ese año';
+
+        return ['guardadas' => count($limpias), 'anio' => $anio];
     }
 
 }
