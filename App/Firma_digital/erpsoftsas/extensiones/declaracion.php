@@ -1345,17 +1345,33 @@ contenido real en cuanto el texto de una fila cambiaba de tamaño
  * desaparecer el contenido posterior en silencio -es como se perdio el codigo
  * de barras la primera vez-.
  */
-$refD = 246.04;   // $ySecD_fin del render de referencia
+/*
+ * E y F son las dos ultimas secciones y no se pueden medir con GetY(): estan
+ * dentro del mismo writeHTML() que el bloque de firmas, y partirlo en varias
+ * llamadas hace desaparecer el codigo de barras -SetAutoPageBreak esta en
+ * false-. Asi que se anclan a los dos extremos que SI se conocen:
+ *
+ *   arriba  $ySecD_fin, el borde inferior real de la seccion D;
+ *   abajo   $yBloque,   el borde superior del bloque del codigo de barras,
+ *                       que es justo donde termina la seccion de firmas.
+ *
+ * Del render de referencia solo se conservan los ALTOS de las dos tablas, que
+ * no han cambiado: E mide 18mm (245..263) y entre E y F hay 14mm (263..277)
+ * ocupados por la seccion de pago voluntario, que no lleva rotulo lateral.
+ *
+ * Antes esto se calculaba como $ySecD_fin mas los desfases crudos de aquel
+ * render. El problema es que aquellos numeros se midieron con el GetY() SIN
+ * corregir, mientras que $ySecD_fin ya viene con DESFASE_GETY aplicado: las
+ * bandas salian 3mm mas arriba y el rotulo "E. PAGO" quedaba montado sobre el
+ * borde de la seccion D.
+ */
+$altoE      = 263 - 245;   // 18mm
+$huecoEaF   = 277 - 263;   // 14mm de pago voluntario, sin rotulo propio
 
-$ySecE_inicio = $ySecD_fin + (245 - $refD);
-$ySecE_fin    = $ySecD_fin + (263 - $refD);
-$ySecF_inicio = $ySecD_fin + (277 - $refD);
+$ySecE_inicio = $ySecD_fin;
+$ySecE_fin    = $ySecE_inicio + $altoE;
+$ySecF_inicio = $ySecE_fin + $huecoEaF;
 
-// El final de F es el BORDE SUPERIOR del bloque del codigo de barras: ahi
-// termina la seccion de firmas. Antes se ponia en su borde INFERIOR
-// ($yBloque + $altoRotulo + $altoCodigo), de modo que la banda se extendia por
-// encima del codigo y el rotulo, al centrarse, caia dentro de esa zona. Es lo
-// que se veia como "F. FIRMAS corrido", y empeoro al crecer el bloque.
 $ySecF_fin = $yBloque;
 
 $x = 13;
