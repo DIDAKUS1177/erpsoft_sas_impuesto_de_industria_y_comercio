@@ -595,7 +595,7 @@ td { vertical-align: top; font-size:6px; }
 <tr>
 
 <td width="10%" rowspan="10" align="center" >
-    <img src="' . dirname(dirname(__DIR__)) . MUNICIPIO_LOGO . '" width="85"> 
+    <img src="' . dirname(dirname(__DIR__)) . MUNICIPIO_LOGO . '" width="58">
     <div style="font-size:5px; text-align:center;">NIT 891.801.240-1</div>
 </td>
 
@@ -608,13 +608,16 @@ IMPUESTO DE INDUSTRIA Y COMERCIO
 
 </tr>
 
-<tr><td height="9"></td></tr>
-<tr><td height="9"></td></tr>
+<!-- Estas filas vacias no son decorativas: el escudo ocupa la primera
+     columna con rowspan y necesita filas donde apoyarse. Eran tres para un
+     escudo de 85px; con el de 58 alcanza una. (El atributo height que traian
+     lo ignora el parser HTML de TCPDF, ver CLAUDE.md.) -->
 <tr><td height="9"></td></tr>
 
 </table>
 
-<br>
+<!-- Separador retirado: el encabezado gastaba 50mm de una hoja de 330 -el 15%
+     de la pagina- antes de que empezara el formulario. -->
 
 <table border="1" cellpadding="3" width="100%">
 
@@ -1192,7 +1195,9 @@ $xBloque   = $margenes['left'];
 $yBloque   = $pdf->GetY() - 3;
 
 $altoRotulo  = 4.5;   // fila de titulos
-$altoCodigo  = 12.5;  // barras + linea legible debajo
+$altoCodigo  = 20.0;  // barras + linea legible debajo
+// Subio de 12.5 a 20: al achicar el escudo del encabezado el formulario
+// entero se corrio 8mm hacia arriba y quedaron 9.16mm libres al pie.
 
 /*
  * Contenido del codigo: si el municipio ya tiene configurado su convenio de
@@ -1237,7 +1242,7 @@ $pdf->Cell($mitad, $altoCodigo, $referenciaRecaudo, 1, 1, 'L');
 // que NO es decorativa -si el escaner del banco falla, el cajero digita ese
 // numero a mano-, y necesita su espacio.
 $anchoBarcode = $mitad - 14;   // ~83mm: casi toda la celda, con aire a los lados
-$altoBarcode  = 10;
+$altoBarcode  = 15;
 
 // El codigo se apoya en la parte alta de la celda para dejar sitio abajo a la
 // linea legible. Esa linea NO es decorativa: si el escaner del banco falla, el
