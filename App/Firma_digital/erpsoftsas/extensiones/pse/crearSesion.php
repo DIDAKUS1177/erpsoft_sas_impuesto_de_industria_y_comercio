@@ -22,7 +22,7 @@ $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 $idDeclaracion = $_GET['dec_Id'] ?? 0;
 
 $row = $con->obnerFila($con->consultar(
-    "SELECT dec_NumeroDeclaracion, dec_ValorConcepto20, dec_Pagado, dec_PSE_RequestId
+    "SELECT dec_NumeroDeclaracion, dec_ValorConcepto20, dec_Pagado, dec_Estado, dec_PSE_RequestId
      FROM ind_declaraciones_ica WHERE dec_Id = ?",
     [$idDeclaracion]
 ));
@@ -34,6 +34,26 @@ if (!$row) {
 
 if ((int) $row['dec_Pagado'] === 1) {
     die('Esta declaración ya está pagada.');
+}
+
+/*
+ * Solo se paga lo que ya esta PRESENTADO.
+ *
+ * Sin esta guarda se podia pagar un BORRADOR: el boton de PSE se mostraba en
+ * cualquier declaracion no pagada, y al volver el pago quedaba dec_Pagado = 1
+ * con dec_Estado en 0/NULL. Ese estado es imposible y rompe el resto del
+ * sistema -"Corregir" exige dec_Estado = 2 y lo rechaza, de modo que el
+ * contribuyente queda con una declaracion que dice estar pagada y que no
+ * puede tocar-. Se encontro con la declaracion 48, pagada contra el sandbox.
+ *
+ * Ademas el monto de un borrador todavia puede cambiar: cobrarlo antes de
+ * presentar seria cobrar una cifra que no es definitiva.
+ *
+ * La misma regla se aplica al recaudo bancario (ver class.recaudo.php). No se
+ * confia en que el boton este oculto: esta URL se puede llamar a mano.
+ */
+if ((int) ($row['dec_Estado'] ?? 0) !== 2) {
+    die('Esta declaración todavía no está presentada. Debe presentarla antes de pagar.');
 }
 
 $referencia = (string) $row['dec_NumeroDeclaracion'];

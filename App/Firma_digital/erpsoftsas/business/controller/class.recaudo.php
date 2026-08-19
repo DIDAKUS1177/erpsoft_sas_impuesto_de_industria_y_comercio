@@ -240,6 +240,7 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
         $yaPagadas = [];
         $sinDeclaracion = [];
         $valorNoCuadra = [];
+        $sinPresentar = [];
 
         foreach ($lectura['detalles'] as $d) {
 
@@ -265,11 +266,40 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
                 continue;
             }
 
+            /*
+             * Una declaracion SIN PRESENTAR no puede tener un pago legitimo
+             * por este canal. El codigo de barras de recaudo solo se imprime
+             * en declaraciones presentadas (ver extensiones/declaracion.php),
+             * asi que el banco no tuvo de donde leer esta referencia.
+             *
+             * Aplicarla igual dejaba la declaracion en un estado imposible
+             * -pagada pero no presentada- y ese es exactamente el que rompe
+             * "Corregir": la pantalla la pinta "Pagada" porque mira
+             * dec_Pagado, pero corregir exige dec_Estado = 2 y la rechaza.
+             * El usuario queda con una declaracion que dice estar pagada y no
+             * se puede tocar.
+             *
+             * Las causas plausibles (referencia mal digitada en ventanilla,
+             * numero reutilizado, declaracion revertida despues de imprimir)
+             * necesitan criterio humano, asi que esto se REPORTA y no se
+             * aplica. La plata no se pierde: queda listada para que la
+             * Alcaldia la concilie a mano.
+             */
+            if ((int) ($dec['dec_Estado'] ?? 0) !== 2) {
+                $sinPresentar[] = [
+                    'referencia' => $ref,
+                    'valor'      => $d['valor'],
+                    'dec_Id'     => (int) $dec['dec_Id'],
+                    'estado'     => (int) ($dec['dec_Estado'] ?? 0),
+                ];
+                continue;
+            }
+
             $aplicables[] = [
                 'dec_Id'     => (int) $dec['dec_Id'],
                 'referencia' => $ref,
                 'valor'      => $d['valor'],
-                'presentada' => ((int) ($dec['dec_Estado'] ?? 0) === 2),
+                'presentada' => true,
             ];
         }
 
@@ -287,6 +317,7 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
             'aplicables'      => $aplicables,
             'yaPagadas'       => $yaPagadas,
             'sinDeclaracion'  => $sinDeclaracion,
+            'sinPresentar'    => $sinPresentar,
             'valorNoCuadra'   => $valorNoCuadra,
         ];
     }
@@ -294,10 +325,11 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
     private function _resumenTexto($a, $aplicados)
     {
         return sprintf(
-            'Banco %s (%s). Registros: %d por $%s. Aplicados: %d. Ya pagadas: %d. Sin declaración: %d.',
+            'Banco %s (%s). Registros: %d por $%s. Aplicados: %d. Ya pagadas: %d. Sin declaración: %d. Sin presentar: %d.',
             $a['banco']['nombre'] ?: '(desconocido)', $a['banco']['codigo'],
             $a['sumas']['registros'], number_format($a['sumas']['valor'], 2, ',', '.'),
-            $aplicados, count($a['yaPagadas']), count($a['sinDeclaracion'])
+            $aplicados, count($a['yaPagadas']), count($a['sinDeclaracion']),
+            count($a['sinPresentar'] ?? [])
         );
     }
 

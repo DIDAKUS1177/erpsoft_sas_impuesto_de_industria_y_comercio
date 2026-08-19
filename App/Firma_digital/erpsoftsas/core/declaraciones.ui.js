@@ -140,7 +140,11 @@ var DeclaracionesUI = (function () {
         // Ahora mismo contra el ambiente de PRUEBAS del banco (ver
         // config.municipio.php, PLACETOPAY_BASEURL); cambiar a producción
         // solo cuando el banco entregue las credenciales reales.
-        if (clave !== 'pagada') {
+        // Solo en PRESENTADAS: pagar un borrador dejaba la declaracion
+        // "pagada pero sin presentar", un estado que despues no se puede
+        // corregir. crearSesion.php lo valida tambien del lado del servidor;
+        // esto solo evita ofrecer un boton que va a rebotar.
+        if (clave === 'presentada') {
             botones += '<a href="../extensiones/pse/crearSesion.php?dec_Id=' + d.dec_Id + '" target="_blank" ' +
                            'class="btn btn-danger btn-sm" title="Pagar por PSE">' +
                            '<i class="fa fa-money"></i></a>';
@@ -184,7 +188,22 @@ var DeclaracionesUI = (function () {
      */
     function claveEstado(d) {
         if (!d) { return 'borrador'; }
-        if (Number(d.dec_Pagado) === 1)  { return 'pagada'; }
+
+        /*
+         * "Pagada" exige ADEMAS estar presentada.
+         *
+         * dec_Pagado por si solo no alcanza: una declaracion marcada como
+         * pagada pero sin presentar es un estado imposible, y pintarla
+         * "Pagada" mentia al usuario -le mostraba un tramite cerrado que
+         * despues no podia corregir, porque Corregir exige dec_Estado = 2-.
+         * Ese es justo el caso que reporto el cliente con las declaraciones
+         * 217 y 218.
+         *
+         * El origen se cerro en class.recaudo.php (esos pagos ya no se
+         * aplican, se reportan), pero la pantalla no debe volver a mostrar
+         * como pagado algo que el resto del sistema no trata como pagado.
+         */
+        if (Number(d.dec_Pagado) === 1 && Number(d.dec_Estado) === 2) { return 'pagada'; }
         if (Number(d.dec_Estado) === 2)  { return 'presentada'; }
         if (Number(d.is_signed) === 1) {
             var faltaContador = Number(d.requiere_contador) === 1 && Number(d.is_signed_contador) !== 1;

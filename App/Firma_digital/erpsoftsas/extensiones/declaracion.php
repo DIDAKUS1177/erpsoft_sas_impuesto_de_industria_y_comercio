@@ -616,7 +616,7 @@ td { vertical-align: top; font-size:6px; }
 <tr>
 
 <td width="10%" rowspan="10" align="center" >
-    <img src="' . dirname(dirname(__DIR__)) . MUNICIPIO_LOGO . '" width="58">
+    <img src="' . dirname(dirname(__DIR__)) . (defined('MUNICIPIO_LOGO_PDF') ? MUNICIPIO_LOGO_PDF : MUNICIPIO_LOGO) . '" width="58">
     <div style="font-size:5px; text-align:center;">NIT 891.801.240-1</div>
 </td>
 

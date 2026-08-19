@@ -128,26 +128,63 @@ if (!$row) {
 // est_IdContribuyente, mismo patron que ya usa _consultarRIT() en
 // class.contribuyentes.php y el bloque de "Establecimientos del
 // Contribuyente" mas abajo en este mismo archivo.
+/*
+ * Las actividades salen de ind_actividad_contribuyente, NO de la vieja
+ * ind_actividad_establecimiento.
+ *
+ * Las migraciones 005 y 007 subieron las actividades del establecimiento al
+ * contribuyente y les quitaron el año: el RIT es el registro VIGENTE de a que
+ * se dedica la persona, y el historico por año ya vive donde corresponde, en
+ * las actividades que cada declaracion congela al liquidarse.
+ *
+ * Este PDF se quedo leyendo la tabla vieja. Hoy las dos coinciden porque la
+ * migracion copio el contenido y nadie ha editado desde entonces, pero la
+ * pantalla del RIT ya solo escribe en la nueva: la primera edicion de
+ * actividades habria hecho que el formulario impreso mostrara una lista
+ * distinta a la que ve el contribuyente en pantalla. La tabla vieja quedo sin
+ * nadie que le escriba; no se borra -misma regla que las migraciones-, pero
+ * deja de leerse desde aqui.
+ */
 $actividades = [];
 $stmtAct = $con->consultar(
     "SELECT ca.acc_Codigo, ca.acc_Nombre
-       FROM ind_actividad_establecimiento a
-       INNER JOIN ind_establecimientos e2 ON e2.est_Id = a.ace_IdEstablecimiento
-       LEFT JOIN ind_actividadescomercio ca ON ca.acc_Id = a.ace_IdCodigoActividad
-      WHERE e2.est_IdContribuyente = ?
-        AND a.ace_Anio = (
-                SELECT MAX(a2.ace_Anio)
-                  FROM ind_actividad_establecimiento a2
-                  INNER JOIN ind_establecimientos e3 ON e3.est_Id = a2.ace_IdEstablecimiento
-                 WHERE e3.est_IdContribuyente = ?
-            )
+       FROM ind_actividad_contribuyente a
+       LEFT JOIN ind_actividadescomercio ca ON ca.acc_Id = a.atc_IdCodigoActividad
+      WHERE a.atc_IdContribuyente = ?
       ORDER BY ca.acc_Codigo",
-    [$row['est_IdContribuyente'], $row['est_IdContribuyente']]
+    [$row['est_IdContribuyente']]
 );
 while ($a = $con->obnerFila($stmtAct)) {
     if (!empty($a['acc_Codigo'])) {
         $actividades[] = ['codigo' => $a['acc_Codigo'], 'nombre' => $a['acc_Nombre']];
     }
+}
+
+/*
+ * FIRMA DEL RIT (casilla 30)
+ *
+ * Pedido del cliente el 2026-08-19: la casilla 30 -"Contribuyente o
+ * Representante Legal"- salia siempre en blanco, mientras la 31 ya traia la
+ * firma del funcionario. Se estampa igual que en las declaraciones: sello,
+ * nombre de quien firmo y fecha.
+ *
+ * firmaVigente() solo la da por buena si el hash guardado coincide con el
+ * contenido de HOY. Si el contribuyente cambio algo del RIT despues de
+ * firmarlo, aqui llega 'firmado' en false y el formulario vuelve a imprimirse
+ * sin firma -que es lo correcto: la firma amparaba otro contenido-.
+ */
+// Misma guarda que declaracion.php: si el config del municipio no la trae,
+// se cae al sello por defecto en vez de reventar con constante indefinida
+// (en PHP 8 eso es error fatal, no aviso).
+if (!defined('MUNICIPIO_SELLO_FIRMA')) define('MUNICIPIO_SELLO_FIRMA', 'Sello_Firma.png');
+include_once dirname(__DIR__) . '/business/class.ritFirma.php';
+$estadoFirmaRit = \erpsoftsas\RitFirma::firmaVigente($con, (int) $row['est_IdContribuyente']);
+$firmaRit       = $estadoFirmaRit['firmado'] ? $estadoFirmaRit['firma'] : null;
+
+$fechaFirmaRit = '';
+if ($firmaRit) {
+    $f = $firmaRit['rif_FechaHora'];
+    $fechaFirmaRit = ($f instanceof \DateTime) ? $f->format('d/m/Y h:i a') : (string) $f;
 }
 
 $nombreCompleto = trim(
@@ -174,6 +211,15 @@ $d = [
 // Estos cuatro iban fijos en Paipa. Con varios municipios sobre el mismo
 // codigo, el certificado de Guateque salia diciendo "MUNICIPIO DE PAIPA".
 'entidad' => $esc('MUNICIPIO DE ' . mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8')),
+// Encabezado pedido por el cliente el 2026-08-19, tomado del formulario
+// oficial en papel. Va por constante y no en duro para que otro municipio
+// pueda poner el nombre de SU dependencia sin tocar este archivo.
+'dependencia' => $esc(defined('MUNICIPIO_DEPENDENCIA_TRIBUTARIA')
+        ? MUNICIPIO_DEPENDENCIA_TRIBUTARIA
+        : 'DIRECCIÓN DE IMPUESTOS, RENTAS Y JURISDICCIÓN COACTIVA'),
+'secretaria'  => $esc(defined('MUNICIPIO_SECRETARIA')
+        ? MUNICIPIO_SECRETARIA
+        : 'SECRETARIA DE HACIENDA'),
 'nit_entidad' => $esc(MUNICIPIO_NIT),
 'direccion_entidad' => $esc(MUNICIPIO_DIRECCION),
 'ciudad_entidad' => $esc(mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8') . ' - ' . mb_strtoupper(MUNICIPIO_DEPARTAMENTO, 'UTF-8')),
@@ -427,14 +473,11 @@ font-weight:bold;
 <td width="80%" class="header">
 
 '.$d['entidad'].'<br>
-'.$d['nit_entidad'].'<br>
-'.$d['direccion_entidad'].'<br>
-'.$d['ciudad_entidad'].'<br><br>
+'.$d['dependencia'].'<br>
+'.$d['secretaria'].'<br><br>
 
 <b>REGISTRO DE INFORMACIÓN TRIBUTARIA R.I.T</b><br>
-FORMATO DE INSCRIPCION O NOVEDADES DEL ESTABLECIMIENTO<br>
-IMPUESTO DE INDUSTRIA, COMERCIO, AVISOS Y TABLEROS<br>
-SECRETARIA DE HACIENDA
+FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 
 </td>
 
@@ -654,7 +697,16 @@ SECRETARIA DE HACIENDA
 </tr>
 
 <tr>
-<td height="40" width="50%"></td>
+<td height="40" width="50%" style="text-align:center; vertical-align:middle;">'.
+($firmaRit
+    /* Mismo sello que usan las declaraciones. Va sin canal alfa: los PNG con
+       transparencia obligan a TCPDF a escribir archivos temporales y el
+       PHP-FPM de Plesk no puede hacerlo (ver nota en CLAUDE.md). */
+    ? '<img src="'.MUNICIPIO_SELLO_FIRMA.'" width="16" height="16"><br>'.
+      '<span style="font-size:7px;">'.$esc($firmaRit['rif_NombreUsuario']).'<br>'.$esc($fechaFirmaRit).'</span>'
+    /* Sin firma digital queda el espacio para firmar a mano, como toda la vida. */
+    : '').
+'</td>
 <td width="50%" style="text-align:center; vertical-align:middle;">
 <img src="tcpdf/pdf/img/firma_rit.png" height="40">
 </td>
@@ -708,5 +760,45 @@ La inscripción o cierre al RIT está establecida en el estatuto tributario así
 ';
 
 $pdf->writeHTML($html,true,false,true,false,'');
+
+/*
+ * Marca de agua "SIN FIRMAR".
+ *
+ * El PDF se sigue generando siempre -la Alcaldia necesita poder imprimir el
+ * formulario en blanco para ventanilla-, pero si no hay firma vigente el papel
+ * lo dice, en vez de parecer un RIT en regla. Mismo criterio que el
+ * BORRADOR/PRESENTADA/PAGADA de la declaracion.
+ *
+ * Va al FINAL, justo antes de Output(), y no despues de AddPage(): llamar
+ * Rotate() antes de escribir el contenido cuelga el worker de PHP-FPM al 99%
+ * de CPU (documentado en CLAUDE.md, costo encontrarlo).
+ */
+if (!$firmaRit) {
+    $familia = $pdf->getFontFamily();
+    $estilo  = $pdf->getFontStyle();
+    $tamano  = $pdf->getFontSizePt();
+
+    $pdf->StartTransform();
+    $pdf->SetAlpha(0.10);
+    $pdf->SetTextColor(200, 0, 0);
+    $pdf->SetFont('helvetica', 'B', 60);
+
+    $cx = $pdf->getPageWidth()  / 2;
+    $cy = $pdf->getPageHeight() / 2;
+    $pdf->Rotate(45, $cx, $cy);
+
+    // Dentro de un Rotate(), Cell()/SetXY() interpretan las coordenadas en el
+    // espacio YA rotado; Text() con un unico punto de anclaje es lo que centra
+    // de verdad (ver CLAUDE.md).
+    $texto = 'SIN FIRMAR';
+    $pdf->Text($cx - $pdf->GetStringWidth($texto) / 2, $cy, $texto);
+
+    $pdf->StopTransform();
+    $pdf->SetAlpha(1);
+    $pdf->SetTextColor(0, 0, 0);
+    // StartTransform/StopTransform NO restauran la fuente: si no se repone, la
+    // de 60pt se queda pegada al resto del documento.
+    $pdf->SetFont($familia, $estilo, $tamano);
+}
 
 $pdf->Output('RIT_PAIPA.pdf','I');

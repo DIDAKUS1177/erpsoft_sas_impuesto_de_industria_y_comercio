@@ -40,6 +40,12 @@ if (!defined('MUNICIPIO_DEPARTAMENTO')) define('MUNICIPIO_DEPARTAMENTO', 'Depart
 // MUNICIPIO_LOGO      -> escudo cuadrado, para slots pequenos (32-56 px).
 // MUNICIPIO_LOGO_FULL -> lockup horizontal (escudo + texto), para areas anchas.
 if (!defined('MUNICIPIO_LOGO'))      define('MUNICIPIO_LOGO', '/erpsoftsas/vendors/images/escudo-municipio.png');
+// Version SIN canal alfa del escudo, solo para los PDF. Los PNG con
+// transparencia obligan a TCPDF a escribir archivos temporales y el
+// PHP-FPM de Plesk no puede: el PDF muere con "Unable to write file".
+// El de arriba se queda con alfa porque la WEB si lo necesita, va sobre
+// fondos de color. Si un municipio no define esta, se usa la de arriba.
+if (!defined('MUNICIPIO_LOGO_PDF')) define('MUNICIPIO_LOGO_PDF', '/erpsoftsas/vendors/images/escudo-paipa-pdf.png');
 if (!defined('MUNICIPIO_LOGO_FULL')) define('MUNICIPIO_LOGO_FULL', '/erpsoftsas/vendors/images/logo-municipio-full.png');
 
 // Color institucional. Igual que el nombre y los logos, cambia por

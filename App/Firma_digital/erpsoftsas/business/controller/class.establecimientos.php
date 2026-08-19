@@ -39,6 +39,9 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
                 case 20:
                     $respuesta = $_obj->_guardarCorreosContadorRevisor();
                     break;
+                case 21:
+                    $respuesta = $_obj->_guardarCese();
+                    break;
                 default:
                     throw new \erpsoftsas\EstablecimientosException("Función no válida", 0);
             }
@@ -66,6 +69,15 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
 
     protected function _agregarEstablecimientos()
     {
+        $errorCodigo = self::_validarCodigo();
+        if ($errorCodigo !== null) {
+            $this->_ok = 0;
+            $this->_mensaje = $errorCodigo;
+            return [];
+        }
+
+        self::_descartarUbicacion();
+
         // est_IdContribuyente llegaba tal cual del navegador: un contribuyente
         // podia crear locales a nombre de otro con solo cambiar ese campo.
         // Para todo rol que no sea Alcaldia se fija al de la propia sesion.
@@ -142,6 +154,15 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
 
     protected function _editarEstablecimientos()
     {
+        $errorCodigo = self::_validarCodigo();
+        if ($errorCodigo !== null) {
+            $this->_ok = 0;
+            $this->_mensaje = $errorCodigo;
+            return [];
+        }
+
+        self::_descartarUbicacion();
+
         // Se editaba por est_Id sin mirar de quien era: cualquiera con sesion
         // podia modificar el local de otro contribuyente cambiando ese id.
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
@@ -324,6 +345,160 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
      * texto mas largo hacia fallar el guardado con un 500 de cuerpo vacio, que
      * en pantalla se ve como el generico "error de conexion".
      */
+
+    /**
+     * funcion 21 - Cese de actividades de UN establecimiento.
+     *
+     * Existe como endpoint propio, y no reusando la funcion 2 (editar), por
+     * dos razones:
+     *
+     *  - La funcion 2 arrastra la validacion de codigo duplicado, que compara
+     *    $_POST['est_Codigo'] contra los demas establecimientos. Al mandar
+     *    solo los campos del cese ese codigo llega vacio y la comparacion
+     *    puede dar positivo contra cualquier fila que tambien lo tenga vacio,
+     *    rechazando un cese perfectamente valido.
+     *
+     *  - El cese lo captura ahora la pantalla del RIT (reunion 2026-08-19), y
+     *    esa pantalla no tiene cargado el establecimiento completo. Mandar el
+     *    formulario entero solo para cerrar un local seria pedirle datos que
+     *    no tiene a la vista.
+     *
+     * El dato sigue viviendo en ind_establecimientos: lo que cesa es el LOCAL,
+     * no la persona. Un contribuyente puede cerrar uno y seguir con los otros.
+     */
+    protected function _guardarCese()
+    {
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+
+        $idEstablecimiento = (int) ($_POST['est_Id'] ?? 0);
+
+        if (!self::_puedeSobreEstablecimiento($idEstablecimiento, $con)) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No tiene permiso sobre este establecimiento';
+            return [];
+        }
+
+        // El cese lo registra la Alcaldia. El readonly de la pantalla no basta:
+        // se quita desde la consola del navegador.
+        if (!self::_esAdministrador()) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Solo la Alcaldía puede registrar el cese de actividades';
+            return [];
+        }
+
+        // 1 Fusion, 2 Escision, 3 Liquidacion, 4 Otro. Cualquier otra cosa se
+        // guarda como "sin causal" en vez de colarse a la base.
+        $causal = trim((string) ($_POST['est_Causal'] ?? ''));
+        if (!in_array($causal, ['1', '2', '3', '4'], true)) { $causal = ''; }
+
+        $fecha = trim((string) ($_POST['est_Fecha_cierre'] ?? ''));
+        $obs   = trim((string) ($_POST['est_Observacion_cierre'] ?? ''));
+
+        // Sin fecha no hay cese: se limpian los tres campos juntos, para que no
+        // quede una causal huerfana que haga ver el local como cerrado.
+        if ($fecha === '') {
+            $causal = '';
+            $obs    = '';
+        }
+
+        $ok = $con->consultar(
+            "UPDATE ind_establecimientos
+                SET est_Fecha_cierre        = NULLIF(?, ''),
+                    est_Causal              = NULLIF(?, ''),
+                    est_Observacion_cierre  = NULLIF(?, '')
+              WHERE est_Id = ?",
+            [$fecha, $causal, $obs, $idEstablecimiento]
+        );
+
+        if ($ok === false) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No se pudo guardar el cese';
+            return [];
+        }
+
+        // Este controlador no da por buena una respuesta sola: hay que poner
+        // _ok en 1 a mano (por defecto queda en null y el JS lo lee como fallo).
+        $this->_ok = 1;
+        $this->_mensaje = ($fecha === '')
+            ? 'Se retiró el cese de actividades'
+            : 'Cese de actividades guardado';
+
+        return [];
+    }
+
+
+    /**
+     * est_Codigo es una columna INT.
+     *
+     * El campo del formulario es de texto libre, asi que basta que alguien
+     * escriba una letra para que SQL Server conteste "Conversion failed when
+     * converting the varchar value 'ABC' to data type int". Esa excepcion no
+     * se captura, el endpoint responde 500 con el cuerpo VACIO y la pantalla
+     * solo alcanza a decir "error de conexion" -sin decir que campo, ni por
+     * que-. Es exactamente el sintoma que reporto el cliente.
+     *
+     * Se valida aqui, en el servidor, y no solo en el input: un pattern de
+     * HTML se salta desde la consola del navegador.
+     *
+     * Devuelve null si esta bien, o el mensaje de rechazo.
+     */
+    private static function _validarCodigo()
+    {
+        if (!isset($_POST['est_Codigo'])) { return null; }
+
+        $codigo = trim((string) $_POST['est_Codigo']);
+
+        // Vacio es valido: la columna admite NULL.
+        if ($codigo === '') {
+            $_POST['est_Codigo'] = null;
+            return null;
+        }
+
+        if (!ctype_digit($codigo)) {
+            return 'El código del establecimiento debe ser numérico (solo dígitos).';
+        }
+
+        // Fuera del rango de un INT de SQL Server tambien revienta la consulta.
+        if (strlen($codigo) > 10 || (float) $codigo > 2147483647) {
+            return 'El código del establecimiento es demasiado largo (máximo 2.147.483.647).';
+        }
+
+        return null;
+    }
+
+
+    /**
+     * Ubicacion del establecimiento: est_Pais / est_Departamento / est_Ciudad.
+     *
+     * Estas tres columnas son VARCHAR(5). No caben "Colombia" (8) ni "Boyaca"
+     * (6); solo "Paipa" entra, y por los pelos. Cualquier pantalla que mande el
+     * NOMBRE hace que SQL Server conteste "String or binary data would be
+     * truncated", la excepcion no se captura y el endpoint responde 500 con el
+     * cuerpo vacio -de nuevo el "error de conexion" sin explicacion-.
+     *
+     * Por eso las 12 filas de la tabla tienen '1' en las tres: la ubicacion del
+     * establecimiento NUNCA se ha llegado a guardar. Se comprobo que ningun
+     * sitio las lee -ni los PDF ni las pantallas-, solo el DAO las declara.
+     *
+     * Se descartan aqui en vez de intentar guardarlas porque:
+     *  - el sistema liquida el ICA de UN municipio, asi que la ubicacion de un
+     *    establecimiento es siempre la misma y el cliente pidio justamente
+     *    dejarla fija ("dejar bloqueado Paipa - Boyaca");
+     *  - guardarlas de verdad exigiria ensanchar las columnas, y ensanchar algo
+     *    que nadie lee no arregla nada.
+     *
+     * Si algun dia hace falta almacenarlas -por ejemplo para un municipio que
+     * admita establecimientos de fuera-, hay que ensanchar las tres columnas en
+     * una migracion ANTES de volver a enviarlas. No se borra ninguna: quedan
+     * como estan.
+     */
+    private static function _descartarUbicacion()
+    {
+        foreach (['est_Pais', 'est_Departamento', 'est_Ciudad'] as $campo) {
+            unset($_POST[$campo]);
+        }
+    }
+
     private static function _filtrarCese()
     {
         if (!self::_esAdministrador()) {

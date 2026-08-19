@@ -2041,6 +2041,257 @@ actualizarDeclaracionIca(valor, numeroCampo){
         $('#ritAvisoContador').hide();
     }
 
+
+    /* ================================================================
+       FIRMA DEL RIT
+       ================================================================
+       Pedido del cliente el 2026-08-19: "se guarde, se firme, y ya cuando
+       quede firmado pues genere el PDF".
+
+       El backend (microservicios/firmas/api.php, funciones 9 y 10) valida el
+       codigo OTP dentro de la MISMA llamada que registra la firma, asi que
+       aqui no hay un paso intermedio de "verificar" que se pueda saltar.
+       ================================================================ */
+
+    /** Pinta el estado de firma y habilita o no la descarga. */
+    consultarFirmaRIT() {
+        $.ajax({
+            url: '../microservicios/firmas/api.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { funcion: 10 },
+            success: function (r) {
+                var $e = $('#ritEstadoFirma');
+                var $d = $('#btnDescargarRIT');
+
+                if (r.ok != 1) { $e.html(''); return; }
+
+                if (r.firmado == 1) {
+                    $e.html('<span class="badge badge-success" style="font-size:12px;">' +
+                            '<i class="fa fa-check"></i> Firmado</span>');
+                    $('#btnFirmarRIT').hide();
+                    $d.removeClass('disabled').attr('title', 'Descargar el RIT firmado');
+                } else {
+                    // Se distingue "nunca se firmo" de "se firmo y despues
+                    // cambio": son situaciones distintas y la segunda hay que
+                    // explicarla, o el usuario cree que se perdio su firma.
+                    if (r.desactualizada) {
+                        $e.html('<span class="badge badge-warning" style="font-size:12px;" ' +
+                                'title="Firmado el ' + r.desactualizada.fecha +
+                                ', pero el RIT cambió después. Debe firmarlo de nuevo.">' +
+                                '<i class="fa fa-exclamation-triangle"></i> Firma desactualizada</span>');
+                    } else {
+                        $e.html('<span class="badge badge-secondary" style="font-size:12px;">Sin firmar</span>');
+                    }
+                    $('#btnFirmarRIT').show();
+                    $d.attr('title', 'Se puede descargar, pero saldrá marcado SIN FIRMAR');
+                }
+            },
+            error: function () { $('#ritEstadoFirma').html(''); }
+        });
+    }
+
+    /** Manda el codigo al correo y, con el codigo, firma. */
+    firmarRIT() {
+        var idUsuario = localStorage.getItem('id_Usuario');
+        var self = this;
+
+        swal({
+            title: 'Firmar el RIT',
+            text: 'Se enviará un código de verificación a su correo registrado.',
+            type: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Enviar código',
+            cancelButtonText: 'Cancelar'
+        }).then(function (res) {
+            if (!res.value) { return; }
+
+            swal({ title: 'Enviando…', allowOutsideClick: false, onOpen: function () { swal.showLoading(); } });
+
+            $.ajax({
+                url: '../microservicios/firmas/api.php',
+                type: 'POST',
+                dataType: 'json',
+                data: { funcion: 1, rol: 'rit', id_usuario: idUsuario, id_establecimiento: 0 },
+                success: function (r) {
+                    swal.close();
+                    if (r.ok != 1) {
+                        swal({ type: 'error', title: 'No se pudo enviar el código', text: r.mensaje || '' });
+                        return;
+                    }
+                    self._pedirCodigoRIT(r.mensaje);
+                },
+                error: function () {
+                    swal.close();
+                    swal({ type: 'error', title: 'Error de conexión', text: 'No se pudo enviar el código.' });
+                }
+            });
+        });
+    }
+
+    _pedirCodigoRIT(mensaje) {
+        var self = this;
+        swal({
+            title: 'Código de verificación',
+            text: mensaje || 'Escriba el código de 6 dígitos que le llegó al correo.',
+            input: 'text',
+            inputAttributes: { maxlength: 6, autocapitalize: 'off', autocorrect: 'off' },
+            showCancelButton: true,
+            confirmButtonText: 'Firmar',
+            cancelButtonText: 'Cancelar',
+            inputValidator: function (v) {
+                return (!v || !/^[0-9]{6}$/.test(v.trim())) ? 'El código son 6 dígitos' : null;
+            }
+        }).then(function (res) {
+            if (!res.value) { return; }
+
+            swal({ title: 'Firmando…', allowOutsideClick: false, onOpen: function () { swal.showLoading(); } });
+
+            $.ajax({
+                url: '../microservicios/firmas/api.php',
+                type: 'POST',
+                dataType: 'json',
+                data: {
+                    funcion: 9,
+                    codigo: res.value.trim(),
+                    // "Estado del Registro": 1 inscripcion, 2 actualizacion.
+                    opcion: $('#opcionUso').val() || null
+                },
+                success: function (r) {
+                    swal.close();
+                    if (r.ok != 1) {
+                        swal({ type: 'error', title: 'No se pudo firmar', text: r.mensaje || '' });
+                        return;
+                    }
+                    swal({ type: 'success', title: 'RIT firmado', text: r.mensaje, timer: 2200 });
+                    self.consultarFirmaRIT();
+                },
+                error: function () {
+                    swal.close();
+                    swal({ type: 'error', title: 'Error de conexión', text: 'No se pudo firmar el RIT.' });
+                }
+            });
+        });
+    }
+
+
+
+    /* ================================================================
+       CESE DE ACTIVIDADES (reunion 2026-08-19)
+       ================================================================
+       El cliente lo quiso en el RIT, debajo de la fecha de inicio de
+       actividades, y sin numero de resolucion.
+
+       El dato NO cambio de tabla: sigue en ind_establecimientos, porque lo que
+       cesa es un LOCAL y no la persona. Por eso hay un selector: hay que decir
+       cual de los establecimientos es el que cierra.
+
+       Guarda por la funcion 21 de class.establecimientos.php, que valida
+       permiso y causal del lado del servidor. Lo de aqui es comodidad, no
+       seguridad.
+       ================================================================ */
+
+    cargarEstablecimientosCese() {
+        var self = this;
+        $.ajax({
+            url: '../business/controller/class.establecimientos.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { funcion: 3 },
+            success: function (resp) {
+                var $s = $('#rit_cese_Establecimiento');
+                $s.empty().append('<option value="">Seleccione…</option>');
+
+                var lista = (resp && resp.datos) ? resp.datos : [];
+                self._ceseDatos = {};
+
+                for (var i = 0; i < lista.length; i++) {
+                    var e = lista[i];
+                    self._ceseDatos[e.est_Id] = e;
+                    $s.append('<option value="' + e.est_Id + '">' +
+                              $('<div>').text(e.est_Nombre || ('Establecimiento ' + e.est_Id)).html() +
+                              '</option>');
+                }
+
+                self.aplicarPermisoCese();
+            },
+            error: function () { /* el ajaxError global de menu.php ya avisa */ }
+        });
+    }
+
+    /** Vuelca en el formulario el cese del establecimiento elegido. */
+    mostrarCeseDe(idEstablecimiento) {
+        var e = (this._ceseDatos || {})[idEstablecimiento];
+
+        if (!e) {
+            $('#rit_est_Fecha_cierre').val('');
+            $('#rit_est_Causal').val('');
+            $('#rit_est_Observacion_cierre').val('');
+            return;
+        }
+
+        // sqlsrv devuelve las fechas como objeto; el input date quiere AAAA-MM-DD.
+        // Hay filas con la fecha centinela 1900-01-01, que significa "sin cese".
+        var f = e.est_Fecha_cierre;
+        var texto = '';
+        if (f) {
+            texto = (typeof f === 'string') ? f.substring(0, 10)
+                  : (f.date ? String(f.date).substring(0, 10) : '');
+            if (texto.indexOf('1900-01-01') === 0) { texto = ''; }
+        }
+
+        $('#rit_est_Fecha_cierre').val(texto);
+        $('#rit_est_Causal').val(e.est_Causal || '');
+        $('#rit_est_Observacion_cierre').val(e.est_Observacion_cierre || '');
+    }
+
+    /** Quien no es Alcaldia ve el cese pero no lo toca. */
+    aplicarPermisoCese() {
+        var esAlcaldia = (idRol == 1 || idRol == 2);
+
+        $('input.cese-solo-admin').prop('readonly', !esAlcaldia);
+        $('select.cese-solo-admin').prop('disabled', !esAlcaldia);
+        $('#btnGuardarCeseRIT').prop('disabled', !esAlcaldia).toggle(esAlcaldia);
+        $('#ritAvisoCese').toggle(!esAlcaldia);
+    }
+
+    guardarCeseRIT() {
+        var id = $('#rit_cese_Establecimiento').val();
+
+        if (!id) {
+            swal({ type: 'warning', title: 'Falta el establecimiento',
+                   text: 'Indique cuál establecimiento cesa actividades.' });
+            return;
+        }
+
+        var self = this;
+        $.ajax({
+            url: '../business/controller/class.establecimientos.php',
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                funcion: 21,
+                est_Id: id,
+                est_Fecha_cierre: $('#rit_est_Fecha_cierre').val(),
+                est_Causal: $('#rit_est_Causal').val(),
+                est_Observacion_cierre: $('#rit_est_Observacion_cierre').val()
+            },
+            success: function (resp) {
+                if (resp.ok != 1) {
+                    swal({ type: 'error', title: 'No se pudo guardar', text: resp.mensaje || '' });
+                    return;
+                }
+                swal({ type: 'success', title: 'Listo', text: resp.mensaje, timer: 2000 });
+                // El cese entra en el hash del RIT: cambiarlo tumba la firma.
+                self.cargarEstablecimientosCese();
+                self.consultarFirmaRIT();
+            },
+            error: function () {
+                swal({ type: 'error', title: 'Error de conexión', text: 'No se pudo guardar el cese.' });
+            }
+        });
+    }
+
     guardarRIT() {
 
         var $boton = $('#btnGuardarRIT');
@@ -2059,8 +2310,26 @@ actualizarDeclaracionIca(valor, numeroCampo){
                     return;
                 }
 
-                swal({ type: 'success', title: 'RIT actualizado', text: resp.mensaje, timer: 2200 });
                 establecimientos.cargarRIT();
+
+                /*
+                 * Guardar es solo la mitad. Cualquier cambio invalida la firma
+                 * anterior -el hash deja de coincidir-, asi que el RIT queda
+                 * sin firmar hasta que se firme de nuevo. Se ofrece en el acto
+                 * en vez de dejar al usuario con un RIT guardado que el cree
+                 * completo y que sale marcado SIN FIRMAR al imprimirlo.
+                 */
+                swal({
+                    type: 'success',
+                    title: 'RIT actualizado',
+                    text: (resp.mensaje || '') + ' Para que quede en firme debe firmarlo.',
+                    showCancelButton: true,
+                    confirmButtonText: 'Firmar ahora',
+                    cancelButtonText: 'Más tarde'
+                }).then(function (res) {
+                    establecimientos.consultarFirmaRIT();
+                    if (res.value) { establecimientos.firmarRIT(); }
+                });
             },
             error: function () {
                 $boton.prop('disabled', false);
@@ -2079,6 +2348,23 @@ establecimientos.cargarRIT();
 $(document).on('click', '#btnCancelarRIT', function () {
     establecimientos.cargarRIT();   // descarta lo escrito y recarga
 });
+
+$(document).on('click', '#btnFirmarRIT', function () {
+    establecimientos.firmarRIT();
+});
+
+$(document).on('change', '#rit_cese_Establecimiento', function () {
+    establecimientos.mostrarCeseDe($(this).val());
+});
+
+$(document).on('click', '#btnGuardarCeseRIT', function () {
+    establecimientos.guardarCeseRIT();
+});
+
+establecimientos.cargarEstablecimientosCese();
+
+// Estado de firma al abrir la pantalla.
+establecimientos.consultarFirmaRIT();
 establecimientos.UsuarioActivo();
 
 $(document).ready(function(){

@@ -155,7 +155,13 @@
 
 <div class="col-md-2">
 <label>* Código</label>
-<input type="text" class="form-control" id="est_Codigo" name="est_Codigo" required>
+<!-- est_Codigo es INT en la base: si aqui entra una letra, la consulta
+     revienta y el endpoint devuelve un 500 vacio que la pantalla solo
+     sabe traducir a "error de conexion". El servidor lo valida tambien
+     (_validarCodigo), esto es para avisar antes de enviar. -->
+<input type="text" class="form-control" id="est_Codigo" name="est_Codigo"
+       inputmode="numeric" pattern="[0-9]*" maxlength="10"
+       title="Solo dígitos" required>
 </div>
 
 <!--
@@ -180,25 +186,41 @@
 <input type="text" class="form-control" id="est_Direccion" name="est_Direccion" required> 
 </div>
 
+<!-- OJO: estos tres campos van SIN atributo name a proposito. Las columnas
+     est_Pais/est_Departamento/est_Ciudad son VARCHAR(5) y no admiten un
+     nombre ("Colombia" son 8 caracteres): mandarlas tumbaba el guardado con
+     un 500 vacio. El servidor las descarta igual (_descartarUbicacion), esto
+     evita el viaje. Ver la nota larga en class.establecimientos.php.
+
+     Reunion 2026-08-19: la ubicacion queda FIJA en el municipio de la
+     instalacion. El cliente lo pidio explicito ("dejar bloqueado Paipa -
+     Boyaca: porque los establecimientos que deben registrar son solo los de
+     Paipa"), y es correcto: este sistema liquida el ICA de UN municipio, asi
+     que un establecimiento de otro lado no tendria como declarar aqui.
+
+     Se dejan como campos de solo lectura -no como <select> deshabilitado-
+     porque el JS arma el payload con .val() y un select deshabilitado se ve
+     como un desplegable que no responde, que confunde mas de lo que informa.
+     Los ids se conservan: core/establecimientos.js los sigue leyendo igual.
+
+     Van del config del municipio, no en duro, para que la marca blanca siga
+     funcionando: otro municipio cambia config.municipio.php y ya. -->
 <div class="col-md-3">
 <label>País</label>
-<select class="form-control" id="est_Pais" name="est_Pais">
-<option value="Colombia">Colombia</option>
-</select>
+<input type="text" class="form-control" id="est_Pais"
+       value="Colombia" readonly>
 </div>
 
 <div class="col-md-3">
 <label>Departamento</label>
-<select class="form-control" id="est_Departamento" name="est_Departamento">
-<option value="">Seleccione departamento...</option>
-</select>
+<input type="text" class="form-control" id="est_Departamento"
+       value="<?php echo htmlspecialchars(defined('MUNICIPIO_DEPARTAMENTO') ? MUNICIPIO_DEPARTAMENTO : ''); ?>" readonly>
 </div>
 
 <div class="col-md-3">
 <label>Ciudad</label>
-<select class="form-control" id="est_Ciudad" name="est_Ciudad">
-<option value="">Seleccione municipio...</option>
-</select>
+<input type="text" class="form-control" id="est_Ciudad"
+       value="<?php echo htmlspecialchars(defined('MUNICIPIO_CIUDAD') ? MUNICIPIO_CIUDAD : ''); ?>" readonly>
 </div>
 
 <div class="col-md-3">
@@ -239,6 +261,28 @@
 <option value="1">Inscripción</option>
 <option value="2">Actualización</option>
 </select>
+</div>
+
+<!-- Reunion 2026-08-19: el cliente pidio que el flag de "exento de avisos y
+     tableros" viva aqui, en el establecimiento. Y aqui es donde debe estar:
+     la exencion de avisos y tableros aplica al LOCAL (a su publicidad
+     visible), no a la persona -un contribuyente puede tener un local exento
+     y otro no.
+
+     Ojo, esto ademas repara un defecto propio: estas dos casillas SI existian
+     en este formulario y se borraron por error en el commit feba615 (reunion
+     del 18) sin quitar el envio correspondiente en core/establecimientos.js.
+     Como el elemento ya no existia, $(...).is(":checked") devolvia false y
+     CADA guardado apagaba en silencio las dos exenciones. Mientras el input
+     no exista, el JS no debe mandar el campo (ver guardas en el JS). -->
+<div class="col-md-2">
+<label>Excluido</label><br>
+<input type="checkbox" id="est_Exento" name="est_Exento" data-toggle="switch">
+</div>
+
+<div class="col-md-3">
+<label>Exento Avisos y Tableros</label><br>
+<input type="checkbox" id="est_Excento_avisos" name="est_Excento_avisos" data-toggle="switch">
 </div>
 
 
@@ -319,66 +363,26 @@
 </div>
 </div>
 
-<!-- ===================== CESE DE ACTIVIDADES ===================== -->
-<!--
-     Puntos 14, 15 y 16. Las columnas (est_Fecha_cierre, est_Causal,
-     est_Resolucion_cierre, est_Observacion_cierre) existian desde antes en
-     ind_establecimientos, pero los campos estaban comentados en este archivo
-     y el select se llamaba con_Causal, que no corresponde a ninguna columna:
-     el cese no llegaba a guardarse nunca.
+<!-- El cese de actividades se fue al RIT (reunion 2026-08-19): el cliente lo
+     quiere justo debajo de "fecha de inicio de actividades", que es como esta
+     en el formulario oficial en papel, y sin el numero de resolucion -esa
+     resolucion la expide la Alcaldia despues, el contribuyente no la tiene
+     cuando declara el cese-.
 
-     La clase campo-solo-admin es la que usa el JS para dejarlos de solo
-     lectura cuando quien mira no es la Alcaldia (punto 15). El bloqueo de
-     verdad esta en el servidor (_filtrarCese en class.establecimientos.php):
-     un readonly se quita desde la consola del navegador.
--->
-<div class="bloque-form">
-<div class="titulo-bloque">Cese de Actividades</div>
+     Las columnas NO se mueven de sitio: siguen en ind_establecimientos
+     (est_Fecha_cierre, est_Causal, est_Observacion_cierre) porque el cese es
+     de un LOCAL, no de la persona -un contribuyente puede cerrar un
+     establecimiento y seguir operando los otros-. Lo que cambia es donde se
+     captura: la pantalla del RIT pregunta de cual establecimiento se trata.
 
-<div id="avisoCese" class="mb-3" style="display:none; font-size:13px; color:#6B7280;">
-    <i class="fa fa-lock"></i> Solo la Alcaldía puede registrar el cese de actividades.
-</div>
-
-<div class="row">
-    <div class="col-sm-12 col-md-3">
-        <div class="form-group" style="width: 95%">
-            <label>Fecha de cese</label>
-            <input type="date" class="form-control campo-solo-admin"
-                   id="est_Fecha_cierre" name="est_Fecha_cierre">
-        </div>
-    </div>
-
-    <div class="col-sm-12 col-md-3">
-        <div class="form-group" style="width: 95%">
-            <label>Causal</label>
-            <select class="form-control campo-solo-admin" id="est_Causal" name="est_Causal">
-                <option value="">Sin cese</option>
-                <option value="1">Fusión</option>
-                <option value="2">Escisión</option>
-                <option value="3">Liquidación</option>
-                <option value="4">Otro</option>
-            </select>
-        </div>
-    </div>
-
-    <div class="col-sm-12 col-md-3">
-        <div class="form-group" style="width: 95%">
-            <label>No. Resolución</label>
-            <input type="text" class="form-control campo-solo-admin" maxlength="50"
-                   id="est_Resolucion_cierre" name="est_Resolucion_cierre">
-        </div>
-    </div>
-</div>
-
-</div>
+     El control de permiso sigue en el servidor (_filtrarCese en
+     class.establecimientos.php): solo la Alcaldia registra un cese. -->
 
 <!-- ===================== OBSERVACIÓN Y AUTORIZACIÓN ===================== -->
 <div class="bloque-form">
 <div class="titulo-bloque">Observación y Autorización</div>
 
-<label for="est_Observacion_cierre">Observación</label>
-<input type="text" class="form-control mb-3 campo-solo-admin" maxlength="255"
-       id="est_Observacion_cierre" name="est_Observacion_cierre">
+<!-- La observacion del cese se fue al RIT junto con el resto del bloque. -->
 
 <!-- Punto 8: la autorizacion de notificacion electronica es del
      CONTRIBUYENTE, no de cada local, asi que vive unicamente en el RIT.

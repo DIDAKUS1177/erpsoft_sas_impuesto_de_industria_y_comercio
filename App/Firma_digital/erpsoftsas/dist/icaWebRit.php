@@ -69,6 +69,14 @@
 						<small class="text-muted" id="ritEstadoCarga">Cargando…</small>
 					</div>
 					<div>
+						<!-- Reunion 2026-08-19: el RIT se firma al inscribirse y en cada
+						     novedad, igual que las declaraciones. El estado sale aqui
+						     porque es lo primero que hay que saber al abrir la pantalla:
+						     un RIT sin firmar no es un RIT presentado. -->
+						<span id="ritEstadoFirma" class="mr-2"></span>
+						<button type="button" class="btn btn-outline-success" id="btnFirmarRIT">
+							<i class="fa fa-pencil-square-o"></i> Firmar RIT
+						</button>
 						<a class="btn btn-outline-info" id="btnDescargarRIT" href="#" target="_blank">
 							<i class="fa fa-download"></i> Descargar RIT
 						</a>
@@ -127,8 +135,14 @@
 					</div>
 
 					<div class="row">
+						<!-- Reunion 2026-08-19: el cliente pidio que en el formulario del RIT
+						     esta casilla diga "Dirección de notificación", que es el nombre que
+						     tiene en el formulario oficial en papel. Es la MISMA columna
+						     (ind_Direccion): solo cambia el rotulo, no se agrega campo. Si mas
+						     adelante piden separar la de residencia de la de notificacion, eso
+						     si serian dos columnas distintas. -->
 						<div class="col-md-4 form-group">
-							<label>Dirección</label>
+							<label>Dirección de notificación</label>
 							<input type="text" class="form-control" name="ind_Direccion" id="rit_ind_Direccion" maxlength="200">
 						</div>
 						<!--
@@ -162,7 +176,7 @@
 							<input type="text" class="form-control" name="ind_Telefono" id="rit_ind_Telefono">
 						</div>
 						<div class="col-md-6 form-group">
-							<label>Correo</label>
+							<label>Correo electrónico de notificación</label>
 							<input type="email" class="form-control" name="ind_Email" id="rit_ind_Email" maxlength="500">
 						</div>
 					</div>
@@ -181,10 +195,72 @@
 							<label>Fecha de matrícula</label>
 							<input type="date" class="form-control" name="ind_Fecha_matricula" id="rit_ind_Fecha_matricula">
 						</div>
+						<!-- El municipio sale del config, no en duro: es la misma pantalla
+						     para cualquier alcaldia que use el sistema. -->
 						<div class="col-md-3 form-group">
-							<label>Fecha de inicio de actividades</label>
+							<label>Fecha de inicio de actividades en el Municipio de <?php echo htmlspecialchars(defined('MUNICIPIO_CIUDAD') ? MUNICIPIO_CIUDAD : ''); ?></label>
 							<input type="date" class="form-control" name="ind_Fecha_inicio" id="rit_ind_Fecha_inicio">
 						</div>
+					</div>
+
+					<!-- ===================== CESE DE ACTIVIDADES =====================
+					     Reunion 2026-08-19: el cliente lo pidio aqui, "debajo de donde
+					     dice fecha de inicio de actividades", y "sin el numero de
+					     resolucion". Asi esta en el formulario oficial en papel.
+
+					     El dato NO cambio de tabla: sigue en ind_establecimientos, porque
+					     lo que cesa es un LOCAL y no la persona -se puede cerrar uno y
+					     seguir operando los demas-. Por eso hay que decir de cual se
+					     trata, y de ahi el selector.
+
+					     Quien no es Alcaldia lo ve pero no lo edita: el cese lo registra
+					     el municipio. El bloqueo de verdad esta en el servidor
+					     (_filtrarCese en class.establecimientos.php); lo de aqui es solo
+					     para no ofrecer algo que va a rebotar.
+					-->
+					<hr>
+					<h5 class="mb-3" style="font-weight:600;">Cese de actividades</h5>
+
+					<div id="ritAvisoCese" class="mb-3" style="display:none; font-size:13px; color:#6B7280;">
+						<i class="fa fa-lock"></i> Solo la Alcaldía puede registrar el cese de actividades.
+					</div>
+
+					<div class="row">
+						<div class="col-md-3 form-group">
+							<label>Establecimiento que cesa</label>
+							<select class="form-control" id="rit_cese_Establecimiento"></select>
+						</div>
+						<div class="col-md-3 form-group">
+							<label>Fecha de cese</label>
+							<input type="date" class="form-control cese-solo-admin" id="rit_est_Fecha_cierre">
+						</div>
+						<div class="col-md-3 form-group">
+							<label>Causal</label>
+							<select class="form-control cese-solo-admin" id="rit_est_Causal">
+								<option value="">Sin cese</option>
+								<option value="1">Fusión</option>
+								<option value="2">Escisión</option>
+								<option value="3">Liquidación</option>
+								<option value="4">Otro</option>
+							</select>
+						</div>
+						<div class="col-md-3 form-group">
+							<label>Observación</label>
+							<input type="text" class="form-control cese-solo-admin" maxlength="255"
+							       id="rit_est_Observacion_cierre">
+						</div>
+					</div>
+
+					<div class="row">
+						<div class="col-md-12">
+							<button type="button" class="btn btn-sm btn-primary cese-solo-admin"
+							        id="btnGuardarCeseRIT">
+								<i class="fa fa-save"></i> Guardar cese
+							</button>
+						</div>
+					</div>
+
+					<div class="row">
 						<div class="col-md-3 form-group">
 							<label>¿Registrado en cámara de comercio?</label>
 							<select class="form-control" name="ind_Ind_camara_comercio" id="rit_ind_Ind_camara_comercio">

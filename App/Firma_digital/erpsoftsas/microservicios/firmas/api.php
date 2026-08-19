@@ -40,6 +40,12 @@ class FirmasAPI
             case 8:
                 $obj->_consultarDeclaracionFirmada();
                 break;
+            case 9:
+                $obj->_firmarRit();
+                break;
+            case 10:
+                $obj->_consultarFirmaRit();
+                break;
         }
     }
 
@@ -56,8 +62,9 @@ class FirmasAPI
 
         $conSql = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
-        if ($rol === 'declarante') {
-            // El declarante es el usuario del sistema: el codigo va a su correo.
+        if ($rol === 'declarante' || $rol === 'rit') {
+            // El declarante -y quien firma el RIT- es el usuario del sistema:
+            // el codigo va a su correo.
             $stmt = $conSql->consultar(
                 "SELECT usu_Nombres AS usu_Nombre, usu_Correo
                  FROM conf_usuarios WHERE usu_Id = ? AND usu_Estado = 1",
@@ -130,7 +137,14 @@ class FirmasAPI
     private function _rolFirmante()
     {
         $rol = strtolower(trim($_POST['rol'] ?? 'declarante'));
-        return $rol === 'contador' ? 'contador' : 'declarante';
+        if ($rol === 'contador') { return 'contador'; }
+        // El RIT tiene rol propio a proposito. codigos_verificacion identifica
+        // cada codigo por (usuario, establecimiento, rol); si el RIT usara
+        // 'declarante' como las declaraciones, un codigo pedido para firmar una
+        // declaracion serviria para firmar el RIT y al reves. Son dos
+        // autorizaciones distintas y no deben ser intercambiables.
+        if ($rol === 'rit') { return 'rit'; }
+        return 'declarante';
     }
 
     /**
@@ -550,6 +564,200 @@ class FirmasAPI
             return false;
         }
     }
+
+    /* ====================================================================
+       FIRMA DEL RIT  (funciones 9 y 10)
+       ====================================================================
+
+       Pedido del cliente el 2026-08-19: el RIT se firma al inscribirse y en
+       cada novedad, y la casilla 30 del formulario impreso -"Contribuyente o
+       Representante Legal", hasta ahora en blanco- sale estampada, tal como
+       ya sale la firma en las declaraciones.
+
+       DOS DIFERENCIAS DELIBERADAS CON _firmarDeclaracion()
+
+       1. El codigo OTP se valida AQUI DENTRO, en la misma llamada que registra
+          la firma, y se consume en el acto. La firma de declaracion quedo
+          partida en dos pasos (funcion 2 verifica, funcion 7 registra) y la
+          funcion 7 no vuelve a mirar el codigo: quien llame ese endpoint
+          directamente registra una firma sin haber recibido ningun correo.
+          Aqui no se repite ese diseño.
+
+       2. Quien firma sale de la SESION, no de $_POST. El id_usuario que manda
+          el navegador no prueba nada; el de la sesion si.
+    ==================================================================== */
+
+    /** Contribuyente al que pertenece el usuario de la sesion. */
+    private function _contribuyenteDeLaSesion($conSql)
+    {
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+        if (empty($_SESSION['id_usuario'])) { return null; }
+
+        $fila = $conSql->obnerFila($conSql->consultar(
+            "SELECT c.ind_Id
+               FROM ind_contribuyentes c
+               INNER JOIN conf_usuarios u ON u.usu_NumeroDocumento = c.ind_NumeroIdentificacion
+              WHERE u.usu_Id = ?",
+            [(int) $_SESSION['id_usuario']]
+        ));
+
+        return isset($fila['ind_Id']) ? (int) $fila['ind_Id'] : null;
+    }
+
+    /**
+     * A que RIT puede firmar esta sesion. Los roles de Alcaldia (1 y 2) pueden
+     * firmar el de cualquiera -hacen inscripciones en ventanilla-; el resto,
+     * solo el propio.
+     */
+    private function _ritPermitido($conSql)
+    {
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+        if (empty($_SESSION['id_usuario'])) {
+            return ['ok' => false, 'mensaje' => 'Sesión no válida. Vuelva a ingresar.'];
+        }
+
+        $rolSesion = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
+        $pedido    = (int) ($_POST['id_contribuyente'] ?? 0);
+        $propio    = $this->_contribuyenteDeLaSesion($conSql);
+
+        if (in_array($rolSesion, [1, 2], true)) {
+            $id = $pedido ?: $propio;
+            if (!$id) { return ['ok' => false, 'mensaje' => 'No se indicó el contribuyente.']; }
+            return ['ok' => true, 'id' => $id, 'usuario' => (int) $_SESSION['id_usuario']];
+        }
+
+        if (!$propio) {
+            return ['ok' => false, 'mensaje' => 'Su usuario no está asociado a un contribuyente.'];
+        }
+        if ($pedido && $pedido !== $propio) {
+            return ['ok' => false, 'mensaje' => 'No puede firmar el RIT de otro contribuyente.'];
+        }
+
+        return ['ok' => true, 'id' => $propio, 'usuario' => (int) $_SESSION['id_usuario']];
+    }
+
+    /**
+     * funcion 9 - Firma el RIT.
+     * Requiere el codigo OTP; lo valida y lo consume en esta misma llamada.
+     */
+    private function _firmarRit()
+    {
+        header('Content-type: application/json');
+
+        $conSql = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+
+        $permiso = $this->_ritPermitido($conSql);
+        if (!$permiso['ok']) {
+            echo json_encode(['ok' => 0, 'mensaje' => $permiso['mensaje']]);
+            return;
+        }
+        $idContribuyente = $permiso['id'];
+        $idUsuario       = $permiso['usuario'];
+
+        // --- OTP: se valida y se consume aqui mismo ---
+        $codigo = preg_replace('/[^0-9]/', '', $_POST['codigo'] ?? '');
+        if (strlen($codigo) !== 6) {
+            echo json_encode(['ok' => 0, 'mensaje' => 'El código debe tener 6 dígitos']);
+            return;
+        }
+
+        $vale = $conSql->obnerFila($conSql->consultar(
+            "SELECT codigo_Id FROM codigos_verificacion
+              WHERE codigo_Valor = ?
+                AND codigo_IdUsuario = ?
+                AND codigo_IdEstablecimiento = 0
+                AND codigo_Rol = 'rit'
+                AND codigo_Usado = 0
+                AND codigo_FechaExpiracion > GETDATE()",
+            [$codigo, $idUsuario]
+        ));
+
+        if (!$vale) {
+            echo json_encode(['ok' => 0, 'mensaje' => 'Código inválido o expirado']);
+            return;
+        }
+
+        $conSql->consultar(
+            "UPDATE codigos_verificacion SET codigo_Usado = 1 WHERE codigo_Id = ?",
+            [(int) $vale['codigo_Id']]
+        );
+
+        // --- Huella de lo que se esta firmando ---
+        include_once SERVER . '/business/class.ritFirma.php';
+        $hash = \erpsoftsas\RitFirma::hashActual($conSql, $idContribuyente);
+
+        if ($hash === '') {
+            echo json_encode(['ok' => 0, 'mensaje' => 'No se encontró el RIT del contribuyente.']);
+            return;
+        }
+
+        $usuario = $conSql->obnerFila($conSql->consultar(
+            "SELECT usu_Nombres AS usu_Nombre, usu_Correo FROM conf_usuarios WHERE usu_Id = ?",
+            [$idUsuario]
+        ));
+
+        $conSql->consultar(
+            "INSERT INTO ind_rit_firmas
+                 (rif_IdContribuyente, rif_IdUsuario, rif_NombreUsuario, rif_EmailUsuario,
+                  rif_Hash, rif_Opcion)
+             VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                $idContribuyente,
+                $idUsuario,
+                $usuario['usu_Nombre'] ?? '',
+                $usuario['usu_Correo'] ?? '',
+                $hash,
+                ((int) ($_POST['opcion'] ?? 0)) ?: null,
+            ]
+        );
+
+        echo json_encode([
+            'ok'      => 1,
+            'mensaje' => 'RIT firmado correctamente',
+            'nombre'  => $usuario['usu_Nombre'] ?? '',
+        ]);
+    }
+
+    /**
+     * funcion 10 - Estado de firma del RIT.
+     * Contesta si esta firmado AHORA: una firma anterior a la ultima novedad
+     * no cuenta (ver class.ritFirma.php).
+     */
+    private function _consultarFirmaRit()
+    {
+        header('Content-type: application/json');
+
+        $conSql = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+
+        $permiso = $this->_ritPermitido($conSql);
+        if (!$permiso['ok']) {
+            echo json_encode(['ok' => 0, 'mensaje' => $permiso['mensaje']]);
+            return;
+        }
+
+        include_once SERVER . '/business/class.ritFirma.php';
+        $estado = \erpsoftsas\RitFirma::firmaVigente($conSql, $permiso['id']);
+
+        $fmt = function ($f) {
+            if (!$f) { return null; }
+            return [
+                'nombre' => $f['rif_NombreUsuario'],
+                'fecha'  => ($f['rif_FechaHora'] instanceof \DateTime)
+                                ? $f['rif_FechaHora']->format('Y-m-d H:i:s')
+                                : (string) $f['rif_FechaHora'],
+            ];
+        };
+
+        echo json_encode([
+            'ok'             => 1,
+            'firmado'        => $estado['firmado'] ? 1 : 0,
+            'firma'          => $fmt($estado['firma']),
+            // Hubo firma, pero el RIT cambio despues: la pantalla lo dice en
+            // vez de mostrar un "sin firmar" que pareceria que nunca se firmo.
+            'desactualizada' => $fmt($estado['desactualizada']),
+        ]);
+    }
+
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

@@ -67,17 +67,19 @@ function pintarResumen(d) {
             '<div class="col-md-3"><small class="text-muted d-block">Se van a aplicar</small><b class="text-success">' + (d.aplicables || []).length + '</b></div>' +
             '<div class="col-md-3"><small class="text-muted d-block">Ya estaban pagadas</small><b>' + (d.yaPagadas || []).length + '</b></div>' +
             '<div class="col-md-3"><small class="text-muted d-block">Sin declaración</small><b class="text-danger">' + (d.sinDeclaracion || []).length + '</b></div>' +
+        '</div>' +
+        '<div class="row mt-3">' +
+            '<div class="col-md-3"><small class="text-muted d-block">Sin presentar (no se aplican)</small><b class="text-danger">' + (d.sinPresentar || []).length + '</b></div>' +
         '</div>'
     );
 
+    // Aqui ya solo pueden entrar declaraciones presentadas: el servidor manda
+    // las demas a sinPresentar y no las aplica. La columna se conserva porque
+    // el usuario pidio ver el estado, pero deja de ser una advertencia.
     pintarFilas('tbodyAplicables', d.aplicables, [
         function (x) { return escapar(x.referencia); },
         function (x) { return pesos(x.valor); },
-        function (x) {
-            return x.presentada
-                ? '<span class="text-success">Presentada</span>'
-                : '<span class="text-warning">Sin presentar</span>';
-        }
+        function ()  { return '<span class="text-success">Presentada</span>'; }
     ], 'Ninguna declaración quedará marcada como pagada con este archivo.');
 
     pintarFilas('tbodyYaPagadas', d.yaPagadas, [
@@ -89,6 +91,14 @@ function pintarResumen(d) {
         function (x) { return escapar(x.referencia); },
         function (x) { return pesos(x.valor); }
     ], 'Ninguna: todas las referencias del archivo existen en el sistema.');
+
+    // Pagos que el banco reporta contra una declaracion que existe pero NO
+    // esta presentada. No se aplican -ver la nota larga en class.recaudo.php-
+    // y quedan listados para conciliacion manual.
+    pintarFilas('tbodySinPresentar', d.sinPresentar, [
+        function (x) { return escapar(x.referencia); },
+        function (x) { return pesos(x.valor); }
+    ], 'Ninguna: todos los pagos del archivo corresponden a declaraciones presentadas.');
 
     $('#cajaResumen').show();
 }

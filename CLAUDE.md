@@ -471,3 +471,100 @@ firma del webhook, ya incorporada arriba.
 - Pendiente (requiere al cliente/banco, no ejecutable por Claude): credenciales de
   producción de PlacetoPay, certificación/homologación con el banco, registrar la URL
   del webhook ante PlacetoPay.
+
+## Firma del RIT (2026-08-19)
+
+El RIT se firma con OTP, igual que las declaraciones, y estampa la casilla 30
+del formulario impreso ("Contribuyente o Representante Legal", que hasta ahora
+salía en blanco mientras la 31 ya traía la firma del funcionario).
+
+```
+BD/migraciones/008_firma_del_rit.sql   tabla ind_rit_firmas + columna codigo_Rol
+business/class.ritFirma.php            hash del contenido firmado y firma vigente
+microservicios/firmas/api.php          funcion 9 firmar, funcion 10 consultar
+extensiones/ritActualizado.php         casilla 30 + marca de agua SIN FIRMAR
+```
+
+**Por qué el hash y no un simple "fulano firmó"**: una declaración presentada ya
+no cambia, pero el RIT está hecho para actualizarse (el formulario se llama "de
+inscripción **Y/O NOVEDADES**"). Cada firma guarda el SHA-256 del contenido
+firmado; al imprimir se recalcula y solo se estampa si coincide. Cualquier
+novedad invalida la firma **sola**, sin que nadie tenga que acordarse de
+invalidarla. El hash cubre exactamente lo que el formulario imprime
+(contribuyente + actividades + establecimientos, incluido el cese): de más
+invalidaría por cambios que el papel no muestra, de menos dejaría pasar cambios
+visibles sin volver a firmar. `RitFirma::VERSION` permite invalidar a propósito
+todas las firmas viejas si algún día cambia *qué* se firma.
+
+El OTP del RIT usa `codigo_Rol = 'rit'`, distinto de `'declarante'`. Sin eso, un
+código pedido para firmar una declaración serviría para firmar el RIT y al
+revés: ambos usan `id_establecimiento = 0`.
+
+### Pendiente conocido: la firma de declaración es falsificable
+
+`_firmarDeclaracion()` (función 7 de `microservicios/firmas/api.php`) **no
+vuelve a validar el código OTP**: da por hecho que el navegador llamó antes a la
+función 2. Quien haga un POST directo a la función 7 registra una firma sin
+haber recibido ningún correo. Y no es teórico: se encontró
+`codigos_verificacion` con **0 filas** y `firmas_declaraciones` con **5 firmas**
+— es decir que se firmó sin que el OTP hubiera funcionado nunca.
+
+La firma del RIT (función 9) **no repite ese diseño**: valida y consume el
+código dentro de la misma llamada que registra la firma. Arreglar la función 7
+igual exige decidir qué pasa con "refirmar", que hoy entra por otra puerta y sin
+código; por eso quedó anotado y no cambiado.
+
+## Trampas encontradas el 2026-08-19 (todas costaron un rato)
+
+**1. `is(":checked")` sobre un elemento que no existe devuelve `false`, no
+`undefined`.** Escrito como `campo: $("#x").is(":checked") ? 1 : 0`, eso manda
+un `0` sólido y **apaga la columna en silencio en cada guardado**. Pasó con
+`est_Exento` / `est_Excento_avisos`: se quitaron las casillas del formulario y
+se olvidó quitar el envío. Los campos de texto **no** tienen el problema:
+`.val()` da `undefined`, jQuery lo omite del POST y el controlador —que recorre
+`$_POST` con `foreach`— ni lo toca. Usar `flagCasilla()` de
+`core/establecimientos.js`.
+
+**2. `est_Pais` / `est_Departamento` / `est_Ciudad` son `VARCHAR(5)`.** No caben
+"Colombia" (8) ni "Boyacá" (6). Mandar el nombre produce *"String or binary data
+would be truncated"*, la excepción no se captura y el endpoint contesta **500
+con el cuerpo vacío** → la pantalla solo dice "error de conexión". Por eso las
+12 filas tienen `'1'`: la ubicación del establecimiento **nunca se ha guardado**.
+Nadie las lee (solo el DAO las declara), así que
+`_descartarUbicacion()` las descarta y el formulario las muestra fijas desde el
+config. Si algún día hay que almacenarlas de verdad, **ensanchar las tres
+columnas en una migración antes** de volver a enviarlas.
+
+**3. `est_Codigo` es `INT` y el input era texto libre.** Una letra bastaba para
+el mismo 500 vacío. Ahora `_validarCodigo()` lo rechaza con mensaje y el input
+lleva `inputmode="numeric"`.
+
+**4. `codigos_verificacion.codigo_Rol` no existía.** `api.php` la usa en todos
+sus INSERT y SELECT, así que **ningún OTP llegó nunca a guardarse**. La crea la
+migración 008. Al desplegar, verificar que producción también la tenga.
+
+**5. Más PNG con canal alfa en los PDF.** Se había aplanado `Sello_Firma.png`
+pero quedaban `firma_rit.png` y `logopazysalvo.png`, los dos impresos en el RIT:
+en Plesk habrían reventado con *"Unable to write file"*. Ya están aplanados
+(los originales quedaron como `*_ORIGINAL_con_alfa.png`). `escudo-paipa.png`
+**no** se aplanó porque la web lo usa sobre fondos de color: se generó
+`escudo-paipa-pdf.png` y los PDF la toman por `MUNICIPIO_LOGO_PDF`.
+**Antes de dar por bueno un PDF nuevo, comprobar el byte 25 de cada PNG que
+imprima** (2 = RGB sin alfa, 6 = RGB+alfa).
+
+## Un pago solo existe sobre una declaración PRESENTADA
+
+Ni el recaudo bancario ni PSE pueden marcar como pagada una declaración que no
+esté en `dec_Estado = 2`. Dejarlo pasar producía un estado imposible —pagada
+pero sin presentar— que rompe "Corregir": la pantalla la pintaba "Pagada"
+porque miraba `dec_Pagado`, pero corregir exige `dec_Estado = 2` y la rechazaba,
+así que el contribuyente quedaba con una declaración cerrada que no podía tocar.
+
+- **Recaudo** (`class.recaudo.php`): esos renglones van al informe de
+  excepciones ("Sin presentar") y **no se aplican**. El código de barras de
+  recaudo solo se imprime en declaraciones presentadas, así que una referencia
+  contra una que no lo está no pudo salir de un recibo nuestro.
+- **PSE** (`extensiones/pse/crearSesion.php`): rechaza el pago de un borrador.
+  Además el monto de un borrador todavía puede cambiar.
+- **Pantalla** (`claveEstado()` en `core/declaraciones.ui.js`): "Pagada" exige
+  las dos condiciones, no solo `dec_Pagado`.

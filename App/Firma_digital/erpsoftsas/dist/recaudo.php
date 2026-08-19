@@ -76,6 +76,7 @@
 						<li class="nav-item"><a class="nav-link active" data-toggle="tab" href="#tabAplicables">Se van a aplicar</a></li>
 						<li class="nav-item"><a class="nav-link" data-toggle="tab" href="#tabYaPagadas">Ya estaban pagadas</a></li>
 						<li class="nav-item"><a class="nav-link" data-toggle="tab" href="#tabSinDeclaracion">Sin declaración</a></li>
+						<li class="nav-item"><a class="nav-link" data-toggle="tab" href="#tabSinPresentar">Sin presentar</a></li>
 					</ul>
 					<div class="tab-content pt-3">
 						<div class="tab-pane fade show active" id="tabAplicables">
@@ -105,6 +106,26 @@
 										<tr><th style="width:180px;">Referencia</th><th>Valor en el archivo</th></tr>
 									</thead>
 									<tbody id="tbodySinDeclaracion"></tbody>
+								</table>
+							</div>
+						</div>
+						<!-- El banco reporta un pago contra una declaracion que SI existe
+						     pero que no esta presentada. No se aplica: el codigo de barras
+						     de recaudo solo se imprime en declaraciones presentadas, asi que
+						     esa referencia no pudo salir de un recibo nuestro. Se lista para
+						     que la Alcaldia lo concilie a mano (ver class.recaudo.php). -->
+						<div class="tab-pane fade" id="tabSinPresentar">
+							<div class="alert alert-warning mb-3" style="font-size:13px;">
+								Estos pagos <b>no se aplicaron</b>. La declaración existe pero no está
+								presentada, y el código de barras de recaudo solo se imprime en
+								declaraciones presentadas. Requieren revisión manual.
+							</div>
+							<div class="table-responsive">
+								<table class="table table-bordered table-sm">
+									<thead style="background:#e9ecef; font-weight:600;">
+										<tr><th style="width:180px;">N° Declaración</th><th>Valor en el archivo</th></tr>
+									</thead>
+									<tbody id="tbodySinPresentar"></tbody>
 								</table>
 							</div>
 						</div>

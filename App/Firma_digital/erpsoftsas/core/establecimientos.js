@@ -1,3 +1,27 @@
+/*
+ * Casillas que pueden no estar en la pantalla.
+ *
+ * Trampa que ya costo un bug real: $("#loQueSea").is(":checked") sobre un
+ * elemento que NO existe devuelve false, no undefined. Escrito como
+ *     campo: $("#x").is(":checked") ? 1 : 0
+ * eso manda un 0 solido al servidor y APAGA la columna en silencio cada vez
+ * que se guarda. Paso exactamente asi con est_Exento / est_Excento_avisos:
+ * se quitaron las casillas del formulario y se olvido quitar el envio, de modo
+ * que cada guardado borraba las dos exenciones sin que nadie lo notara.
+ *
+ * Los campos de texto no tienen el problema: .val() sobre un elemento que no
+ * existe da undefined, jQuery lo omite del POST, y el controlador -que recorre
+ * $_POST con foreach- ni lo toca. Por eso la guarda solo hace falta aqui.
+ *
+ * Con esta funcion, si la casilla no esta en la pantalla el campo no viaja, y
+ * el valor guardado en la base se queda como estaba.
+ */
+function flagCasilla(id) {
+    const $c = $("#" + id);
+    if ($c.length === 0) return undefined;   // no esta en pantalla: no se manda
+    return $c.is(":checked") ? 1 : 0;
+}
+
 /*    METDOS DEL MODULO DE DEPENDENCIA    */
 
 var enable = true;
@@ -569,9 +593,10 @@ $("#est_NoResolucion").val(d.est_NoResolucion);
         est_IdContribuyente: $("#est_IdContribuyente").val(), // CORREGIDO
         est_Nombre: $("#est_Nombre").val(),
         est_Direccion: $("#est_Direccion").val(),
-        est_Pais: $("#est_Pais").val(),
-        est_Departamento: $("#est_Departamento").val(),
-        est_Ciudad: $("#est_Ciudad").val(),
+        // est_Pais / est_Departamento / est_Ciudad ya no se envian: son
+        // VARCHAR(5) y no aguantan un nombre de pais o departamento. El
+        // servidor los descarta de todos modos. Ver class.establecimientos.php.
+
         est_Barrio: $("#est_Barrio").val(),
         est_Correo: $("#est_Correo").val(),
 
@@ -600,8 +625,8 @@ $("#est_NoResolucion").val(d.est_NoResolucion);
         est_Fecha_inscripcion: $("#est_Fecha_inscripcion").val(),
         est_Fecha_inicio: $("#est_Fecha_inicio").val(),
         
-        est_Excento_avisos: $("#est_Excento_avisos").is(":checked") ? 1 : 0,
-        est_Exento: $("#est_Exento").is(":checked") ? 1 : 0,
+        est_Excento_avisos: flagCasilla("est_Excento_avisos"),
+        est_Exento: flagCasilla("est_Exento"),
         //est_Local_municipio: $("#est_Local_municipio").is(":checked") ? 1 : 0,
 
         est_Rut: $("#est_Rut").val(),
@@ -1020,9 +1045,8 @@ est_NoResolucion: $("#est_NoResolucion").val(),
             est_IdContribuyente: $("#est_IdContribuyente").val(),
             est_Nombre: $("#est_Nombre").val(),
             est_Direccion: $("#est_Direccion").val(),
-            est_Pais: $("#est_Pais").val(),
-            est_Departamento: $("#est_Departamento").val(),
-            est_Ciudad: $("#est_Ciudad").val(),
+            // ver nota arriba: la ubicacion no viaja
+
             est_Barrio: $("#est_Barrio").val(),
             est_Correo: $("#est_Correo").val(),
 
@@ -1053,8 +1077,8 @@ est_NoResolucion: $("#est_NoResolucion").val(),
             est_Fecha_inicio: $("#est_Fecha_inicio").val(),
 
             //est_LocalMunicipio: $("#est_LocalMunicipio").is(":checked") ? 1 : 0,
-            est_Exento: $("#_est_Exento").is(":checked") ? 1 : 0,
-            est_ExcentoAvisos: $("#est_ExcentoAvisos").is(":checked") ? 1 : 0,
+            est_Exento: flagCasilla("_est_Exento"),
+            est_ExcentoAvisos: flagCasilla("est_ExcentoAvisos"),
             
             est_Rut: $("#est_Rut").val(),
             est_Rut_segundo: $("#est_Rut_segundo").val(),
