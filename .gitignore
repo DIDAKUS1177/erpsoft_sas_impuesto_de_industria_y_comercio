@@ -33,3 +33,8 @@ _archivo_obsoleto_*/
 # Son documentos de personas: no van al repositorio.
 anexos_establecimientos/
 App/Firma_digital/anexos_establecimientos/
+
+# Archivos de recaudo que entrega el banco. Son datos reales de pagos de
+# contribuyentes: no van al repositorio, igual que los anexos.
+archivos_recaudo/
+App/Firma_digital/archivos_recaudo/

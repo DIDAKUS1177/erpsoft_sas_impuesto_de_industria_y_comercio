@@ -46,6 +46,10 @@ class Menu {
                 case 10:
                     window.location = 'informesModulos.php';
                     break;
+                case 11:
+                    // Recaudo por codigo de barras (archivo Asobancaria).
+                    window.location = 'recaudo.php';
+                    break;
                 
                 case 100:
                     window.location = 'consultasPazySalvoPredial.php';
