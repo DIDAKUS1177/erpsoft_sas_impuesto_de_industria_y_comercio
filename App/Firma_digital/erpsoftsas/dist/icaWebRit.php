@@ -68,20 +68,54 @@
 						<h4 class="h4 mb-0">Registro de Identificación Tributaria</h4>
 						<small class="text-muted" id="ritEstadoCarga">Cargando…</small>
 					</div>
+					<!-- Reunion 2026-08-19. El RIT tiene dos estados y la barra cambia
+					     con ellos:
+
+					       FIRMADO  -> la pantalla queda BLOQUEADA. Solo "Actualizar"
+					                   (que la desbloquea) y "Descargar".
+					       EDITANDO -> "Guardar", "Firmar" y "Cancelar".
+
+					     Es lo que pidio el cliente: "cuando ya lo firman, que quede
+					     bloqueada esa pantalla, que ya no deje diligenciar los campos
+					     (...) esa informacion ya queda guardada y ya no se puede editar
+					     como tal, sino actualizar".
+
+					     Encaja con como funciona la firma: cualquier cambio invalida el
+					     hash, asi que "Actualizar" es, literalmente, empezar una novedad
+					     que habra que volver a firmar. -->
 					<div>
-						<!-- Reunion 2026-08-19: el RIT se firma al inscribirse y en cada
-						     novedad, igual que las declaraciones. El estado sale aqui
-						     porque es lo primero que hay que saber al abrir la pantalla:
-						     un RIT sin firmar no es un RIT presentado. -->
 						<span id="ritEstadoFirma" class="mr-2"></span>
+
+						<!-- Solo con el RIT firmado -->
+						<button type="button" class="btn btn-primary" id="btnActualizarRIT" style="display:none;">
+							<i class="fa fa-unlock"></i> Actualizar
+						</button>
+
+						<!-- Solo mientras se edita -->
 						<button type="button" class="btn btn-outline-success" id="btnFirmarRIT">
 							<i class="fa fa-pencil-square-o"></i> Firmar RIT
 						</button>
+						<button type="button" class="btn btn-outline-secondary" id="btnCancelarRIT">Cancelar</button>
+						<button type="submit" class="btn btn-primary" form="formRIT" id="btnGuardarRIT">Guardar</button>
+
+						<!-- Siempre -->
 						<a class="btn btn-outline-info" id="btnDescargarRIT" href="#" target="_blank">
 							<i class="fa fa-download"></i> Descargar RIT
 						</a>
-						<button type="button" class="btn btn-outline-secondary" id="btnCancelarRIT">Cancelar</button>
-						<button type="submit" class="btn btn-primary" form="formRIT" id="btnGuardarRIT">Actualizar</button>
+					</div>
+				</div>
+
+				<!-- Aviso de que actualizar el RIT es obligatorio. Sale solo mientras
+				     NO haya firma vigente; en cuanto se firma, estorba. -->
+				<div id="ritAvisoObligatorio" class="pd-20 pt-0" style="display:none;">
+					<div class="alert alert-warning mb-0" style="border-left:4px solid #d39e00;">
+						<b><i class="fa fa-exclamation-triangle"></i> Debe actualizar y firmar su RIT.</b><br>
+						<span style="font-size:13px;">
+							Diligencie la información, guárdela y fírmela. Mientras no esté firmado,
+							el formulario que descargue saldrá marcado <b>SIN FIRMAR</b>.
+							La inscripción o actualización del RIT está establecida en el estatuto
+							tributario, así como las sanciones por no realizarla oportunamente.
+						</span>
 					</div>
 				</div>
 
@@ -426,6 +460,30 @@
 						</label>
 					</div>
 					<small class="text-muted">Debe autorizarla para poder guardar los cambios.</small>
+
+					<!-- Las firmas, al pie, como en el formulario impreso: el cliente
+					     pidio que "en la parte de abajo se visualicen como las firmas".
+					     Se llena desde consultarFirmaRIT(). -->
+					<div id="ritBloqueFirmas" style="display:none;">
+						<hr>
+						<h5 class="mb-3" style="font-weight:600;">Firmas</h5>
+						<div class="row">
+							<div class="col-md-6">
+								<div style="border:1px solid #dee2e6; border-radius:4px; padding:14px; min-height:110px;">
+									<small class="text-muted d-block mb-2">30. Contribuyente o Representante Legal</small>
+									<div id="ritFirmaContribuyente" class="text-center"></div>
+								</div>
+							</div>
+							<div class="col-md-6">
+								<div style="border:1px solid #dee2e6; border-radius:4px; padding:14px; min-height:110px;">
+									<small class="text-muted d-block mb-2">31. Firma del Funcionario</small>
+									<div class="text-center">
+										<img src="../extensiones/tcpdf/pdf/img/firma_rit.png" style="height:46px;">
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
 
 					</form>
 			</div>

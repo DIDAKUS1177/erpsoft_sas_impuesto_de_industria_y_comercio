@@ -467,7 +467,16 @@ font-weight:bold;
 <tr>
 
 <td width="20%" rowspan="4" align="center">
-    <img src="tcpdf/pdf/img/logopazysalvo.png" width="80">
+    <!-- El escudo es 200x285: MUY alto en proporcion (1.43 de alto por cada
+         ancho). A width=80 mide unos 40mm y se derramaba sobre las barras
+         negras de "A. OPCION DE USO" y "B. DATOS DEL CONTRIBUYENTE" -TCPDF no
+         reajusta la fila, la imagen simplemente se pinta encima-.
+
+         Se salio de sitio al acortar el encabezado: antes eran 9 lineas de
+         texto y ahora son 6, asi que la fila bajo ~9mm y el logo, que es de
+         alto fijo, dejo de caber. Se le da ALTO explicito en vez de solo
+         ancho, que es lo que de verdad hay que controlar aqui. -->
+    <img src="tcpdf/pdf/img/logopazysalvo.png" width="57" height="81">
 </td>
 
 <td width="80%" class="header">
@@ -691,24 +700,51 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 <td width="100%">E. FIRMAS</td>
 </tr>
 
-<tr>
-<td width="50%"><b>30. Contribuyente o Representante Legal</b></td>
-<td width="50%"><b>31. Firma del Funcionario</b></td>
-</tr>
+<!-- Rotulo y firma van en la MISMA celda, no en dos filas.
 
+     Con el rotulo en una fila y la firma en la siguiente, TCPDF dibujaba un
+     trozo de borde suelto a la derecha de "31. Firma del Funcionario": esta
+     tabla mezcla filas de 2 columnas con filas de 7, y en esos cortes el
+     motor de tablas pinta segmentos de linea que no corresponden a ningun
+     recuadro. Juntandolo en una celda desaparece el corte.
+
+     El rotulo se alinea a la izquierda y la firma al centro con <div align>,
+     que es lo que TCPDF entiende dentro de una celda.
+-->
+<!-- Fila de las dos firmas.
+
+     Ojo con dos trampas de TCPDF que ya costaron una vuelta aqui:
+
+     1. height="40" en un <td> lo IGNORA el parser HTML: la fila mide lo que
+        mida su contenido. Para reservar alto hay que usar <br> (~3.1mm cada
+        uno). Antes esta fila confiaba en ese height y la firma del funcionario
+        -que a height=40 mide ~14mm- se salia por arriba, cruzando el borde de
+        la fila del rotulo. Y como la imagen esta aplanada contra blanco (no
+        puede llevar alfa, revienta en Plesk), ese blanco TAPABA la linea del
+        recuadro en vez de dejarla ver: de ahi que se viera rota.
+
+     2. Las dos celdas tienen que ocupar alto parecido o la fila queda
+        descuadrada. Por eso el sello del contribuyente y la firma del
+        funcionario van a una altura comparable (~10mm) y las dos celdas
+        cierran con el mismo <br>.
+-->
 <tr>
-<td height="40" width="50%" style="text-align:center; vertical-align:middle;">'.
+<td width="50%">
+<div align="left"><b>30. Contribuyente o Representante Legal</b></div>
+<div align="center">'.
 ($firmaRit
-    /* Mismo sello que usan las declaraciones. Va sin canal alfa: los PNG con
-       transparencia obligan a TCPDF a escribir archivos temporales y el
-       PHP-FPM de Plesk no puede hacerlo (ver nota en CLAUDE.md). */
-    ? '<img src="'.MUNICIPIO_SELLO_FIRMA.'" width="16" height="16"><br>'.
-      '<span style="font-size:7px;">'.$esc($firmaRit['rif_NombreUsuario']).'<br>'.$esc($fechaFirmaRit).'</span>'
+    /* Mismo sello que usan las declaraciones. Sin canal alfa por lo dicho
+       arriba. A 28 unidades son ~10mm, igual que la firma de al lado. */
+    ? '<img src="'.MUNICIPIO_SELLO_FIRMA.'" width="28" height="28"><br>'.
+      '<span style="font-size:6px;">'.$esc($firmaRit['rif_NombreUsuario']).' &nbsp;·&nbsp; '.$esc($fechaFirmaRit).'</span>'
     /* Sin firma digital queda el espacio para firmar a mano, como toda la vida. */
-    : '').
-'</td>
-<td width="50%" style="text-align:center; vertical-align:middle;">
-<img src="tcpdf/pdf/img/firma_rit.png" height="40">
+    : '<br><br><br>').
+'</div>
+</td>
+<td width="50%">
+<div align="left"><b>31. Firma del Funcionario</b></div>
+<div align="center"><img src="tcpdf/pdf/img/firma_rit.png" width="84" height="28"><br>
+<span style="font-size:6px;">&nbsp;</span></div>
 </td>
 </tr>
 

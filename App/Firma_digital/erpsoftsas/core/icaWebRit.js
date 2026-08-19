@@ -1785,6 +1785,18 @@ actualizarDeclaracionIca(valor, numeroCampo){
                 );
                 establecimientos.aplicarPermisosRIT();
 
+                // aplicarPermisosRIT() suelta los campos .campo-solo-admin, asi que
+                // hay que volver a aplicar el modo: si el RIT esta firmado, la
+                // pantalla tiene que quedar bloqueada tambien despues de recargar.
+                // Si todavia no se ha consultado la firma, consultarFirmaRIT() lo
+                // hara al llegar la respuesta.
+                if (establecimientos._firmaRIT) {
+                    establecimientos.modoRIT(
+                        establecimientos._firmaRIT.firmado == 1,
+                        establecimientos._firmaRIT
+                    );
+                }
+
                 // Punto 10: el RIT queda inicializado en el primer ingreso, sin
                 // que nadie tenga que crearlo.
                 $('#ritEstadoCarga').text(
@@ -2053,41 +2065,118 @@ actualizarDeclaracionIca(valor, numeroCampo){
        aqui no hay un paso intermedio de "verificar" que se pueda saltar.
        ================================================================ */
 
-    /** Pinta el estado de firma y habilita o no la descarga. */
+    /**
+     * Estado de la pantalla del RIT.
+     *
+     * Reunion 2026-08-19. El RIT tiene dos modos y esta funcion decide cual:
+     *
+     *   FIRMADO  -> pantalla BLOQUEADA. Los campos no se diligencian, abajo se
+     *               ven las firmas y arriba quedan solo "Actualizar" y
+     *               "Descargar".
+     *   EDITANDO -> se puede diligenciar; salen "Guardar", "Firmar" y
+     *               "Cancelar", y el aviso de que actualizar el RIT es
+     *               obligatorio.
+     *
+     * "Actualizar" no guarda nada: desbloquea. Y desbloquear es empezar una
+     * novedad, que al guardarse invalida la firma anterior (cambia el hash) y
+     * obliga a firmar de nuevo. Por eso el boton dice "Actualizar" y no
+     * "Editar": es el nombre que le da el formulario oficial.
+     */
     consultarFirmaRIT() {
+        var self = this;
         $.ajax({
             url: '../microservicios/firmas/api.php',
             type: 'POST',
             dataType: 'json',
             data: { funcion: 10 },
             success: function (r) {
-                var $e = $('#ritEstadoFirma');
-                var $d = $('#btnDescargarRIT');
-
-                if (r.ok != 1) { $e.html(''); return; }
-
-                if (r.firmado == 1) {
-                    $e.html('<span class="badge badge-success" style="font-size:12px;">' +
-                            '<i class="fa fa-check"></i> Firmado</span>');
-                    $('#btnFirmarRIT').hide();
-                    $d.removeClass('disabled').attr('title', 'Descargar el RIT firmado');
-                } else {
-                    // Se distingue "nunca se firmo" de "se firmo y despues
-                    // cambio": son situaciones distintas y la segunda hay que
-                    // explicarla, o el usuario cree que se perdio su firma.
-                    if (r.desactualizada) {
-                        $e.html('<span class="badge badge-warning" style="font-size:12px;" ' +
-                                'title="Firmado el ' + r.desactualizada.fecha +
-                                ', pero el RIT cambió después. Debe firmarlo de nuevo.">' +
-                                '<i class="fa fa-exclamation-triangle"></i> Firma desactualizada</span>');
-                    } else {
-                        $e.html('<span class="badge badge-secondary" style="font-size:12px;">Sin firmar</span>');
-                    }
-                    $('#btnFirmarRIT').show();
-                    $d.attr('title', 'Se puede descargar, pero saldrá marcado SIN FIRMAR');
-                }
+                if (r.ok != 1) { self.modoRIT(false, null); return; }
+                self._firmaRIT = r;
+                self.modoRIT(r.firmado == 1, r);
             },
             error: function () { $('#ritEstadoFirma').html(''); }
+        });
+    }
+
+    /**
+     * Aplica el modo. `firmado` manda; `datos` es la respuesta de la funcion 10.
+     * Se puede forzar el modo edicion con el boton "Actualizar" aunque haya
+     * firma: en ese caso `this._editando` queda en true hasta que se recargue.
+     */
+    modoRIT(firmado, datos) {
+        var bloqueado = firmado && !this._editando;
+
+        // --- campos ---
+        // Se excluyen los del cese, que tienen su propia regla (solo Alcaldia)
+        // y su propio boton: bloquearlos aqui los dejaria abiertos al
+        // desbloquear el resto, que no es lo que se quiere.
+        var $campos = $('#formRIT').find('input, select, textarea')
+                          .not('.cese-solo-admin')
+                          .not('#rit_cese_Establecimiento');
+
+        $campos.filter('input, textarea').prop('readonly', bloqueado);
+        $campos.filter('select').prop('disabled', bloqueado);
+        // Un checkbox readonly se sigue pudiendo marcar: hay que deshabilitarlo.
+        $campos.filter('input[type=checkbox]').prop('disabled', bloqueado);
+
+        // Botones de las tablas internas (actividades) y del cese.
+        $('#btnAgregarActividadRIT, #btnGuardarActividadesRIT').prop('disabled', bloqueado);
+
+        // --- barra superior ---
+        $('#btnActualizarRIT').toggle(!!bloqueado);
+        $('#btnGuardarRIT, #btnFirmarRIT, #btnCancelarRIT').toggle(!bloqueado);
+
+        // --- aviso de obligatoriedad: solo si NO hay firma vigente ---
+        $('#ritAvisoObligatorio').toggle(!firmado);
+
+        // --- distintivo de estado ---
+        var $e = $('#ritEstadoFirma');
+        if (firmado) {
+            $e.html('<span class="badge badge-success" style="font-size:12px;">' +
+                    '<i class="fa fa-check"></i> Firmado</span>');
+        } else if (datos && datos.desactualizada) {
+            // No es lo mismo "nunca se firmo" que "se firmo y despues cambio".
+            // Sin distinguirlo, el usuario cree que se perdio su firma.
+            $e.html('<span class="badge badge-warning" style="font-size:12px;" ' +
+                    'title="Firmado el ' + datos.desactualizada.fecha +
+                    ', pero el RIT cambió después. Debe firmarlo de nuevo.">' +
+                    '<i class="fa fa-exclamation-triangle"></i> Firma desactualizada</span>');
+        } else {
+            $e.html('<span class="badge badge-secondary" style="font-size:12px;">Sin firmar</span>');
+        }
+
+        // --- bloque de firmas al pie ---
+        if (firmado && datos && datos.firma) {
+            $('#ritFirmaContribuyente').html(
+                '<img src="../extensiones/Sello_Firma.png" style="height:46px;"><br>' +
+                '<small class="text-muted">' + $('<div>').text(datos.firma.nombre).html() +
+                '<br>' + $('<div>').text(datos.firma.fecha).html() + '</small>'
+            );
+            $('#ritBloqueFirmas').show();
+        } else {
+            $('#ritBloqueFirmas').hide();
+        }
+
+        $('#btnDescargarRIT').attr('title', firmado
+            ? 'Descargar el RIT firmado'
+            : 'Se puede descargar, pero saldrá marcado SIN FIRMAR');
+    }
+
+    /** "Actualizar": desbloquea para registrar una novedad. */
+    actualizarRIT() {
+        var self = this;
+        swal({
+            title: '¿Actualizar el RIT?',
+            text: 'Podrá modificar la información. Al guardarla, la firma actual dejará ' +
+                  'de tener validez y deberá firmar de nuevo.',
+            type: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, actualizar',
+            cancelButtonText: 'Cancelar'
+        }).then(function (res) {
+            if (!res.value) { return; }
+            self._editando = true;
+            self.modoRIT(true, self._firmaRIT);
         });
     }
 
@@ -2164,6 +2253,8 @@ actualizarDeclaracionIca(valor, numeroCampo){
                         return;
                     }
                     swal({ type: 'success', title: 'RIT firmado', text: r.mensaje, timer: 2200 });
+                    // Firmar cierra la novedad: la pantalla vuelve a bloquearse.
+                    self._editando = false;
                     self.consultarFirmaRIT();
                 },
                 error: function () {
@@ -2346,11 +2437,17 @@ const establecimientos = new Establecimientos();
 establecimientos.cargarRIT();
 
 $(document).on('click', '#btnCancelarRIT', function () {
-    establecimientos.cargarRIT();   // descarta lo escrito y recarga
+    establecimientos._editando = false;   // se abandona la novedad
+    establecimientos.cargarRIT();         // descarta lo escrito y recarga
+    establecimientos.consultarFirmaRIT();
 });
 
 $(document).on('click', '#btnFirmarRIT', function () {
     establecimientos.firmarRIT();
+});
+
+$(document).on('click', '#btnActualizarRIT', function () {
+    establecimientos.actualizarRIT();
 });
 
 $(document).on('change', '#rit_cese_Establecimiento', function () {
