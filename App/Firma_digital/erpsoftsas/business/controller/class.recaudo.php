@@ -28,7 +28,19 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
     private $_ok;
     private $_mensaje;
 
-    /** Donde quedan los archivos subidos. Fuera de la raiz web. */
+    /**
+     * Donde quedan los archivos subidos.
+     *
+     * En Plesk esta ruta cae fuera de la raiz web. En el contenedor Docker NO:
+     * el docroot es /var/www/html y la carpeta queda colgando de el, alcanzable
+     * por URL. Comprobado -no supuesto-, que es el mismo error que ya se
+     * cometio con los anexos. Por eso al crearla se le escribe un .htaccess que
+     * niega todo, y se verifico que responde 403 tanto para el listado como
+     * para un archivo concreto.
+     *
+     * OJO: .htaccess solo lo respeta Apache. En nginx hay que bloquearla en la
+     * configuracion del sitio.
+     */
     const CARPETA = '/archivos_recaudo';
 
     const TIPOS_PERMITIDOS = ['txt', 'asc', 'rec', 'dat'];
