@@ -77,25 +77,16 @@ class FirmaDeclaracion {
         $('#decl-btn-verificar').prop('disabled', true)
             .html('<i class="fa fa-spinner fa-spin"></i> Verificando...');
 
-        // Paso 2a: verificar OTP
-        const respOtp = await this._post({
-            funcion: 2,
-            codigo: codigo,
-            id_usuario: idUsuario,
-            id_establecimiento: 0
-        });
-
-        if (respOtp.ok !== 1) {
-            $('#decl-btn-verificar').prop('disabled', false)
-                .html('<i class="fa fa-check"></i> Verificar y Firmar');
-            swal({ type: 'error', title: 'Código incorrecto', text: respOtp.mensaje });
-            return;
-        }
-
-        // Paso 2b: registrar firma de la declaración
+        // Un solo paso: el codigo viaja CON la firma.
+        //
+        // Antes esto eran dos llamadas -la funcion 2 verificaba el codigo y la
+        // 7 registraba la firma- y la 7 no volvia a mirarlo. Cualquiera que
+        // llamara la 7 directamente registraba una firma sin haber recibido
+        // ningun correo. Ahora la 7 valida y consume el codigo ella misma, asi
+        // que no queda ningun hueco entre comprobar y firmar.
         const respFirma = await this._post({
             funcion: 7,
-            id_usuario: idUsuario,
+            codigo: codigo,
             numero_declaracion: this._numeroDeclaracion
         });
 
@@ -118,8 +109,13 @@ class FirmaDeclaracion {
     }
 
     /**
-     * Refirma una declaración utilizando la firma guardada del usuario,
-     * saltándose el paso de OTP si el usuario ya tiene una firma registrada.
+     * Refirma una declaración utilizando la firma guardada del usuario.
+     *
+     * OJO: antes esto se saltaba el OTP a proposito ("si ya tiene firma
+     * guardada, no hace falta el codigo"). Eso convertia la refirma en una
+     * puerta de atras: bastaba llamarla para estampar una firma sin ningun
+     * correo de por medio. Desde el 2026-08-19 pide codigo como cualquier
+     * otra firma.
      */
     async refirmar(numero, onFirmado = null) {
         const idUsuario = localStorage.getItem('id_Usuario');
@@ -151,12 +147,46 @@ class FirmaDeclaracion {
 
         if (!confirm.value) return;
 
-        // 3. Ejecutar refirma en el backend
+        // 3. Codigo al correo, tambien para refirmar.
+        //
+        // Refirmar es volver a firmar: si la firma original exige el codigo,
+        // esta no puede saltarselo -seria la puerta de atras que acabamos de
+        // cerrar-. El servidor lo exige de todas formas (funcion 7), esto solo
+        // evita mandar una peticion que va a rebotar.
+        swal({ title: 'Enviando código…', allowOutsideClick: false, onOpen: () => { swal.showLoading(); } });
+
+        const respEnvio = await this._post({
+            funcion: 1,
+            id_usuario: idUsuario,
+            id_establecimiento: 0
+        });
+
+        swal.close();
+
+        if (respEnvio.ok !== 1) {
+            swal({ type: 'error', title: 'No se pudo enviar el código', text: respEnvio.mensaje || '' });
+            return;
+        }
+
+        const pedido = await swal({
+            title: 'Código de verificación',
+            text: respEnvio.mensaje || 'Escriba el código de 6 dígitos que le llegó al correo.',
+            input: 'text',
+            inputAttributes: { maxlength: 6, autocapitalize: 'off', autocorrect: 'off' },
+            showCancelButton: true,
+            confirmButtonText: 'Refirmar',
+            cancelButtonText: 'Cancelar',
+            inputValidator: (v) => (!v || !/^[0-9]{6}$/.test(v.trim())) ? 'El código son 6 dígitos' : null
+        });
+
+        if (!pedido.value) return;
+
+        // 4. Ejecutar refirma en el backend
         swal({ title: 'Refirmando...', allowOutsideClick: false, onOpen: () => { swal.showLoading(); } });
 
         const resp = await this._post({
             funcion: 7,
-            id_usuario: idUsuario,
+            codigo: pedido.value.trim(),
             numero_declaracion: numero,
             refirma: 1  // 👈 Flag para permitir update
         });

@@ -376,7 +376,15 @@
 					     antes estaban copiados en cada establecimiento sin nada que
 					     garantizara que las copias coincidieran.
 					-->
-					<h5 class="mb-3" style="font-weight:600;">Códigos CIIU Actividades económicas</h5>
+					<!-- Rotulo tal como lo pidio el cliente el 2026-08-19: quiere que se vea que
+     es la informacion que trae el RUT, y ademas que son codigos CIIU. Antes
+     decia solo "Informacion del RUT"; el 18 se renombro a "Codigos CIIU
+     Actividades economicas" y ahora pidio las dos cosas juntas.
+
+     Ojo, esto NO es la tabla de actividades que liquida el impuesto: esa va
+     mas abajo y sale del catalogo del municipio. Estas tres casillas son
+     texto libre con lo que dice el RUT de la DIAN. -->
+					<h5 class="mb-3" style="font-weight:600;">Información del RUT - Códigos CIIU Actividades económicas</h5>
 					<div class="row">
 						<div class="col-md-3 form-group">
 							<label>Código actividad principal <small class="text-muted">(RUT)</small></label>

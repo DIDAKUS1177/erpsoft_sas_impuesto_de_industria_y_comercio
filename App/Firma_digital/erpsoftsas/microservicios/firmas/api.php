@@ -384,18 +384,42 @@ class FirmasAPI
 
     private function _firmarDeclaracion()
     {
-        $idUsuario = intval($_POST['id_usuario']);
+        /*
+         * Desde el 2026-08-19 esta funcion EXIGE el codigo OTP, igual que la
+         * del RIT. Antes no lo miraba -daba por hecho que la pantalla habia
+         * llamado a la funcion 2 antes- y por esa puerta se podia registrar
+         * una firma sin haber recibido ningun correo.
+         *
+         * Tambien deja de creerle al id_usuario que manda el navegador: el
+         * firmante sale de la sesion. Un id en el POST no prueba quien es
+         * quien.
+         */
         $numeroDeclaracion = preg_replace('/[^A-Za-z0-9\-]/', '', $_POST['numero_declaracion'] ?? $_POST['id_declaracion'] ?? '');
         $esRefirma = intval($_POST['refirma'] ?? 0);
 
+        header('Content-type: application/json');
+
         if (!$numeroDeclaracion) {
-            header('Content-type: application/json');
             echo json_encode(['ok' => 0, 'mensaje' => 'Número de declaración inválido']);
+            return;
+        }
+
+        $idUsuario = $this->_usuarioDeLaSesion();
+        if (!$idUsuario) {
+            echo json_encode(['ok' => 0, 'mensaje' => 'Sesión no válida. Vuelva a ingresar.']);
             return;
         }
 
         $conSql = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
         $rol = $this->_rolFirmante();
+
+        // El codigo se valida y se consume aqui, no en una llamada aparte.
+        // Vale tambien para refirmar: refirmar es volver a firmar.
+        $errorCodigo = $this->_consumirCodigo($conSql, $idUsuario, $rol);
+        if ($errorCodigo !== null) {
+            echo json_encode(['ok' => 0, 'mensaje' => $errorCodigo]);
+            return;
+        }
 
         // De quién queda el sello: el declarante es el usuario del sistema;
         // el contador/revisor no lo es, sus datos vienen del contribuyente.
@@ -587,6 +611,60 @@ class FirmasAPI
           el navegador no prueba nada; el de la sesion si.
     ==================================================================== */
 
+
+    /**
+     * Valida el codigo OTP y lo consume, todo en la misma llamada.
+     *
+     * Lo usan por igual la firma del RIT y la de declaraciones. Antes solo lo
+     * hacia el RIT: la de declaraciones venia partida en dos pasos -la funcion
+     * 2 verificaba, la 7 registraba- y la 7 no volvia a mirar el codigo, asi
+     * que un POST directo a la 7 dejaba una firma registrada sin haber recibido
+     * ningun correo. Se comprobo que ya habia pasado: la tabla de codigos
+     * estaba vacia y aun asi habia 5 firmas de declaracion guardadas.
+     *
+     * Validar y consumir juntos es lo que cierra el hueco: entre el momento de
+     * comprobar el codigo y el de marcarlo usado no queda ninguna puerta.
+     *
+     * Devuelve null si el codigo es bueno, o el mensaje de rechazo.
+     */
+    private function _consumirCodigo($conSql, $idUsuario, $rol, $idEstablecimiento = 0)
+    {
+        $codigo = preg_replace('/[^0-9]/', '', $_POST['codigo'] ?? '');
+
+        if (strlen($codigo) !== 6) {
+            return 'El código debe tener 6 dígitos';
+        }
+
+        $vale = $conSql->obnerFila($conSql->consultar(
+            "SELECT codigo_Id FROM codigos_verificacion
+              WHERE codigo_Valor = ?
+                AND codigo_IdUsuario = ?
+                AND codigo_IdEstablecimiento = ?
+                AND codigo_Rol = ?
+                AND codigo_Usado = 0
+                AND codigo_FechaExpiracion > GETDATE()",
+            [$codigo, (int) $idUsuario, (int) $idEstablecimiento, $rol]
+        ));
+
+        if (!$vale) {
+            return 'Código inválido o expirado';
+        }
+
+        $conSql->consultar(
+            "UPDATE codigos_verificacion SET codigo_Usado = 1 WHERE codigo_Id = ?",
+            [(int) $vale['codigo_Id']]
+        );
+
+        return null;
+    }
+
+    /** Usuario de la sesion. El id que manda el navegador no prueba nada. */
+    private function _usuarioDeLaSesion()
+    {
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+        return empty($_SESSION['id_usuario']) ? null : (int) $_SESSION['id_usuario'];
+    }
+
     /** Contribuyente al que pertenece el usuario de la sesion. */
     private function _contribuyenteDeLaSesion($conSql)
     {
@@ -655,32 +733,11 @@ class FirmasAPI
         $idUsuario       = $permiso['usuario'];
 
         // --- OTP: se valida y se consume aqui mismo ---
-        $codigo = preg_replace('/[^0-9]/', '', $_POST['codigo'] ?? '');
-        if (strlen($codigo) !== 6) {
-            echo json_encode(['ok' => 0, 'mensaje' => 'El código debe tener 6 dígitos']);
+        $errorCodigo = $this->_consumirCodigo($conSql, $idUsuario, 'rit');
+        if ($errorCodigo !== null) {
+            echo json_encode(['ok' => 0, 'mensaje' => $errorCodigo]);
             return;
         }
-
-        $vale = $conSql->obnerFila($conSql->consultar(
-            "SELECT codigo_Id FROM codigos_verificacion
-              WHERE codigo_Valor = ?
-                AND codigo_IdUsuario = ?
-                AND codigo_IdEstablecimiento = 0
-                AND codigo_Rol = 'rit'
-                AND codigo_Usado = 0
-                AND codigo_FechaExpiracion > GETDATE()",
-            [$codigo, $idUsuario]
-        ));
-
-        if (!$vale) {
-            echo json_encode(['ok' => 0, 'mensaje' => 'Código inválido o expirado']);
-            return;
-        }
-
-        $conSql->consultar(
-            "UPDATE codigos_verificacion SET codigo_Usado = 1 WHERE codigo_Id = ?",
-            [(int) $vale['codigo_Id']]
-        );
 
         // --- Huella de lo que se esta firmando ---
         include_once SERVER . '/business/class.ritFirma.php';
