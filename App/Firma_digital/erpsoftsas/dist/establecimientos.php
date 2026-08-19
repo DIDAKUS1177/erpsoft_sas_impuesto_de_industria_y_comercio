@@ -158,11 +158,17 @@
 <input type="text" class="form-control" id="est_Codigo" name="est_Codigo" required>
 </div>
 
-<div class="col-md-2">
-<label>* Contribuyente</label>
-<select class="form-control" id="est_IdContribuyente" name="est_IdContribuyente" style="width:100%"  required>
-</select>
-</div>
+<!--
+     Punto 5 de la reunion 2026-08-18: un RIT tiene muchos establecimientos, y
+     el establecimiento se crea SIEMPRE desde el RIT del contribuyente que ya
+     esta en sesion. Preguntar de quien es no tiene sentido: ya se sabe.
+
+     El select se cambia por un campo oculto. El servidor de todas formas ya
+     ignora lo que llegue aqui y fija el contribuyente de la sesion para todo
+     rol que no sea Alcaldia (_agregarEstablecimientos / _editarEstablecimientos
+     en class.establecimientos.php), asi que esto es solo la parte visible.
+-->
+<input type="hidden" id="est_IdContribuyente" name="est_IdContribuyente">
 
 <div class="col-md-4">
 <label>Nombre</label>
@@ -212,19 +218,10 @@
 </div>
 -->
 
-<div class="col-sm-12 col-md-3">
-    <div class="form-group" style="width: 95%">
-        <label>Activos</label>
-        <input type="number" class="form-control" id="est_Activos" name="est_Activos" value="0">
-    </div>
-</div>
-
-<div class="col-sm-12 col-md-3">
-    <div class="form-group" style="width: 95%">
-        <label>Área</label>
-        <input type="text" class="form-control" id="est_Area" name="est_Area">
-    </div>
-</div>
+<!-- Punto 6 (reunion 2026-08-18): "Activos" y "Área" se quitan del
+     formulario. Ojo, la columna est_Activos NO se borra de la base: es un
+     float con el monto de activos y hay filas con dato. Solo deja de pedirse.
+     No confundirla con est_Activo (int), que es el indicador activo/inactivo. -->
 
 <!--  Lo esta trayendo de ind_contribuyentes, no se si es necesario
 <div class="col-md-3">
@@ -263,154 +260,8 @@
 </div>
 
 <!-- ===================== REPRESENTANTE LEGAL ===================== -->
-<div class="bloque-form">
-<div class="titulo-bloque">Representante Legal</div>
-<div class="row">
-
-<div class="col-md-4">
-<label>Cédula R. Legal</label>
-<input type="text" class="form-control" id="est_Cedula_representante" name="est_Cedula_representante">
-</div>
-
-<div class="col-md-8">
-<label>Nombre R. Legal</label>
-<input type="text" class="form-control" id="est_Nombre_representante" name="est_Nombre_representante">
-</div>
-
-<div class="col-md-6">
-<label>Correo R. Legal</label>
-<input type="email" class="form-control" id="est_Email_representante" name="est_Email_representante">
-</div>
-
-
-
-          
-<!-- Estado del Registro 
-<div class="col-sm-12 col-md-3">
-    <div class="form-group" style="width: 95%">
-        <label>Estado del Registro</label>
-        <select class="form-control" id="con_EstadoRegistro" name="con_EstadoRegistro">
-            <option value="1">Matricula</option>
-            <option value="2">Renovación</option>
-        </select>
-    </div>
-</div>
--->
-
-<!-- Punto 11: esta matricula es la DEL ESTABLECIMIENTO. La de la persona
-     natural o juridica es otra y se llena en el RIT. Sin el rotulo las dos
-     se confundian, que fue justo lo que reporto el cliente. -->
-<div class="col-md-3">
-<label>* Matrícula <small class="text-muted">(del establecimiento)</small></label>
-<input type="text" class="form-control" id="est_Matricula" name="est_Matricula">
-</div>
-
-<div class="col-md-4">
-<label>Fecha Matrícula</label>
-<input type="date" class="form-control" id="est_Fecha_matricula" name="est_Fecha_matricula">
-</div>
-
-<div class="col-md-4">
-<label>Fecha Inscripción</label>
-<input type="date" class="form-control" id="est_Fecha_inscripcion" name="est_Fecha_inscripcion">
-</div>
-
-<div class="col-md-4">
-<label>Fecha Inicio de Actividades en el Municipio</label>
-<input type="date" class="form-control" id="est_Fecha_inicio" name="est_Fecha_inicio">
-</div>
-
-<div class="col-md-2">
-<label>Excluido</label><br>
-<input type="checkbox" id="est_Exento" name="est_Exento" data-toggle="switch">
-</div>
-
-<div class="col-md-3">
-<label>Exento Avisos y Tableros</label><br>
-<input type="checkbox" id="est_Excento_avisos" name="est_Excento_avisos" data-toggle="switch">
-</div>
-
-<!-- 
-<div class="col-sm-12 col-md-3">
-    <label>Local en el municipio</label><br>
-    <input type="checkbox" id="con_LocalMunicipio" name="con_LocalMunicipio" data-toggle="switch">
-</div>
--->
-
-
-</div>
-</div>
-
 <!-- ===================== INFORMACIÓN TRIBUTARIA ===================== -->
-<div class="bloque-form">
-<div class="titulo-bloque">Información RUT</div>
-<div class="row">
-
-<div class="col-md-3">
-<label>Principal Rut</label>
-<input type="text" class="form-control" id="est_Rut" name="est_Rut">
-</div>
-
-<div class="col-md-3">
-<label>Actividad 2 Rut</label>
-<input type="text" class="form-control" id="est_Rut_segundo" name="est_Rut_segundo">
-</div>
-
-<div class="col-md-3">
-<label>Actividad 3 Rut</label>
-<input type="text" class="form-control" id="est_Rut_tercero" name="est_Rut_tercero">
-</div>
-
-<div class="col-md-3">
-<label>Fecha Actividad</label>
-<input type="date" class="form-control" id="est_Fecha_actividad" name="est_Fecha_actividad">
-</div>
-
-</div>
-</div>
-
 <!-- ===================== CONTADOR Y REVISOR ===================== -->
-<div class="bloque-form">
-<div class="titulo-bloque">Contador y Revisor Fiscal</div>
-<div class="row">
-
-<div class="col-md-4">
-<label>Cédula Contador</label>
-<input type="text" class="form-control" id="est_Cedula_contador" name="est_Cedula_contador">
-</div>
-
-<div class="col-md-4">
-<label>Nombre Contador</label>
-<input type="text" class="form-control" id="est_Nombre_contador" name="est_Nombre_contador">
-</div>
-
-<div class="col-md-4">
-<label>Tarjeta Profesional</label>
-<input type="text" class="form-control" id="est_Tarjeta_profesional" name="est_Tarjeta_profesional">
-</div>
-
-<div class="col-md-4">
-<label>Cédula Revisor</label>
-<input type="text" class="form-control" id="est_Cedula_revisor" name="est_Cedula_revisor">
-</div>
-
-<div class="col-md-4">
-<label>Nombre Revisor</label>
-<input type="text" class="form-control" id="est_Nombre_revisor" name="est_Nombre_revisor">
-</div>
-
-<div class="col-md-4">
-<label>Tarjeta Profesional</label>
-<input type="text" class="form-control" id="est_Tarjeta_profesional_revisor" name="est_Tarjeta_profesional_revisor">
-</div>
-
-</div>
-</div>
-
-
-
-
-
 <!-- ===================== DOCUMENTOS ===================== -->
 <div class="bloque-form">
 <div class="titulo-bloque">Documentos Adjuntos</div>
@@ -529,12 +380,9 @@
 <input type="text" class="form-control mb-3 campo-solo-admin" maxlength="255"
        id="est_Observacion_cierre" name="est_Observacion_cierre">
 
-<div class="form-check">
-<input type="checkbox" id="est_Autorizacion" name="est_Autorizacion" data-toggle="switch"> 
-<label style="margin-left:8px;">
-Autorizo que la Secretaria de Hacienda del municipio de Paipa, notifique los actos administrativos en materia de impuestos al correo electrónico registrado en esta plataforma...
-</label>
-</div>
+<!-- Punto 8: la autorizacion de notificacion electronica es del
+     CONTRIBUYENTE, no de cada local, asi que vive unicamente en el RIT.
+     Pedirla en cada establecimiento la repetia sin sentido. -->
 
 </div>
 
@@ -543,79 +391,9 @@ Autorizo que la Secretaria de Hacienda del municipio de Paipa, notifique los act
 
 
 
-<!-- ===================== ACTIVIDADES ECONÓMICAS ===================== -->
-<div class="card shadow-sm mt-3">
-
-<div class="card-header bg-light">
-<strong>Actividades Económicas</strong>
-</div>
-
-<div class="card-body">
-
-<!-- FILTROS -->
-<div class="row align-items-end mb-3">
-
-<div class="col-md-2">
-<label class="font-weight-bold">Año</label>
-<select class="form-control" id="ace_Anio">
-<option value="">Seleccione</option>
-</select>
-</div>
-
-<div class="col-md-7">
-<label class="font-weight-bold">Actividad Económica</label>
-<select class="form-control" id="ace_IdCodigoActividad"></select>
-</div>
-
-<div class="col-md-3">
-<button type="button"
-class="btn btn-success btn-block"
-onclick="establecimientos.agregarActividad()">
-<i class="fa fa-plus"></i> Agregar Actividad
-</button>
-</div>
-
-</div>
-
-
-<!-- TABLA -->
-<div class="table-responsive">
-
-<table class="table table-striped table-hover table-sm align-middle"
-id="tablaActividadesEstablecimiento">
-
-<thead class="thead-light">
-
-<tr>
-
-<th style="width:10%" class="text-center">
-Código
-</th>
-
-<th>
-Actividad Económica
-</th>
-
-<th style="width:12%" class="text-center">
-Año
-</th>
-
-<th style="width:10%" class="text-center">
-Acción
-</th>
-
-</tr>
-
-</thead>
-
-<tbody id="tbodyActividadesEstablecimiento"></tbody>
-
-</table>
-
-</div>
-
-</div>
-
+<!-- Puntos 8 y 11 (reunion 2026-08-18): las actividades economicas salen del
+     establecimiento y pasan al RIT, donde el contribuyente las registra. Aqui
+     estaba la tabla con su buscador y su boton de agregar. -->
 </div>
 
 

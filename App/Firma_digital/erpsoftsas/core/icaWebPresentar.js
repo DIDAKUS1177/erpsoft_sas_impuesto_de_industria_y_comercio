@@ -605,8 +605,28 @@ consultarDeclaraciones(idEstablecimiento, idContribuyente) {
             // declaraciones de periodos anteriores no se veian por ningun
             // lado. Ademas se emitian 7 celdas contra una cabecera de 8
             // (faltaba Estado), y las columnas salian corridas.
+
+            // Esta pantalla es para TRABAJAR la declaracion: solo lo que
+            // todavia se puede tocar -borrador, falta contador, firmada-.
+            // Lo ya presentado y lo pagado vive en "Consultar Declaraciones",
+            // que filtra justo al reves (paso >= 5). Antes aqui salia todo
+            // mezclado y el listado se volvia inmanejable.
+            var pendientes = resp.datos.filter(function (d) {
+                return DeclaracionesUI.estado(d).paso < 5;
+            });
+
+            if (!pendientes.length) {
+                $("#tbodyDeclaraciones").html(
+                    '<tr><td colspan="8" class="text-center text-muted py-4">' +
+                        'No hay declaraciones en curso. Las ya presentadas y pagadas están en ' +
+                        '<b>Consultar Declaraciones</b>.' +
+                    '</td></tr>'
+                );
+                return;
+            }
+
             var filas = '';
-            resp.datos.forEach(function (d) {
+            pendientes.forEach(function (d) {
 
                 // dec_FechaPago llega como objeto del driver sqlsrv, no como
         // cadena: concatenarlo pintaba "[object Object]".

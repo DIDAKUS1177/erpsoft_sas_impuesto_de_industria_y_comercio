@@ -57,8 +57,11 @@ class Establecimientos {
                     'para obtenerlos comuniquese con el admininstrador del sistema',
             });
         } else {
-            $("#est_IdContribuyente").empty();
             $("#formCrearEstablecimientos").trigger("reset");
+            // El nuevo local cuelga del contribuyente en sesion. Para la
+            // Alcaldia (que no tiene uno propio) el servidor respeta lo que
+            // llegue; para el contribuyente lo fija el, sin poder elegir otro.
+            $("#est_IdContribuyente").val(localStorage.getItem('id_Contribuyente') || '');
             $("#btnCrearEstablecimientos").empty();
             $("#btnCrearEstablecimientos").append(
                 '<span class="ti-plus"></span>' +
@@ -386,15 +389,10 @@ class Establecimientos {
 
                 // 🔹 llenar campos
                 $("#est_Codigo").val(d.est_Codigo);
-                $("#est_IdContribuyente").empty();
-                var option = new Option(
-                        d.strDocumentoContribuyente + " - " + d.strNombreContribuyente,
-                        d.est_IdContribuyente,
-                        true,
-                        true
-                    );
-
-                $("#est_IdContribuyente").append(option).trigger('change');
+                // est_IdContribuyente ya no es un select (punto 5): el
+                // establecimiento pertenece al RIT desde el que se entra, asi
+                // que solo se conserva el id en un campo oculto.
+                $("#est_IdContribuyente").val(d.est_IdContribuyente);
 
                 $("#est_Nombre").val(d.est_Nombre);
                 $("#est_Direccion").val(d.est_Direccion);
@@ -453,7 +451,6 @@ class Establecimientos {
 
                 $("#est_Observacion_cierre").val(d.est_Observacion_cierre);
                 
-                $("#est_Autorizacion").prop("checked", d.est_Autorizacion == 1);
 
                                 
                 establecimientos.cargarActividadesEditar(d.actividades);
@@ -544,14 +541,9 @@ $("#est_NoResolucion").val(d.est_NoResolucion);
 // 🔹 Método para actualizar un establecimiento
     postEditarEstablecimiento(idEstablecimiento) {
 
-    if (!$("#est_Autorizacion").is(":checked")) {
-        swal({
-            type: 'warning',
-            title: 'Autorización requerida',
-            text: 'Debe autorizar las notificaciones electrónicas para continuar.'
-        });
-        return;
-    }
+    // La autorizacion de notificacion electronica se pide ahora solo en el
+    // RIT (punto 8), asi que aqui ya no se exige: el checkbox no existe en
+    // este formulario y la validacion bloqueaba el guardado para siempre.
 
     let actividades = [];
 
@@ -626,7 +618,6 @@ $("#est_NoResolucion").val(d.est_NoResolucion);
         est_Tarjeta_profesional_revisor: $("#est_Tarjeta_profesional_revisor").val(),
 
         est_Observacion_cierre: $("#est_Observacion_cierre").val(),
-        est_Autorizacion: $("#est_Autorizacion").is(":checked") ? 1 : 0,
 
 /*  Aun no se han activado
 est_CodigoCatastral: $("#est_CodigoCatastral").val(),
@@ -1005,14 +996,8 @@ est_NoResolucion: $("#est_NoResolucion").val(),
 
     postEstablecimientos() {
 
-        if (!$("#est_Autorizacion").is(":checked")) {
-            swal({
-                type: 'warning',
-                title: 'Autorización requerida',
-                text: 'Debe autorizar las notificaciones electrónicas para continuar.'
-            });
-            return;
-        }
+        // Ver nota en postEditarEstablecimiento: la autorizacion se pide
+        // solo en el RIT (punto 8).
 
         let actividades = [];
 
@@ -1085,8 +1070,7 @@ est_NoResolucion: $("#est_NoResolucion").val(),
             est_Tarjeta_profesional_revisor: $("#est_Tarjeta_profesional_revisor").val(),
 
             est_Observacion_cierre: $("#est_Observacion_cierre").val(),
-            est_Autorizacion: $("#est_Autorizacion").is(":checked") ? 1 : 0,
-
+    
             est_Ind_camara_comercio: 1,
             est_Activo: 1,
 
@@ -1325,7 +1309,12 @@ est_NoResolucion: $("#est_NoResolucion").val(),
         // RIT paso a ser un item de primer nivel aparte, esto marcaba el
         // enlace equivocado como activo. Establecimientos ahora tambien es
         // un item de primer nivel propio (#MEstablecimientos).
-        $("#MEstablecimientos").addClass("active");
+        // Establecimientos volvio a ser submodulo de Industria y Comercio
+        // (reunion 2026-08-18), asi que se marca el padre y se despliega su
+        // submenu, en vez del item de primer nivel que ya no existe.
+        $("#MICAWeb").addClass("active show");
+        $("#SubICAWeb").css("display", "block");
+        $("#ICAWeb_Establecimientos").addClass("active");
     }
 
     cargarAniosActividades(){

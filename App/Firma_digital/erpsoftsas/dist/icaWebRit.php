@@ -152,7 +152,7 @@
 						     o juridica. La del establecimiento es otra y vive en
 						     el modulo de establecimientos. -->
 						<div class="col-md-3 form-group">
-							<label>Matrícula mercantil <small class="text-muted">(de la persona)</small></label>
+							<label>Matrícula mercantil <small class="text-muted">(de la persona natural o jurídica)</small></label>
 							<input type="text" class="form-control" name="ind_Matricula" id="rit_ind_Matricula" maxlength="50">
 						</div>
 						<div class="col-md-3 form-group">
@@ -256,32 +256,7 @@
 						</table>
 					</div>
 
-					<!-- Punto 16: el cese de actividades se ve tanto aqui como en el
-					     establecimiento. Las columnas del cese viven en
-					     ind_establecimientos -el cese es de cada local, no de la
-					     persona-, asi que el RIT lo muestra por establecimiento y de
-					     solo lectura: registrarlo es potestad de la Alcaldia desde su
-					     propio modulo (punto 14). -->
-					<h5 class="mb-1 mt-4" style="font-weight:600;">Establecimientos y cese de actividades</h5>
-					<p class="mb-3" style="font-size:13px; color:#6B7280;">
-						El cese lo registra la Alcaldía desde el módulo de Establecimientos.
-					</p>
-					<div class="table-responsive">
-						<table class="table table-bordered table-sm">
-							<thead style="background:#e9ecef; font-weight:600;">
-								<tr>
-									<th>Establecimiento</th>
-									<th>Dirección</th>
-									<th style="width:110px;">Estado</th>
-									<th style="width:110px;">Fecha de cese</th>
-									<th style="width:120px;">Causal</th>
-									<th style="width:130px;">No. Resolución</th>
-								</tr>
-							</thead>
-							<tbody id="tbodyEstablecimientosRIT"></tbody>
-						</table>
-					</div>
-				</form>
+					</form>
 			</div>
 		</div>
     

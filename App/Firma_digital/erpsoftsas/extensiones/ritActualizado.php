@@ -81,7 +81,10 @@ if (!\erpsoftsas\ControladorAnexos::puedeOperarSobreEstablecimiento($idEstableci
     exit('No tiene permiso para ver este registro.');
 }
 
-$pdf = new ICAPdf('P','mm','LETTER',true,'UTF-8',false);
+// Oficio 8.5 x 13 pulgadas = 215.9 x 330.2 mm. Es el mismo tamaño que ya usan
+// declaracion.php y liquidacion.php; el certificado era el unico que seguia en
+// carta, y por eso se veia mas apretado que los otros dos documentos.
+$pdf = new ICAPdf('P','mm',array(215.9, 330.2),true,'UTF-8',false);
 $pdf->SetMargins(8,8,8);
 $pdf->AddPage();
 
@@ -293,20 +296,26 @@ if($row['ind_IdRegimen']== 6) $regimenNombre = 'Otro';
 
 $actividadesHtml = '';
 
+// Dos columnas y un encabezado, no cuatro celdas por fila.
+//
+// Antes cada actividad ocupaba cuatro celdas -"Código Actividad
+// Principal/Secundaria" | codigo | la palabra "Descripción" | nombre-, de modo
+// que los rotulos se repetian en TODAS las filas y la descripcion quedaba
+// aplastada en la mitad del ancho. El cliente pidio lo evidente: una cabecera
+// con "Código de Actividad" y "Descripción", y debajo las actividades.
 if (!empty($d['actividades'])) {
 
-    foreach ($d['actividades'] as $index => $act) {
+    $actividadesHtml = '
+    <tr>
+        <td width="22%" align="center"><b>Código de Actividad</b></td>
+        <td width="78%"><b>Descripción</b></td>
+    </tr>';
 
-        $tipo = ($index == 0) 
-            ? 'Código Actividad Principal' 
-            : 'Código Actividad Secundaria';
-
+    foreach ($d['actividades'] as $act) {
         $actividadesHtml .= '
         <tr>
-            <td width="15%">'.$tipo.'</td>
-            <td width="15%">'.$act['codigo'].'</td>
-            <td width="20%">Descripción</td>
-            <td width="50%">'.$act['nombre'].'</td>
+            <td width="22%" align="center">'.$act['codigo'].'</td>
+            <td width="78%">'.$act['nombre'].'</td>
         </tr>';
     }
 

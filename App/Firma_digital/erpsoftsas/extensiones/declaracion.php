@@ -54,7 +54,12 @@ class ICAPdf extends TCPDF {
  */
 function dibujarTextoVertical($pdf, $texto, $x, $y_top, $y_bottom) {
 
-    $pdf->SetFont('helvetica','B',5);
+    // Punto 14 (reunion 2026-08-18): el cliente pidio los rotulos A-F mas
+    // grandes; venian en 5pt y se leian con esfuerzo. Se sube a 7pt, que es lo
+    // maximo que aguantan las bandas: a 8pt la etiqueta mas larga
+    // ("A. INFORMACIÓN DEL CONTRIBUYENTE") ya no cabe en dos renglones y salta
+    // a tres, y no hay margen horizontal para un tercero.
+    $pdf->SetFont('helvetica','B',7);
 
     $altoBanda = $y_bottom - $y_top;
 
@@ -71,6 +76,21 @@ function dibujarTextoVertical($pdf, $texto, $x, $y_top, $y_bottom) {
     // Una etiqueta que ya trae salto de linea propio (seccion C) se respeta
     // tal cual: ahi el llamador ya decidio el corte y ya ajusto su x.
     $tieneCorteManual = strpos($texto, "\n") !== false;
+
+    // Una etiqueta con corte manual (seccion C) no se puede re-partir para
+    // hacerla caber: el corte lo decidio el llamador. Si a 7pt su renglon mas
+    // largo se come casi toda la banda, se le baja un punto. A 7pt
+    // "ACTIVIDADES GRAVADAS" dejaba 1.5mm por lado, menos que el desfase de
+    // GetY(); a 6pt quedan 3.8mm.
+    if ($tieneCorteManual) {
+        $masLargo = 0;
+        foreach (explode(chr(10), $texto) as $linea) {
+            $masLargo = max($masLargo, $pdf->GetStringWidth($linea));
+        }
+        if ($masLargo > $altoBanda * 0.85) {
+            $pdf->SetFont('helvetica','B',6);
+        }
+    }
 
     // Se recorta 10mm (5mm por lado) y no lo justo: el desfase de GetY() es de
     // ~3mm, asi que con menos margen el rotulo sigue rozando la linea.

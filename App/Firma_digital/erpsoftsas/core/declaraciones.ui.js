@@ -128,13 +128,11 @@ var DeclaracionesUI = (function () {
                        'title="¿Necesitas declarar de nuevo este período? Esta es la forma correcta: genera una corrección enlazada a la presentada.">' +
                        '<i class="fa fa-pencil"></i> Corregir</a>';
 
-        // Codigo de barras: ya generado dentro de liquidacion.php (referencia
-        // = numero de declaracion, formato provisional Code 128 -ver
-        // comentario en extensiones/liquidacion.php- hasta que quede
-        // definido el convenio de recaudo con el banco).
-        botones += '<a href="../extensiones/liquidacion.php?dec_Id=' + d.dec_Id + '" target="_blank" ' +
-                       'class="btn btn-secondary btn-sm mr-1" title="Código de barras / referencia de pago">' +
-                       '<i class="fa fa-barcode"></i></a>';
+        // Aqui vivia un boton de "Código de barras" que abria liquidacion.php.
+        // Se quita: el codigo de barras NO es un documento aparte, va impreso
+        // dentro de la propia declaracion que ya se descarga con el boton de
+        // Descargar. Tener un boton propio para el sugeria que era otra cosa y
+        // solo sumaba ruido a la fila.
 
         // Pago PSE (PlacetoPay/Avalpaycenter): crearSesion.php crea la sesion
         // y redirige directo al banco -por eso target="_blank", en vez de

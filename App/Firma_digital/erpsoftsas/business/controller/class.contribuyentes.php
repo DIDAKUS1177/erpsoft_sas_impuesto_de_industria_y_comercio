@@ -460,11 +460,16 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
      */
     private static function _camposSoloAdministrador()
     {
-        return [
-            'ind_Cedula_contador', 'ind_Nombre_contador', 'ind_Tarjeta_profesional',
-            'ind_Cedula_revisor', 'ind_Nombre_revisor', 'ind_Tarjeta_profesional_revisor',
-            'ind_EmailContador', 'ind_EmailRevisor',
-        ];
+        // Vacio a proposito.
+        //
+        // Hasta 2026-08-18 aqui estaban los seis campos de contador y revisor
+        // fiscal mas sus dos correos: la lista anterior del cliente (puntos 14
+        // y 15) decia que solo el administrador podia registrarlos. En la
+        // reunion del 18 el cliente cambio la regla: los registra el propio
+        // contribuyente. Se deja la funcion en su sitio -y no se borra el
+        // mecanismo- porque el filtro sigue siendo util si vuelve a haber
+        // campos reservados a la Alcaldia.
+        return [];
     }
 
     /**

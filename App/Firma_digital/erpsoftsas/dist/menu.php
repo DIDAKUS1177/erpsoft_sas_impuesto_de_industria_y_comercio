@@ -199,12 +199,7 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 					</a>
 				</li>
 
-				<li class="dropdown menu_1640" id="MEstablecimientos">
-					<a id="ICAWeb_Establecimientos" onclick="menu.validarIngreso(1640,7)" class="dropdown-toggle no-arrow" style="cursor:pointer;">
-						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><line x1="9" y1="9" x2="9" y2="9.01"/><line x1="9" y1="13" x2="9" y2="13.01"/><line x1="9" y1="17" x2="9" y2="17.01"/><line x1="15" y1="9" x2="15" y2="9.01"/><line x1="15" y1="13" x2="15" y2="13.01"/><line x1="15" y1="17" x2="15" y2="17.01"/></svg></span>
-						<span class="mtext">Establecimientos</span>
-					</a>
-				</li>
+				
 
 				<!-- CONSULTAS EXTERNAS -->
 				<li class="dropdown" id="MConsultasExternas">
@@ -264,20 +259,10 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 							</ul>
 						</li>
 
-						<!-- PROCESOS -->
-						<li class="dropdown" id="MICA_Procesos">
-							<a href="javascript:;" class="dropdown-toggle">
-								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></i> Procesos
-							</a>
-
-							<ul class="submenu" id="SubICA_Procesos">
-								<li class="menu_1640">
-									<a id="ICA_Establecimientos" onclick="menu.validarIngreso(1640,7)">
-										<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><line x1="9" y1="9" x2="9" y2="9.01"/><line x1="9" y1="13" x2="9" y2="13.01"/><line x1="9" y1="17" x2="9" y2="17.01"/><line x1="15" y1="9" x2="15" y2="9.01"/><line x1="15" y1="13" x2="15" y2="13.01"/><line x1="15" y1="17" x2="15" y2="17.01"/></svg></i> Establecimientos
-									</a>
-								</li>
-							</ul>
-						</li>
+						<!-- El submenu "Procesos > Establecimientos" que vivia aqui se retiro:
+						     desde la reunion del 2026-08-18 Establecimientos es submodulo de
+						     Industria y Comercio, y tenerlo en los dos sitios con el mismo
+						     permiso (1640) solo duplicaba la entrada en el menu. -->
 					</ul>
 				</li>
 
@@ -289,6 +274,17 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 					</a>
 
 					<ul class="submenu" id="SubICAWeb">
+
+						<!-- Reunion 2026-08-18: Establecimientos vuelve a ser SUBMODULO de
+						     Industria y Comercio. La lista anterior lo habia sacado a primer
+						     nivel (punto 5); el cliente cambio de opinion. El RIT si se queda
+						     arriba, como modulo propio. -->
+						<li class="menu_1640">
+							<a id="ICAWeb_Establecimientos" onclick="menu.validarIngreso(1640,7)" style="cursor:pointer;">
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><line x1="9" y1="9" x2="9" y2="9.01"/><line x1="9" y1="13" x2="9" y2="13.01"/><line x1="9" y1="17" x2="9" y2="17.01"/><line x1="15" y1="9" x2="15" y2="9.01"/><line x1="15" y1="13" x2="15" y2="13.01"/><line x1="15" y1="17" x2="15" y2="17.01"/></svg></i> Establecimientos
+							</a>
+						</li>
+
 
 						<li class="menu_1641">
 							<a id="ICAWeb_Presentar" onclick="menu.validarIngreso(1641,103)">
