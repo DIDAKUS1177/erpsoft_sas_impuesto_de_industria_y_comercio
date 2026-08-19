@@ -1771,8 +1771,12 @@ actualizarDeclaracionIca(valor, numeroCampo){
                 // Informacion del Contribuyente.
                 establecimientos.cargarCiudadesRIT(d.ind_IdCiudad);
 
+                // Autorizacion de notificacion electronica: sin ella el
+                // servidor rechaza el guardado (ver _guardarRIT).
+                $('#rit_ind_Autorizacion').prop('checked', String(d.ind_Autorizacion) === '1');
+
                 establecimientos.pintarActividadesRIT(d.actividades || []);
-                establecimientos.prepararEditorActividades(d.actividades || []);
+                establecimientos.prepararEditorActividades();
 
                 // La descarga del certificado vive ahora aqui y va por
                 // contribuyente, no por establecimiento (punto 5).
@@ -1928,23 +1932,13 @@ actualizarDeclaracionIca(valor, numeroCampo){
      * El catalogo se pide una sola vez y se cachea: son ~1.900 filas y volver a
      * bajarlas en cada apertura del RIT no aporta nada.
      */
-    prepararEditorActividades(actividades) {
+    prepararEditorActividades() {
 
-        // Año: el del juego cargado, o el actual si el contribuyente no tiene
-        // ninguna registrada todavia.
-        var anioActual = new Date().getFullYear();
-        var anioCargado = actividades.length ? parseInt(actividades[0].ace_Anio, 10) : anioActual;
-        var $anio = $('#ritAnioActividades');
-
-        if (!$anio.children().length) {
-            var opciones = '';
-            for (var y = anioActual + 1; y >= anioActual - 6; y--) {
-                opciones += '<option value="' + y + '">' + y + '</option>';
-            }
-            $anio.html(opciones);
-        }
-        $anio.val(String(anioCargado));
-
+        // Sin año (migracion 007): estas son las actividades VIGENTES del
+        // contribuyente. El historico por periodo lo guarda cada declaracion.
+        //
+        // El catalogo se pide una sola vez y se cachea: son ~1.900 filas y
+        // volver a bajarlas en cada apertura del RIT no aporta nada.
         if (establecimientos._catalogoActividades) {
             establecimientos._pintarCatalogo();
             return;
@@ -1960,8 +1954,8 @@ actualizarDeclaracionIca(valor, numeroCampo){
                 establecimientos._pintarCatalogo();
             },
             error: function () {
-                // Sin catalogo el usuario no puede agregar, pero lo ya
-                // registrado se sigue viendo.
+                // Sin catalogo no se puede agregar, pero lo ya registrado se
+                // sigue viendo.
                 establecimientos._catalogoActividades = [];
             }
         });
@@ -1996,7 +1990,6 @@ actualizarDeclaracionIca(valor, numeroCampo){
             data: {
                 funcion: 8,
                 ind_Id: idContribuyente,
-                anio: $('#ritAnioActividades').val(),
                 actividades: ids
             },
             success: function (resp) {

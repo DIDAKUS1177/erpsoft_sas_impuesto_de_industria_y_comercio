@@ -455,6 +455,10 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             // establecimiento al contribuyente en la migracion 005: son de
             // la persona y estaban copiados en cada local.
             'ind_Rut', 'ind_Rut_segundo', 'ind_Rut_tercero',
+            // Autorizacion de notificacion electronica. Vivia en cada
+            // establecimiento y se pedia por local; es una manifestacion de
+            // la PERSONA, asi que subio al contribuyente en la migracion 007.
+            'ind_Autorizacion',
             'ind_EmailContador', 'ind_EmailRevisor',
         ];
     }
@@ -628,18 +632,18 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         // unir todos sus establecimientos y deducirlas, y el mismo codigo podia
         // salir repetido -el contribuyente 30 tenia el 103 en sus dos locales-.
         $stmtActividades = $con->consultar(
+            // Sin filtro por año: desde la migracion 007 las actividades del
+            // RIT son las VIGENTES, no un registro por periodo. El historico
+            // por año vive en cada declaracion
+            // (ind_declaraciones_ica_actividades), que guarda su propia copia
+            // al liquidar.
             "SELECT ca.acc_Codigo, ca.acc_Nombre, ca.acc_Tarifa,
-                    a.atc_Anio AS ace_Anio, a.atc_IdCodigoActividad
+                    a.atc_IdCodigoActividad
                FROM ind_actividad_contribuyente a
                LEFT JOIN ind_actividadescomercio ca ON ca.acc_Id = a.atc_IdCodigoActividad
               WHERE a.atc_IdContribuyente = ?
-                AND a.atc_Anio = (
-                        SELECT MAX(a2.atc_Anio)
-                          FROM ind_actividad_contribuyente a2
-                         WHERE a2.atc_IdContribuyente = ?
-                    )
               ORDER BY ca.acc_Codigo",
-            [$idContribuyente, $idContribuyente]
+            [$idContribuyente]
         );
 
         $fila['actividades'] = [];
@@ -698,6 +702,20 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             return [];
         }
 
+
+        // El cliente pidio que la autorizacion de notificacion electronica sea
+        // requisito para actualizar el RIT: sin marcarla, no se guarda nada.
+        // Es la manifestacion con la que la Alcaldia queda habilitada para
+        // notificar actos administrativos al correo registrado, asi que tiene
+        // que ser un acto consciente y no un campo mas del formulario.
+        //
+        // Se comprueba en el SERVIDOR y no solo con el 'required' de la
+        // pantalla: un required se quita desde la consola del navegador.
+        if (empty($_POST['ind_Autorizacion'])) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Debe autorizar la notificación electrónica para actualizar el RIT.';
+            return [];
+        }
         // puedeOperarSobreContribuyente() ya verifica existencia para
         // cualquier rol que NO sea administrador (el cruce por documento no
         // encuentra nada si el ind_Id no existe). Pero para rol 1/2 devuelve
@@ -820,11 +838,10 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
         $idContribuyente = (int) ($_POST['ind_Id'] ?? 0);
-        $anio            = (int) ($_POST['anio'] ?? 0);
 
-        if ($idContribuyente <= 0 || $anio <= 0) {
+        if ($idContribuyente <= 0) {
             $this->_ok = 0;
-            $this->_mensaje = 'Falta el contribuyente o el año';
+            $this->_mensaje = 'No se indicó el contribuyente';
             return [];
         }
 
@@ -848,27 +865,29 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             if ($existe) { $limpias[$id] = true; }
         }
 
+        // Se reemplaza el juego completo del contribuyente. Ya no hay que
+        // acotar por año: desde la migracion 007 estas son sus actividades
+        // VIGENTES, y el historico por periodo lo guarda cada declaracion.
         $con->consultar(
-            "DELETE FROM ind_actividad_contribuyente
-              WHERE atc_IdContribuyente = ? AND atc_Anio = ?",
-            [$idContribuyente, $anio]
+            "DELETE FROM ind_actividad_contribuyente WHERE atc_IdContribuyente = ?",
+            [$idContribuyente]
         );
 
         foreach (array_keys($limpias) as $id) {
             $con->consultar(
                 "INSERT INTO ind_actividad_contribuyente
-                     (atc_IdContribuyente, atc_IdCodigoActividad, atc_Anio)
-                 VALUES (?, ?, ?)",
-                [$idContribuyente, $id, $anio]
+                     (atc_IdContribuyente, atc_IdCodigoActividad)
+                 VALUES (?, ?)",
+                [$idContribuyente, $id]
             );
         }
 
         $this->_ok = 1;
         $this->_mensaje = count($limpias)
             ? 'Actividades económicas actualizadas'
-            : 'Se retiraron todas las actividades de ese año';
+            : 'Se retiraron todas las actividades';
 
-        return ['guardadas' => count($limpias), 'anio' => $anio];
+        return ['guardadas' => count($limpias)];
     }
 
 }

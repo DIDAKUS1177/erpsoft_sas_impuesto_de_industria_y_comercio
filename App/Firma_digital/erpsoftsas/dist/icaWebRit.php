@@ -295,9 +295,12 @@
 					-->
 					<div class="d-flex justify-content-between align-items-center flex-wrap mb-3" style="gap:10px;">
 						<h5 class="mb-0" style="font-weight:600;">Actividades económicas</h5>
+						<!--
+						     Sin selector de año (migracion 007): estas son las actividades
+						     VIGENTES del contribuyente. El historico por periodo lo guarda
+						     cada declaracion, que copia las suyas al liquidar.
+						-->
 						<div class="d-flex align-items-center" style="gap:8px;">
-							<label class="mb-0" for="ritAnioActividades">Año</label>
-							<select class="form-control form-control-sm" id="ritAnioActividades" style="width:auto;"></select>
 							<select class="form-control form-control-sm" id="ritCatalogoActividades" style="min-width:320px;">
 								<option value="">Agregar actividad…</option>
 							</select>
@@ -322,6 +325,31 @@
 							<tbody id="tbodyActividadesRIT"></tbody>
 						</table>
 					</div>
+
+
+					<hr>
+					<!--
+					     El cliente pidio que sin esta casilla NO se pueda actualizar el RIT.
+					     Vivia en el formulario de cada establecimiento, donde se repetia por
+					     local sin sentido: es una manifestacion de la PERSONA. La migracion
+					     007 la subio al contribuyente (ind_Autorizacion).
+
+					     El required de aqui es comodidad; quien de verdad lo exige es
+					     _guardarRIT() en el servidor, porque un required se quita desde la
+					     consola del navegador.
+					-->
+					<h5 class="mb-3" style="font-weight:600;">Autorización de notificación</h5>
+					<div class="form-check mb-2">
+						<input type="checkbox" class="form-check-input" value="1"
+						       name="ind_Autorizacion" id="rit_ind_Autorizacion" required>
+						<label class="form-check-label" for="rit_ind_Autorizacion" style="margin-left:4px;">
+							Autorizo que la Secretaría de Hacienda del municipio de
+							<?php echo defined('MUNICIPIO_NOMBRE') ? str_replace('Alcaldía de ', '', MUNICIPIO_NOMBRE) : 'Paipa'; ?>
+							notifique los actos administrativos en materia de impuestos al correo
+							electrónico registrado en esta plataforma.
+						</label>
+					</div>
+					<small class="text-muted">Debe autorizarla para poder guardar los cambios.</small>
 
 					</form>
 			</div>
