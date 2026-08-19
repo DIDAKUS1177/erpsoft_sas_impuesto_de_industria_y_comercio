@@ -532,7 +532,53 @@
 		<script src="../src/plugins/sweetalert2/sweetalert2.all.js"></script>
 		<script src="../core/numeros.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/geografia.js?v=<?php echo time(); ?>"></script>
+		<!-- El modal de firma (FirmaOTP) vive en declaraciones.ui.js. Se carga
+		     aqui para que el RIT use EXACTAMENTE la misma ventana que las
+		     declaraciones, como lo pidio el cliente. Va ANTES de icaWebRit.js,
+		     que es quien lo llama. -->
+		<script src="../core/declaraciones.ui.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/icaWebRit.js?v=<?php echo time(); ?>"></script>
+
+		<!-- ===================== FIRMA DIGITAL =====================
+		     La MISMA ventana que usan las declaraciones. El cliente pidio
+		     expresamente que la firma del RIT no abriera una distinta.
+
+		     El HTML esta copiado tal cual de icaWebConsultar/icaWebPresentar
+		     -las tres pantallas comparten los mismos ids, que es lo que
+		     FirmaOTP (core/declaraciones.ui.js) espera encontrar-.
+		-->
+		<div class="modal fade" id="modal-FirmaDigital" role="dialog" aria-hidden="true" data-backdrop="static">
+			<div class="modal-dialog modal-sm modal-dialog-centered" role="document">
+				<div class="modal-content">
+					<div class="modal-header" style="background: var(--erp-primario); color: white;">
+						<h5 class="modal-title text-white"><i class="fa fa-certificate"></i> Firma Digital</h5>
+						<button type="button" class="close text-white" data-dismiss="modal">
+							<span>&times;</span>
+						</button>
+					</div>
+					<div class="modal-body text-center">
+						<p style="font-size: 14px; margin-bottom: 6px;">Enviamos un código de 6 dígitos a:</p>
+						<p id="otpDestino" style="font-size: 13px; font-weight: 700; color: var(--erp-primario); margin-bottom: 4px; word-break: break-all;">su correo electrónico</p>
+						<p id="otpVigencia" style="font-size: 12px; color: #6B7280; margin-bottom: 15px;">El código vence en 10:00</p>
+						<div class="form-group">
+							<input type="text" id="otpCodigo" class="form-control form-control-lg text-center"
+							       placeholder="000000" maxlength="6" inputmode="numeric" autocomplete="one-time-code"
+							       style="font-size: 24px; letter-spacing: 5px; font-weight: bold; width: 80%; margin: 0 auto;">
+						</div>
+						<div id="otpError" style="display:none; font-size:12.5px; color:#DC2626; margin-top:8px;"></div>
+						<button type="button" id="btnReenviarOTP" class="btn btn-link btn-sm" style="font-size:12.5px; margin-top:6px;">
+							<i class="fa fa-refresh"></i> Reenviar código
+						</button>
+						<input type="hidden" id="otpIdDeclaracion">
+					</div>
+					<div class="modal-footer justify-content-center">
+						<button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Cancelar</button>
+						<button type="button" class="btn btn-success btn-sm" id="btnValidarOTP">Validar y Firmar</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
 		<!-- <script src="../core/Permisos.js"></script> -->
         <script>
             $(document).on("keypress", ".campo-total", function (e) {

@@ -92,9 +92,18 @@ class Establecimientos {
                 ' Crear'
             );
             $("#formCrearEstablecimientos").attr('action', 'javascript:establecimientos.postEstablecimientos()');
-            if (typeof Geografia !== 'undefined') {
-                Geografia.poblar('est_Departamento', 'est_Ciudad');
-            }
+                /*
+                 * Ya NO se llama a Geografia.poblar aqui.
+                 *
+                 * Esa funcion llena dos <select> en cascada, y desde que la
+                 * ubicacion quedo fija en el municipio estos campos son
+                 * <input readonly>. Meterles <option> no hacia nada visible...
+                 * salvo dejar el de Departamento en blanco, que es justo lo
+                 * que se veia en pantalla.
+                 *
+                 * Los valores los escribe PHP desde config.municipio.php al
+                 * generar la vista, asi que aqui no hay nada que hacer.
+                 */
             $('#modal-Establecimientos').modal({backdrop: 'static', keyboard: false})
             $("#modal-Establecimientos").modal('show');
         }
@@ -263,6 +272,69 @@ class Establecimientos {
      * de ActividadesComercio 
      * @param type $arrFilter: Listado de objetos ActividadesComercio
      */
+    /**
+     * Retira un establecimiento: baja LOGICA, no borrado.
+     *
+     * El establecimiento nunca se elimina de la base porque de el cuelgan
+     * declaraciones y anexos de años anteriores; borrarlo dejaria huerfano el
+     * historico tributario. La funcion 4 del controlador pone est_Activo = 0.
+     */
+    retirarEstablecimiento(id) {
+        swal({
+            title: '¿Retirar este establecimiento?',
+            text: 'Dejará de contarse como activo y no entrará en nuevas ' +
+                  'declaraciones. Sus declaraciones y archivos anteriores se conservan.',
+            type: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, retirar',
+            cancelButtonText: 'Cancelar'
+        }).then(function (res) {
+            if (!res.value) { return; }
+            establecimientos._cambiarEstadoEstablecimiento(id, 4, 'Establecimiento retirado');
+        });
+    }
+
+    /** Vuelve a poner activo un establecimiento retirado. */
+    reactivarEstablecimiento(id) {
+        swal({
+            title: '¿Reactivar el establecimiento?',
+            text: 'Volverá a contarse como activo y a entrar en las declaraciones.',
+            type: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, reactivar',
+            cancelButtonText: 'Cancelar'
+        }).then(function (res) {
+            if (!res.value) { return; }
+            // No hay funcion propia para reactivar: se usa la de editar
+            // mandando solo est_Activo, que es lo unico que cambia.
+            establecimientos._cambiarEstadoEstablecimiento(id, 2, 'Establecimiento reactivado', 1);
+        });
+    }
+
+    _cambiarEstadoEstablecimiento(id, funcion, mensajeOk, activo) {
+        var datos = { funcion: funcion, est_Id: id };
+        if (activo !== undefined) { datos.est_Activo = activo; }
+
+        $.ajax({
+            url: '../business/controller/class.establecimientos.php',
+            type: 'POST',
+            dataType: 'json',
+            data: datos,
+            success: function (resp) {
+                if (resp.ok != 1) {
+                    swal({ type: 'error', title: 'No se pudo', text: resp.mensaje || '' });
+                    return;
+                }
+                swal({ type: 'success', title: mensajeOk, timer: 1800 });
+                establecimientos.getEstablecimientos();
+            },
+            error: function () {
+                swal({ type: 'error', title: 'Error de conexión',
+                       text: 'No se pudo cambiar el estado del establecimiento.' });
+            }
+        });
+    }
+
     draw_table_documents(arrFilter) {
 
         $("#establecimientosRegistrados").DataTable().destroy();
@@ -342,28 +414,40 @@ class Establecimientos {
                     '</td>' +
                     '<td align="center" style="white-space:nowrap;">' +
                     
+                    /*
+                     * Solo Editar y Retirar.
+                     *
+                     * Aqui habia ademas "Crear Declaración" y "Consultar
+                     * Declaraciones", y los dos sobraban: la declaracion de ICA
+                     * es UNA por contribuyente y año, no por establecimiento
+                     * -regla de negocio confirmada por el cliente-. Un boton de
+                     * declarar en la fila de un local sugeria lo contrario, que
+                     * cada local declara por su cuenta. Declarar y consultar
+                     * viven en su propio modulo, que es donde se buscan.
+                     *
+                     * "Retirar" es baja LOGICA (est_Activo = 0, funcion 4): el
+                     * establecimiento no se borra nunca, porque de el cuelgan
+                     * declaraciones y anexos de años anteriores.
+                     */
                     '<button type="button" class="btn btn-warning btn-sm mr-1" ' +
-                        'data-toggle="tooltip" title="Editar Establecimiento" ' +
+                        'data-toggle="tooltip" title="Editar establecimiento" ' +
                         'onclick="establecimientos.editarEstablecimiento(' + dep.est_Id + ')">' +
                         '<i class="fa fa-pencil"></i>' +
                     '</button>' +
-                                        
+
                     soporteRit +
 
-                        '<button type="button" class="btn btn-primary btn-sm mr-1" ' +
-                            'data-toggle="tooltip" title="Crear Declaración" ' +
-                            'onclick="establecimientos.crearDeclaracion(' + dep.est_Id + ')">' +
-                            '<i class="fa fa-file-text-o"></i>' +
-                        '</button>' +
-
-                        '<button type="button" class="btn btn-success btn-sm" ' +
-                            'data-toggle="tooltip" title="Consultar Declaraciones" ' +
-                            'onclick="establecimientos.consultarDeclaraciones(' + dep.est_Id + ')">' +
-                            '<i class="fa fa-search"></i>' +
-                        '</button>' +
-
-
-
+                    (dep.est_Activo == 1
+                        ? '<button type="button" class="btn btn-danger btn-sm" ' +
+                              'data-toggle="tooltip" title="Retirar establecimiento" ' +
+                              'onclick="establecimientos.retirarEstablecimiento(' + dep.est_Id + ')">' +
+                              '<i class="fa fa-trash"></i>' +
+                          '</button>'
+                        : '<button type="button" class="btn btn-success btn-sm" ' +
+                              'data-toggle="tooltip" title="Reactivar establecimiento" ' +
+                              'onclick="establecimientos.reactivarEstablecimiento(' + dep.est_Id + ')">' +
+                              '<i class="fa fa-undo"></i>' +
+                          '</button>') +
                     '</td>'+
 
                     '</tr>'
@@ -426,9 +510,7 @@ class Establecimientos {
                 // el select en blanco; al guardar, el dato viejo queda saneado.
                 $("#est_Pais").val('Colombia');
                 // Ver nota en icaWebRit.js: catalogo completo + preseleccion.
-                if (typeof Geografia !== 'undefined') {
-                    Geografia.poblar('est_Departamento', 'est_Ciudad', d.est_Departamento, d.est_Ciudad);
-                }
+            // La ubicacion es fija: no hay cascada que poblar.
                 $("#est_Barrio").val(d.est_Barrio);
                 $("#est_Correo").val(d.est_Correo);
 

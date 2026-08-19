@@ -2180,92 +2180,28 @@ actualizarDeclaracionIca(valor, numeroCampo){
         });
     }
 
-    /** Manda el codigo al correo y, con el codigo, firma. */
+    /**
+     * Firma el RIT.
+     *
+     * Usa el MISMO modal que las declaraciones (FirmaOTP, en
+     * declaraciones.ui.js). Antes esto abria una ventana de swal distinta y
+     * el cliente pidio que fuera la misma: menos que aprender, y el
+     * contribuyente reconoce la ventana de firmar.
+     */
     firmarRIT() {
-        var idUsuario = localStorage.getItem('id_Usuario');
+        if (typeof FirmaOTP === 'undefined' || typeof FirmaOTP.abrirRit !== 'function') {
+            swal({ type: 'error', title: 'No disponible',
+                   text: 'No se pudo abrir la ventana de firma. Recargue la página.' });
+            return;
+        }
+
         var self = this;
-
-        swal({
-            title: 'Firmar el RIT',
-            text: 'Se enviará un código de verificación a su correo registrado.',
-            type: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'Enviar código',
-            cancelButtonText: 'Cancelar'
-        }).then(function (res) {
-            if (!res.value) { return; }
-
-            swal({ title: 'Enviando…', allowOutsideClick: false, onOpen: function () { swal.showLoading(); } });
-
-            $.ajax({
-                url: '../microservicios/firmas/api.php',
-                type: 'POST',
-                dataType: 'json',
-                data: { funcion: 1, rol: 'rit', id_usuario: idUsuario, id_establecimiento: 0 },
-                success: function (r) {
-                    swal.close();
-                    if (r.ok != 1) {
-                        swal({ type: 'error', title: 'No se pudo enviar el código', text: r.mensaje || '' });
-                        return;
-                    }
-                    self._pedirCodigoRIT(r.mensaje);
-                },
-                error: function () {
-                    swal.close();
-                    swal({ type: 'error', title: 'Error de conexión', text: 'No se pudo enviar el código.' });
-                }
-            });
+        FirmaOTP.abrirRit(function () {
+            // Firmar cierra la novedad: la pantalla vuelve a bloquearse.
+            self._editando = false;
+            self.consultarFirmaRIT();
         });
     }
-
-    _pedirCodigoRIT(mensaje) {
-        var self = this;
-        swal({
-            title: 'Código de verificación',
-            text: mensaje || 'Escriba el código de 6 dígitos que le llegó al correo.',
-            input: 'text',
-            inputAttributes: { maxlength: 6, autocapitalize: 'off', autocorrect: 'off' },
-            showCancelButton: true,
-            confirmButtonText: 'Firmar',
-            cancelButtonText: 'Cancelar',
-            inputValidator: function (v) {
-                return (!v || !/^[0-9]{6}$/.test(v.trim())) ? 'El código son 6 dígitos' : null;
-            }
-        }).then(function (res) {
-            if (!res.value) { return; }
-
-            swal({ title: 'Firmando…', allowOutsideClick: false, onOpen: function () { swal.showLoading(); } });
-
-            $.ajax({
-                url: '../microservicios/firmas/api.php',
-                type: 'POST',
-                dataType: 'json',
-                data: {
-                    funcion: 9,
-                    codigo: res.value.trim(),
-                    // "Estado del Registro": 1 inscripcion, 2 actualizacion.
-                    opcion: $('#opcionUso').val() || null
-                },
-                success: function (r) {
-                    swal.close();
-                    if (r.ok != 1) {
-                        swal({ type: 'error', title: 'No se pudo firmar', text: r.mensaje || '' });
-                        return;
-                    }
-                    swal({ type: 'success', title: 'RIT firmado', text: r.mensaje, timer: 2200 });
-                    // Firmar cierra la novedad: la pantalla vuelve a bloquearse.
-                    self._editando = false;
-                    self.consultarFirmaRIT();
-                },
-                error: function () {
-                    swal.close();
-                    swal({ type: 'error', title: 'Error de conexión', text: 'No se pudo firmar el RIT.' });
-                }
-            });
-        });
-    }
-
-
 
     /* ================================================================
        CESE DE ACTIVIDADES (reunion 2026-08-19)

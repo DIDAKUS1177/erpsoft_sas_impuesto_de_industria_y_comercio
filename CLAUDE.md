@@ -568,3 +568,63 @@ así que el contribuyente quedaba con una declaración cerrada que no podía toc
   Además el monto de un borrador todavía puede cambiar.
 - **Pantalla** (`claveEstado()` en `core/declaraciones.ui.js`): "Pagada" exige
   las dos condiciones, no solo `dec_Pagado`.
+
+## Trampa: hay TRES config.municipio.php, y el que manda no está en el host
+
+Al arreglar el campo "Departamento" del formulario de establecimientos se
+descubrió que editarlo en el host no cambiaba nada en Docker. La razón:
+
+| Archivo | Dónde vive | ¿Manda? |
+|---|---|---|
+| `App/Firma_digital/config.municipio.php` | host (el "real" de producción) | no, en Docker |
+| `App/Firma_digital/erpsoftsas/config.municipio.php` | host, gitignored | no |
+| `/var/www/html/config.municipio.php` | **dentro del contenedor** | **sí** |
+
+El contenedor monta **solo** `.../erpsoftsas -> /var/www/html/erpsoftsas`. El
+`config.municipio.php` que queda un nivel arriba es una copia horneada en la
+imagen, invisible desde el host — y como los buscadores de config resuelven
+primero el nivel de arriba (ver la sección del "gotcha crítico"), es esa copia
+la que gana.
+
+Consecuencia práctica: **una constante nueva hay que agregarla en los tres
+sitios**, o al menos en el del contenedor si se quiere ver el efecto en local.
+Así se perdió un rato con `MUNICIPIO_DEPARTAMENTO`: estaba en los dos archivos
+del host y el campo seguía saliendo vacío.
+
+Para saber cuál se cargó:
+
+```php
+foreach (get_included_files() as $f)
+    if (strpos($f, 'config.municipio') !== false) echo $f;
+```
+
+## El menú ya no destella (2026-08-19)
+
+`core/menu.js` pintaba el menú completo y lo recortaba **300 ms después**
+(`setTimeout`), así que en cada cambio de pantalla el usuario alcanzaba a ver
+los módulos que no le tocan —Administración ICA, Configuración—. Lo reportó el
+cliente.
+
+Ahora el menú **nace oculto** por CSS (`.menu-cargando`) y `menu.js` solo
+revela lo permitido. La espera de 300 ms se quitó: los permisos los guarda
+`login.js` en `localStorage` al iniciar sesión, así que ya están cuando carga
+cualquier pantalla interna.
+
+Dos guardas, porque un menú oculto que nunca se destapa sería peor que el
+destello: `revelarMenu()` va en un `finally`, y si no hay permisos en
+`localStorage` se muestra solo "Inicio" en vez de reventar.
+
+## La firma es UNA sola ventana (2026-08-19)
+
+El modal de firma vive en `core/declaraciones.ui.js` (módulo `FirmaOTP`) y el
+HTML con sus ids (`#modal-FirmaDigital`, `#otpCodigo`, `#btnValidarOTP`…) está
+repetido en `icaWebConsultar.php`, `icaWebPresentar.php` y `icaWebRit.php`.
+
+`FirmaOTP.abrir(...)` firma declaraciones y `FirmaOTP.abrirRit(...)` firma el
+RIT: mismo modal, distinto `_modo`. Cambian dos cosas nada más — el rol con
+que se pide el código (`'rit'` tiene su propio cajón en `codigos_verificacion`,
+para que un código de declaración no sirva para firmar el RIT) y la función que
+registra la firma (9 en vez de 7).
+
+Al tocar ese flujo hay que acordarse de las **tres** pantallas: comparten ids,
+así que un cambio en el HTML del modal debe replicarse en las tres.

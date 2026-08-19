@@ -163,7 +163,7 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 	<div class="menu-block customscroll" style="padding-bottom: 150px;">
 		<div class="sidebar-menu">
 		
-			<ul id="accordion-menu">
+			<ul id="accordion-menu" class="menu-cargando">
 
 				<!-- INICIO -->
 				<li class="dropdown" id="MInicio">
@@ -390,9 +390,41 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 	</div>
 
 	<!-- FOOTER DEL SIDEBAR (LOGO ERP) -->
+<style>
+/* ------------------------------------------------------------------
+   El menu arranca OCULTO.
+
+   Antes se pintaba completo y core/menu.js lo escondia despues, ya con
+   los permisos en la mano. En ese hueco -entre que el navegador pinta y
+   el JS corre- el usuario alcanzaba a ver los modulos que no le tocan:
+   Administracion ICA, Configuracion, etc. Se notaba sobre todo al
+   cambiar de pantalla, que es cuando el menu se vuelve a pintar.
+
+   Invirtiendo el orden no hay ningun instante en que se vea de mas:
+   nace oculto y menu.js solo revela lo permitido (con display en linea,
+   que pesa mas que esta regla).
+
+   El contenedor lleva .menu-cargando y el JS se la quita al terminar;
+   asi, si algun dia el JS falla, queda un menu vacio -un fallo visible-
+   en vez de uno que enseña de mas sin que nadie se entere.
+   ------------------------------------------------------------------ */
+#accordion-menu.menu-cargando > li,
+#accordion-menu.menu-cargando .submenu li { display: none !important; }
+#accordion-menu > li { display: none; }
+</style>
+
 	<div class="sidebar-footer" style="position: absolute; bottom: 0; left: 0; width: 100%; padding: 15px; text-align: center; border-top: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.15);">
-		<div style="background: rgba(255,255,255,0.08); padding: 5px; border-radius: 4px; display: inline-block; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.08);">
-			<img src="../vendors/images/deskapp-logo.svg" alt="ERPSoft" style="height: 30px; width: auto; object-fit: contain;">
+		<!-- El logo es azul oscuro casi negro y estaba sobre una caja
+		     translucida (blanco al 8%) encima del teal del menu: no se leia.
+		     El archivo "deskapp-logo-white.svg" no sirve, tiene los mismos
+		     rellenos oscuros pese al nombre. Se pasa a blanco con un filtro
+		     -brightness(0) lo vuelve negro solido, invert(1) lo pasa a
+		     blanco-, que funciona con cualquier logo que pongan despues, y
+		     se le quita la caja: sobre el teal el blanco solo se ve mejor. -->
+		<div style="margin-bottom: 8px;">
+			<img src="../vendors/images/deskapp-logo.svg" alt="ERPSoft S.A.S"
+			     style="height: 38px; width: auto; object-fit: contain;
+			            filter: brightness(0) invert(1); opacity: 0.92;">
 		</div>
 		<div class="sidebar-version" style="font-size: 11px; font-weight: 600; color: rgba(255, 255, 255, 0.5);">
 			v2 &copy; <?php echo date('Y'); ?>

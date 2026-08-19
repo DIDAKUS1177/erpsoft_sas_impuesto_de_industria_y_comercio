@@ -624,16 +624,30 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
                 // CONSULTAR ACTIVIDADES
                 // ============================
 
-                $sql = "
-                    SELECT 
-                        ace_IdCodigoActividad,
-                        ace_Anio,
-                        acc_Codigo,
-                        acc_Nombre
-                    FROM ind_actividad_establecimiento
-                    INNER JOIN ind_actividadescomercio
-                        ON acc_Id = ace_IdCodigoActividad
-                    WHERE ace_IdEstablecimiento = ?
+                /*
+ * Las actividades salen de ind_actividad_contribuyente, la tabla NUEVA.
+ * Las migraciones 005 y 007 las subieron del establecimiento al
+ * contribuyente y les quitaron el año.
+ *
+ * Esta consulta se habia quedado en la vieja
+ * (ind_actividad_establecimiento), a la que ya nadie escribe: la pantalla
+ * del RIT guarda en la nueva. Mientras nadie editara actividades las dos
+ * coincidian -la migracion copio el contenido-, pero a la primera edicion
+ * la declaracion habria seguido viendo la lista vieja. Se conservan los
+ * nombres de columna con alias para no tocar el resto del flujo.
+ */
+$sql = "
+                    SELECT
+                        atc.atc_IdCodigoActividad AS ace_IdCodigoActividad,
+                        atc.atc_Anio              AS ace_Anio,
+                        acc.acc_Codigo,
+                        acc.acc_Nombre
+                    FROM ind_actividad_contribuyente atc
+                    INNER JOIN ind_establecimientos e
+                        ON e.est_IdContribuyente = atc.atc_IdContribuyente
+                    INNER JOIN ind_actividadescomercio acc
+                        ON acc.acc_Id = atc.atc_IdCodigoActividad
+                    WHERE e.est_Id = ?
                 ";
 
                 $res = $con->consultar($sql, [$est['est_Id']]);

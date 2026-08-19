@@ -107,8 +107,26 @@ class Menu {
         let permisos = localStorage.getItem('permisosRol');
         let id_Rol = localStorage.getItem('id_Rol');
 
-        permisos = JSON.parse(permisos);
-        console.log('Permisos desde localStorage:', permisos);  
+        try {
+            permisos = JSON.parse(permisos);
+        } catch (e) {
+            permisos = null;
+        }
+
+        /*
+         * Sin permisos en localStorage no se adivina: se deja solo "Inicio".
+         *
+         * Antes esto reventaba en el forEach de mas abajo, y como el menu
+         * ahora nace oculto por CSS, una excepcion lo habria dejado tapado
+         * para siempre. Pasa si alguien entra con la sesion viva pero el
+         * localStorage limpio (otro navegador, modo privado, borrar datos).
+         */
+        if (id_Rol != 1 && !Array.isArray(permisos)) {
+            console.warn('menu: no hay permisos en localStorage; solo se muestra Inicio.');
+            $("#accordion-menu > li").hide();
+            $("#MInicio").show();
+            return;
+        }
 
         if(id_Rol == 1){
             // Mostrar todo el menú para el rol administrador
@@ -134,6 +152,19 @@ class Menu {
             // se quedan sin forma de volver al tablero.
             $("#MInicio").show();
         }
+    }
+
+    /**
+     * Levanta el velo del menu.
+     *
+     * La hoja de estilos lo deja oculto (.menu-cargando) para que no se
+     * alcance a ver lo que el usuario no tiene permitido mientras carga.
+     * Se llama SIEMPRE al terminar de aplicar permisos, con o sin exito:
+     * un menu que se queda tapado para siempre seria peor que el destello
+     * que se quiso evitar.
+     */
+    revelarMenu() {
+        $("#accordion-menu").removeClass("menu-cargando");
     }
 
 
@@ -195,9 +226,30 @@ class Menu {
 
 const menu = new Menu();
 
-$(document).ready(function() {
-    setTimeout(() => {
-       menu.ocultarTodoElMenu();
-       menu.mostrarMenuPorPermisos();
-    }, 300);
+$(document).ready(function () {
+    /*
+     * Sin setTimeout.
+     *
+     * Aqui habia una espera de 300ms antes de aplicar los permisos. Durante
+     * esos 300ms el menu se veia ENTERO -incluidos los modulos de
+     * administracion- y luego se recortaba. Era justo el destello que
+     * reportó el cliente.
+     *
+     * La espera no hacia falta: los permisos los guarda login.js en
+     * localStorage al iniciar sesion, asi que ya estan cuando carga
+     * cualquier pantalla interna. Se aplica de una.
+     *
+     * El try/finally garantiza que el menu se destape pase lo que pase: la
+     * hoja de estilos lo deja oculto, y un error aqui lo dejaria invisible.
+     */
+    try {
+        menu.ocultarTodoElMenu();
+        menu.mostrarMenuPorPermisos();
+    } catch (e) {
+        console.error('menu: fallo aplicando permisos', e);
+        $("#accordion-menu > li").hide();
+        $("#MInicio").show();
+    } finally {
+        menu.revelarMenu();
+    }
 });

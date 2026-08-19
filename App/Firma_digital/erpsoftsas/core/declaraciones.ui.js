@@ -320,6 +320,7 @@ var FirmaOTP = (function () {
     // Rol de quien esta firmando en este momento: 'declarante' o 'contador'.
     // Decide a que correo viaja el codigo y con que rol queda la firma.
     var _rol           = 'declarante';
+    var _modo = 'declaracion';   // 'declaracion' | 'rit'
 
     function _mostrarError(msg) {
         $('#otpError').text(msg).show();
@@ -444,12 +445,36 @@ var FirmaOTP = (function () {
     function abrir(decId, idEst, onFirmado, rol) {
         _onFirmado = onFirmado || null;
         _idEstablecimiento = idEst || null;
+        _modo = 'declaracion';
         _rol = rol === 'contador' ? 'contador' : 'declarante';
 
         $('#otpIdDeclaracion').val(decId);
         $('#otpDestino').text(_rol === 'contador'
             ? 'el correo del contador / revisor fiscal'
             : 'su correo electrónico');
+        _limpiarError();
+        _solicitarCodigo(false);
+    }
+
+    /**
+     * Abre el MISMO modal para firmar el RIT.
+     *
+     * El cliente pidio expresamente que la firma del RIT se vea igual que la
+     * de las declaraciones, no en una ventana distinta. Cambia poco: el
+     * codigo se pide con rol 'rit' -que tiene su propio cajon en
+     * codigos_verificacion, para que un codigo de declaracion no sirva para
+     * firmar el RIT- y se registra con la funcion 9 en vez de la 7.
+     *
+     * @param {function} onFirmado  Callback tras firmar con exito.
+     */
+    function abrirRit(onFirmado) {
+        _onFirmado = onFirmado || null;
+        _idEstablecimiento = null;
+        _modo = 'rit';
+        _rol = 'rit';
+
+        $('#otpIdDeclaracion').val('');
+        $('#otpDestino').text('su correo electrónico');
         _limpiarError();
         _solicitarCodigo(false);
     }
@@ -475,63 +500,55 @@ var FirmaOTP = (function () {
             onOpen: function () { swal.showLoading(); }
         });
 
+        /*
+         * UNA sola llamada.
+         *
+         * Antes esto eran dos: la funcion 2 verificaba el codigo y la 7
+         * registraba la firma. La 7 no volvia a mirar el codigo, asi que
+         * llamarla directamente dejaba una firma registrada sin haber
+         * recibido ningun correo. Desde el 2026-08-19 la 7 valida y consume
+         * el codigo ella misma, de modo que aqui solo hay que mandarselo.
+         *
+         * Ya no se manda id_usuario: el firmante lo toma el servidor de la
+         * sesion, porque un id en el POST no prueba quien es quien.
+         */
         $.ajax({
             url: API,
             type: 'POST',
             dataType: 'json',
-            data: {
-                funcion: 2,
-                id_usuario: ID_USUARIO,
-                codigo: codigo,
-                id_establecimiento: 0,
-                rol: _rol
-            },
-            success: function (resp) {
+            // funcion 9 = firmar el RIT, funcion 7 = firmar una declaracion.
+            data: (_modo === 'rit')
+                ? { funcion: 9, codigo: codigo }
+                : { funcion: 7, codigo: codigo, id_declaracion: decId, rol: _rol },
+            success: function (respFirma) {
 
-                if (resp.ok != 1) {
-                    swal.close();
+                swal.close();
+
+                if (respFirma.ok != 1) {
                     $('#btnValidarOTP').prop('disabled', false);
-                    _mostrarError(resp.mensaje || 'Código inválido o expirado.');
+                    _mostrarError(respFirma.mensaje || 'Código inválido o expirado.');
                     $('#otpCodigo').val('').focus();
                     return;
                 }
 
-                // El codigo ya quedo consumido en el backend: si la firma
-                // falla a partir de aqui hay que pedir uno nuevo, y asi
-                // se le dice al usuario en vez de dejarlo reintentando.
-                $.ajax({
-                    url: API,
-                    type: 'POST',
-                    dataType: 'json',
-                    data: {
-                        funcion: 7,
-                        id_usuario: ID_USUARIO,
-                        id_declaracion: decId,
-                        rol: _rol
-                    },
-                    success: function (respFirma) {
+                _pararTimers();
+                $('#modal-FirmaDigital').modal('hide');
 
-                        swal.close();
+                var titulo = _modo === 'rit' ? 'RIT firmado' : 'Firmada';
+                var texto  = _modo === 'rit'
+                    ? 'El RIT ha sido firmado digitalmente.'
+                    : 'La declaración ha sido firmada digitalmente.';
 
-                        if (respFirma.ok != 1) {
-                            $('#btnValidarOTP').prop('disabled', false);
-                            _mostrarError((respFirma.mensaje || 'No se pudo firmar.') +
-                                          ' El código ya fue usado: solicita uno nuevo.');
-                            $('#otpCodigo').val('');
-                            return;
-                        }
-
-                        _pararTimers();
-                        $('#modal-FirmaDigital').modal('hide');
-
-                        swal('Firmada', 'La declaración ha sido firmada digitalmente.', 'success')
-                            .then(function () {
-                                if (typeof _onFirmado === 'function') {
-                                    _onFirmado(_idEstablecimiento);
-                                }
-                            });
+                swal(titulo, texto, 'success').then(function () {
+                    if (typeof _onFirmado === 'function') {
+                        _onFirmado(_idEstablecimiento);
                     }
                 });
+            },
+            error: function () {
+                swal.close();
+                $('#btnValidarOTP').prop('disabled', false);
+                _mostrarError('No se pudo conectar para firmar. Intenta de nuevo.');
             }
         });
     }
@@ -563,7 +580,7 @@ var FirmaOTP = (function () {
         });
     }
 
-    return { abrir: abrir };
+    return { abrir: abrir, abrirRit: abrirRit };
 
 })();
 
