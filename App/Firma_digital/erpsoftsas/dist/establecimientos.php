@@ -228,6 +228,27 @@
 <input type="text" class="form-control" id="est_Barrio" name="est_Barrio">
 </div>
 
+<!-- Matricula y fecha de inicio DEL ESTABLECIMIENTO.
+     Se habian ido del formulario en la limpieza del 2026-08-18, pero el
+     certificado del RIT las imprime: es el punto 19 de la lista del cliente
+     ("incluir nombre, matricula, direccion y fecha de inicio de los
+     establecimientos"). Sin estos dos campos esa tabla del PDF no se puede
+     llenar nunca -hoy 8 de 12 establecimientos tienen la fecha centinela
+     1900-01-01, que es como decir vacia-.
+
+     Ojo: NO confundir con las del contribuyente. La matricula de la persona
+     natural o juridica y su fecha de inicio de actividades viven en el RIT
+     (punto 8); estas son las del LOCAL. -->
+<div class="col-md-3">
+<label>Matrícula mercantil <small class="text-muted">(del establecimiento)</small></label>
+<input type="text" class="form-control" id="est_Matricula" name="est_Matricula" maxlength="50">
+</div>
+
+<div class="col-md-3">
+<label>Fecha de inicio de actividades <small class="text-muted">(del establecimiento)</small></label>
+<input type="date" class="form-control" id="est_Fecha_inicio" name="est_Fecha_inicio">
+</div>
+
 <div class="col-md-3">
 <label>Correo</label>
 <input type="email" class="form-control" id="est_Correo" name="est_Correo">
