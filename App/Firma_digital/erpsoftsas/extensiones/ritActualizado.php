@@ -476,7 +476,7 @@ font-weight:bold;
          texto y ahora son 6, asi que la fila bajo ~9mm y el logo, que es de
          alto fijo, dejo de caber. Se le da ALTO explicito en vez de solo
          ancho, que es lo que de verdad hay que controlar aqui. -->
-    <img src="tcpdf/pdf/img/logopazysalvo.png" width="57" height="81">
+    <img src="tcpdf/pdf/img/logopazysalvo.png" width="49" height="70">
 </td>
 
 <td width="80%" class="header">
