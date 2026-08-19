@@ -6,7 +6,7 @@
 <html>
 <head>
 	<meta charset="utf-8">
-	<title>Recaudo por código de barras | ERPSOFTSAS</title>
+	<title>Recaudo ICA | ERPSOFTSAS</title>
 
 	<meta http-equiv="X-UA-Compatible" content="IE=edge">
 	<meta http-equiv="Expires" content="0">
@@ -33,7 +33,7 @@
 
 			<div class="card-box mb-30">
 				<div class="pd-20">
-					<h4 class="h4 mb-1">Recaudo por código de barras</h4>
+					<h4 class="h4 mb-1">Recaudo ICA</h4>
 					<small class="text-muted">
 						Archivo de recaudo que entrega la entidad financiera con los pagos hechos en ventanilla.
 					</small>

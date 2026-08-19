@@ -1702,56 +1702,15 @@ establecimientos.UsuarioActivo();
 //establecimientos.cargarContribuyentes();
 
 
-$('#est_IdContribuyente').select2({
-    language: {
-    inputTooShort: () => "Ingrese mínimo 2 caracteres",
-    searching: () => "Buscando...",
-    noResults: () => "No se encontraron resultados"
-},
-    dropdownParent: $('#modal-Establecimientos'),
-    placeholder: "Buscar contribuyente por documento o nombre",
-    minimumInputLength: 2,
-    
-    ajax: {
-        url: '../business/controller/class.contribuyentes.php',
-        type: 'POST',
-        dataType: 'json',
-        delay: 250,
-
-        data: function (params) {
-            return {
-                funcion: 5,
-                buscar: params.term
-            };
-        },
-
-        processResults: function (data) {
-
-            console.log(data);
-            let resultados = [];
-
-            if(data.ok == 1){
-
-                data.datos.forEach(function(c){
-
-                    resultados.push({
-                        id: c.ind_Id,
-                        text: c.ind_NumeroIdentificacion + " - " +
-                              c.ind_PrimerNombre + " " +
-                              c.ind_PrimerApellido
-                    });
-
-                });
-
-            }
-
-            return {
-                results: resultados
-            };
-
-        }
-    }
-});
+// Aqui se inicializaba select2 sobre #est_IdContribuyente con un buscador de
+// contribuyentes por documento o nombre. Se retira: desde el punto 5 de la
+// reunion del 2026-08-18 el establecimiento pertenece al RIT desde el que se
+// entra, asi que no hay a quien buscar. El campo quedo oculto, pero select2
+// dibujaba su propia caja de busqueda encima igual y seguia preguntando.
+//
+// El valor lo fija el servidor para todo rol que no sea Alcaldia
+// (_agregarEstablecimientos / _editarEstablecimientos), asi que quitarlo de la
+// pantalla no abre ningun hueco.
 
 
 $(document).ready(function(){

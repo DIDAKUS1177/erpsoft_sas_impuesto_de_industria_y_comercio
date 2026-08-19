@@ -23,6 +23,14 @@ if (!defined('MUNICIPIO_SELLO_FIRMA')) define('MUNICIPIO_SELLO_FIRMA', 'Sello_Fi
 if (!defined('MUNICIPIO_DEPARTAMENTO')) define('MUNICIPIO_DEPARTAMENTO', 'Boyacá');
 
 
+// GetY() tras writeHTML() queda ~3mm por debajo del borde real de la tabla
+// (TCPDF suma el salto de bloque al cerrarla, ver CLAUDE.md). Sin corregirlo,
+// TODAS las bandas quedan 3mm mas abajo que el recuadro que rotulan: en las
+// secciones con holgura no se nota, pero en C -la mas ajustada- el rotulo se
+// sale por debajo. Es el mismo ajuste que ya se le hacia al bloque del codigo
+// de barras.
+const DESFASE_GETY = 3;
+
 class ICAPdf extends TCPDF {
     public function Header(){}
     public function Footer(){}
@@ -619,7 +627,7 @@ IMPUESTO DE INDUSTRIA Y COMERCIO
 <!-- Separador retirado: el encabezado gastaba 50mm de una hoja de 330 -el 15%
      de la pagina- antes de que empezara el formulario. -->
 
-<table border="1" cellpadding="3" width="100%">
+<table border="1" cellpadding="2" width="100%">
 
 <tr bgcolor="#e1dada">
 
@@ -729,7 +737,7 @@ $html = '
 </table>
 ';
 $pdf->writeHTML($html, true, false, true, false, '');
-$ySecA_fin = $pdf->GetY();
+$ySecA_fin = $pdf->GetY() - DESFASE_GETY;
 $ySecB_inicio = $ySecA_fin;
 
 $html = '
@@ -795,7 +803,7 @@ $html = '
 </table>
 ';
 $pdf->writeHTML($html, true, false, true, false, '');
-$ySecB_fin = $pdf->GetY();
+$ySecB_fin = $pdf->GetY() - DESFASE_GETY;
 $ySecC_inicio = $ySecB_fin;
 
 $html = '
@@ -855,7 +863,7 @@ $html = '
 </table>
 ';
 $pdf->writeHTML($html, true, false, true, false, '');
-$ySecC_fin = $pdf->GetY();
+$ySecC_fin = $pdf->GetY() - DESFASE_GETY;
 $ySecD_inicio = $ySecC_fin;
 
 $html = '
@@ -958,7 +966,7 @@ $html = '
 </table>
 ';
 $pdf->writeHTML($html, true, false, true, false, '');
-$ySecD_fin = $pdf->GetY();
+$ySecD_fin = $pdf->GetY() - DESFASE_GETY;
 
 $html = '
 <br>
@@ -1192,10 +1200,10 @@ $xBloque   = $margenes['left'];
 // recuadro quede pegado a la tabla de arriba, como en el formulario oficial,
 // y para que el bloque completo cierre dentro de la pagina: sin esto medimos
 // que terminaba en 332.1mm sobre un papel de 330.2mm -es decir, cortado-.
-$yBloque   = $pdf->GetY() - 3;
+$yBloque   = $pdf->GetY() - DESFASE_GETY;
 
 $altoRotulo  = 4.5;   // fila de titulos
-$altoCodigo  = 20.0;  // barras + linea legible debajo
+$altoCodigo  = 21.0;  // barras + linea legible debajo
 // Subio de 12.5 a 20: al achicar el escudo del encabezado el formulario
 // entero se corrio 8mm hacia arriba y quedaron 9.16mm libres al pie.
 
@@ -1242,7 +1250,7 @@ $pdf->Cell($mitad, $altoCodigo, $referenciaRecaudo, 1, 1, 'L');
 // que NO es decorativa -si el escaner del banco falla, el cajero digita ese
 // numero a mano-, y necesita su espacio.
 $anchoBarcode = $mitad - 14;   // ~83mm: casi toda la celda, con aire a los lados
-$altoBarcode  = 15;
+$altoBarcode  = 16;
 
 // El codigo se apoya en la parte alta de la celda para dejar sitio abajo a la
 // linea legible. Esa linea NO es decorativa: si el escaner del banco falla, el
@@ -1294,7 +1302,6 @@ if ($estaPresentada) {
 // codigo de barras, ya calculado en geometria (no con GetY(), que aqui no
 // serviria: los Cell() del bloque no siempre dejan el cursor en el punto
 // que interesa). Reemplaza al valor de respaldo fijado mas arriba.
-$ySecF_fin = $yBloque + $altoRotulo + $altoCodigo;
 
 /* ===========================
 ETIQUETAS VERTICALES (A-F)
@@ -1304,6 +1311,34 @@ adivinadas a mano. Antes las etiquetas quedaban desalineadas del
 contenido real en cuanto el texto de una fila cambiaba de tamaño
 (p.ej. "F. FIRMAS" aparecia por encima del bloque de firmas real).
 =========================== */
+
+/*
+ * Las bandas de E y F se recalculan AQUI, no arriba.
+ *
+ * Arriba solo se podian estimar: se derivaban de $ySecD_fin mas unos desfases
+ * fijos (245/263/277/327) medidos sobre un render de agosto. En cuanto cambio
+ * algo del documento -el tamaño de la fuente de estos rotulos, los 8mm que se
+ * gano al achicar el escudo, el alto nuevo del bloque de codigo de barras- esos
+ * numeros dejaron de corresponder y "F. FIRMAS" salio corrido.
+ *
+ * Ahora se usan los DOS extremos reales que ya se conocen a esta altura del
+ * archivo: $ySecD_fin (medido) y $yBloque (medido, el borde superior del bloque
+ * del codigo de barras, que es justo donde termina F). Lo unico que se conserva
+ * de la referencia vieja es la PROPORCION entre E y F, que sigue siendo valida
+ * porque las dos tablas no cambiaron de contenido.
+ *
+ * No se parten los writeHTML() para medir entre tabla y tabla: con
+ * SetAutoPageBreak(false), varias llamadas seguidas cerca del pie hacen
+ * desaparecer el contenido posterior en silencio -es como se perdio el codigo
+ * de barras la primera vez-.
+ */
+$refD   = 246.04;                       // $ySecD_fin del render de referencia
+$tramo  = ($yBloque - $ySecD_fin) / (327 - $refD);   // real / referencia
+
+$ySecE_inicio = $ySecD_fin + (245 - $refD) * $tramo;
+$ySecE_fin    = $ySecD_fin + (263 - $refD) * $tramo;
+$ySecF_inicio = $ySecD_fin + (277 - $refD) * $tramo;
+$ySecF_fin    = $yBloque;
 
 $x = 13;
 dibujarTextoVertical($pdf, 'A. INFORMACIÓN DEL CONTRIBUYENTE', $x, $ySecA_inicio, $ySecA_fin);

@@ -200,6 +200,6 @@ $('#btnAplicar').on('click', function () {
 $('#btnRefrescarHistorial').on('click', cargarHistorial);
 
 $(document).ready(function () {
-    $('#headerPageTitle').text('Recaudo por código de barras');
+    $('#headerPageTitle').text('Recaudo ICA');
     cargarHistorial();
 });

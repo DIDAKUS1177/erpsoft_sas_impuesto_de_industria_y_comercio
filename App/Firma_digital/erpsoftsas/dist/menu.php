@@ -232,7 +232,7 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 						     solo en que el item no se vea. -->
 						<li class="menu_1639">
 							<a id="ICA_Recaudo" onclick="menu.validarIngreso(1639,11)" style="cursor:pointer;">
-								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="6" y2="16"/><line x1="9" y1="8" x2="9" y2="16"/><line x1="13" y1="8" x2="13" y2="16"/><line x1="18" y1="8" x2="18" y2="16"/></svg></i> Recaudo código de barras
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="6" y2="16"/><line x1="9" y1="8" x2="9" y2="16"/><line x1="13" y1="8" x2="13" y2="16"/><line x1="18" y1="8" x2="18" y2="16"/></svg></i> Recaudo ICA
 							</a>
 						</li>
 
