@@ -127,9 +127,22 @@
 					</div>
 
 					<div class="row">
-						<div class="col-md-5 form-group">
+						<div class="col-md-3 form-group">
 							<label>Dirección</label>
 							<input type="text" class="form-control" name="ind_Direccion" id="rit_ind_Direccion" maxlength="200">
+						</div>
+						<!--
+						     Punto 1 (reunion 2026-08-18): departamento y municipio en campos
+						     separados. Antes era un unico select con los 1.120 municipios del
+						     pais como "Municipio - Departamento": encontrar el propio obligaba a
+						     recorrer la lista entera.
+						
+						     Lo que se guarda sigue siendo ind_IdCiudad. El departamento no es una
+						     columna: sale de conf_ciudades.ciu_Departamento y solo acota la lista.
+						-->
+						<div class="col-md-3 form-group">
+							<label>Departamento de residencia</label>
+							<select class="form-control" id="rit_DepartamentoResidencia"></select>
 						</div>
 						<div class="col-md-3 form-group">
 							<label>Municipio de residencia</label>

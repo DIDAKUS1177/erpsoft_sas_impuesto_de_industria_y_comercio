@@ -1796,6 +1796,20 @@ actualizarDeclaracionIca(valor, numeroCampo){
     }
 
     /** Llena el municipio del RIT con el catalogo completo (conf_ciudades). */
+    /**
+     * Punto 1 (reunion 2026-08-18): departamento y municipio en dos selects
+     * encadenados.
+     *
+     * Antes era un unico select con los 1.120 municipios del pais listados
+     * como "Municipio - Departamento"; encontrar el propio obligaba a recorrer
+     * la lista entera.
+     *
+     * No se usa Geografia.poblar() -la cascada que ya existe para la direccion
+     * del establecimiento- porque aquella trabaja sobre columnas de TEXTO
+     * libre (est_Departamento / est_Ciudad) y aqui lo que se guarda es
+     * ind_IdCiudad, la clave de conf_ciudades. El departamento no se guarda:
+     * sale del propio catalogo y solo sirve para acotar la lista.
+     */
     cargarCiudadesRIT(idActual) {
 
         $.ajax({
@@ -1806,24 +1820,70 @@ actualizarDeclaracionIca(valor, numeroCampo){
             success: function (arr) {
                 if (arr.ok != 1) { return; }
 
-                var opciones = '<option value=""></option>';
-                $.each(arr.datos, function (i, ciudad) {
-                    opciones += '<option value="' + ciudad.ciu_Id + '">' +
-                                ciudad.ciu_Nombre + ' - ' + ciudad.ciu_Departamento +
-                                '</option>';
-                });
+                establecimientos._ciudades = arr.datos || [];
 
-                $('#rit_ind_IdCiudad').html(opciones);
-                if (idActual) { $('#rit_ind_IdCiudad').val(idActual); }
+                var esc = establecimientos.escaparHtml;
+                var departamentos = [];
+                $.each(establecimientos._ciudades, function (i, c) {
+                    if (c.ciu_Departamento && departamentos.indexOf(c.ciu_Departamento) === -1) {
+                        departamentos.push(c.ciu_Departamento);
+                    }
+                });
+                departamentos.sort();
+
+                var opts = '<option value="">Seleccione departamento…</option>';
+                $.each(departamentos, function (i, d) {
+                    opts += '<option value="' + esc(d) + '">' + esc(d) + '</option>';
+                });
+                $('#rit_DepartamentoResidencia').html(opts);
+
+                // Con un municipio ya guardado, se preselecciona SU departamento
+                // y despues el municipio; si no, la lista arranca vacia.
+                var actual = null;
+                if (idActual) {
+                    $.each(establecimientos._ciudades, function (i, c) {
+                        if (String(c.ciu_Id) === String(idActual)) { actual = c; return false; }
+                    });
+                }
+
+                if (actual) {
+                    $('#rit_DepartamentoResidencia').val(actual.ciu_Departamento);
+                    establecimientos.pintarMunicipiosRIT(actual.ciu_Departamento, idActual);
+                } else {
+                    establecimientos.pintarMunicipiosRIT('', null);
+                }
             },
             error: function () {
-                // Sin catalogo, al menos se conserva el municipio actual en vez
-                // de dejar el select vacio y que al guardar se borre.
+                // Sin catalogo se conserva el municipio actual en vez de dejar
+                // el select vacio y que al guardar se borre.
                 $('#rit_ind_IdCiudad').html(
                     '<option value="' + (idActual || '') + '" selected>Municipio actual</option>'
                 );
             }
         });
+    }
+
+    /** Municipios de un departamento, opcionalmente preseleccionando uno. */
+    pintarMunicipiosRIT(departamento, idSeleccionado) {
+
+        var esc = establecimientos.escaparHtml;
+        var lista = (establecimientos._ciudades || []).filter(function (c) {
+            return !departamento || c.ciu_Departamento === departamento;
+        });
+
+        lista.sort(function (a, b) {
+            return String(a.ciu_Nombre).localeCompare(String(b.ciu_Nombre), 'es');
+        });
+
+        var opts = '<option value="">' +
+                   (departamento ? 'Seleccione municipio…' : 'Seleccione primero el departamento') +
+                   '</option>';
+        $.each(lista, function (i, c) {
+            opts += '<option value="' + esc(c.ciu_Id) + '">' + esc(c.ciu_Nombre) + '</option>';
+        });
+
+        $('#rit_ind_IdCiudad').html(opts);
+        if (idSeleccionado) { $('#rit_ind_IdCiudad').val(idSeleccionado); }
     }
 
     nombreTipoDocumento(id) {
@@ -2487,4 +2547,9 @@ $(document).on('click', '.btn-quitar-actividad', function () {
 
 $(document).on('click', '#btnGuardarActividadesRIT', function () {
     establecimientos.guardarActividadesRIT();
+});
+
+/* Cambiar de departamento repinta los municipios y limpia el que hubiera. */
+$(document).on('change', '#rit_DepartamentoResidencia', function () {
+    establecimientos.pintarMunicipiosRIT($(this).val(), null);
 });

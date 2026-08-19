@@ -1227,8 +1227,17 @@ $pdf->Cell($mitad, $altoCodigo, $referenciaRecaudo, 1, 1, 'L');
 
 // Codigo centrado dentro de la celda izquierda. stretch=true hace que ocupe
 // exactamente el ancho pedido, asi el centrado es exacto y no aproximado.
-$anchoBarcode = 50;
-$altoBarcode  = 8;
+// Punto 15 (reunion 2026-08-18): el cliente pidio el codigo de barras mas
+// grande. Hacia abajo no hay margen -el bloque cierra en 329.15mm sobre un
+// papel de 330.2, o sea 1.05mm de sobra-, pero SI lo hay dentro de su propia
+// celda: el codigo ocupaba 50mm de ancho en una celda de ~97mm (la mitad del
+// ancho util) y 8mm de alto en una de 12.5mm. Se aprovecha ese hueco.
+//
+// El alto se deja en 10 y no mas: por debajo del codigo va la linea legible,
+// que NO es decorativa -si el escaner del banco falla, el cajero digita ese
+// numero a mano-, y necesita su espacio.
+$anchoBarcode = $mitad - 14;   // ~83mm: casi toda la celda, con aire a los lados
+$altoBarcode  = 10;
 
 // El codigo se apoya en la parte alta de la celda para dejar sitio abajo a la
 // linea legible. Esa linea NO es decorativa: si el escaner del banco falla, el
