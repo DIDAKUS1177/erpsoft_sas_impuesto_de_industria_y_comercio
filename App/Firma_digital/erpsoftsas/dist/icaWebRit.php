@@ -127,7 +127,7 @@
 					</div>
 
 					<div class="row">
-						<div class="col-md-3 form-group">
+						<div class="col-md-4 form-group">
 							<label>Dirección</label>
 							<input type="text" class="form-control" name="ind_Direccion" id="rit_ind_Direccion" maxlength="200">
 						</div>
@@ -140,19 +140,28 @@
 						     Lo que se guarda sigue siendo ind_IdCiudad. El departamento no es una
 						     columna: sale de conf_ciudades.ciu_Departamento y solo acota la lista.
 						-->
-						<div class="col-md-3 form-group">
+						<div class="col-md-4 form-group">
 							<label>Departamento de residencia</label>
 							<select class="form-control" id="rit_DepartamentoResidencia"></select>
 						</div>
-						<div class="col-md-3 form-group">
+						<div class="col-md-4 form-group">
 							<label>Municipio de residencia</label>
 							<select class="form-control" name="ind_IdCiudad" id="rit_ind_IdCiudad"></select>
 						</div>
-						<div class="col-md-2 form-group">
+						</div>
+
+						<!--
+						     Telefono y correo pasan a una fila propia, a mitad de ancho cada uno.
+						     La fila anterior sumaba 13 columnas de una rejilla de 12 (3+3+3+2+2), asi
+						     que Bootstrap bajaba la ultima y quedaba un hueco a la derecha. Ahora
+						     cada fila cierra en 12 justos y los campos llegan hasta el borde.
+						-->
+						<div class="row">
+						<div class="col-md-6 form-group">
 							<label>Teléfono</label>
 							<input type="text" class="form-control" name="ind_Telefono" id="rit_ind_Telefono">
 						</div>
-						<div class="col-md-2 form-group">
+						<div class="col-md-6 form-group">
 							<label>Correo</label>
 							<input type="email" class="form-control" name="ind_Email" id="rit_ind_Email" maxlength="500">
 						</div>
@@ -208,7 +217,7 @@
 					     el contribuyente lo ve pero no lo edita. El bloqueo real
 					     esta en el servidor (_camposSoloAdministrador); lo de
 					     aqui es para que se entienda a la vista. -->
-					<h5 class="mb-1" style="font-weight:600;">Contador y revisor fiscal</h5>
+					<h5 class="mb-1" style="font-weight:600;">Contador y/o Revisor Fiscal</h5>
 					<p class="text-muted" id="ritAvisoContador" style="display:none;">
 						<i class="fa fa-lock"></i> Solo la Alcaldía puede modificar estos datos.
 					</p>
@@ -218,7 +227,7 @@
 							<input type="text" class="form-control campo-solo-admin" name="ind_Cedula_contador" id="rit_ind_Cedula_contador" maxlength="20">
 						</div>
 						<div class="col-md-3 form-group">
-							<label>Nombre del contador</label>
+							<label>Nombres y Apellidos del Contador</label>
 							<input type="text" class="form-control campo-solo-admin" name="ind_Nombre_contador" id="rit_ind_Nombre_contador" maxlength="100">
 						</div>
 						<div class="col-md-3 form-group">
@@ -236,7 +245,7 @@
 							<input type="text" class="form-control campo-solo-admin" name="ind_Cedula_revisor" id="rit_ind_Cedula_revisor" maxlength="20">
 						</div>
 						<div class="col-md-3 form-group">
-							<label>Nombre del revisor fiscal</label>
+							<label>Nombres y Apellidos del Revisor Fiscal</label>
 							<input type="text" class="form-control campo-solo-admin" name="ind_Nombre_revisor" id="rit_ind_Nombre_revisor" maxlength="100">
 						</div>
 						<div class="col-md-3 form-group">
@@ -257,7 +266,7 @@
 					     antes estaban copiados en cada establecimiento sin nada que
 					     garantizara que las copias coincidieran.
 					-->
-					<h5 class="mb-3" style="font-weight:600;">Información del RUT</h5>
+					<h5 class="mb-3" style="font-weight:600;">Códigos CIIU Actividades económicas</h5>
 					<div class="row">
 						<div class="col-md-3 form-group">
 							<label>Código actividad principal <small class="text-muted">(RUT)</small></label>
