@@ -236,10 +236,13 @@ $sqlAct = "
 SELECT 
     da.*,
     ca.acc_Codigo,
-    ca.acc_Nombre
+    ca.acc_Nombre,
+    gt.gru_Nombre
 FROM ind_declaraciones_ica_actividades da
 INNER JOIN ind_actividadescomercio ca 
     ON ca.acc_Id = da.dia_IdActividad
+LEFT JOIN ind_grupotarifa gt
+    ON gt.gru_Id = ca.acc_GrupoTarifa
 WHERE da.dia_IdDeclaracion = ?
 ";
 
@@ -402,7 +405,17 @@ $d = [
     'mun_notif'   => 'DUITAMA',
     'num_estab'   => '1',
     */
-    'clasificacion' => 'SELECCIONE',
+    // Antes esta casilla imprimia el literal 'SELECCIONE' -el texto de relleno
+    // de un desplegable- dentro del formulario oficial. La clasificacion existe
+    // en el sistema, pero cuelga de la ACTIVIDAD (ind_actividadescomercio.
+    // acc_GrupoTarifa: Comercial, Industrial, Servicios, Servicio Financiero,
+    // Otros), no del contribuyente, asi que se toma la de su actividad
+    // PRINCIPAL, que es la primera.
+    //
+    // Si el contribuyente no tiene actividades, o su actividad no tiene grupo
+    // asignado, la casilla va VACIA. En un formulario tributario una casilla en
+    // blanco es "no aplica"; una que dice "SELECCIONE" es un error a la vista.
+    'clasificacion' => htmlspecialchars((string) ($actividades[0]['gru_Nombre'] ?? '')),
 
     'razon' => $row['ind_Persona'] == 1 ? $nombreCompleto : $row['est_Nombre'],
     'tipo_documento' => $tipoDocumento,
@@ -673,7 +686,7 @@ IMPUESTO DE INDUSTRIA Y COMERCIO
 
 ';
 $pdf->writeHTML($html, true, false, true, false, '');
-$ySecA_inicio = $pdf->GetY();
+$ySecA_inicio = $pdf->GetY() - DESFASE_GETY;
 
 $html = '
 <table border="1" cellpadding="2" width="100%">
@@ -1332,13 +1345,18 @@ contenido real en cuanto el texto de una fila cambiaba de tamaño
  * desaparecer el contenido posterior en silencio -es como se perdio el codigo
  * de barras la primera vez-.
  */
-$refD   = 246.04;                       // $ySecD_fin del render de referencia
-$tramo  = ($yBloque - $ySecD_fin) / (327 - $refD);   // real / referencia
+$refD = 246.04;   // $ySecD_fin del render de referencia
 
-$ySecE_inicio = $ySecD_fin + (245 - $refD) * $tramo;
-$ySecE_fin    = $ySecD_fin + (263 - $refD) * $tramo;
-$ySecF_inicio = $ySecD_fin + (277 - $refD) * $tramo;
-$ySecF_fin    = $yBloque;
+$ySecE_inicio = $ySecD_fin + (245 - $refD);
+$ySecE_fin    = $ySecD_fin + (263 - $refD);
+$ySecF_inicio = $ySecD_fin + (277 - $refD);
+
+// El final de F es el BORDE SUPERIOR del bloque del codigo de barras: ahi
+// termina la seccion de firmas. Antes se ponia en su borde INFERIOR
+// ($yBloque + $altoRotulo + $altoCodigo), de modo que la banda se extendia por
+// encima del codigo y el rotulo, al centrarse, caia dentro de esa zona. Es lo
+// que se veia como "F. FIRMAS corrido", y empeoro al crecer el bloque.
+$ySecF_fin = $yBloque;
 
 $x = 13;
 dibujarTextoVertical($pdf, 'A. INFORMACIÓN DEL CONTRIBUYENTE', $x, $ySecA_inicio, $ySecA_fin);
