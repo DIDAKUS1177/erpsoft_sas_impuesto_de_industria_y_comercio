@@ -667,7 +667,20 @@ $altoCodigo = 12.5;  // barras + linea legible debajo
 $contenidoBarras = \erpsoftsas\CodigoBarrasRecaudo::construir(
     $referencia_recaudo,
     $row['dec_ValorConcepto20'] ?? 0,
-    $fecha_max_presentacion ?: null
+    /*
+     * La fecha del segmento (96).
+     *
+     * Primero la "fecha maxima de presentacion" de la propia declaracion, que
+     * es el dato correcto. Hoy nadie la captura -en el formulario esa casilla
+     * sale en blanco, tambien en el ejemplo que mando el banco-, asi que cae
+     * al parametro RECAUDO_DIAS_VIGENCIA de conf_parametros.
+     *
+     * Si el parametro tambien esta vacio, construir() omite el segmento. Ver
+     * la nota de la migracion 009: el 96 no es un identificador estandar de
+     * GS1 y su significado lo tiene que confirmar el banco, asi que se
+     * prefiere no imprimirlo antes que imprimir una fecha equivocada.
+     */
+    $fecha_max_presentacion ?: \erpsoftsas\CodigoBarrasRecaudo::fechaVigencia()
 );
 if ($contenidoBarras === null) {
     $contenidoBarras = $referencia_recaudo;
@@ -717,7 +730,10 @@ if ($estaPresentada) {
         \erpsoftsas\CodigoBarrasRecaudo::textoLegible(
             $referencia_recaudo,
             $row['dec_ValorConcepto20'] ?? 0,
-            $fecha_max_presentacion ?: null
+            // La misma fecha que va dentro del codigo (ver nota arriba): el
+            // texto legible tiene que decir EXACTAMENTE lo que codifican las
+            // barras, o el cajero ve una cosa y el escaner lee otra.
+            $fecha_max_presentacion ?: \erpsoftsas\CodigoBarrasRecaudo::fechaVigencia()
         ),
         0, 0, 'C'
     );

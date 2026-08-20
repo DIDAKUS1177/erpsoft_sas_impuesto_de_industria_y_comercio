@@ -348,12 +348,28 @@ número de declaración pelado — que se ve bien pero **no es pagable en
 banco**. Ese es el estado por defecto a propósito: no dar por funcional un
 recaudo que el banco no ha certificado.
 
+**El EAN ya llegó** (2026-08-20): `7709998161047`, entregado por Javier de la
+Alcaldía dentro de un formulario real de Paipa con su código impreso. Se
+comprobó que nuestra cadena sale **idéntica carácter por carácter** a la suya.
+
+Ya NO vive en la constante sino en `conf_parametros` (clave `RECAUDO_EAN`,
+migración 009), porque lo pidió así: *«se debe configurar en una tabla para
+poderlo cambiar en caso que sea necesario, cada entidad tiene su propio EAN»*.
+`MUNICIPIO_EAN_RECAUDO` se conserva como respaldo para instalaciones sin la
+migración.
+
 Pendiente antes de anunciarlo como funcional:
-- El EAN de ICA es **distinto** al de predial (confirmado con el cliente el
-  2026-08-12). Hay que pedírselo al banco.
-- El formato de la fecha del AI 96 no está confirmado (96 no es un AI
-  estándar de GS1, es de uso interno); se asume AAAAMMDD. Hoy el segmento se
-  omite porque ICA todavía no captura la fecha límite.
+- **El AI 96 sigue sin confirmar.** El ejemplo del banco lo trae
+  (`(96)20260820`), pero 96 no es un AI estándar de GS1 —es de uso interno— y
+  en su muestra coincide con el día en que se generó el PDF, así que admite dos
+  lecturas: fecha de vencimiento o fecha de generación. Se dejó gobernado por
+  el parámetro `RECAUDO_DIAS_VIGENCIA`: vacío omite el segmento (así se
+  entrega), `0` imprime la fecha de hoy, `N` imprime hoy + N días. Cuando el
+  banco responda es cambiar una fila, sin desplegar.
+- La casilla «fecha máxima de presentación» del formulario **nunca se captura**
+  (`'fecha_max' => ''` en `declaracion.php`). También sale vacía en el
+  formulario de referencia del banco. El parámetro de arriba es el puente
+  mientras eso siga así.
 - Falta la certificación del banco: imprimir un PDF de prueba y confirmar
   que el escáner de ventanilla lo lee.
 
