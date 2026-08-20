@@ -188,6 +188,40 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', 'vendors/
 			width: 18px;
 			height: 18px;
 		}
+		/* ------------------------------------------------------------------
+		   Boton de "ver contraseña".
+		
+		   Sirve para lo de siempre: el usuario escribe la clave, se equivoca en
+		   un caracter y no tiene forma de saber cual. Especialmente con claves
+		   dictadas por telefono, que es como llegan aqui.
+		
+		   Va DENTRO del input-wrapper, a la derecha, sin robarle sitio al texto:
+		   por eso el input de contraseña lleva padding extra a la derecha.
+		   ------------------------------------------------------------------ */
+		.toggle-clave {
+			position: absolute;
+			right: 0.5rem;
+			background: none;
+			border: none;
+			padding: 0.4rem;
+			cursor: pointer;
+			color: var(--text-muted);
+			display: flex;
+			align-items: center;
+			border-radius: 6px;
+			transition: var(--transition-smooth);
+		}
+		.toggle-clave:hover { color: var(--primary-color, #1fa49d); }
+		/* El foco tiene que verse: se navega con teclado. */
+		.toggle-clave:focus-visible {
+			outline: 2px solid var(--primary-color, #1fa49d);
+			outline-offset: 1px;
+		}
+		.toggle-clave svg { width: 18px; height: 18px; }
+		/* Sitio para el boton, para que la clave no le pase por debajo. */
+		input[type="password"].form-control-custom,
+		input[type="text"].form-control-custom.es-clave { padding-right: 2.75rem; }
+
 		.form-control-custom {
 			width: 100%;
 			padding: 0.85rem 1rem 0.85rem 2.75rem;
@@ -352,7 +386,14 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', 'vendors/
 								<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
 								<path d="M7 11V7a5 5 0 0 1 10 0v4"/>
 							</svg>
-							<input type="password" class="form-control-custom" id="password" placeholder="••••••••••••" required>
+							<input type="password" class="form-control-custom es-clave" id="password" placeholder="••••••••••••" required>
+							<button type="button" class="toggle-clave" data-clave="password"
+							        aria-label="Mostrar contraseña" title="Mostrar contraseña">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+									<circle cx="12" cy="12" r="3"/>
+								</svg>
+							</button>
 						</div>
 					</div>
 
@@ -477,7 +518,21 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', 'vendors/
 						</div>	
 						<div class="form-group col-md-4">
 							<label>* Clave</label>
-							<input type="password" class="form-control" id="usu_Clave" required>
+							<!-- Mismo boton que en el login. Aqui pesa mas todavia: este campo
+							     exige mayuscula, minuscula, numero y 8 caracteres, y sin poder
+							     ver lo escrito la gente pelea a ciegas con la lista de
+							     requisitos de al lado. -->
+							<div style="position:relative; display:flex; align-items:center;">
+								<input type="password" class="form-control" id="usu_Clave" required
+								       style="padding-right:2.6rem;">
+								<button type="button" class="toggle-clave" data-clave="usu_Clave"
+								        aria-label="Mostrar contraseña" title="Mostrar contraseña">
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+										<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+										<circle cx="12" cy="12" r="3"/>
+									</svg>
+								</button>
+							</div>
 						</div>	
 						<div class="form-group col-md-4" id="passwordHelp" class="mt-2" style="font-size: 13px;">
 							<div id="req-length" class="text-danger">• Mínimo 8 caracteres</div>
@@ -558,5 +613,58 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', 'vendors/
 	
 	<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 
+<script>
+/* --------------------------------------------------------------------------
+   Ver / ocultar la contraseña.
+
+   Un solo manejador delegado para todos los botones con .toggle-clave, asi
+   sirve igual si mañana se agrega en otro formulario: basta el boton con su
+   data-clave apuntando al id del input.
+
+   Detalles que importan:
+   - Se conserva la posicion del cursor. Sin esto, al mostrar la clave el
+     cursor salta al final y quien estaba corrigiendo el tercer caracter
+     pierde el sitio.
+   - Cambian el aria-label y el title, no solo el icono: quien usa lector de
+     pantalla necesita saber en que estado quedo.
+   - Se vuelve a ocultar al enviar el formulario, para que la clave no quede
+     a la vista en la pantalla si la peticion tarda.
+   -------------------------------------------------------------------------- */
+(function () {
+	var OJO_ABIERTO = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+	var OJO_TACHADO = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+
+	function alternar(boton) {
+		var input = document.getElementById(boton.getAttribute('data-clave'));
+		if (!input) { return; }
+
+		var mostrando = input.type === 'text';
+		var ini = input.selectionStart, fin = input.selectionEnd;
+
+		input.type = mostrando ? 'password' : 'text';
+		boton.querySelector('svg').innerHTML = mostrando ? OJO_ABIERTO : OJO_TACHADO;
+
+		var etiqueta = mostrando ? 'Mostrar contraseña' : 'Ocultar contraseña';
+		boton.setAttribute('aria-label', etiqueta);
+		boton.setAttribute('title', etiqueta);
+
+		// Cambiar el type mueve el cursor al final; se devuelve donde estaba.
+		input.focus();
+		try { input.setSelectionRange(ini, fin); } catch (e) { /* algunos navegadores no dejan */ }
+	}
+
+	document.addEventListener('click', function (e) {
+		var boton = e.target.closest ? e.target.closest('.toggle-clave') : null;
+		if (boton) { alternar(boton); }
+	});
+
+	document.addEventListener('submit', function () {
+		document.querySelectorAll('.toggle-clave').forEach(function (b) {
+			var i = document.getElementById(b.getAttribute('data-clave'));
+			if (i && i.type === 'text') { alternar(b); }
+		});
+	}, true);
+})();
+</script>
 </body>
 </html>
