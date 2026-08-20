@@ -385,18 +385,51 @@
      mas abajo y sale del catalogo del municipio. Estas tres casillas son
      texto libre con lo que dice el RUT de la DIAN. -->
 					<h5 class="mb-3" style="font-weight:600;">Información del RUT - Códigos CIIU Actividades económicas</h5>
+					<!-- Reunion 2026-08-20, Jennifer (Alcaldia):
+					     "que el codigo de la actividad principal sea de caracter
+					      obligatorio (...) y que solamente se puedan diligenciar
+					      numeros, porque ahi me deja escribir letras (...) y que sea
+					      obligatorio de cuatro digitos, porque puede ser que la gente
+					      se confunda con nuestro estatuto, que los codigos tienen tres
+					      numeros, pero ahi es lo de la DIAN, que son cuatro"
+
+					     Tenia razon en las tres cosas, y los datos lo confirman: el
+					     catalogo del municipio son 69 actividades de TRES digitos, y en
+					     estas casillas habia guardado un "wer" y varios "1", "2", "3"
+					     -4 de 7 valores invalidos-.
+
+					     Son dos numeraciones distintas que se parecen lo suficiente para
+					     confundirse:
+					       - 3 digitos = actividad del acuerdo municipal (la que liquida)
+					       - 4 digitos = CIIU de la DIAN (la que va aqui)
+
+					     Por eso el aviso: no basta con rechazar el dato, hay que decir
+					     por que, o la persona vuelve a escribir el de tres. -->
+					<div class="alert alert-light border mb-3" style="font-size:13px;">
+						<i class="fa fa-info-circle text-muted"></i>
+						Estos son los códigos <b>CIIU de la DIAN</b>, de <b>cuatro dígitos</b>.
+						No confundir con los códigos del acuerdo municipal, que son de tres
+						y se eligen en la tabla de actividades económicas de abajo.
+					</div>
+
 					<div class="row">
 						<div class="col-md-3 form-group">
-							<label>Código actividad principal <small class="text-muted">(RUT)</small></label>
-							<input type="text" class="form-control" name="ind_Rut" id="rit_ind_Rut" maxlength="6">
+							<label>Código actividad principal <small class="text-muted">(RUT)</small> <span class="text-danger">*</span></label>
+							<input type="text" class="form-control" name="ind_Rut" id="rit_ind_Rut"
+							       inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required
+							       placeholder="0000" title="Cuatro dígitos del código CIIU de la DIAN">
 						</div>
 						<div class="col-md-3 form-group">
 							<label>Código actividad secundaria</label>
-							<input type="text" class="form-control" name="ind_Rut_segundo" id="rit_ind_Rut_segundo" maxlength="6">
+							<input type="text" class="form-control" name="ind_Rut_segundo" id="rit_ind_Rut_segundo"
+							       inputmode="numeric" pattern="[0-9]{4}" maxlength="4"
+							       placeholder="0000" title="Cuatro dígitos, o déjelo vacío">
 						</div>
 						<div class="col-md-3 form-group">
 							<label>Otra actividad</label>
-							<input type="text" class="form-control" name="ind_Rut_tercero" id="rit_ind_Rut_tercero" maxlength="6">
+							<input type="text" class="form-control" name="ind_Rut_tercero" id="rit_ind_Rut_tercero"
+							       inputmode="numeric" pattern="[0-9]{4}" maxlength="4"
+							       placeholder="0000" title="Cuatro dígitos, o déjelo vacío">
 						</div>
 					</div>
 

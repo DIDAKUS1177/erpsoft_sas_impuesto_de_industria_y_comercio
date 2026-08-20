@@ -2319,7 +2319,54 @@ actualizarDeclaracionIca(valor, numeroCampo){
         });
     }
 
+    /**
+     * Los tres codigos CIIU del RUT: obligatorio el principal, y los tres de
+     * cuatro digitos numericos.
+     *
+     * El servidor lo valida igual (_validarCodigosCiiu); esto es para avisar
+     * antes de enviar y, sobre todo, para explicar el 3-contra-4. Quien mete
+     * un codigo de tres no se equivoco de tecla: confundio la numeracion del
+     * acuerdo municipal con la CIIU de la DIAN.
+     *
+     * Devuelve null si todo bien, o el mensaje.
+     */
+    validarCodigosCiiu() {
+        var campos = [
+            ['rit_ind_Rut',         'Código de actividad principal', true],
+            ['rit_ind_Rut_segundo', 'Código de actividad secundaria', false],
+            ['rit_ind_Rut_tercero', 'Código de otra actividad',       false]
+        ];
+
+        for (var i = 0; i < campos.length; i++) {
+            var id = campos[i][0], rotulo = campos[i][1], obligatorio = campos[i][2];
+            var v = ($('#' + id).val() || '').trim();
+
+            if (v === '') {
+                if (obligatorio) {
+                    return rotulo + ' es obligatorio. Son los cuatro dígitos del código CIIU de la DIAN.';
+                }
+                continue;
+            }
+            if (!/^[0-9]+$/.test(v)) {
+                return rotulo + ' solo admite números.';
+            }
+            if (v.length !== 4) {
+                return rotulo + ' debe tener exactamente 4 dígitos. ' +
+                       'Recuerde: el CIIU de la DIAN es de 4 dígitos. Los códigos del acuerdo ' +
+                       'municipal son de 3 y se eligen en la tabla de actividades económicas.';
+            }
+        }
+        return null;
+    }
+
     guardarRIT() {
+
+        var errorCiiu = this.validarCodigosCiiu();
+        if (errorCiiu) {
+            swal({ type: 'warning', title: 'Revise los códigos del RUT', text: errorCiiu });
+            $('#rit_ind_Rut').focus();
+            return;
+        }
 
         var $boton = $('#btnGuardarRIT');
         $boton.prop('disabled', true);

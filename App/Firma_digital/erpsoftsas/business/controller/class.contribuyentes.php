@@ -437,6 +437,57 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
      * atada a un documento distinto del que la firmo. Se cambian por el
      * camino de siempre (funcion 2, solo administrador).
      */
+    /**
+     * Valida los tres codigos CIIU del RUT.
+     *
+     * Devuelve null si estan bien, o el mensaje de rechazo. El mensaje dice
+     * SIEMPRE de que numeracion se trata: rechazar un "103" con un escueto
+     * "debe tener 4 digitos" hace que la persona cuente los digitos y vuelva a
+     * escribir otro codigo municipal.
+     */
+    private static function _validarCodigosCiiu()
+    {
+        $campos = [
+            'ind_Rut'          => ['Código de actividad principal', true],
+            'ind_Rut_segundo'  => ['Código de actividad secundaria', false],
+            'ind_Rut_tercero'  => ['Código de otra actividad',       false],
+        ];
+
+        foreach ($campos as $campo => list($rotulo, $obligatorio)) {
+            // No enviado: se deja como esta (no se toca lo ya guardado).
+            if (!isset($_POST[$campo])) {
+                if ($obligatorio) {
+                    return $rotulo . ' es obligatorio: son los cuatro dígitos del código CIIU de la DIAN.';
+                }
+                continue;
+            }
+
+            $v = trim((string) $_POST[$campo]);
+
+            if ($v === '') {
+                if ($obligatorio) {
+                    return $rotulo . ' es obligatorio: son los cuatro dígitos del código CIIU de la DIAN.';
+                }
+                $_POST[$campo] = '';
+                continue;
+            }
+
+            if (!ctype_digit($v)) {
+                return $rotulo . ' solo admite números. Es el código CIIU de la DIAN, de cuatro dígitos.';
+            }
+
+            if (strlen($v) !== 4) {
+                return $rotulo . ' debe tener exactamente 4 dígitos. Recuerde que el CIIU de la DIAN '
+                     . 'es de 4; los códigos del acuerdo municipal, que son de 3, se eligen en la '
+                     . 'tabla de actividades económicas.';
+            }
+
+            $_POST[$campo] = $v;
+        }
+
+        return null;
+    }
+
     private static function _camposRIT()
     {
         return [
@@ -714,6 +765,28 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         if (empty($_POST['ind_Autorizacion'])) {
             $this->_ok = 0;
             $this->_mensaje = 'Debe autorizar la notificación electrónica para actualizar el RIT.';
+            return [];
+        }
+
+        /*
+         * Codigos CIIU del RUT: cuatro digitos, y el principal obligatorio.
+         *
+         * Lo pidio Jennifer (Alcaldia) el 2026-08-20 y la base le da la razon:
+         * estas casillas tenian guardado un "wer" y varios "1", "2", "3".
+         *
+         * El motivo de fondo no es la higiene del dato, es una confusion real
+         * entre dos numeraciones parecidas: las actividades del acuerdo
+         * municipal -las que liquidan el impuesto- son de TRES digitos, y los
+         * CIIU de la DIAN, que son los que van aqui, de CUATRO. Quien escribe
+         * el de tres no se equivoca de tecla: se equivoca de tabla.
+         *
+         * Se valida aqui y no solo en el formulario porque un pattern de HTML
+         * se salta desde la consola del navegador.
+         */
+        $errorCiiu = self::_validarCodigosCiiu();
+        if ($errorCiiu !== null) {
+            $this->_ok = 0;
+            $this->_mensaje = $errorCiiu;
             return [];
         }
         // puedeOperarSobreContribuyente() ya verifica existencia para
