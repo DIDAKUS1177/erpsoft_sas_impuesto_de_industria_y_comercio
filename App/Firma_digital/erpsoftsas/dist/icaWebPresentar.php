@@ -618,12 +618,10 @@ Guardar
                                     </select>
                                 </div>
 
-                                <!-- FECHA LÍMITE -->
-                                <div class="col-sm-3">
-                                    <label>Fecha Límite Para Cálculo de Intereses</label>
-                                    <input type="date" id="fechaLimiteInteres" class="form-control input-sm">
-                                </div>
-
+                                <!-- Punto 10 de la revision del 2026-08-21: se quita "Fecha Limite
+                                     Para Calculo de Intereses". El cliente no la usa; el interes de
+                                     mora se liquida en su propio renglon del formulario.
+                                     La columna en base NO se toca, solo deja de pedirse. -->
                                 <!-- DECLARACIÓN QUE CORRIGE -->
                                 <div class="col-sm-3" id="grupoDeclaracionCorrige">
                                     <label>Declaración que corrige</label>
@@ -901,9 +899,21 @@ data-campo="sanciones" value="0">
                             <td>
                                 <b>SANCIONES</b><br>
 
-                                <input type="checkbox" id="chkSanciones"> Activar sanciones
+                                <!-- Punto 15 de la revision del 2026-08-21: "Quitar activar
+                                     sanciones y colocar directamente las opciones de la sancion".
 
-                                <div id="boxSanciones" style="display:none; margin-top:8px;">
+                                     La casilla "Activar sanciones" era un paso de mas: para marcar
+                                     una sancion habia que marcar primero una casilla y despues el
+                                     tipo. Ahora las opciones estan a la vista y basta elegir una.
+
+                                     Se agrega "Ninguna" marcada por defecto, porque sin ella no
+                                     habria forma de DESmarcar una sancion elegida por error: los
+                                     radios no se pueden desmarcar entre si. -->
+                                <div id="boxSanciones" style="margin-top:8px;">
+
+                                    <div>
+                                        <input type="radio" name="tipoSancion" value="" id="chkSinSancion" checked> Ninguna
+                                    </div>
 
                                     <div>
                                         <input type="radio" name="tipoSancion" value="extemporaneidad"> Extemporaneidad

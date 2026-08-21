@@ -186,7 +186,7 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 				     de primer nivel en la Fase 4, no aparecian para el usuario
 				     externo aunque su rol SI tuviera los permisos 1641 y 1640. -->
 				<li class="dropdown menu_1641" id="MRIT">
-					<a id="ICAWeb_RIT" onclick="menu.validarIngreso(1641,101)" class="dropdown-toggle no-arrow" style="cursor:pointer;" title="Registro de Identificación Tributaria">
+					<a id="ICAWeb_RIT" onclick="menu.validarIngreso(1641,101)" class="dropdown-toggle no-arrow" style="cursor:pointer;" title="Registro de Información Tributaria">
 						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="7" y1="16" x2="13" y2="16"/></svg></span>
 						<!-- El nombre completo no cabe en el ancho del menu lateral y se
 						     veia cortado a la mitad ("Registro de Identificación Tri...").

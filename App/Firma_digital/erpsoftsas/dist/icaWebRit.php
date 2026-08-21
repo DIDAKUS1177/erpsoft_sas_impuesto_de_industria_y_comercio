@@ -65,7 +65,10 @@
 				     todo el formulario antes de poder guardar. -->
 				<div class="pd-20 d-flex justify-content-between align-items-center flex-wrap" style="gap:10px;">
 					<div>
-						<h4 class="h4 mb-0">Registro de Identificación Tributaria</h4>
+						<!-- Punto 1 de la revision del 2026-08-21. No es cosmetico: RIT son las
+					     siglas de Registro de INFORMACION Tributaria. "Identificacion" era
+					     sencillamente incorrecto. -->
+						<h4 class="h4 mb-0">Registro de Información Tributaria</h4>
 						<small class="text-muted" id="ritEstadoCarga">Cargando…</small>
 					</div>
 					<!-- Reunion 2026-08-19. El RIT tiene dos estados y la barra cambia
@@ -108,11 +111,18 @@
 				<!-- Aviso de que actualizar el RIT es obligatorio. Sale solo mientras
 				     NO haya firma vigente; en cuanto se firma, estorba. -->
 				<div id="ritAvisoObligatorio" class="pd-20 pt-0" style="display:none;">
+					<!-- Puntos 2 y 3 de la revision del 2026-08-21. El cliente dicto el
+					     texto: hablar de "actualizacion del Registro de Informacion
+					     Tributaria RIT para poder continuar con su tramite", y cambiar lo
+					     de "saldra marcado SIN FIRMAR" por "no estara formalizado", que es
+					     el termino que ellos usan. -->
 					<div class="alert alert-warning mb-0" style="border-left:4px solid #d39e00;">
-						<b><i class="fa fa-exclamation-triangle"></i> Debe actualizar y firmar su RIT.</b><br>
+						<b><i class="fa fa-exclamation-triangle"></i> Actualización requerida</b><br>
 						<span style="font-size:13px;">
-							Diligencie la información, guárdela y fírmela. Mientras no esté firmado,
-							el formulario que descargue saldrá marcado <b>SIN FIRMAR</b>.
+							Se requiere realizar la actualización del Registro de Información
+							Tributaria RIT para poder continuar con su trámite.
+							Diligencie la información, guárdela y fírmela.
+							Mientras no esté firmado, su formulario RIT no estará formalizado.
 							La inscripción o actualización del RIT está establecida en el estatuto
 							tributario, así como las sanciones por no realizarla oportunamente.
 						</span>
@@ -306,7 +316,10 @@
 					</div>
 
 					<hr>
-					<h5 class="mb-3" style="font-weight:600;">Representante legal</h5>
+					<!-- Punto 4 de la revision del 2026-08-21: no todo contribuyente tiene
+					     representante legal. Una persona natural es propietaria, no
+					     representante de si misma. -->
+					<h5 class="mb-3" style="font-weight:600;">Representante Legal o propietario</h5>
 					<div class="row">
 						<div class="col-md-3 form-group">
 							<label>Cédula</label>
@@ -385,34 +398,16 @@
      mas abajo y sale del catalogo del municipio. Estas tres casillas son
      texto libre con lo que dice el RUT de la DIAN. -->
 					<h5 class="mb-3" style="font-weight:600;">Información del RUT - Códigos CIIU Actividades económicas</h5>
-					<!-- Reunion 2026-08-20, Jennifer (Alcaldia):
-					     "que el codigo de la actividad principal sea de caracter
-					      obligatorio (...) y que solamente se puedan diligenciar
-					      numeros, porque ahi me deja escribir letras (...) y que sea
-					      obligatorio de cuatro digitos, porque puede ser que la gente
-					      se confunda con nuestro estatuto, que los codigos tienen tres
-					      numeros, pero ahi es lo de la DIAN, que son cuatro"
+					<!-- Punto 5 de la revision del 2026-08-21: el cliente pidio quitar el aviso
+					     que explicaba la diferencia entre los codigos de tres digitos del
+					     acuerdo municipal y los CIIU de cuatro de la DIAN.
 
-					     Tenia razon en las tres cosas, y los datos lo confirman: el
-					     catalogo del municipio son 69 actividades de TRES digitos, y en
-					     estas casillas habia guardado un "wer" y varios "1", "2", "3"
-					     -4 de 7 valores invalidos-.
-
-					     Son dos numeraciones distintas que se parecen lo suficiente para
-					     confundirse:
-					       - 3 digitos = actividad del acuerdo municipal (la que liquida)
-					       - 4 digitos = CIIU de la DIAN (la que va aqui)
-
-					     Por eso el aviso: no basta con rechazar el dato, hay que decir
-					     por que, o la persona vuelve a escribir el de tres. -->
-					<div class="alert alert-light border mb-3" style="font-size:13px;">
-						<i class="fa fa-info-circle text-muted"></i>
-						Estos son los códigos <b>CIIU de la DIAN</b>, de <b>cuatro dígitos</b>.
-						No confundir con los códigos del acuerdo municipal, que son de tres
-						y se eligen en la tabla de actividades económicas de abajo.
-					</div>
-
-					<div class="row">
+					     La VALIDACION se queda (obligatorio, solo numeros, 4 digitos): eso lo
+					     pidio Jennifer el 2026-08-20 y sigue vigente. Lo que se retira es el
+					     texto explicativo. El mensaje de error que sale al escribir un codigo
+					     de tres digitos SI sigue explicando la diferencia, que es donde de
+					     verdad hace falta. -->
+										<div class="row">
 						<div class="col-md-3 form-group">
 							<label>Código actividad principal <small class="text-muted">(RUT)</small> <span class="text-danger">*</span></label>
 							<input type="text" class="form-control" name="ind_Rut" id="rit_ind_Rut"

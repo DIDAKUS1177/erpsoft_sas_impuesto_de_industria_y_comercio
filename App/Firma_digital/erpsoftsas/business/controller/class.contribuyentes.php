@@ -414,7 +414,7 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
     }
 
     /* ======================================================================
-       RIT (Registro de Identificacion Tributaria) del contribuyente
+       RIT (Registro de Informacion Tributaria) del contribuyente
        ----------------------------------------------------------------------
        El RIT no es un registro aparte: es el propio contribuyente. Hasta la
        migracion 003 sus datos -matricula, representante legal, contador y

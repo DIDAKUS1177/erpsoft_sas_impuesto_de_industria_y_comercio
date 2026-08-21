@@ -848,7 +848,9 @@ est_NoResolucion: $("#est_NoResolucion").val(),
             $("#periodoDeclaracion").val(12);
 
             $("#fechaDeclaracion").val(fechaActual);
-            $("#fechaLimiteInteres").val(fechaActual);
+            // El campo "Fecha Limite Para Calculo de Intereses" se retiro (punto 10
+            // de la revision del 2026-08-21). .val() sobre un elemento inexistente
+            // no rompe nada, pero se quita para no dejar codigo que apunta al vacio.
 
             $("#horaDeclaracion").val(horaActual);
 
@@ -1646,7 +1648,12 @@ liquidarDeclaracion() {
             return;
         }
 
-        var archivos = $('#anexoArchivo')[0].files;
+        // Sin el input en pantalla, $(...)[0] es undefined y .files lanzaria
+        // TypeError. No deberia llamarse nunca -el boton ya no existe- pero
+        // dejarlo sin guarda es dejar una mina.
+        var $inputArchivo = $('#anexoArchivo');
+        if ($inputArchivo.length === 0) { return; }
+        var archivos = $inputArchivo[0].files;
         if (!archivos.length) {
             swal({ type: 'info', title: 'No eligió ningún archivo' });
             return;
@@ -1709,6 +1716,11 @@ liquidarDeclaracion() {
 
     /** Punto 17: ver lo que ya esta cargado, no solo poder cargar. */
     listarAnexos(idEstablecimiento) {
+        // Punto 14 de la revision del 2026-08-21: el bloque de documentos se
+        // retiro del formulario de establecimiento. Si la tabla no esta en la
+        // pantalla no hay nada que pintar, y pedirlo seria una peticion al vacio.
+        if ($('#tbodyAnexos').length === 0) { return; }
+
 
         if (!idEstablecimiento) {
             $('#tbodyAnexos').html(

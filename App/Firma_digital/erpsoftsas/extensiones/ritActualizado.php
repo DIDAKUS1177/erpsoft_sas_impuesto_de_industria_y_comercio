@@ -310,7 +310,11 @@ $d = [
 // leia pero no se usaba para marcar ninguna.
 'causal' => trim((string) $row['est_Causal']),
 
-'resolucion_cese' => $esc($row['est_Resolucion_cierre'])
+'resolucion_cese' => $esc($row['est_Resolucion_cierre']),
+
+// Punto 12: la observacion del cese se captura desde hace dias pero no se
+// imprimia en ninguna parte.
+'observacion_cese' => $esc((string) ($row['est_Observacion_cierre'] ?? '')),
 
 ];
 
@@ -547,11 +551,12 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 <td width="3%">'.($d['persona_hecho'] ? 'X' : '').'</td>
 </tr>
 
+<!-- Punto 6 de la revision del 2026-08-21: se quita "Nombre Comercial" porque
+     no existe en el formulario oficial del RIT. La razon social pasa a ocupar el
+     ancho que quedaba. El dato en la base NO se toca; solo deja de imprimirse. -->
 <tr>
 <td width="25%"><b>6. Apellidos y Nombres ó Razón Social</b></td>
-<td width="25%">'.$d['razon'].'</td>
-<td width="20%"><b>7. Nombre Comercial</b></td>
-<td width="30%">'.$d['nombre_comercial'].'</td>
+<td width="75%">'.$d['razon'].'</td>
 </tr>
 
 <tr>
@@ -598,7 +603,8 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 </tr>
 
 <tr>
-<td width="40%"><b>15. Número de Matricula Mercantil del Contribuyente:</b></td>
+<!-- Punto 7: el cliente pidio dejarlo en "Numero de matricula mercantil". -->
+<td width="40%"><b>15. Número de matrícula mercantil:</b></td>
 <td width="10%">'.$d['matricula'].'</td>
 <td width="39%"><b>16. Fecha de la Matricula mercantil:</b></td>
 <td width="11%">'.$d['fecha_matricula'].'</td>
@@ -612,18 +618,20 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 
 '.$actividadesHtml.'
 
-<tr>
-<td class="titulo" width="100%">Establecimientos del Contribuyente</td>
-</tr>
+<!-- Punto 13 de la revision del 2026-08-21: "Quitar establecimientos del
+     contribuyente".
 
-<tr>
-<td width="34%"><b>Nombre</b></td>
-<td width="16%"><b>Matrícula</b></td>
-<td width="34%"><b>Dirección</b></td>
-<td width="16%"><b>Fecha inicio</b></td>
-</tr>
+     OJO, esto REVIERTE el punto 19 de la lista escrita anterior, que pedia
+     justamente incluir nombre, matricula, direccion y fecha de inicio de cada
+     establecimiento en el certificado. Por eso el 2026-08-20 se devolvieron al
+     formulario de establecimientos las casillas de matricula y fecha de inicio.
 
-'.$establecimientosHtml.'
+     Esas dos casillas se DEJAN donde estan: siguen siendo datos utiles del
+     local aunque ya no se impriman aqui. Si el cliente confirma que tampoco las
+     quiere capturar, se retiran en otro paso.
+
+     La consulta que arma $establecimientosHtml se conserva mas arriba; solo
+     deja de pintarse. -->
 
 <tr>
 <td width="15%"><b>19. Fecha inicio actividades</b></td>
@@ -674,9 +682,18 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 <td width="100%">D. CESE DE ACTIVIDADES</td>
 </tr>
 
+<!-- Punto 12 de la revision del 2026-08-21: "Solamente las casillas Fecha cese
+     de actividades, causal y observacion".
+
+     Se retira la casilla 29 ("Numero de Establecimiento que clausura"): el cese
+     que se declara aqui es el del CONTRIBUYENTE, y cerrar un local concreto pasa
+     a manejarse desde el estado del registro del establecimiento.
+
+     Se agrega Observacion, que estaba en la pantalla pero no se imprimia -o sea
+     que el funcionario escribia algo que nadie volvia a ver-. -->
 <tr>
 <td width="15%"><b>27. Fecha de cese actividades:</b></td>
-<td width="9%">'.$d['fecha_cese'].'</td>
+<td width="12%">'.$d['fecha_cese'].'</td>
 <td width="10%"><b>28. Causal:</b></td>
 <td width="7%">Fusión</td>
 <td width="3%">'.($d['causal'] === '1' ? 'X' : '').'</td>
@@ -686,8 +703,12 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 <td width="3%">'.($d['causal'] === '3' ? 'X' : '').'</td>
 <td width="5%">Otro</td>
 <td width="3%">'.($d['causal'] === '4' ? 'X' : '').'</td>
-<td width="19%"><b>29. Número de Establecimiento que clausura</b></td>
-<td width="5%">'.($d['fecha_cese'] !== '' ? $esc($idEstablecimiento) : '').'</td>
+<td width="17%"></td>
+</tr>
+
+<tr>
+<td width="15%"><b>29. Observación:</b></td>
+<td width="85%">'.$d['observacion_cese'].'</td>
 </tr>
 
 </table>
@@ -730,7 +751,7 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 -->
 <tr>
 <td width="50%">
-<div align="left"><b>30. Contribuyente o Representante Legal</b></div>
+<div align="left"><b>30. Contribuyente, Representante Legal o propietario</b></div>
 <div align="center">'.
 ($firmaRit
     /* Mismo sello que usan las declaraciones. Sin canal alfa por lo dicho
@@ -748,8 +769,10 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 </td>
 </tr>
 
+<!-- Punto 8: "Representante Legal o propietario". Una persona natural no es
+     representante de si misma, es propietaria. -->
 <tr>
-<td width="50%"><b>NOMBRE </b> '.$d['representante'].'</td>
+<td width="50%"><b>NOMBRE (Representante Legal o propietario) </b> '.$d['representante'].'</td>
 <td width="50%"><b>NOMBRE </b> '.$d['nombre_funcionario'].' </td>
 </tr>
 

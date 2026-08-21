@@ -1690,11 +1690,20 @@ actualizarDeclaracionIca(valor, numeroCampo){
 
             $('[data-campo="total_a_pagar"]').val(establecimientos.formatearCOP(establecimientos.limpiarEntero(d.dec_ValorConcepto20)));
 
-            swal({
-                type: 'success',
-                title: 'Liquidación Actualizada',
-                text: 'Campos Actualizados'
-            });
+            /*
+             * Punto 16 de la revision del 2026-08-21: "Que no salga este aviso cada
+             * que se modifica una casilla".
+             *
+             * Esto se dispara al salir de CADA renglon de la liquidacion, asi que
+             * llenar el formulario significaba cerrar la ventanita quince veces. El
+             * usuario ya ve el resultado: los totales de la pantalla se actualizan
+             * solos delante de el.
+             *
+             * No se reemplaza por nada silencioso a proposito -no hace falta avisar
+             * de algo que se ve-. Lo que SI se conserva es el aviso de error: si el
+             * recalculo falla hay que decirlo, y de eso se encarga el manejador de
+             * error del propio .ajax().
+             */
 
 
 

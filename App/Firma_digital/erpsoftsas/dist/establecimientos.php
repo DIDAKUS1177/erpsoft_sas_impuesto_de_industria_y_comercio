@@ -177,12 +177,14 @@
 <input type="hidden" id="est_IdContribuyente" name="est_IdContribuyente">
 
 <div class="col-md-4">
-<label>Nombre</label>
+<!-- Punto 9 de la revision del 2026-08-21: decir de que son el nombre y la
+     direccion, que en esta pantalla conviven con los del contribuyente. -->
+<label>Nombre del establecimiento</label>
 <input type="text" class="form-control" id="est_Nombre" name="est_Nombre" required>
 </div>
 
 <div class="col-md-4">
-<label>Dirección</label>
+<label>Dirección del establecimiento</label>
 <input type="text" class="form-control" id="est_Direccion" name="est_Direccion" required> 
 </div>
 
@@ -327,62 +329,20 @@
 <!-- ===================== REPRESENTANTE LEGAL ===================== -->
 <!-- ===================== INFORMACIÓN TRIBUTARIA ===================== -->
 <!-- ===================== CONTADOR Y REVISOR ===================== -->
-<!-- ===================== DOCUMENTOS ===================== -->
-<div class="bloque-form">
-<div class="titulo-bloque">Documentos Adjuntos</div>
-<div class="row">
+<!-- Punto 14 de la revision del 2026-08-21: "Sin documentos adjuntos en la
+     inscripcion o actualizacion del establecimiento".
 
-<!-- Antes habia cuatro <input type="file"> sueltos (est_Pdf1..4) que no
-     subian nada: el JS que los leia estaba dentro de un bloque comentado y el
-     controlador no tenia $_FILES. Ahora se sube de verdad, contra
-     class.anexos.php, y sobre todo se puede VER lo ya cargado, que es lo que
-     pidio el cliente (punto 17). La carga es aparte del guardado del
-     formulario: el establecimiento tiene que existir para colgarle archivos. -->
+     Los documentos suben al RIT, no al establecimiento. Tiene sentido: el RUT,
+     la camara de comercio y la cedula son del CONTRIBUYENTE, no de cada local,
+     y pedirlos en cada establecimiento los hacia repetir.
 
-<div class="col-md-4">
-<label>Tipo de documento</label>
-<select class="form-control" id="anexoTipo">
-    <option value="rut">RUT</option>
-    <option value="camara">Cámara de Comercio o Acta de Constitución</option>
-    <option value="cedula">Cédula</option>
-    <option value="usosuelo">Uso de Suelos</option>
-    <option value="cese">Soporte de cese</option>
-    <option value="otro">Otro</option>
-</select>
-</div>
-
-<div class="col-md-5">
-<label>Archivo <small class="text-muted">(PDF, JPG o PNG, hasta 10 MB)</small></label>
-<input type="file" class="form-control" id="anexoArchivo" accept=".pdf,.jpg,.jpeg,.png" multiple>
-</div>
-
-<div class="col-md-3">
-<label>&nbsp;</label>
-<button type="button" class="btn btn-primary btn-block" id="btnSubirAnexo">
-    <i class="fa fa-upload"></i> Cargar
-</button>
-</div>
-
-<div class="col-md-12 mt-3">
-    <label>Archivos cargados</label>
-    <div class="table-responsive">
-        <table class="table table-bordered table-sm">
-            <thead style="background:#e9ecef; font-weight:600;">
-                <tr>
-                    <th style="width:130px;">Tipo</th>
-                    <th>Archivo</th>
-                    <th style="width:110px;">Tamaño</th>
-                    <th style="width:140px;">Cargado</th>
-                    <th style="width:120px;" class="text-center">Acciones</th>
-                </tr>
-            </thead>
-            <tbody id="tbodyAnexos"></tbody>
-        </table>
-    </div>
-</div>
-
-</div>
-</div>
+     Solo se retira de esta pantalla. NO se toca:
+       - class.anexos.php ni la carpeta anexos_establecimientos/, porque los
+         archivos ya subidos siguen ahi y deben poder consultarse;
+       - la subida por establecimiento seguira haciendo falta para la
+         "constancia de cierre" cuando se implemente el cierre de
+         establecimiento (punto 21 de esta misma revision).
+-->
 
 <!-- El cese de actividades se fue al RIT (reunion 2026-08-19): el cliente lo
      quiere justo debajo de "fecha de inicio de actividades", que es como esta
@@ -551,12 +511,10 @@ Guardar
                                     </select>
                                 </div>
 
-                                <!-- FECHA LÍMITE -->
-                                <div class="col-sm-3">
-                                    <label>Fecha Límite Para Cálculo de Intereses</label>
-                                    <input type="date" id="fechaLimiteInteres" class="form-control input-sm">
-                                </div>
-
+                                <!-- Punto 10 de la revision del 2026-08-21: se quita "Fecha Limite
+                                     Para Calculo de Intereses". El cliente no la usa; el interes de
+                                     mora se liquida en su propio renglon del formulario.
+                                     La columna en base NO se toca, solo deja de pedirse. -->
                                 <!-- DECLARACIÓN QUE CORRIGE -->
                                 <div class="col-sm-3" id="grupoDeclaracionCorrige">
                                     <label>Declaración que corrige</label>
