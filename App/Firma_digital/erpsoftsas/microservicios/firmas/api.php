@@ -56,7 +56,37 @@ class FirmasAPI
      */
     private function _generarCodigo()
     {
-        $idUsuario = intval($_POST['id_usuario']);
+        /*
+         * El usuario sale de la SESION, no del POST.
+         *
+         * Antes era intval($_POST['id_usuario']) a secas, y eso causo el cuelgue
+         * que reporto el cliente: la pantalla del RIT no emite la constante
+         * ID_USUARIO -solo la tienen icaWebPresentar e icaWebConsultar-, asi que
+         * el navegador lanzaba ReferenceError al ARMAR la peticion, antes de
+         * enviarla. Sin peticion no hay respuesta ni error que capturar, y la
+         * ventana "Generando codigo" se quedaba girando para siempre.
+         *
+         * Tomarlo de la sesion mata la clase entera de bug: ya no importa que
+         * pantalla llame, ni que emita o deje de emitir una constante. Y de paso
+         * es lo correcto, que es lo que ya hacen las funciones 7, 9 y 10: un id
+         * que manda el navegador no prueba quien es quien.
+         *
+         * Se conserva el POST como respaldo unicamente para los flujos del
+         * perfil de firma (microservicios/firmas/firmas.js y perfilFirma.js),
+         * que todavia lo mandan. Cuando esos migren, el fallback sobra.
+         */
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+        $idUsuario = isset($_SESSION['id_usuario']) ? (int) $_SESSION['id_usuario'] : 0;
+        if ($idUsuario <= 0) {
+            $idUsuario = intval($_POST['id_usuario'] ?? 0);
+        }
+
+        if ($idUsuario <= 0) {
+            header('Content-type: application/json');
+            echo json_encode(['ok' => 0, 'mensaje' => 'Sesión no válida. Vuelva a ingresar.']);
+            return;
+        }
+
         $idEstablecimiento = intval($_POST['id_establecimiento'] ?? 0);
         $rol = $this->_rolFirmante();
 

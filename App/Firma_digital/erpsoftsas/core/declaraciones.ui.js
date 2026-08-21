@@ -399,7 +399,12 @@ var FirmaOTP = (function () {
             dataType: 'json',
             data: {
                 funcion: 1,
-                id_usuario: ID_USUARIO,
+                // Ya NO se manda id_usuario. La constante ID_USUARIO solo la
+                // emiten icaWebPresentar e icaWebConsultar; en la pantalla del
+                // RIT no existe, y referirse a ella lanzaba ReferenceError al
+                // armar este objeto -antes de que saliera la peticion-, dejando
+                // el swal "Generando codigo" girando para siempre.
+                // El servidor lo toma de la sesion.
                 id_establecimiento: 0,
                 // El rol decide a que correo viaja el codigo: al del usuario
                 // (declarante) o al del contador/revisor del contribuyente.
