@@ -485,8 +485,10 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
             $("#modal-CrearDeclaracion")
             .data("idDeclaracion", d.dec_Id);
 
+            // Los dos hacen lo mismo; deshabilitar uno solo dejaba fuera el
+            // unico que la pantalla mostraba habilitado.
             $("#btnValidarDeclaracion").prop("disabled", false);
-            $("#btnGenerarOficial").prop("disabled", true);
+            $("#btnGenerarOficial").prop("disabled", false);
 
               // 🔥 AQUÍ ESTÁ LA CLAVE
             $("#btnDescargarPDF")
@@ -1615,7 +1617,7 @@ $("#btnCrearDeclaracion").off("click").on("click", function () {
     // Activar botones
     $("#btnValidarDeclaracion").prop("disabled", false);
     $("#btnDescargarPDF").prop("disabled", true);
-    $("#btnGenerarOficial").prop("disabled", true);
+    $("#btnGenerarOficial").prop("disabled", false);
 
 
     swal({
@@ -1626,56 +1628,36 @@ $("#btnCrearDeclaracion").off("click").on("click", function () {
 
 });
 
-$("#btnGenerarOficial").off("click").on("click", function () {
+/*
+ * Errores 28 y 30 de la revision del 2026-08-21.
+ *
+ * "No esta liquidando" y "al darle guardar no esta guardando los valores".
+ * Los dos venian de lo mismo: los botones estaban cruzados entre pantallas.
+ *
+ *   Presentar Declaracion:
+ *       "Guardar Borrador"  -> tenia el guardado REAL
+ *       "Liquidar"          -> se habilitaba y NO tenia manejador. Boton muerto.
+ *
+ *   Consultar Declaraciones:
+ *       "Guardar Borrador"  -> se habilitaba y solo mostraba un swal de exito,
+ *                              SIN mandar nada al servidor. Boton mentiroso: el
+ *                              usuario veia "Declaracion Actualizada" y no se
+ *                              habia guardado una sola cifra.
+ *       "Liquidar"          -> tenia el guardado real, pero nace deshabilitado
+ *                              y nadie lo habilitaba.
+ *
+ * Ahora los DOS botones, en las DOS pantallas, ejecutan el mismo manejador
+ * real. En este sistema liquidar y guardar son la misma operacion: el calculo
+ * lo hace sp_calculo_comercio del lado del servidor, sobre la fila ya grabada,
+ * asi que no existe un "liquidar sin guardar". Tener dos botones que hacen lo
+ * mismo es discutible, pero es preferible a tener uno que miente.
+ *
+ * OJO AL DESPLEGAR: este arreglo hace que un boton que hoy no escribe nada
+ * empiece a escribir. Tiene que salir JUNTO con la migracion 010, o el
+ * resultado seria peor que hoy: pasaria de "no guarda" a "guarda y ademas pone
+ * en cero las retenciones, los anticipos y las sanciones".
+ */
 
-
-       swal({
-                type: 'success',
-                title: 'Declaración Actualizada',
-                text: 'Puede proceder a firmarla en el boton de consulta.'
-            });
-
-    
-
-        $('#modal-CrearDeclaracion').modal('hide');
-
-    /*
-    swal({
-        title: 'Declaración con pago',
-        text: '¿La declaración se genera con pago?',
-        type: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Sí',
-        cancelButtonText: 'No',
-        confirmButtonColor: '#28a745',
-        cancelButtonColor: '#6c757d'
-    }).then((result) => {
-
-        // result.value === true  → Sí
-        // result.dismiss === 'cancel' → No
-
-        const conPago = result.value === true ? 1 : 0;
-
-        // Aquí luego puedes guardar conPago en BD si lo necesitas
-        // ejemplo: estado_pago = conPago
-
-        $('#modal-CrearDeclaracion').modal('hide');
-
-        swal({
-            type: 'warning',
-            title: 'Declaración Liquidada Exitosamente',
-            text:  'Para la PRESENTACIÓN y PAGO de la Declaración diríjase a las entidades financieras o realice transferecia bancaria y envíe los respectivos soportes al correo: impuestos@paipa-boyaca.gov.co.',
-            confirmButtonText: 'Entendido'
-        });
-
-    });
-*/
-
-
-
-
-
-});
 
 /*
 $("#btnValidarDeclaracion").on("click", function () {
@@ -1696,7 +1678,7 @@ $("#btnValidarDeclaracion").on("click", function () {
 });
 */
 
-$("#btnValidarDeclaracion").off("click").on("click", function () {
+$("#btnGenerarOficial, #btnValidarDeclaracion").off("click").on("click", function () {
 
     if(!establecimientos.validarBasesActividades()){
         return;

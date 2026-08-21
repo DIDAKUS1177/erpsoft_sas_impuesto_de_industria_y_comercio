@@ -1745,7 +1745,36 @@ $("#btnCrearDeclaracion").off("click").on("click", function () {
  * del modal). El usuario podia liquidar una declaracion completa, cerrar
  * el modal creyendo que quedo guardada, y perder todo lo que escribio.
  */
-$("#btnGenerarOficial").off("click").on("click", function () {
+/*
+ * Errores 28 y 30 de la revision del 2026-08-21.
+ *
+ * "No esta liquidando" y "al darle guardar no esta guardando los valores".
+ * Los dos venian de lo mismo: los botones estaban cruzados entre pantallas.
+ *
+ *   Presentar Declaracion:
+ *       "Guardar Borrador"  -> tenia el guardado REAL
+ *       "Liquidar"          -> se habilitaba y NO tenia manejador. Boton muerto.
+ *
+ *   Consultar Declaraciones:
+ *       "Guardar Borrador"  -> se habilitaba y solo mostraba un swal de exito,
+ *                              SIN mandar nada al servidor. Boton mentiroso: el
+ *                              usuario veia "Declaracion Actualizada" y no se
+ *                              habia guardado una sola cifra.
+ *       "Liquidar"          -> tenia el guardado real, pero nace deshabilitado
+ *                              y nadie lo habilitaba.
+ *
+ * Ahora los DOS botones, en las DOS pantallas, ejecutan el mismo manejador
+ * real. En este sistema liquidar y guardar son la misma operacion: el calculo
+ * lo hace sp_calculo_comercio del lado del servidor, sobre la fila ya grabada,
+ * asi que no existe un "liquidar sin guardar". Tener dos botones que hacen lo
+ * mismo es discutible, pero es preferible a tener uno que miente.
+ *
+ * OJO AL DESPLEGAR: este arreglo hace que un boton que hoy no escribe nada
+ * empiece a escribir. Tiene que salir JUNTO con la migracion 010, o el
+ * resultado seria peor que hoy: pasaria de "no guarda" a "guarda y ademas pone
+ * en cero las retenciones, los anticipos y las sanciones".
+ */
+$("#btnGenerarOficial, #btnValidarDeclaracion").off("click").on("click", function () {
 
     if(!establecimientos.validarBasesActividades()){
         return;
