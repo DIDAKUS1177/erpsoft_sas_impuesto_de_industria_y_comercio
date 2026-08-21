@@ -909,3 +909,19 @@ GO
 /* Verificación: deben salir 1120 municipios y 33 departamentos. */
 SELECT COUNT(*) AS municipios, COUNT(DISTINCT ciu_Departamento) AS departamentos
 FROM dbo.conf_ciudades;
+
+/* ----------------------------------------------------------------------------
+   Registro de la migracion.
+
+   Se añadio despues: esta migracion es de datos y se escribio antes de que
+   existiera conf_migraciones, asi que era la unica de la carpeta que no dejaba
+   constancia. Sin ella no habia forma de saber, mirando una base, si el
+   catalogo completo de municipios estaba cargado o si seguia con los 240
+   originales. Volver a correrla no duplica nada: cada INSERT va con su guarda.
+   ---------------------------------------------------------------------------- */
+IF OBJECT_ID('dbo.conf_migraciones', 'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM dbo.conf_migraciones WHERE mig_Nombre = '002_catalogo_municipios')
+    INSERT INTO dbo.conf_migraciones (mig_Nombre, mig_Nota)
+    VALUES ('002_catalogo_municipios',
+            'Catalogo DANE completo en conf_ciudades: pasa de los 240 municipios originales (Bogota, Boyaca y Cundinamarca) a los 1.100 del pais, y normaliza los nombres de departamento.');
+GO

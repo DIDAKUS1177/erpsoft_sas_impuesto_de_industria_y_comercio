@@ -18,6 +18,43 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
      * Mismo vinculo que usan los demas controladores:
      * conf_usuarios.usu_NumeroDocumento = ind_contribuyentes.ind_NumeroIdentificacion.
      */
+
+    /**
+     * Siguiente numero de formulario para el año dado.
+     *
+     * Formato AAAA + consecutivo de 6 digitos -2026000001-, que es el que usa
+     * la Alcaldia en su formulario impreso. Antes NO habia generador: se
+     * copiaba el IDENTITY de la fila, asi que el "numero de declaracion" era
+     * el id interno de la tabla y iba por 218.
+     *
+     * El reparto lo hace sp_siguiente_numero_declaracion (migracion 012), que
+     * incrementa y captura en una sola sentencia bajo el bloqueo de la fila:
+     * dos contribuyentes declarando a la vez no pueden llevarse el mismo
+     * numero. Un SELECT MAX + 1 si lo permitiria.
+     *
+     * Si el procedimiento no existiera -base sin la migracion 012- se cae al
+     * comportamiento anterior devolviendo null, y quien llama usa el id. Asi
+     * una instalacion sin migrar sigue funcionando en vez de romperse.
+     */
+    private function _siguienteNumeroDeclaracion($con, $anio)
+    {
+        try {
+            $fila = $con->obnerFila($con->consultar(
+                "DECLARE @n BIGINT;
+                 EXEC dbo.sp_siguiente_numero_declaracion @ANIO = ?, @NUMERO = @n OUTPUT;
+                 SELECT @n AS numero;",
+                [(int) $anio]
+            ));
+
+            $n = isset($fila['numero']) ? (float) $fila['numero'] : 0;
+            return ($n > 0) ? $n : null;
+
+        } catch (\Exception $e) {
+            error_log('[declaraciones] no se pudo generar el consecutivo: ' . $e->getMessage());
+            return null;
+        }
+    }
+
     private static function _contribuyenteDeLaSesion($con)
     {
         if (session_status() === PHP_SESSION_NONE) { @session_start(); }
@@ -286,7 +323,27 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
 
         $_obj->set_dec_Estado(1); // borrador
 
-        if (!$_obj->guardar()) {
+        /*
+         * guardar() no siempre devuelve false cuando el INSERT falla: la capa
+         * de conexion LANZA la excepcion, asi que el "if (!...)" de abajo ni
+         * llega a evaluarse. Sin este try, cualquier rechazo de SQL -una
+         * columna NOT NULL sin valor, una clave duplicada- sale como fatal de
+         * PHP y el usuario recibe una respuesta vacia (500) sin ningun texto:
+         * el sintoma de "aprieto el boton y no pasa nada" que ya reporto el
+         * cliente en otras pantallas. Se atrapa Throwable, y no Exception,
+         * para cubrir tambien los Error de PHP.
+         */
+        try {
+            $guardo = $_obj->guardar();
+        } catch (\Throwable $e) {
+            error_log('[declaraciones] fallo al crear la declaracion: ' . $e->getMessage());
+            $this->_ok = 0;
+            $this->_mensaje = 'No se pudo crear la declaración. Intente de nuevo; '
+                            . 'si persiste, avise a la Alcaldía indicando la hora.';
+            return [];
+        }
+
+        if (!$guardo) {
 
             $this->_ok = 0;
             $this->_mensaje = $_obj->getMysqlError();
@@ -295,10 +352,34 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
 
             $id = $_obj->get_dec_Id();
 
-            // 🔥 ACTUALIZAR NUMERO DECLARACION = ID
+            /*
+             * Numero de formulario.
+             *
+             * Aqui decia "ACTUALIZAR NUMERO DECLARACION = ID" y hacia
+             * literalmente eso: copiaba el IDENTITY de la fila. Por eso el
+             * numero iba por 218 en vez del 2026000001 que usa el formulario
+             * de la Alcaldia. Ahora lo reparte el generador atomico de la
+             * migracion 012.
+             *
+             * Se sigue asignando AQUI, al crear el borrador, y no al
+             * presentar: hay cuatro consultas del flujo de liquidacion que
+             * localizan la fila por dec_NumeroDeclaracion, y con el numero en
+             * NULL durante el borrador dejarian de encontrarla. Mover la
+             * asignacion exige antes cambiarlas para que busquen por dec_Id.
+             *
+             * Si el generador no esta disponible se cae al id, que es el
+             * comportamiento anterior: una base sin la migracion 012 sigue
+             * creando declaraciones en vez de fallar.
+             */
+            $numero = $this->_siguienteNumeroDeclaracion($con, $anio);
+            if ($numero === null) {
+                $numero = $id;
+                error_log('[declaraciones] sin consecutivo disponible; se usa el id ' . $id);
+            }
+
             $con->consultar(
                 "UPDATE ind_declaraciones_ica SET dec_NumeroDeclaracion = ? WHERE dec_Id = ?",
-                [$id, $id]
+                [$numero, $id]
             );
 
             $this->_ok = 1;
@@ -1095,12 +1176,25 @@ private function _crearCorreccion(){
 
     $idNuevo = $nuevo['dec_Id'] ?? null;
 
-    // El numero de formulario de la correccion: se usa el propio id, igual
-    // que hace el flujo normal de creacion.
+    /*
+     * El numero de formulario de la correccion.
+     *
+     * Una correccion es una declaracion NUEVA -ligada a la original por
+     * dec_DeclaracionCorrige-, asi que le toca su propio consecutivo, no una
+     * copia del id. Mismo generador atomico que el flujo de creacion
+     * (migracion 012), con la misma caida al id si no esta disponible.
+     */
     if ($idNuevo) {
+        $anioCorreccion = (int) ($orig['dec_AnioDeclaracion'] ?? date('Y'));
+        $numeroNuevo = $this->_siguienteNumeroDeclaracion($con, $anioCorreccion);
+        if ($numeroNuevo === null) {
+            $numeroNuevo = $idNuevo;
+            error_log('[declaraciones] correccion sin consecutivo; se usa el id ' . $idNuevo);
+        }
+
         $con->consultar(
             "UPDATE ind_declaraciones_ica SET dec_NumeroDeclaracion = ? WHERE dec_Id = ?",
-            [$idNuevo, $idNuevo]
+            [$numeroNuevo, $idNuevo]
         );
 
         // Se replican las actividades gravadas de la original.
