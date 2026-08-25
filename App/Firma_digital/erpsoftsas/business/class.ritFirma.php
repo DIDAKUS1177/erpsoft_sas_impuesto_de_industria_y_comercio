@@ -33,7 +33,7 @@ class RitFirma
     /** Version del formato del hash. Si algun dia cambia QUE se firma, subir
      *  este numero invalida las firmas viejas a proposito, en vez de dejar
      *  hashes viejos y nuevos conviviendo sin poder distinguirlos. */
-    const VERSION = 1;
+    const VERSION = 'v2';
 
     /**
      * Los datos del RIT que quedan amparados por la firma, en un orden fijo.
@@ -55,6 +55,12 @@ class RitFirma
             'ind_CedulaRevisor', 'ind_NombreRevisor', 'ind_TarjetaProfRevisor', 'ind_EmailRevisor',
             'ind_Rut', 'ind_Rut_segundo', 'ind_Rut_tercero',
             'ind_Autorizacion',
+            // Regimen y responsabilidades (migracion 014) y las dos exenciones
+            // que subieron del establecimiento (016). Van en el hash porque el
+            // formulario impreso las muestra: si no estuvieran, se podrian
+            // cambiar despues de firmar sin que la firma se invalidara.
+            'ind_RegimenTributario', 'ind_Responsabilidades',
+            'ind_NoSujetas', 'ind_SinAvisosTableros',
         ];
 
         $fila = $con->obnerFila($con->consultar(
@@ -84,8 +90,7 @@ class RitFirma
         $datos['establecimientos'] = [];
         $st = $con->consultar(
             'SELECT est_Id, est_Codigo, est_Nombre, est_Direccion, est_Barrio,
-                    est_Activo, est_Fecha_cierre, est_Causal,
-                    est_Exento, est_Excento_avisos
+                    est_Activo, est_Fecha_cierre, est_Causal
                FROM ind_establecimientos
               WHERE est_IdContribuyente = ? ORDER BY est_Id',
             [$idContribuyente]

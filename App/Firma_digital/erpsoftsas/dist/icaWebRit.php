@@ -143,6 +143,21 @@
 				<form id="formRIT" class="pd-20 pt-0" onsubmit="establecimientos.guardarRIT(); return false;">
 					<input type="hidden" name="ind_Id" id="rit_ind_Id">
 
+					<!-- Opcion de uso. Pedida el 2026-08-25 ("añadir casilla en el RIT").
+					     No se elige: la decide el sistema igual que el formulario impreso
+					     -inscripcion la primera vez, actualizacion en adelante, y cese si
+					     hay fecha de cese-. Por eso se muestra y no se edita: dejar
+					     elegirla permitiria marcar "Inscripcion" en un RIT que lleva años
+					     registrado. -->
+					<div class="row">
+						<div class="col-md-4 form-group">
+							<label>Opción de uso</label>
+							<input type="text" class="form-control campo-bloqueado" id="rit_OpcionUso"
+							       readonly value="Inscripción"
+							       title="La decide el sistema según el estado del registro">
+						</div>
+					</div>
+
 					<h5 class="mb-3" style="font-weight:600;">Identificación</h5>
 					<div class="row">
 						<!-- Documento, DV y tipo van solo de lectura: son la
@@ -326,16 +341,16 @@
 						</div>
 					</div>
 
-					<div class="row">
-						<div class="col-md-3 form-group">
-							<label>¿Registrado en cámara de comercio?</label>
-							<select class="form-control" name="ind_Ind_camara_comercio" id="rit_ind_Ind_camara_comercio">
-								<option value="">Sin especificar</option>
-								<option value="1">Sí</option>
-								<option value="0">No</option>
-							</select>
-						</div>
-					</div>
+					<!-- "¿Registrado en camara de comercio?" se retiro el 2026-08-25:
+					     "solamente las casillas Fecha cese de actividades, causal,
+					     observacion... las otras casillas quitarlas". Y ademas quedaba
+					     bajo el titulo de "Cese de actividades", donde no pinta nada.
+
+					     La columna ind_Ind_camara_comercio NO se borra ni se deja de
+					     enviar desde otras pantallas: se retira solo de aqui. Es un
+					     <select>, asi que al no existir .val() devuelve undefined y
+					     jQuery lo omite del POST -a diferencia de una casilla, que
+					     habria escrito un 0 solido; ver la nota de las exenciones-. -->
 
 					<hr>
 					<!-- Punto 4 de la revision del 2026-08-21: no todo contribuyente tiene
@@ -419,6 +434,23 @@
      Ojo, esto NO es la tabla de actividades que liquida el impuesto: esa va
      mas abajo y sale del catalogo del municipio. Estas tres casillas son
      texto libre con lo que dice el RUT de la DIAN. -->
+					<!-- Las dos exenciones, subidas del establecimiento por la migracion
+					     016 y con los nombres que dicto el cliente el 2026-08-25.
+
+					     Viajan por campo OCULTO y no por el name de la casilla: un
+					     checkbox sin marcar no se envia, y el controlador recorre $_POST
+					     con array_key_exists, asi que desmarcarla nunca habria llegado al
+					     servidor y no habria forma de apagarla una vez encendida. -->
+					<h5 class="mb-3" style="font-weight:600;">Condición frente al impuesto</h5>
+					<div class="row mb-3">
+						<div class="col-md-6 form-group"><label class="mb-0">
+							<input type="checkbox" id="rit_chk_NoSujetas"> Realiza actividades no sujetas o no gravadas</label></div>
+						<div class="col-md-6 form-group"><label class="mb-0">
+							<input type="checkbox" id="rit_chk_SinAvisos"> Sin Avisos y Tableros</label></div>
+					</div>
+					<input type="hidden" name="ind_NoSujetas" id="rit_ind_NoSujetas" value="0">
+					<input type="hidden" name="ind_SinAvisosTableros" id="rit_ind_SinAvisosTableros" value="0">
+
 					<!-- Régimen tributario y responsabilidades. Pedidos el 2026-08-25,
 					     los dos de selección MÚLTIPLE ("para seleccionar 1 o varias").
 					     Se guardan como códigos separados por coma en una sola columna

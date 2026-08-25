@@ -280,10 +280,43 @@
 
 <div class="col-md-3">
 <label>Estado del Registro</label>
-<select class="form-control" id="est_OpcionUso" name="est_OpcionUso">
+<!-- "Cierre de establecimiento" se anadio el 2026-08-25. Es el unico estado
+     que pide documento: la constancia de cierre (camara de comercio o acta de
+     liquidacion). Por eso el bloque de abajo solo aparece con esta opcion; en
+     inscripcion y actualizacion no se piden adjuntos. -->
+<select class="form-control" id="est_OpcionUso" name="est_OpcionUso"
+        onchange="establecimientos.mostrarConstanciaDeCierre()">
 <option value="1">Inscripción</option>
 <option value="2">Actualización</option>
+<option value="3">Cierre de establecimiento</option>
 </select>
+</div>
+
+<!-- Constancia de cierre. Se apoya en el mecanismo de anexos que ya existe
+     (class.anexos.php, tipo "cese"), que valida extension y tipo real del
+     archivo y escapa el nombre al listarlo. -->
+<div class="col-md-12" id="bloqueConstanciaCierre" style="display:none;">
+	<hr>
+	<label style="font-weight:600;">Constancia de cierre</label>
+	<p class="text-muted" style="font-size:12px;">
+		Cámara de comercio o acta de liquidación. PDF, JPG o PNG, hasta 10 MB.
+	</p>
+	<div class="row">
+		<div class="col-md-4">
+			<input type="hidden" id="anexoTipo" value="cese">
+			<input type="file" class="form-control" id="anexoArchivo" accept=".pdf,.jpg,.jpeg,.png">
+		</div>
+		<div class="col-md-3">
+			<button type="button" class="btn btn-primary btn-block" id="btnSubirAnexo"
+			        onclick="establecimientos.subirAnexos()">Cargar</button>
+		</div>
+	</div>
+	<div class="table-responsive mt-2">
+		<table class="table table-sm">
+			<thead><tr><th>Tipo</th><th>Archivo</th><th>Tamaño</th><th>Cargado</th><th>Acciones</th></tr></thead>
+			<tbody id="tbodyAnexos"></tbody>
+		</table>
+	</div>
 </div>
 
 <!-- Reunion 2026-08-19: el cliente pidio que el flag de "exento de avisos y
@@ -298,15 +331,19 @@
      Como el elemento ya no existia, $(...).is(":checked") devolvia false y
      CADA guardado apagaba en silencio las dos exenciones. Mientras el input
      no exista, el JS no debe mandar el campo (ver guardas en el JS). -->
-<div class="col-md-2">
-<label>Excluido</label><br>
-<input type="checkbox" id="est_Exento" name="est_Exento" data-toggle="switch">
-</div>
+<!-- Las dos exenciones se fueron al RIT (migracion 016). Ser o no sujeto
+     pasivo, y estar o no obligado a avisos y tableros, es una condicion de la
+     PERSONA frente al municipio: un contribuyente con tres locales no puede
+     estar exento en uno y no en otro. Aqui estaban repetidas por local y
+     pudiendo contradecirse.
 
-<div class="col-md-3">
-<label>Exento Avisos y Tableros</label><br>
-<input type="checkbox" id="est_Excento_avisos" name="est_Excento_avisos" data-toggle="switch">
-</div>
+     Se llaman ahora "Realiza actividades no sujetas o no gravadas" y "Sin
+     Avisos y Tableros", que es como las nombro el cliente el 2026-08-25.
+
+     OJO si alguien piensa en devolverlas: el JS NO debe volver a enviar
+     est_Exento ni est_Excento_avisos mientras el input no exista, porque
+     $(...).is(":checked") sobre un elemento ausente devuelve false y cada
+     guardado apagaria el dato en silencio. Ya paso una vez. -->
 
 
 <!-- 

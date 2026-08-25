@@ -300,15 +300,19 @@
 <input type="date" class="form-control" id="est_Fecha_inicio" name="est_Fecha_inicio">
 </div>
 
-<div class="col-md-2">
-<label>Excluido</label><br>
-<input type="checkbox" id="est_Exento" name="est_Exento" data-toggle="switch">
-</div>
+<!-- Las dos exenciones se fueron al RIT (migracion 016). Ser o no sujeto
+     pasivo, y estar o no obligado a avisos y tableros, es una condicion de la
+     PERSONA frente al municipio: un contribuyente con tres locales no puede
+     estar exento en uno y no en otro. Aqui estaban repetidas por local y
+     pudiendo contradecirse.
 
-<div class="col-md-3">
-<label>Exento Avisos y Tableros</label><br>
-<input type="checkbox" id="est_Excento_avisos" name="est_Excento_avisos" data-toggle="switch">
-</div>
+     Se llaman ahora "Realiza actividades no sujetas o no gravadas" y "Sin
+     Avisos y Tableros", que es como las nombro el cliente el 2026-08-25.
+
+     OJO si alguien piensa en devolverlas: el JS NO debe volver a enviar
+     est_Exento ni est_Excento_avisos mientras el input no exista, porque
+     $(...).is(":checked") sobre un elemento ausente devuelve false y cada
+     guardado apagaria el dato en silencio. Ya paso una vez. -->
 
 <!-- 
 <div class="col-sm-12 col-md-3">
@@ -470,33 +474,21 @@ Acción
 
 
 
-<!-- ===================== DOCUMENTOS ===================== -->
-<div class="bloque-form">
-<div class="titulo-bloque">Documentos Adjuntos</div>
-<div class="row">
+<!-- Los documentos adjuntos salieron de la inscripcion y la actualizacion del
+     establecimiento. Pedido el 2026-08-21 (punto 14) y repetido el 2026-08-25:
+     "Sin documentos adjuntos en la inscripcion o actualizacion del
+     establecimiento".
 
-<div class="col-md-6">
-<label>* Documento RUT</label>
-<input type="file" class="form-control" id="est_Pdf1" name="est_Pdf1" accept="application/pdf">
-</div>
+     El RUT, la camara de comercio y la cedula son del CONTRIBUYENTE, no de
+     cada local: pedirlos aqui los hacia repetir tantas veces como locales
+     tuviera. Suben al RIT.
 
-<div class="col-md-6">
-<label>* Cámara de Comercio o Acta de Constitución</label>
-<input type="file" class="form-control" id="est_Pdf2" name="est_Pdf2" accept="application/pdf">
-</div>
+     Ya se habian quitado de dist/establecimientos.php; estas dos pantallas se
+     quedaron con la copia y por eso el cliente los seguia viendo.
 
-<div class="col-md-6">
-<label>* Documento de Identificación</label>
-<input type="file" class="form-control" id="est_Pdf3" name="est_Pdf3" accept="application/pdf">
-</div>
-
-<div class="col-md-6">
-<label>Documento Uso de Suelos</label>
-<input type="file" class="form-control" id="est_Pdf4" name="est_Pdf4" accept="application/pdf">
-</div>
-
-</div>
-</div>
+     NO se toca class.anexos.php ni anexos_establecimientos/: los archivos ya
+     subidos deben poder consultarse, y la subida por establecimiento seguira
+     haciendo falta para la constancia de cierre. -->
 
 <!-- ===================== OBSERVACIÓN Y AUTORIZACIÓN ===================== -->
 <div class="bloque-form">

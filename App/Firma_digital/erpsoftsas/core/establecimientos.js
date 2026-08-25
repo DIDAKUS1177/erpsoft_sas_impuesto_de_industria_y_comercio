@@ -100,6 +100,7 @@ class Establecimientos {
             // "Crear" no hacia absolutamente nada: ni guardaba, ni avisaba.
             // Es lo que reporto el cliente el 2026-08-25.
             establecimientos._modo = { accion: 'crear' };
+            establecimientos.mostrarConstanciaDeCierre();
                 /*
                  * Ya NO se llama a Geografia.poblar aqui.
                  *
@@ -548,8 +549,6 @@ class Establecimientos {
                 $("#est_Fecha_inscripcion").val(d.est_Fecha_inscripcion ? d.est_Fecha_inscripcion.date.substring(0,10) : '');
                 $("#est_Fecha_inicio").val(d.est_Fecha_inicio ? d.est_Fecha_inicio.date.substring(0,10) : '');
 
-                $("#est_Exento").prop("checked", d.est_Exento == 1);
-                $("#est_Excento_avisos").prop("checked", d.est_Excento_avisos == 1);
 
                 $("#est_Rut").val(d.est_Rut);
                 $("#est_Rut_segundo").val(d.est_Rut_segundo);
@@ -587,6 +586,7 @@ $("#est_NoResolucion").val(d.est_NoResolucion);
                 );
 
                 establecimientos._modo = { accion: 'editar', id: id };
+                establecimientos.mostrarConstanciaDeCierre();
 
                 $('#modal-Establecimientos')
                     .modal({ backdrop: 'static', keyboard: false })
@@ -686,6 +686,10 @@ $("#est_NoResolucion").val(d.est_NoResolucion);
         // VARCHAR(5) y no aguantan un nombre de pais o departamento. El
         // servidor los descarta de todos modos. Ver class.establecimientos.php.
 
+        // est_Exento y est_Excento_avisos ya no se envian: subieron al
+        // contribuyente en la migracion 016 y la casilla no existe aqui.
+        // `.is(":checked")` sobre un elemento ausente devuelve FALSE, no
+        // undefined, asi que dejarlo escribia un 0 solido en cada guardado.
         est_Barrio: $("#est_Barrio").val(),
         est_Correo: $("#est_Correo").val(),
 
@@ -714,8 +718,6 @@ $("#est_NoResolucion").val(d.est_NoResolucion);
         est_Fecha_inscripcion: $("#est_Fecha_inscripcion").val(),
         est_Fecha_inicio: $("#est_Fecha_inicio").val(),
         
-        est_Excento_avisos: flagCasilla("est_Excento_avisos"),
-        est_Exento: flagCasilla("est_Exento"),
         //est_Local_municipio: $("#est_Local_municipio").is(":checked") ? 1 : 0,
 
         est_Rut: $("#est_Rut").val(),
@@ -1168,7 +1170,6 @@ est_NoResolucion: $("#est_NoResolucion").val(),
             est_Fecha_inicio: $("#est_Fecha_inicio").val(),
 
             //est_LocalMunicipio: $("#est_LocalMunicipio").is(":checked") ? 1 : 0,
-            est_Exento: flagCasilla("_est_Exento"),
             est_ExcentoAvisos: flagCasilla("est_ExcentoAvisos"),
             
             est_Rut: $("#est_Rut").val(),
@@ -1645,6 +1646,29 @@ liquidarDeclaracion() {
        "[object File]". Esa es la razon de que la carga nunca funcionara: el
        formulario mandaba los campos como objeto plano.
        ====================================================================== */
+
+    /**
+     * El bloque de constancia de cierre solo tiene sentido con el estado
+     * "Cierre de establecimiento" (opcion 3, anadida el 2026-08-25). En
+     * inscripcion y actualizacion no se piden documentos: el cliente lo pidio
+     * expresamente y ademas el RUT, la camara y la cedula son del
+     * contribuyente, no del local.
+     *
+     * Se llama al abrir el formulario y al cambiar el estado. Si el bloque no
+     * esta en la pantalla -las otras tres comparten este JS pero no ese
+     * markup- no hace nada.
+     */
+    mostrarConstanciaDeCierre() {
+        const $bloque = $('#bloqueConstanciaCierre');
+        if ($bloque.length === 0) { return; }
+
+        const esCierre = String($('#est_OpcionUso').val()) === '3';
+        $bloque.toggle(esCierre);
+
+        if (esCierre) {
+            establecimientos.listarAnexos($('#est_Id').val());
+        }
+    }
 
     subirAnexos() {
 

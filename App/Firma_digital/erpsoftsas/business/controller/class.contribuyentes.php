@@ -516,6 +516,8 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             // coma; _normalizarSeleccionMultiple() se encarga de que no entre
             // cualquier cosa.
             'ind_RegimenTributario', 'ind_Responsabilidades',
+            // Las dos exenciones, subidas del establecimiento por la 016.
+            'ind_NoSujetas', 'ind_SinAvisosTableros',
         ];
     }
 
@@ -891,6 +893,11 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             // en el formulario: lo que quede acaba impreso en un certificado
             // tributario, y una lista de <input type=checkbox> se manipula
             // desde la consola del navegador.
+            // Las dos exenciones son BIT: llega '0' o '1' desde el campo oculto.
+            if (in_array($campo, ['ind_NoSujetas', 'ind_SinAvisosTableros'], true)) {
+                $valor = ($valor === '1') ? 1 : 0;
+            }
+
             if (in_array($campo, ['ind_RegimenTributario', 'ind_Responsabilidades'], true)) {
                 $valor = self::_normalizarSeleccionMultiple($campo, $valor);
                 if ($valor === '') { $valor = null; }

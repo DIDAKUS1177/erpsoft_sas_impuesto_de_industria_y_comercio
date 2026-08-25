@@ -191,6 +191,21 @@ WHERE c.ind_Id = ?
 // del formulario sale en blanco, que es lo correcto.
 $row = $con->obnerFila($con->consultar($sql, [$idEstablecimiento, $idContribuyente]));
 
+// Ver la nota de "opcion de uso" mas abajo. Se resuelven aqui, sobre el
+// contribuyente, porque puede no haber establecimiento del que leerlas.
+$firmaPrevia = $con->obnerFila($con->consultar(
+    "SELECT TOP 1 rif_Id FROM ind_rit_firmas WHERE rif_IdContribuyente = ?",
+    [$idContribuyente]
+));
+$ritYaFormalizado = (bool) $firmaPrevia;
+
+$filaCese = $con->obnerFila($con->consultar(
+    "SELECT TOP 1 est_Id FROM ind_establecimientos
+      WHERE est_IdContribuyente = ? AND est_Fecha_cierre IS NOT NULL",
+    [$idContribuyente]
+));
+$hayCese = (bool) $filaCese;
+
 if (!$row) {
     exit('No existe información para el registro solicitado.');
 }
@@ -300,9 +315,28 @@ $d = [
 'ciudad_entidad' => $esc(mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8') . ' - ' . mb_strtoupper(MUNICIPIO_DEPARTAMENTO, 'UTF-8')),
 
 // OPCIÓN USO
-'opcion_inscripcion' => $row['est_Opcion_uso'] == 1,
-'opcion_actualizacion' => $row['est_Opcion_uso'] == 2,
-'opcion_cese' => $row['est_Opcion_uso'] == 3,
+/*
+ * Opcion de uso. Pedido el 2026-08-25: "si estan en la base de datos, solo
+ * salga ACTUALIZACION; si no estan, salga INSCRIPCION".
+ *
+ * Antes salia de est_Opcion_uso, una casilla del ESTABLECIMIENTO que el
+ * usuario elegia a mano. Tenia dos problemas: nada impedia marcar
+ * "Inscripcion" en un RIT que llevaba años registrado, y desde que el
+ * establecimiento es opcional (arreglo del 2026-08-25) podia no haber ninguno
+ * de donde leerla.
+ *
+ * La regla se resuelve ahora sobre el CONTRIBUYENTE, y "estar en la base" se
+ * interpreta como "este RIT ya se formalizo alguna vez", que es lo que
+ * distingue una inscripcion de una novedad: la primera vez es inscripcion, de
+ * ahi en adelante es actualizacion. Un registro creado pero nunca firmado
+ * sigue siendo una inscripcion en tramite.
+ *
+ * El cese manda sobre las dos: si hay fecha de cese, el formulario es de cese
+ * de actividades aunque el RIT ya estuviera formalizado.
+ */
+'opcion_inscripcion'   => !$ritYaFormalizado && !$hayCese,
+'opcion_actualizacion' =>  $ritYaFormalizado && !$hayCese,
+'opcion_cese'          =>  $hayCese,
 
 // IDENTIFICACIÓN
 'nit' => $esc($row['ind_NumeroIdentificacion']),

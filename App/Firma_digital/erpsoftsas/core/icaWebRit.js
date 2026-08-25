@@ -390,8 +390,6 @@ class Establecimientos {
                 $("#est_Fecha_inscripcion").val(d.est_Fecha_inscripcion ? d.est_Fecha_inscripcion.date.substring(0,10) : '');
                 $("#est_Fecha_inicio").val(d.est_Fecha_inicio ? d.est_Fecha_inicio.date.substring(0,10) : '');
 
-                $("#est_Exento").prop("checked", d.est_Exento == 1);
-                $("#est_Excento_avisos").prop("checked", d.est_Excento_avisos == 1);
 
                 $("#est_Rut").val(d.est_Rut);
                 $("#est_Rut_segundo").val(d.est_Rut_segundo);
@@ -531,6 +529,10 @@ $("#est_NoResolucion").val(d.est_NoResolucion);
         est_Pais: $("#est_Pais").val(),
         est_Departamento: $("#est_Departamento").val(),
         est_Ciudad: $("#est_Ciudad").val(),
+        // est_Exento y est_Excento_avisos ya no se envian: subieron al
+        // contribuyente en la migracion 016 y la casilla no existe aqui.
+        // `.is(":checked")` sobre un elemento ausente devuelve FALSE, no
+        // undefined, asi que dejarlo escribia un 0 solido en cada guardado.
         est_Barrio: $("#est_Barrio").val(),
         est_Correo: $("#est_Correo").val(),
 
@@ -554,8 +556,6 @@ $("#est_NoResolucion").val(d.est_NoResolucion);
         est_Fecha_inscripcion: $("#est_Fecha_inscripcion").val(),
         est_Fecha_inicio: $("#est_Fecha_inicio").val(),
         
-        est_Excento_avisos: $("#est_Excento_avisos").is(":checked") ? 1 : 0,
-        est_Exento: $("#est_Exento").is(":checked") ? 1 : 0,
         //est_Local_municipio: $("#est_Local_municipio").is(":checked") ? 1 : 0,
 
         est_Rut: $("#est_Rut").val(),
@@ -1059,7 +1059,6 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
             est_Fecha_inicio: $("#est_Fecha_inicio").val(),
 
             //est_LocalMunicipio: $("#est_LocalMunicipio").is(":checked") ? 1 : 0,
-            est_Exento: $("#_est_Exento").is(":checked") ? 1 : 0,
             est_ExcentoAvisos: $("#est_ExcentoAvisos").is(":checked") ? 1 : 0,
             
             est_Rut: $("#est_Rut").val(),
@@ -1786,6 +1785,7 @@ actualizarDeclaracionIca(valor, numeroCampo){
                 // el 2026-08-25.
                 establecimientos.ajustarNombresPorTipoPersona();
                 establecimientos.pintarSeleccionMultiple(d.ind_RegimenTributario, d.ind_Responsabilidades);
+                establecimientos.pintarExenciones(d.ind_NoSujetas, d.ind_SinAvisosTableros);
 
                 // Autorizacion de notificacion electronica: sin ella el
                 // servidor rechaza el guardado (ver _guardarRIT).
@@ -1860,6 +1860,26 @@ actualizarDeclaracionIca(valor, numeroCampo){
      * controlador -que recorre $_POST campo a campo- solo veria la ultima. Con
      * un campo oculto viaja la lista completa en un solo valor.
      */
+    /**
+     * Vuelca las dos exenciones a sus campos ocultos.
+     *
+     * Un checkbox sin marcar NO se envia con serialize(), y el controlador
+     * recorre $_POST con array_key_exists: sin el campo oculto, desmarcar una
+     * exencion nunca llegaria al servidor y no habria manera de apagarla.
+     */
+    recogerExenciones() {
+        $('#rit_ind_NoSujetas').val($('#rit_chk_NoSujetas').is(':checked') ? 1 : 0);
+        $('#rit_ind_SinAvisosTableros').val($('#rit_chk_SinAvisos').is(':checked') ? 1 : 0);
+    }
+
+    /**
+     * Marca las dos exenciones con lo que hay guardado.
+     */
+    pintarExenciones(noSujetas, sinAvisos) {
+        $('#rit_chk_NoSujetas').prop('checked', String(noSujetas) === '1');
+        $('#rit_chk_SinAvisos').prop('checked', String(sinAvisos) === '1');
+    }
+
     recogerSeleccionMultiple() {
         const juntar = (sel) => $(sel + ':checked').map(function () { return this.value; }).get().join(',');
         $('#rit_ind_RegimenTributario').val(juntar('.rit-regimen'));
@@ -2149,6 +2169,22 @@ actualizarDeclaracionIca(valor, numeroCampo){
      * obliga a firmar de nuevo. Por eso el boton dice "Actualizar" y no
      * "Editar": es el nombre que le da el formulario oficial.
      */
+    /**
+     * Opcion de uso, con la MISMA regla que el formulario impreso: la primera
+     * vez es una inscripcion, y desde que el RIT se formalizo una vez, toda
+     * novedad posterior es una actualizacion.
+     *
+     * "firmado" o "desactualizada" sirven igual como señal de que ya se
+     * formalizo alguna vez: desactualizada significa que hubo firma y luego
+     * cambios, o sea que la inscripcion ya ocurrio.
+     */
+    pintarOpcionUso(estadoFirma) {
+        const yaFormalizado = estadoFirma &&
+            (String(estadoFirma.firmado) === '1' || !!estadoFirma.desactualizada);
+
+        $('#rit_OpcionUso').val(yaFormalizado ? 'Actualización' : 'Inscripción');
+    }
+
     consultarFirmaRIT() {
         var self = this;
         $.ajax({
@@ -2160,6 +2196,7 @@ actualizarDeclaracionIca(valor, numeroCampo){
                 if (r.ok != 1) { self.modoRIT(false, null); return; }
                 self._firmaRIT = r;
                 self.modoRIT(r.firmado == 1, r);
+                self.pintarOpcionUso(r);
             },
             error: function () { $('#ritEstadoFirma').html(''); }
         });
@@ -2439,6 +2476,7 @@ actualizarDeclaracionIca(valor, numeroCampo){
         // <input type=checkbox> sin name, y lo que se envia es el campo oculto
         // con sus codigos separados por coma.
         establecimientos.recogerSeleccionMultiple();
+        establecimientos.recogerExenciones();
 
         var $boton = $('#btnGuardarRIT');
         $boton.prop('disabled', true);
