@@ -59,6 +59,25 @@ if (empty($_SESSION['id_usuario'])) {
  * cruzado por numero de documento porque no hay columna que ate el usuario al
  * contribuyente.
  */
+/**
+ * Primera fecha que traiga valor, ya formateada para el formulario.
+ *
+ * SQL Server las devuelve como DateTime, pero una base sin migrar puede
+ * traerlas como texto, asi que se contempla el caso en vez de llamar
+ * ->format() a ciegas y reventar con un fatal.
+ */
+function _fecha(...$candidatas)
+{
+    foreach ($candidatas as $f) {
+        if (empty($f)) { continue; }
+        if ($f instanceof \DateTimeInterface) { return $f->format('d-m-Y'); }
+
+        $t = strtotime((string) $f);
+        if ($t !== false) { return date('d-m-Y', $t); }
+    }
+    return '';
+}
+
 function _ritEsDeLaSesion($idContribuyente, $con)
 {
     if (session_status() === PHP_SESSION_NONE) { @session_start(); }
@@ -199,9 +218,19 @@ $firmaPrevia = $con->obnerFila($con->consultar(
 ));
 $ritYaFormalizado = (bool) $firmaPrevia;
 
+/*
+ * Se descarta 1900-01-01 ademas de NULL: SQL Server convierte una cadena
+ * vacia en esa fecha al guardarla en una columna de tipo fecha, asi que un
+ * cese que se limpio puede quedar con ese valor en vez de en nulo. Sin esta
+ * guarda el formulario marcaba "Cese de Actividades" en contribuyentes que no
+ * han cesado nada -visto en la base local, establecimiento 43-. La misma
+ * defensa ya existe en class.contribuyentes.php al leer el cese.
+ */
 $filaCese = $con->obnerFila($con->consultar(
     "SELECT TOP 1 est_Id FROM ind_establecimientos
-      WHERE est_IdContribuyente = ? AND est_Fecha_cierre IS NOT NULL",
+      WHERE est_IdContribuyente = ?
+        AND est_Fecha_cierre IS NOT NULL
+        AND CONVERT(DATE, est_Fecha_cierre) <> '1900-01-01'",
     [$idContribuyente]
 ));
 $hayCese = (bool) $filaCese;
@@ -357,14 +386,24 @@ $d = [
 // contribuyente. Se cae a la del establecimiento solo para las
 // bases donde la migracion 003 todavia no dejo el dato.
 'matricula' => $esc($row['ind_Matricula'] ?: $row['est_Matricula']),
-'fecha_matricula' => !empty($row['est_Fecha_matricula'])
-    ? $row['est_Fecha_matricula']->format('d-m-Y')
-    : '',
+/*
+ * Estas dos leian SOLO del establecimiento, y la pantalla del RIT las
+ * guarda en el contribuyente desde la migracion 003: el contribuyente
+ * escribia una fecha y el formulario imprimia otra, o ninguna.
+ *
+ * Se quedo asi por herencia -antes el RIT colgaba del local-, y desde
+ * que el establecimiento es opcional (2026-08-25) el sintoma empeoro:
+ * quien no tiene local no tiene de donde leerlas y salian siempre en
+ * blanco.
+ *
+ * Mismo patron que 'matricula' aqui arriba: manda el contribuyente y se
+ * cae al establecimiento solo para las bases donde la migracion 003
+ * todavia no dejo el dato.
+ */
+'fecha_matricula' => _fecha($row['ind_Fecha_matricula'] ?? null, $row['est_Fecha_matricula'] ?? null),
 
 // ACTIVIDAD
-'fecha_inicio' => !empty($row['est_Fecha_inicio'])
-    ? $row['est_Fecha_inicio']->format('d-m-Y')
-    : '',
+'fecha_inicio'    => _fecha($row['ind_Fecha_inicio'] ?? null, $row['est_Fecha_inicio'] ?? null),
 
 'actividades' => $actividades,
 
@@ -452,6 +491,56 @@ if($row['ind_IdRegimen']== 3) $regimenNombre = 'Autoretenedor';
 if($row['ind_IdRegimen']== 4) $regimenNombre = 'Régimen Simple de Tributación (RST)';
 if($row['ind_IdRegimen']== 5) $regimenNombre = 'Régimen Tributario Especial (RTE)';
 if($row['ind_IdRegimen']== 6) $regimenNombre = 'Otro';
+
+/*
+ * Desde la migracion 014 el regimen es de seleccion MULTIPLE y vive en
+ * ind_RegimenTributario como codigos separados por coma. El ind_IdRegimen de
+ * arriba es el de un solo valor y se conserva como respaldo para las bases que
+ * todavia no tengan la 014, o para los contribuyentes que nunca abrieron el
+ * RIT desde que existe la casilla nueva.
+ */
+$ETIQUETAS_MULTIPLE = [
+    'ORDINARIO'          => 'Régimen ordinario',
+    'SIMPLE'             => 'Régimen Simple de Tributación',
+    'ESPECIAL'           => 'Régimen Especial',
+    'RESP_IVA'           => 'Responsable de IVA',
+    'NO_RESP_IVA'        => 'No responsable de IVA',
+    'AGENTE_RETENCION'   => 'Agente de retención',
+    'AUTORRETENEDOR'     => 'Autorretenedor',
+    'INFORMANTE_EXOGENA' => 'Informante de exógena',
+];
+
+/** Convierte 'ORDINARIO,RESP_IVA' en 'Régimen ordinario, Responsable de IVA'. */
+$enPalabras = function ($codigos) use ($ETIQUETAS_MULTIPLE) {
+    $partes = array_filter(array_map('trim', explode(',', (string) $codigos)));
+    $texto  = [];
+    foreach ($partes as $c) { $texto[] = $ETIQUETAS_MULTIPLE[$c] ?? $c; }
+    return htmlspecialchars(implode(', ', $texto), ENT_QUOTES, 'UTF-8');
+};
+
+$regimenTexto = $enPalabras($row['ind_RegimenTributario'] ?? '');
+if ($regimenTexto === '') { $regimenTexto = htmlspecialchars((string) $regimenNombre, ENT_QUOTES, 'UTF-8'); }
+
+$responsabilidadesTexto = $enPalabras($row['ind_Responsabilidades'] ?? '');
+if ($responsabilidadesTexto === '') { $responsabilidadesTexto = 'Ninguna'; }
+
+// Las dos exenciones subieron del establecimiento en la migracion 016.
+$condiciones = [];
+if (!empty($row['ind_NoSujetas']))         { $condiciones[] = 'Realiza actividades no sujetas o no gravadas'; }
+if (!empty($row['ind_SinAvisosTableros'])) { $condiciones[] = 'Sin Avisos y Tableros'; }
+$condicionTexto = $condiciones ? implode(' · ', $condiciones) : 'Ninguna';
+
+// Codigos CIIU del RUT (migracion 005): son los de la DIAN, de cuatro
+// digitos, distintos de los del acuerdo municipal que salen en la tabla de
+// actividades economicas.
+$ciiu = array_filter([
+    trim((string) ($row['ind_Rut'] ?? '')),
+    trim((string) ($row['ind_Rut_segundo'] ?? '')),
+    trim((string) ($row['ind_Rut_tercero'] ?? '')),
+], function ($v) { return $v !== '' && $v !== '0000'; });
+$ciiuTexto = $ciiu ? htmlspecialchars(implode(' · ', $ciiu), ENT_QUOTES, 'UTF-8') : '';
+
+$autorizaTexto = !empty($row['ind_Autorizacion']) ? 'SÍ' : 'NO';
 
 $actividadesHtml = '';
 
@@ -683,12 +772,34 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 <td width="25%">'.$d['telefono'].'</td>
 
 <td width="20%"><b>12. Régimen Tributario:</b></td>
-<td width="30%">
+<td width="30%">'.$regimenTexto.'</td>
 
-'.$regimenNombre .'
+</tr>
 
-</td>
+<!-- Casillas anadidas el 2026-08-25. El cliente pidio las dos primeras
+     ("para seleccionar 1 o varias") y las dos exenciones con estos nombres.
+     Los codigos CIIU del RUT se capturaban desde la migracion 005 pero no se
+     imprimian en ninguna parte. Cada fila lleva dos celdas al 50% para no
+     mezclar numeros de columna dentro de la misma tabla: TCPDF pinta trozos
+     de borde sueltos cuando las filas no cuadran entre si. -->
+<tr>
+<td width="30%"><b>Responsabilidades:</b></td>
+<td width="70%">'.$responsabilidadesTexto.'</td>
+</tr>
 
+<tr>
+<td width="30%"><b>Condición frente al impuesto:</b></td>
+<td width="70%">'.$condicionTexto.'</td>
+</tr>
+
+<tr>
+<td width="30%"><b>Códigos CIIU del RUT:</b></td>
+<td width="70%">'.$ciiuTexto.'</td>
+</tr>
+
+<tr>
+<td width="30%"><b>Autoriza notificación electrónica:</b></td>
+<td width="70%">'.$autorizaTexto.'</td>
 </tr>
 
 <tr>
@@ -701,14 +812,32 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 <td width="13%">'.$d['contador_tp'].'</td>
 </tr>
 
+<!-- Los anchos se igualan con los de la casilla 13: antes la 14 usaba
+     20/15 en las dos ultimas celdas y "Tarjeta Profesional No:" se partia en
+     dos lineas, dejando la fila mas alta que la de arriba. -->
 <tr>
 <td width="15%"><b>14. Revisor Fiscal</b></td>
 <td width="10%"><b>Nombre:</b></td>
 <td width="15%">'.$d['revisor_nombre'].'</td>
 <td width="10%"><b>Cedula:</b></td>
 <td width="15%">'.$d['revisor_cc'].'</td>
-<td width="20%"><b>Tarjeta Profesional No:</b></td>
-<td width="15%">'.$d['revisor_tp'].'</td>
+<td width="22%"><b>Tarjeta Profesional No:</b></td>
+<td width="13%">'.$d['revisor_tp'].'</td>
+</tr>
+
+<!-- Los correos del contador y del revisor no salian en ninguna parte, y son
+     el dato por el que les llega el codigo para firmar: si estan mal escritos
+     la declaracion no se puede presentar y no habia donde comprobarlo. Van en
+     su propia fila -y no dentro de las casillas 13 y 14- porque esas ya tienen
+     siete celdas y meter dos mas desalinearia la tabla entera. -->
+<tr>
+<td width="30%"><b>Correo del contador:</b></td>
+<td width="70%">'.$esc($row['ind_EmailContador']).'</td>
+</tr>
+
+<tr>
+<td width="30%"><b>Correo del revisor fiscal:</b></td>
+<td width="70%">'.$esc($row['ind_EmailRevisor']).'</td>
 </tr>
 
 <tr>
@@ -800,24 +929,36 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 
      Se agrega Observacion, que estaba en la pantalla pero no se imprimia -o sea
      que el funcionario escribia algo que nadie volvia a ver-. -->
+<!-- "Ajustar los espacios para que guarde simetria con el resto del
+     documento" (2026-08-25).
+
+     Lo que rompia la simetria era una celda vacia del 17% al final de la fila
+     de la causal: sobraba desde que se retiro la casilla 29, y dejaba un hueco
+     a la derecha que ninguna otra fila del formulario tiene. Los anchos se
+     reparten ahora entre las celdas que si dicen algo, y suman 100.
+
+     La observacion pierde el numero: el "29" del formulario oficial es
+     "Numero de Establecimiento que clausura", que ya no se imprime, asi que
+     reusarlo para otra cosa era confundir dos casillas distintas. Su rotulo
+     se alinea con el de la fila de arriba (20%) para que las dos columnas
+     empiecen en la misma vertical. -->
 <tr>
-<td width="15%"><b>27. Fecha de cese actividades:</b></td>
-<td width="12%">'.$d['fecha_cese'].'</td>
-<td width="10%"><b>28. Causal:</b></td>
-<td width="7%">Fusión</td>
-<td width="3%">'.($d['causal'] === '1' ? 'X' : '').'</td>
-<td width="8%">Escision</td>
-<td width="3%">'.($d['causal'] === '2' ? 'X' : '').'</td>
-<td width="10%">Liquidación</td>
-<td width="3%">'.($d['causal'] === '3' ? 'X' : '').'</td>
-<td width="5%">Otro</td>
-<td width="3%">'.($d['causal'] === '4' ? 'X' : '').'</td>
-<td width="17%"></td>
+<td width="20%"><b>27. Fecha de cese actividades:</b></td>
+<td width="15%">'.$d['fecha_cese'].'</td>
+<td width="11%"><b>28. Causal:</b></td>
+<td width="8%">Fusión</td>
+<td width="5%">'.($d['causal'] === '1' ? 'X' : '').'</td>
+<td width="8%">Escisión</td>
+<td width="5%">'.($d['causal'] === '2' ? 'X' : '').'</td>
+<td width="11%">Liquidación</td>
+<td width="5%">'.($d['causal'] === '3' ? 'X' : '').'</td>
+<td width="7%">Otro</td>
+<td width="5%">'.($d['causal'] === '4' ? 'X' : '').'</td>
 </tr>
 
 <tr>
-<td width="15%"><b>29. Observación:</b></td>
-<td width="85%">'.$d['observacion_cese'].'</td>
+<td width="20%"><b>Observación:</b></td>
+<td width="80%">'.$d['observacion_cese'].'</td>
 </tr>
 
 </table>

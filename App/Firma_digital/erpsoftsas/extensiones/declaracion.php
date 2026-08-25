@@ -253,6 +253,53 @@ while($a = $con->obnerFila($stmtAct)){
     $actividades[] = $a;
 }
 
+/*
+ * Filas de actividades gravadas.
+ *
+ * El formulario tenia TRES huecos escritos a mano -codigo1/2/3- y la cuarta
+ * actividad en adelante se perdia en silencio. Sobre una declaracion de
+ * impuestos eso no es un detalle de maquetacion: el contribuyente declara seis
+ * actividades, firma, y el papel solo prueba tres. Medido en la base local:
+ * una de 75 declaraciones con actividades pierde tres.
+ *
+ * En la primera hoja caben TRES; el resto va a la hoja de continuacion (ver
+ * el final del archivo). Se conservan tres filas siempre, aunque haya menos
+ * actividades, para que el recuadro no cambie de alto y descuadre lo que
+ * viene debajo -este formulario esta posicionado a mano y no tiene salto de
+ * pagina automatico-.
+ */
+$CUPO_PRIMERA_HOJA = 3;
+$actividadesPrimera = array_slice($actividades, 0, $CUPO_PRIMERA_HOJA);
+$actividadesResto   = array_slice($actividades, $CUPO_PRIMERA_HOJA);
+
+$filaActividad = function ($rotulo, $a) {
+    $codigo   = $a['acc_Codigo'] ?? '';
+    $ingresos = isset($a['dia_BaseGravable'])  ? '$'.number_format($a['dia_BaseGravable'],0,',','.') : '';
+    $tarifa   = $a['dia_Tarifa'] ?? '';
+    $impuesto = isset($a['dia_ValorImpuesto']) ? number_format($a['dia_ValorImpuesto'],0,',','.') : '';
+    return '<tr>'
+         . '<td><b>'.htmlspecialchars($rotulo, ENT_QUOTES, 'UTF-8').'</b></td>'
+         . '<td>'.htmlspecialchars((string) $codigo, ENT_QUOTES, 'UTF-8').'</td>'
+         . '<td align="right">'.$ingresos.'</td>'
+         . '<td>'.htmlspecialchars((string) $tarifa, ENT_QUOTES, 'UTF-8').'</td>'
+         . '<td align="right">'.$impuesto.'</td>'
+         . '</tr>';
+};
+
+$filasActividades = '';
+for ($i = 0; $i < $CUPO_PRIMERA_HOJA; $i++) {
+    $rotulo = ($i === 0) ? 'ACTIVIDAD 1 (PRINCIPAL)' : 'ACTIVIDAD '.($i + 1);
+    $filasActividades .= $filaActividad($rotulo, $actividadesPrimera[$i] ?? []);
+}
+
+// Si hay mas, se avisa EN la primera hoja: un total que no cuadra con lo que
+// se ve arriba, sin explicacion, es peor que no imprimir nada.
+if ($actividadesResto) {
+    $filasActividades .= '<tr><td colspan="5"><i>Continúa en la hoja 2: '
+        . count($actividadesResto) . ' actividad(es) más.</i></td></tr>';
+}
+
+
 /* ===========================
 FIRMA DIGITAL
 =========================== */
@@ -833,29 +880,7 @@ $html = '
 <td width="20%"><b>VALOR IMPUESTO</b></td>
 </tr>
 
-<tr>
-<td><b>ACTIVIDAD 1 (PRINCIPAL)</b></td>
-<td>'.$d['codigo1'].'</td>
-<td align="right">'.$d['ingresos1'].'</td>
-<td>'.$d['tarifa1'].'</td>
-<td align="right">'.$d['impuesto1'].'</td>
-</tr>
-
-<tr>
-<td><b>ACTIVIDAD 2</b></td>
-<td>'.$d['codigo2'].'</td>
-<td align="right">'.$d['ingresos2'].'</td>
-<td>'.$d['tarifa2'].'</td>
-<td align="right">'.$d['impuesto2'].'</td>
-</tr>
-
-<tr>
-<td><b>ACTIVIDAD 3</b></td>
-<td>'.$d['codigo3'].'</td>
-<td align="right">'.$d['ingresos3'].'</td>
-<td>'.$d['tarifa3'].'</td>
-<td align="right">'.$d['impuesto3'].'</td>
-</tr>
+'.$filasActividades.'
 
 <tr>
 <td colspan="2" align="right"><b>TOTAL INGRESOS GRAVADOS</b></td>
@@ -1399,5 +1424,92 @@ dibujarTextoVertical($pdf, 'E. PAGO', $x, $ySecE_inicio, $ySecE_fin);
 dibujarTextoVertical($pdf, 'F. FIRMAS', $x, $ySecF_inicio, $ySecF_fin);
 
 dibujarMarcaDeAgua($pdf, $textoMarcaAgua, 215.9, 330.2);
+
+/* ============================================================================
+   HOJA 2 — continuacion de las actividades gravadas
+
+   Solo se crea si sobran actividades. Antes no existia y todo lo que pasara de
+   la tercera se perdia sin decir nada.
+
+   Es una hoja NUEVA con una tabla sencilla, no una reflotacion del formulario:
+   el de la hoja 1 esta posicionado a mano, con SetAutoPageBreak en false y
+   rotulos verticales calculados sobre coordenadas fijas. Intentar que fluyera
+   entre paginas habria obligado a rehacer ese posicionamiento entero.
+
+   ORDEN IMPORTANTE: la marca de agua de la hoja 1 se dibuja ANTES de este
+   AddPage. La funcion pinta sobre la pagina ACTIVA, asi que si se llamara
+   despues estamparia la hoja 2 dos veces y dejaria la 1 sin marca. Y por eso
+   tampoco se dibuja justo despues del AddPage sino al final de la hoja: hay un
+   cuelgue conocido de PHP-FPM al 99% de CPU cuando la rotacion ocurre antes
+   del contenido (ver la nota de dibujarMarcaDeAgua mas arriba).
+   ============================================================================ */
+if (!empty($actividadesResto)) {
+
+    $pdf->AddPage();
+    $pdf->SetFont('helvetica', '', 8);
+
+    $filasResto = '';
+    foreach ($actividadesResto as $i => $a) {
+        // La numeracion continua la de la hoja 1: la cuarta actividad se llama
+        // "ACTIVIDAD 4", no "ACTIVIDAD 1" de la hoja 2.
+        $filasResto .= $filaActividad('ACTIVIDAD ' . ($CUPO_PRIMERA_HOJA + $i + 1), $a);
+    }
+
+    $htmlHoja2 = '
+    <style>
+      table { border-collapse: collapse; }
+      td { border: 0.4px solid #000000; font-size: 8pt; padding: 2px; }
+      .titulo { background-color: #000000; color: #ffffff; font-weight: bold; }
+    </style>
+
+    <table cellpadding="2">
+      <tr class="titulo">
+        <td width="100%">C. DISCRIMINACIÓN DE ACTIVIDADES GRAVADAS (continuación)</td>
+      </tr>
+    </table>
+
+    <br>
+
+    <table cellpadding="2">
+      <tr>
+        <td width="10%"><b>N° declaración</b></td>
+        <td width="23%">' . $d['num_form'] . '</td>
+        <td width="10%"><b>Año</b></td>
+        <td width="12%">' . $d['anio'] . '</td>
+        <td width="15%"><b>Contribuyente</b></td>
+        <td width="30%">' . $d['razon'] . '</td>
+      </tr>
+    </table>
+
+    <br>
+
+    <table cellpadding="2">
+      <tr class="titulo">
+        <td width="40%"><b>ACTIVIDADES GRAVADAS</b></td>
+        <td width="10%"><b>CÓDIGO</b></td>
+        <td width="15%"><b>INGRESOS GRAVADOS</b></td>
+        <td width="15%"><b>TARIFA (por mil)</b></td>
+        <td width="20%"><b>VALOR IMPUESTO</b></td>
+      </tr>
+      ' . $filasResto . '
+    </table>
+
+    <br><br>
+
+    <table cellpadding="2">
+      <tr>
+        <td width="100%" style="border:none; font-size:7pt;">
+          Esta hoja es parte integral de la declaración N° ' . $d['num_form'] . '
+          y no tiene validez por separado. Los totales de las casillas 16 y 17
+          de la primera hoja incluyen las actividades de esta continuación.
+        </td>
+      </tr>
+    </table>';
+
+    $pdf->SetXY(10, 20);
+    $pdf->writeHTML($htmlHoja2, true, false, true, false, '');
+
+    dibujarMarcaDeAgua($pdf, $textoMarcaAgua, 215.9, 330.2);
+}
 
 $pdf->Output('ICA_DECLARACION.pdf','I');
