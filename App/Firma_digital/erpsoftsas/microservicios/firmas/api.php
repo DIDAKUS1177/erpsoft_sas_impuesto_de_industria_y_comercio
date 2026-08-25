@@ -110,6 +110,36 @@ class FirmasAPI
 
             $email  = $usuario['usu_Correo'];
             $nombre = $usuario['usu_Nombre'];
+
+            /*
+             * Sin correo no hay a donde mandar el codigo, y hasta el
+             * 2026-08-25 eso NO se comprobaba: se seguia adelante con el
+             * correo en nulo, el envio reventaba con un fatal de PHP, y la
+             * respuesta salia como un 500 con el cuerpo vacio -en una decima
+             * de segundo-. La ventana "Generando codigo" se quedaba girando
+             * para siempre porque nunca recibia nada que entender.
+             *
+             * Es lo que reporto el cliente como "al guardar y firmar se queda
+             * ahi cargando", y le pasa a cualquier contribuyente recien
+             * inscrito, que es justo cuando toca firmar el RIT por primera vez.
+             *
+             * OJO: el codigo va al correo de la CUENTA (conf_usuarios), no al
+             * de notificacion que el contribuyente escribe en el RIT
+             * (ind_Email). Son dos campos distintos y hoy no se sincronizan;
+             * cual de los dos debe mandar esta pendiente de decidir con la
+             * Alcaldia. Mientras tanto se avisa con nombre propio en vez de
+             * dejar la pantalla colgada.
+             */
+            if (trim((string) $email) === '') {
+                header('Content-type: application/json');
+                echo json_encode([
+                    'ok' => 0,
+                    'mensaje' => 'Su usuario no tiene un correo registrado, y el código de '
+                               . 'firma se envía ahí. Actualice su correo en Información del '
+                               . 'Contribuyente, o comuníquese con la Alcaldía.'
+                ]);
+                return;
+            }
         } else {
             // Contador o revisor fiscal: NO es usuario del sistema. Sus datos
             // viven en el contribuyente dueño de la declaración y el codigo

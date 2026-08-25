@@ -45,6 +45,40 @@ if (empty($_SESSION['id_usuario'])) {
 // parametro ligado contra una columna int (est_Id) hacia que un valor no
 // numerico reventara con una excepcion sin capturar (500 en blanco) en vez
 // del mensaje claro que ya se usa para los demas casos de esta seccion.
+
+/**
+ * ¿El RIT de este contribuyente es de quien tiene la sesion abierta?
+ *
+ * Hace falta desde que el establecimiento dejo de ser obligatorio para
+ * imprimir: sin el, no hay establecimiento cuyo dueño comprobar, y sin esta
+ * comprobacion bastaria cambiar el numero de la direccion para descargar el
+ * RIT de otro contribuyente -datos con reserva tributaria-.
+ *
+ * Mismo criterio que ControladorAnexos::puedeOperarSobreEstablecimiento: los
+ * roles de Alcaldia (1 y 2) pueden ver cualquiera, y el resto solo el suyo,
+ * cruzado por numero de documento porque no hay columna que ate el usuario al
+ * contribuyente.
+ */
+function _ritEsDeLaSesion($idContribuyente, $con)
+{
+    if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+
+    if (empty($_SESSION['id_usuario'])) { return false; }
+
+    $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
+    if (in_array($rol, [1, 2], true)) { return true; }
+
+    $propio = $con->obnerFila($con->consultar(
+        "SELECT c.ind_Id
+           FROM ind_contribuyentes c
+           INNER JOIN conf_usuarios u ON u.usu_NumeroDocumento = c.ind_NumeroIdentificacion
+          WHERE u.usu_Id = ? AND c.ind_Id = ?",
+        [(int) $_SESSION['id_usuario'], (int) $idContribuyente]
+    ));
+
+    return (bool) $propio;
+}
+
 $idEstablecimientoCrudo = $_GET['codigo'] ?? null;
 if ($idEstablecimientoCrudo !== null && !ctype_digit((string) $idEstablecimientoCrudo)) {
     exit('El identificador del registro no es válido.');
@@ -60,14 +94,38 @@ if (!$idEstablecimiento && $idContribuyente) {
     ));
     $idEstablecimiento = $fila['est_Id'] ?? null;
 
-    if (!$idEstablecimiento) {
-        exit('Este contribuyente todavía no tiene establecimientos registrados, '
-           . 'así que no se puede generar el certificado.');
-    }
+    /*
+     * Aqui se cortaba con "este contribuyente todavia no tiene
+     * establecimientos registrados". Reportado el 2026-08-25: un contribuyente
+     * recien inscrito no podia descargar su RIT.
+     *
+     * Era una herencia del diseño anterior, cuando el RIT colgaba del
+     * establecimiento. Desde que el RIT es del CONTRIBUYENTE, el
+     * establecimiento solo aporta datos de ubicacion del local, y no tenerlo
+     * no puede impedir imprimir el registro de la persona: la inscripcion en
+     * el RIT es justamente el primer tramite, antes de registrar local alguno.
+     *
+     * Ahora se sigue sin establecimiento y el formulario sale con esa parte
+     * en blanco.
+     */
 }
 
-if (!$idEstablecimiento) {
+if (!$idEstablecimiento && !$idContribuyente) {
     exit('No se indicó de qué registro generar el certificado.');
+}
+
+// Si se entro por ?codigo=, se resuelve de quien es ese establecimiento; hace
+// falta mas abajo para consultar al contribuyente, que ahora es el ancla.
+if ($idEstablecimiento && !$idContribuyente) {
+    $fila = $con->obnerFila($con->consultar(
+        "SELECT est_IdContribuyente FROM ind_establecimientos WHERE est_Id = ?",
+        [$idEstablecimiento]
+    ));
+    $idContribuyente = $fila['est_IdContribuyente'] ?? null;
+
+    if (!$idContribuyente) {
+        exit('No existe información para el registro solicitado.');
+    }
 }
 
 // El chequeo de pertenencia se hace sobre el establecimiento YA resuelto: si
@@ -76,7 +134,20 @@ if (!$idEstablecimiento) {
 // los dos caminos de entrada con una sola llamada -y de paso resuelve el caso
 // de parametros contradictorios (?codigo=1&contribuyente=999): si el
 // establecimiento 1 no es de la sesion actual, se rechaza igual.
-if (!\erpsoftsas\ControladorAnexos::puedeOperarSobreEstablecimiento($idEstablecimiento, $con)) {
+$permitido = $idEstablecimiento
+    // Con establecimiento se comprueba su dueño, que cubre los dos caminos de
+    // entrada de una vez: si se entro por ?contribuyente=, ese establecimiento
+    // ya salio filtrado por el; y si los parametros se contradicen
+    // (?codigo=1&contribuyente=999), el establecimiento 1 sigue sin ser de la
+    // sesion y se rechaza igual.
+    ? \erpsoftsas\ControladorAnexos::puedeOperarSobreEstablecimiento($idEstablecimiento, $con)
+    // Sin establecimiento hay que comprobar el contribuyente directamente, o
+    // cualquiera podria pedir el RIT de otro cambiando el numero en la
+    // direccion. Se cruza por numero de documento, que es como este sistema
+    // ata el usuario al contribuyente.
+    : _ritEsDeLaSesion($idContribuyente, $con);
+
+if (!$permitido) {
     http_response_code(403);
     exit('No tiene permiso para ver este registro.');
 }
@@ -106,15 +177,19 @@ SELECT
     c.*,
     ciu.ciu_Nombre,
     ciu.ciu_Departamento
-FROM ind_establecimientos e
-INNER JOIN ind_contribuyentes c
-    ON c.ind_Id = e.est_IdContribuyente
+FROM ind_contribuyentes c
+LEFT JOIN ind_establecimientos e
+    ON e.est_Id = ?
 LEFT JOIN conf_ciudades ciu
     ON ciu.ciu_Id = c.ind_IdCiudad
-WHERE e.est_Id = ?
+WHERE c.ind_Id = ?
 ";
 
-$row = $con->obnerFila($con->consultar($sql, [$idEstablecimiento]));
+// El ancla es el CONTRIBUYENTE y el establecimiento entra por LEFT JOIN. Antes
+// era al reves y por eso un contribuyente sin locales no tenia RIT que
+// imprimir. Sin establecimiento, las columnas e.* llegan en nulo y esa parte
+// del formulario sale en blanco, que es lo correcto.
+$row = $con->obnerFila($con->consultar($sql, [$idEstablecimiento, $idContribuyente]));
 
 if (!$row) {
     exit('No existe información para el registro solicitado.');

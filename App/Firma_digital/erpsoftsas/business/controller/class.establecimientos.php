@@ -76,6 +76,13 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
             return [];
         }
 
+        // Si no viene codigo, se reparte uno. _validarCodigo ya dejo el campo
+        // en null cuando llega vacio, asi que aqui basta comprobar eso.
+        if (empty($_POST['est_Codigo'])) {
+            $conCodigo = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+            $_POST['est_Codigo'] = self::_siguienteCodigo($conCodigo);
+        }
+
         self::_descartarUbicacion();
 
         // est_IdContribuyente llegaba tal cual del navegador: un contribuyente
@@ -424,6 +431,64 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
             : 'Cese de actividades guardado';
 
         return [];
+    }
+
+
+
+    /**
+     * Codigo del establecimiento, cuando el usuario no escribe ninguno.
+     *
+     * Reportado el 2026-08-25: "el codigo no lo crea por defecto". Era cierto
+     * -la columna quedaba en NULL- y por eso los doce que existen tienen
+     * codigos puestos a mano y sin criterio: unos son el NIT del contribuyente
+     * (1192762963), otros son 12, 121 o 999.
+     *
+     * Lo reparte el mismo contador atomico del numero de declaracion
+     * (ind_consecutivos, migracion 012), sembrado en 1000 por la 014. Se
+     * SALTAN los codigos ya ocupados en vez de arrancar por encima del maximo:
+     * arrancar sobre el NIT daria codigos de diez digitos para siempre.
+     *
+     * Se limita a 50 intentos por si alguien llenara el rango a mano; si no
+     * encuentra hueco devuelve null y el establecimiento se crea sin codigo,
+     * que es el comportamiento anterior -mejor un local sin codigo que un
+     * local que no se puede crear-.
+     */
+    private static function _siguienteCodigo($con)
+    {
+        for ($i = 0; $i < 50; $i++) {
+            try {
+                $fila = $con->obnerFila($con->consultar(
+                    // SET NOCOUNT ON o el primer resultado que vuelve es el
+                    // contador de filas del UPDATE, no el SELECT: obnerFila()
+                    // hace una sola lectura y se traeria eso, devolviendo vacio.
+                    "SET NOCOUNT ON;
+                     DECLARE @n INT;
+                     UPDATE dbo.ind_consecutivos
+                        SET @n = cse_Valor = cse_Valor + 1,
+                            cse_FechaActualizacion = GETDATE()
+                      WHERE cse_Tipo = 'ESTABLECIMIENTO' AND cse_Anio = 0;
+                     SELECT @n AS codigo;",
+                    []
+                ));
+
+                $codigo = isset($fila['codigo']) ? (int) $fila['codigo'] : 0;
+                if ($codigo <= 0) { return null; }
+
+                $ocupado = $con->obnerFila($con->consultar(
+                    "SELECT est_Id FROM ind_establecimientos WHERE est_Codigo = ?",
+                    [$codigo]
+                ));
+
+                if (!$ocupado) { return $codigo; }
+
+            } catch (\Throwable $e) {
+                error_log('[establecimientos] no se pudo generar el codigo: ' . $e->getMessage());
+                return null;
+            }
+        }
+
+        error_log('[establecimientos] 50 intentos sin encontrar un codigo libre');
+        return null;
     }
 
 

@@ -164,6 +164,59 @@ class PlacetoPay {
             'banco'         => substr($banco, 0, 10),
             'autorizacion'  => $transaccion['authorization'] ?? '',
             'fecha'         => $respuesta['status']['date'] ?? date('c'),
+
+            // El texto con que el banco explica un rechazo. Sin esto, un pago
+            // rechazado solo se puede explicar entrando al panel de PlacetoPay.
+            'mensaje'       => substr((string) ($transaccion['status']['message']
+                                             ?? $respuesta['status']['message'] ?? ''), 0, 300),
         ];
+    }
+
+
+    /**
+     * Deja en la declaracion el resultado que dio el banco.
+     *
+     * Hasta el 2026-08-25 los tres caminos que reciben un resultado -el
+     * retorno del usuario, la notificacion del banco y el proceso de
+     * respaldo- solo hacian algo si el estado era APPROVED. Un REJECTED, un
+     * PENDING o un FAILED no dejaban rastro en ninguna parte, porque no habia
+     * donde anotarlo: la declaracion seguia sin pagar y nadie podia saber si
+     * fue un rechazo o si el pago estaba en tramite.
+     *
+     * En PSE colombiano eso importa: un pago puede quedarse PENDING durante
+     * horas. El contribuyente cree que pago, la Alcaldia no ve nada.
+     *
+     * Ahora SIEMPRE se guarda el estado, y el pago se marca solo si el banco
+     * lo aprobo. Las columnas las crea la migracion 014.
+     *
+     * Devuelve true si la declaracion quedo marcada como pagada.
+     */
+    public static function aplicarADeclaracion($con, $idDeclaracion, array $info, $valor)
+    {
+        $con->consultar(
+            "UPDATE ind_declaraciones_ica
+                SET dec_PSE_Estado      = ?,
+                    dec_PSE_FechaEstado = GETDATE(),
+                    dec_PSE_Mensaje     = ?
+              WHERE dec_Id = ?",
+            [$info['estado'], $info['mensaje'] ?? '', (int) $idDeclaracion]
+        );
+
+        if (empty($info['aprobado'])) {
+            return false;
+        }
+
+        // La guarda de dec_Pagado evita que dos caminos a la vez -la
+        // notificacion del banco y el retorno del usuario, que llegan casi
+        // juntos- apliquen el pago dos veces.
+        $con->consultar(
+            "UPDATE ind_declaraciones_ica
+                SET dec_Pagado = 1, dec_FechaPago = GETDATE(), dec_FechaRealPago = GETDATE(),
+                    dec_ValorPago = ?, dec_BancoPago = ?
+              WHERE dec_Id = ? AND ISNULL(dec_Pagado, 0) = 0",
+            [$valor, $info['banco'], (int) $idDeclaracion]
+        );
+
+        return true;
     }
 }

@@ -511,7 +511,43 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             // la PERSONA, asi que subio al contribuyente en la migracion 007.
             'ind_Autorizacion',
             'ind_EmailContador', 'ind_EmailRevisor',
+            // Regimen tributario y responsabilidades (migracion 014). Son
+            // listas de seleccion multiple y viajan como codigos separados por
+            // coma; _normalizarSeleccionMultiple() se encarga de que no entre
+            // cualquier cosa.
+            'ind_RegimenTributario', 'ind_Responsabilidades',
         ];
+    }
+
+    /**
+     * Catalogos cerrados de las dos casillas de seleccion multiple del RIT.
+     *
+     * Se guardan como codigos separados por coma en una sola columna. Estan
+     * aqui, en el servidor, y no solo en el formulario: la lista de opciones
+     * de un <input type=checkbox> se manipula desde la consola del navegador
+     * en dos segundos, y esto acaba impreso en un certificado tributario.
+     */
+    private static function _opcionesSeleccionMultiple()
+    {
+        return [
+            'ind_RegimenTributario' => ['ORDINARIO', 'SIMPLE', 'ESPECIAL', 'RESP_IVA', 'NO_RESP_IVA'],
+            'ind_Responsabilidades' => ['AGENTE_RETENCION', 'AUTORRETENEDOR', 'INFORMANTE_EXOGENA'],
+        ];
+    }
+
+    /**
+     * Deja el valor de una casilla multiple en codigos validos, sin repetir y
+     * en el orden del catalogo, o cadena vacia si no queda ninguno.
+     */
+    private static function _normalizarSeleccionMultiple($campo, $valor)
+    {
+        $validas = self::_opcionesSeleccionMultiple()[$campo] ?? [];
+        if (!$validas) { return ''; }
+
+        $pedidas = array_filter(array_map('trim', explode(',', (string) $valor)));
+        $limpias = array_values(array_intersect($validas, $pedidas));
+
+        return implode(',', $limpias);
     }
 
     /**
@@ -848,6 +884,16 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
                     $this->_mensaje = 'El correo "' . $valor . '" no es válido';
                     return [];
                 }
+            }
+
+            // Las dos casillas de seleccion multiple llegan como codigos
+            // separados por coma. Se filtran contra su catalogo aqui, no solo
+            // en el formulario: lo que quede acaba impreso en un certificado
+            // tributario, y una lista de <input type=checkbox> se manipula
+            // desde la consola del navegador.
+            if (in_array($campo, ['ind_RegimenTributario', 'ind_Responsabilidades'], true)) {
+                $valor = self::_normalizarSeleccionMultiple($campo, $valor);
+                if ($valor === '') { $valor = null; }
             }
 
             // Una fecha vacia tiene que quedar NULL, no cadena vacia: SQL

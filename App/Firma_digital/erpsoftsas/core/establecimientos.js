@@ -91,7 +91,15 @@ class Establecimientos {
                 '<span class="ti-plus"></span>' +
                 ' Crear'
             );
-            $("#formCrearEstablecimientos").attr('action', 'javascript:establecimientos.postEstablecimientos()');
+            // Se marca el MODO; quien envia el formulario es el manejador
+            // que se instala al cargar la pantalla (ver el final del archivo).
+            //
+            // Antes aqui se reescribia el atributo action del formulario. Como
+            // esto corre despues de un await, si la consulta de permisos
+            // tardaba o fallaba el formulario se quedaba sin action y el boton
+            // "Crear" no hacia absolutamente nada: ni guardaba, ni avisaba.
+            // Es lo que reporto el cliente el 2026-08-25.
+            establecimientos._modo = { accion: 'crear' };
                 /*
                  * Ya NO se llama a Geografia.poblar aqui.
                  *
@@ -578,8 +586,7 @@ $("#est_NoResolucion").val(d.est_NoResolucion);
                     '<span class="ti-reload"></span> Actualizar'
                 );
 
-                $("#formCrearEstablecimientos")
-                    .attr('action', `javascript:establecimientos.postEditarEstablecimiento(${id})`);
+                establecimientos._modo = { accion: 'editar', id: id };
 
                 $('#modal-Establecimientos')
                     .modal({ backdrop: 'static', keyboard: false })
@@ -2007,4 +2014,42 @@ $("#btnValidarDeclaracion").on("click", function () {
 // el establecimiento ya exista para colgarle los archivos.
 $(document).on('click', '#btnSubirAnexo', function () {
     establecimientos.subirAnexos();
+});
+
+
+/*
+ * Envio del formulario de establecimiento.
+ *
+ * Se instala UNA vez al cargar la pantalla y no depende de nada asincrono, que
+ * es lo que fallaba: el boton es <button type="submit"> dentro del formulario,
+ * y quien decidia que hacer era el atributo action, que se escribia dentro de
+ * crearEstablecimientos() despues de esperar la consulta de permisos. Si esa
+ * espera no terminaba bien, el formulario quedaba sin action y pulsar "Crear"
+ * no producia ningun efecto visible.
+ *
+ * Ahora el manejador siempre esta, y lo que cambia es solo el modo. Si por lo
+ * que sea no hay modo, avisa en vez de quedarse callado: un boton que no hace
+ * nada es peor que uno que da un error.
+ */
+$(function () {
+    $("#formCrearEstablecimientos").off("submit.erp").on("submit.erp", function (e) {
+        e.preventDefault();
+
+        const modo = establecimientos._modo;
+
+        if (!modo || !modo.accion) {
+            swal({
+                type: 'warning',
+                title: 'No se pudo continuar',
+                text: 'Vuelva a abrir el formulario e intente de nuevo.',
+            });
+            return;
+        }
+
+        if (modo.accion === 'editar') {
+            establecimientos.postEditarEstablecimiento(modo.id);
+        } else {
+            establecimientos.postEstablecimientos();
+        }
+    });
 });

@@ -615,16 +615,30 @@ Guardar
                                     <input type="number" id="periodoDeclaracion" class="form-control input-sm" >
                                 </div>
 
-                                <!-- FECHA DECLARACIÓN -->
+                                <style>
+/* Ver la nota en icaWebRit.php: un readonly de Bootstrap se ve igual que un
+   campo editable, asi que hay que marcarlo para que se note. */
+.campo-bloqueado { background-color:#eef1f4 !important; cursor:not-allowed; color:#55606b; }
+</style>
+<!-- FECHA Y HORA DE DECLARACIÓN
+                                     Pedido el 2026-08-25: "que tome la fecha de creación de
+                                     la declaración y no deje modificar". Son la constancia de
+                                     cuándo se diligenció; dejarlas editables permitía
+                                     antedatar una declaración, que sobre un documento
+                                     tributario no es un detalle. El servidor ya las graba al
+                                     crear (date('Y-m-d') / date('H:i:s') en
+                                     _agregarDeclaracion), asi que aqui solo se muestran. -->
                                 <div class="col-sm-3">
                                     <label>Fecha Declaración</label>
-                                    <input type="date" id="fechaDeclaracion" class="form-control input-sm">
+                                    <input type="date" id="fechaDeclaracion" class="form-control input-sm campo-bloqueado"
+                                           readonly title="Es la fecha en que se creó la declaración">
                                 </div>
 
                                 <!-- HORA -->
                                 <div class="col-sm-3">
                                     <label>Hora</label>
-                                    <input type="time" id="horaDeclaracion" class="form-control input-sm">
+                                    <input type="time" id="horaDeclaracion" class="form-control input-sm campo-bloqueado"
+                                           readonly title="Es la hora en que se creó la declaración">
                                 </div>
 
                                 <!-- OPCIÓN DE USO -->

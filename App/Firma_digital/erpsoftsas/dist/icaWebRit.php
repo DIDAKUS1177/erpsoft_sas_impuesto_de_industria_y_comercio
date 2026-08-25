@@ -129,6 +129,17 @@
 					</div>
 				</div>
 
+				<style>
+				/* Un campo readonly se ve identico a uno editable en Bootstrap 4,
+				   y por eso el cliente pidio dos veces "bloquear" campos que ya
+				   estaban bloqueados: el problema era que no se notaba. */
+				.campo-bloqueado {
+					background-color: #eef1f4 !important;
+					cursor: not-allowed;
+					color: #55606b;
+				}
+				</style>
+
 				<form id="formRIT" class="pd-20 pt-0" onsubmit="establecimientos.guardarRIT(); return false;">
 					<input type="hidden" name="ind_Id" id="rit_ind_Id">
 
@@ -138,21 +149,29 @@
 						     identidad tributaria y una declaracion ya firmada
 						     quedaria atada a un documento distinto del que la
 						     firmo. Se cambian por el camino de administrador. -->
+						<!-- Ya eran readonly, pero se veian igual que los editables y el
+						     cliente volvio a pedir "bloquearlos" el 2026-08-25: el problema
+						     no era que se pudieran cambiar, sino que no se notaba que no.
+						     Se les pone fondo gris y el cursor de campo no editable. -->
 						<div class="col-md-3 form-group">
 							<label>Tipo de documento</label>
-							<input type="text" class="form-control" id="rit_TipoDocumento" readonly>
+							<input type="text" class="form-control campo-bloqueado" id="rit_TipoDocumento" readonly
+							       title="La identidad tributaria no se cambia desde aquí">
 						</div>
 						<div class="col-md-3 form-group">
 							<label>Número de documento</label>
-							<input type="text" class="form-control" id="rit_ind_NumeroIdentificacion" readonly>
+							<input type="text" class="form-control campo-bloqueado" id="rit_ind_NumeroIdentificacion" readonly
+							       title="La identidad tributaria no se cambia desde aquí">
 						</div>
 						<div class="col-md-1 form-group">
 							<label>DV</label>
-							<input type="text" class="form-control" id="rit_ind_DV" readonly>
+							<input type="text" class="form-control campo-bloqueado" id="rit_ind_DV" readonly
+							       title="La identidad tributaria no se cambia desde aquí">
 						</div>
 						<div class="col-md-5 form-group">
 							<label>Tipo de persona</label>
-							<select class="form-control" name="ind_Persona" id="rit_ind_Persona">
+							<select class="form-control" name="ind_Persona" id="rit_ind_Persona"
+							        onchange="establecimientos.ajustarNombresPorTipoPersona()">
 								<option value="1">Natural</option>
 								<option value="2">Jurídica</option>
 							</select>
@@ -161,7 +180,10 @@
 
 					<div class="row">
 						<div class="col-md-3 form-group">
-							<label>Primer nombre</label>
+							<!-- Una persona juridica no tiene "primer nombre": en esta misma
+							     casilla va su razon social. Es la misma columna
+							     (ind_PrimerNombre); solo cambia el rotulo. -->
+							<label>Primer nombre o razón social</label>
 							<input type="text" class="form-control" name="ind_PrimerNombre" id="rit_ind_PrimerNombre" maxlength="100">
 						</div>
 						<div class="col-md-3 form-group">
@@ -397,6 +419,40 @@
      Ojo, esto NO es la tabla de actividades que liquida el impuesto: esa va
      mas abajo y sale del catalogo del municipio. Estas tres casillas son
      texto libre con lo que dice el RUT de la DIAN. -->
+					<!-- Régimen tributario y responsabilidades. Pedidos el 2026-08-25,
+					     los dos de selección MÚLTIPLE ("para seleccionar 1 o varias").
+					     Se guardan como códigos separados por coma en una sola columna
+					     cada uno (migración 014); el servidor filtra contra su catálogo
+					     en _normalizarSeleccionMultiple, así que marcar algo raro desde
+					     la consola no sirve de nada. -->
+					<h5 class="mb-3" style="font-weight:600;">Régimen tributario</h5>
+					<p class="text-muted" style="font-size:12px;margin-top:-8px;">Puede marcar más de una.</p>
+					<div class="row mb-3" id="ritRegimenTributario">
+						<div class="col-md-3 form-group"><label class="mb-0">
+							<input type="checkbox" class="rit-regimen" value="ORDINARIO"> Régimen ordinario</label></div>
+						<div class="col-md-3 form-group"><label class="mb-0">
+							<input type="checkbox" class="rit-regimen" value="SIMPLE"> Régimen Simple de Tributación</label></div>
+						<div class="col-md-2 form-group"><label class="mb-0">
+							<input type="checkbox" class="rit-regimen" value="ESPECIAL"> Régimen Especial</label></div>
+						<div class="col-md-2 form-group"><label class="mb-0">
+							<input type="checkbox" class="rit-regimen" value="RESP_IVA"> Responsable de IVA</label></div>
+						<div class="col-md-2 form-group"><label class="mb-0">
+							<input type="checkbox" class="rit-regimen" value="NO_RESP_IVA"> No responsable de IVA</label></div>
+					</div>
+					<input type="hidden" name="ind_RegimenTributario" id="rit_ind_RegimenTributario">
+
+					<h5 class="mb-3" style="font-weight:600;">Responsabilidades</h5>
+					<p class="text-muted" style="font-size:12px;margin-top:-8px;">Puede marcar más de una.</p>
+					<div class="row mb-3" id="ritResponsabilidades">
+						<div class="col-md-4 form-group"><label class="mb-0">
+							<input type="checkbox" class="rit-responsabilidad" value="AGENTE_RETENCION"> Agente de retención</label></div>
+						<div class="col-md-4 form-group"><label class="mb-0">
+							<input type="checkbox" class="rit-responsabilidad" value="AUTORRETENEDOR"> Autorretenedor</label></div>
+						<div class="col-md-4 form-group"><label class="mb-0">
+							<input type="checkbox" class="rit-responsabilidad" value="INFORMANTE_EXOGENA"> Informante de exógena</label></div>
+					</div>
+					<input type="hidden" name="ind_Responsabilidades" id="rit_ind_Responsabilidades">
+
 					<h5 class="mb-3" style="font-weight:600;">Información del RUT - Códigos CIIU Actividades económicas</h5>
 					<!-- Punto 5 de la revision del 2026-08-21: el cliente pidio quitar el aviso
 					     que explicaba la diferencia entre los codigos de tres digitos del
@@ -743,7 +799,10 @@ $(document).ready(function () {
     swal({
         icon: 'info',
         title: 'Actualización requerida',
-        text: 'Se requiere realizar la actualización de datos del establecimiento y la carga de los respectivos documentos para poder continuar con el proceso de declaraciones.',
+        // Texto dictado por el cliente el 2026-08-25. El anterior hablaba de
+        // "datos del establecimiento" y de cargar documentos, dos cosas que ya
+        // no son lo que este aviso pide: el RIT es del contribuyente.
+        text: 'Se requiere realizar la actualización del Registro de Información Tributaria RIT para poder continuar con su trámite.',
         button: 'Entendido',
         closeOnClickOutside: false,
         closeOnEsc: false

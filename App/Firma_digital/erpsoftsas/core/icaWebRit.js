@@ -178,7 +178,9 @@ class Establecimientos {
                 '<span class="ti-plus"></span>' +
                 ' Crear'
             );
-            $("#formCrearEstablecimientos").attr('action', 'javascript:establecimientos.postEstablecimientos()');
+            // Ver la nota en core/establecimientos.js: se marca el modo, y
+            // quien envia es el manejador instalado al cargar la pantalla.
+            establecimientos._modo = { accion: 'crear' };
             if (typeof Geografia !== 'undefined') {
                 Geografia.poblar('est_Departamento', 'est_Ciudad');
             }
@@ -430,8 +432,7 @@ $("#est_NoResolucion").val(d.est_NoResolucion);
                     '<span class="ti-reload"></span> Actualizar'
                 );
 
-                $("#formCrearEstablecimientos")
-                    .attr('action', `javascript:establecimientos.postEditarEstablecimiento(${id})`);
+                establecimientos._modo = { accion: 'editar', id: id };
 
                 $('#modal-Establecimientos')
                     .modal({ backdrop: 'static', keyboard: false })
@@ -1780,6 +1781,12 @@ actualizarDeclaracionIca(valor, numeroCampo){
                 // Informacion del Contribuyente.
                 establecimientos.cargarCiudadesRIT(d.ind_IdCiudad);
 
+                // Una persona juridica no tiene segundo nombre ni apellidos:
+                // su razon social entra entera en la primera casilla. Pedido
+                // el 2026-08-25.
+                establecimientos.ajustarNombresPorTipoPersona();
+                establecimientos.pintarSeleccionMultiple(d.ind_RegimenTributario, d.ind_Responsabilidades);
+
                 // Autorizacion de notificacion electronica: sin ella el
                 // servidor rechaza el guardado (ver _guardarRIT).
                 $('#rit_ind_Autorizacion').prop('checked', String(d.ind_Autorizacion) === '1');
@@ -1835,6 +1842,57 @@ actualizarDeclaracionIca(valor, numeroCampo){
      * ind_IdCiudad, la clave de conf_ciudades. El departamento no se guarda:
      * sale del propio catalogo y solo sirve para acotar la lista.
      */
+    /**
+     * Con persona JURIDICA, el segundo nombre y los dos apellidos no aplican:
+     * la razon social va completa en "Primer nombre o razon social". Se
+     * bloquean y se vacian para que no quede un apellido colgado de una
+     * empresa; con persona natural se vuelven a habilitar.
+     *
+     * Se vacian ADEMAS de bloquear a proposito: un campo deshabilitado con
+     * texto dentro sigue mostrando un dato que ya no significa nada, y en un
+     * certificado tributario eso confunde.
+     */
+    /**
+     * Vuelca las casillas de regimen y responsabilidades a sus campos ocultos.
+     *
+     * Son <input type=checkbox> sin atributo name a proposito: si lo tuvieran,
+     * serialize() mandaria un parametro repetido por cada una marcada, y el
+     * controlador -que recorre $_POST campo a campo- solo veria la ultima. Con
+     * un campo oculto viaja la lista completa en un solo valor.
+     */
+    recogerSeleccionMultiple() {
+        const juntar = (sel) => $(sel + ':checked').map(function () { return this.value; }).get().join(',');
+        $('#rit_ind_RegimenTributario').val(juntar('.rit-regimen'));
+        $('#rit_ind_Responsabilidades').val(juntar('.rit-responsabilidad'));
+    }
+
+    /**
+     * Marca las casillas a partir de lo que hay guardado.
+     */
+    pintarSeleccionMultiple(regimen, responsabilidades) {
+        const marcar = (sel, valor) => {
+            const puestos = String(valor || '').split(',').map(v => v.trim()).filter(Boolean);
+            $(sel).each(function () { this.checked = puestos.indexOf(this.value) !== -1; });
+        };
+        marcar('.rit-regimen', regimen);
+        marcar('.rit-responsabilidad', responsabilidades);
+    }
+
+    ajustarNombresPorTipoPersona() {
+        const esJuridica = String($('#rit_ind_Persona').val()) === '2';
+        const dependientes = ['rit_ind_SegundoNombre', 'rit_ind_PrimerApellido', 'rit_ind_SegundoApellido'];
+
+        dependientes.forEach(function (id) {
+            const $c = $('#' + id);
+            if (esJuridica) { $c.val(''); }
+            $c.prop('readonly', esJuridica)
+              .toggleClass('campo-bloqueado', esJuridica)
+              .attr('title', esJuridica ? 'No aplica para persona jurídica' : '');
+        });
+
+        $('#rit_ind_PrimerNombre').attr('placeholder', esJuridica ? 'Razón social' : '');
+    }
+
     cargarCiudadesRIT(idActual) {
 
         $.ajax({
@@ -2376,6 +2434,11 @@ actualizarDeclaracionIca(valor, numeroCampo){
             $('#rit_ind_Rut').focus();
             return;
         }
+
+        // Las dos casillas de seleccion multiple no viajan solas: son
+        // <input type=checkbox> sin name, y lo que se envia es el campo oculto
+        // con sus codigos separados por coma.
+        establecimientos.recogerSeleccionMultiple();
 
         var $boton = $('#btnGuardarRIT');
         $boton.prop('disabled', true);
@@ -2920,4 +2983,37 @@ $(document).on('click', '#btnGuardarActividadesRIT', function () {
 /* Cambiar de departamento repinta los municipios y limpia el que hubiera. */
 $(document).on('change', '#rit_DepartamentoResidencia', function () {
     establecimientos.pintarMunicipiosRIT($(this).val(), null);
+});
+
+
+/*
+ * Envio del formulario de establecimiento. Ver la nota extensa en
+ * core/establecimientos.js: el boton "Crear" dependia de un atributo action
+ * que se escribia despues de esperar la consulta de permisos, y si esa espera
+ * no terminaba bien el boton no hacia absolutamente nada.
+ *
+ * Las cuatro pantallas comparten el mismo HTML del modal, asi que el arreglo
+ * va en las cuatro.
+ */
+$(function () {
+    $("#formCrearEstablecimientos").off("submit.erp").on("submit.erp", function (e) {
+        e.preventDefault();
+
+        const modo = establecimientos._modo;
+
+        if (!modo || !modo.accion) {
+            swal({
+                type: 'warning',
+                title: 'No se pudo continuar',
+                text: 'Vuelva a abrir el formulario e intente de nuevo.',
+            });
+            return;
+        }
+
+        if (modo.accion === 'editar') {
+            establecimientos.postEditarEstablecimiento(modo.id);
+        } else {
+            establecimientos.postEstablecimientos();
+        }
+    });
 });

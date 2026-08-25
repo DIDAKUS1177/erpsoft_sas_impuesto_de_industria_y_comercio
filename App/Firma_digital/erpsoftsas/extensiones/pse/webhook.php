@@ -63,15 +63,9 @@ try {
     $respuesta = PlacetoPay::consultarSesion($requestId);
     $info = PlacetoPay::interpretarRespuesta($respuesta);
 
-    if ($info['aprobado']) {
-        $con->consultar(
-            "UPDATE ind_declaraciones_ica
-             SET dec_Pagado = 1, dec_FechaPago = GETDATE(), dec_FechaRealPago = GETDATE(),
-                 dec_ValorPago = ?, dec_BancoPago = ?
-             WHERE dec_Id = ?",
-            [$row['dec_ValorConcepto20'], $info['banco'], $row['dec_Id']]
-        );
-    }
+    // Se guarda SIEMPRE el estado, apruebe o no: un rechazo o un pago en
+    // tramite tambien son informacion, y hasta ahora no dejaban rastro.
+    PlacetoPay::aplicarADeclaracion($con, $row['dec_Id'], $info, $row['dec_ValorConcepto20']);
 
     echo json_encode(['ok' => true, 'estado' => $info['estado']]);
 } catch (Exception $e) {

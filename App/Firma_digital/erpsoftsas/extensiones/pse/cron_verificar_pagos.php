@@ -43,18 +43,16 @@ while ($row = $con->obnerFila($stmt)) {
         $respuesta = PlacetoPay::consultarSesion($row['dec_PSE_RequestId']);
         $info = PlacetoPay::interpretarRespuesta($respuesta);
 
-        if ($info['aprobado']) {
-            $con->consultar(
-                "UPDATE ind_declaraciones_ica
-                 SET dec_Pagado = 1, dec_FechaPago = GETDATE(), dec_FechaRealPago = GETDATE(),
-                     dec_ValorPago = ?, dec_BancoPago = ?
-                 WHERE dec_Id = ?",
-                [$row['dec_ValorConcepto20'], $info['banco'], $row['dec_Id']]
-            );
+        // Se anota el estado en los DOS casos: hasta ahora, cuando el banco
+        // contestaba algo distinto de APPROVED el cron lo imprimia por pantalla
+        // y no lo guardaba, asi que ese dato se perdia en cada corrida.
+        $pagada = PlacetoPay::aplicarADeclaracion($con, $row['dec_Id'], $info, $row['dec_ValorConcepto20']);
+
+        if ($pagada) {
             $actualizadas++;
             echo "dec_Id {$row['dec_Id']}: APROBADO, actualizada.\n";
         } else {
-            echo "dec_Id {$row['dec_Id']}: sigue en estado {$info['estado']}.\n";
+            echo "dec_Id {$row['dec_Id']}: sigue en estado {$info['estado']}, anotado.\n";
         }
     } catch (Exception $e) {
         echo "dec_Id {$row['dec_Id']}: error al consultar - {$e->getMessage()}\n";

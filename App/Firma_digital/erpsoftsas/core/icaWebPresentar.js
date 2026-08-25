@@ -31,7 +31,9 @@ class Establecimientos {
                 '<span class="ti-plus"></span>' +
                 ' Crear'
             );
-            $("#formCrearEstablecimientos").attr('action', 'javascript:establecimientos.postEstablecimientos()');
+            // Ver la nota en core/establecimientos.js: se marca el modo, y
+            // quien envia es el manejador instalado al cargar la pantalla.
+            establecimientos._modo = { accion: 'crear' };
             if (typeof Geografia !== 'undefined') {
                 Geografia.poblar('est_Departamento', 'est_Ciudad');
             }
@@ -259,8 +261,7 @@ $("#est_NoResolucion").val(d.est_NoResolucion);
                     '<span class="ti-reload"></span> Actualizar'
                 );
 
-                $("#formCrearEstablecimientos")
-                    .attr('action', `javascript:establecimientos.postEditarEstablecimiento(${id})`);
+                establecimientos._modo = { accion: 'editar', id: id };
 
                 $('#modal-Establecimientos')
                     .modal({ backdrop: 'static', keyboard: false })
@@ -2126,3 +2127,36 @@ establecimientos._intentarPresentar = function(dec_Id, idEstablecimiento) {
         }
     });
 };
+
+
+/*
+ * Envio del formulario de establecimiento. Ver la nota extensa en
+ * core/establecimientos.js: el boton "Crear" dependia de un atributo action
+ * que se escribia despues de esperar la consulta de permisos, y si esa espera
+ * no terminaba bien el boton no hacia absolutamente nada.
+ *
+ * Las cuatro pantallas comparten el mismo HTML del modal, asi que el arreglo
+ * va en las cuatro.
+ */
+$(function () {
+    $("#formCrearEstablecimientos").off("submit.erp").on("submit.erp", function (e) {
+        e.preventDefault();
+
+        const modo = establecimientos._modo;
+
+        if (!modo || !modo.accion) {
+            swal({
+                type: 'warning',
+                title: 'No se pudo continuar',
+                text: 'Vuelva a abrir el formulario e intente de nuevo.',
+            });
+            return;
+        }
+
+        if (modo.accion === 'editar') {
+            establecimientos.postEditarEstablecimiento(modo.id);
+        } else {
+            establecimientos.postEstablecimientos();
+        }
+    });
+});

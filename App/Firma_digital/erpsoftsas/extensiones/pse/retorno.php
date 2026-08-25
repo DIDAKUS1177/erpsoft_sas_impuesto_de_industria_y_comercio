@@ -40,14 +40,11 @@ if (!$row || empty($row['dec_PSE_RequestId'])) {
         $respuesta = PlacetoPay::consultarSesion($row['dec_PSE_RequestId']);
         $info = PlacetoPay::interpretarRespuesta($respuesta);
 
+        // Se guarda el estado venga como venga; solo se marca pagada si el
+        // banco la aprobo.
+        PlacetoPay::aplicarADeclaracion($con, $idDeclaracion, $info, $row['dec_ValorConcepto20']);
+
         if ($info['aprobado']) {
-            $con->consultar(
-                "UPDATE ind_declaraciones_ica
-                 SET dec_Pagado = 1, dec_FechaPago = GETDATE(), dec_FechaRealPago = GETDATE(),
-                     dec_ValorPago = ?, dec_BancoPago = ?
-                 WHERE dec_Id = ?",
-                [$row['dec_ValorConcepto20'], $info['banco'], $idDeclaracion]
-            );
             $aprobado = true;
             $mensaje = 'Pago aprobado. Gracias.';
         } elseif ($info['estado'] === 'PENDING') {
