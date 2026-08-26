@@ -55,6 +55,74 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
         }
     }
 
+    /**
+     * Trae a la declaracion nueva el anticipo que se liquido el año pasado.
+     *
+     * Pedido el 2026-08-25: "que se cruce con la informacion del anticipo de
+     * la declaracion del año anterior".
+     *
+     * COMO SE CRUZAN LAS DOS CASILLAS
+     *
+     * En el formulario, el anticipo aparece dos veces con sentidos opuestos:
+     *
+     *     casilla 30 (concepto 9)  (+) ANTICIPO DEL AÑO SIGUIENTE
+     *     casilla 29 (concepto 8)  (-) MENOS ANTICIPO LIQUIDADO EN EL AÑO ANTERIOR
+     *
+     * Lo que un contribuyente liquido como anticipo del año siguiente en su
+     * declaracion de 2025 es exactamente lo que debe descontarse en la de
+     * 2026. Hasta ahora habia que copiarlo a mano, mirando la declaracion
+     * anterior; ese es justamente el paso donde se cometen errores, y
+     * equivocarse aqui cambia el impuesto a pagar.
+     *
+     * DE DONDE SE TOMA
+     *
+     * De la declaracion PRESENTADA (dec_Estado = 2) de ese contribuyente para
+     * el año anterior. Un borrador no sirve: su anticipo todavia puede cambiar.
+     * Si hay correccion se toma la mas reciente, que es la que vale.
+     *
+     * NO PISA LO QUE YA HAYA. El concepto 8 es uno de los nueve renglones que
+     * escribe el usuario (migracion 010), asi que solo se rellena si esta
+     * vacio: sugerir un valor es ayudar, sobreescribir el que alguien puso a
+     * proposito es otra cosa.
+     *
+     * Devuelve el valor traido, o null si no habia de donde.
+     */
+    private function _cruzarAnticipoDelAnioAnterior($con, $idDeclaracion, $idContribuyente, $anio)
+    {
+        try {
+            $anterior = $con->obnerFila($con->consultar(
+                "SELECT TOP 1 dec_ValorConcepto9
+                   FROM ind_declaraciones_ica
+                  WHERE dec_IdContribuyente = ?
+                    AND dec_AnioDeclaracion = ?
+                    AND dec_Estado = 2
+                  ORDER BY dec_Id DESC",
+                [(int) $idContribuyente, (int) $anio - 1]
+            ));
+
+            $anticipo = isset($anterior['dec_ValorConcepto9'])
+                ? (float) $anterior['dec_ValorConcepto9'] : 0;
+
+            if ($anticipo <= 0) { return null; }
+
+            $con->consultar(
+                "UPDATE ind_declaraciones_ica
+                    SET dec_ValorConcepto8 = ?
+                  WHERE dec_Id = ?
+                    AND ISNULL(dec_ValorConcepto8, 0) = 0",
+                [$anticipo, (int) $idDeclaracion]
+            );
+
+            return $anticipo;
+
+        } catch (\Throwable $e) {
+            // Que falle el cruce no puede impedir crear la declaracion: es una
+            // ayuda, y el contribuyente siempre puede escribir el valor.
+            error_log('[declaraciones] no se pudo cruzar el anticipo del año anterior: ' . $e->getMessage());
+            return null;
+        }
+    }
+
     private static function _contribuyenteDeLaSesion($con)
     {
         if (session_status() === PHP_SESSION_NONE) { @session_start(); }
@@ -381,6 +449,10 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
                 "UPDATE ind_declaraciones_ica SET dec_NumeroDeclaracion = ? WHERE dec_Id = ?",
                 [$numero, $id]
             );
+
+            // El anticipo que liquido el año pasado entra ya diligenciado, en
+            // vez de tener que copiarlo a mano de la declaracion anterior.
+            $this->_cruzarAnticipoDelAnioAnterior($con, $id, $idContribuyente, $anio);
 
             $this->_ok = 1;
             $this->_mensaje = "Declaración creada correctamente ID = $id";
@@ -1139,6 +1211,10 @@ private function _crearCorreccion(){
         'dec_Id', 'dec_NumeroDeclaracion', 'dec_Estado', 'dec_FechaPresentacion',
         'dec_DeclaracionCorrige', 'dec_Pagado', 'dec_FechaPago', 'dec_ValorPago',
         'dec_BancoPago', 'dec_FechaRealPago', 'dec_RutaDeclaracion', 'dec_RutaPago',
+        // dec_AnioPago faltaba en esta lista: una correccion heredaba el año de
+        // pago de la declaracion corregida, quedando con año de pago sin estar
+        // pagada. Hasta ahora no se notaba porque nadie llenaba esa columna.
+        'dec_AnioPago',
         'dec_FechaCreador', 'dec_FechaModificador', 'dec_Modificador'
     ];
 

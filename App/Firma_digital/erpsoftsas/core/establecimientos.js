@@ -506,6 +506,7 @@ class Establecimientos {
 
                 // 🔹 llenar campos
                 $("#est_Codigo").val(d.est_Codigo);
+                $("#est_Observacion").val(d.est_Observacion || '');
                 // est_IdContribuyente ya no es un select (punto 5): el
                 // establecimiento pertenece al RIT desde el que se entra, asi
                 // que solo se conserva el id en un campo oculto.
@@ -690,6 +691,10 @@ $("#est_NoResolucion").val(d.est_NoResolucion);
         // contribuyente en la migracion 016 y la casilla no existe aqui.
         // `.is(":checked")` sobre un elemento ausente devuelve FALSE, no
         // undefined, asi que dejarlo escribia un 0 solido en cada guardado.
+        // Nota del estado del registro (migracion 018). Es un input de texto,
+        // asi que si no existe en la pantalla .val() da undefined y jQuery lo
+        // omite del POST -no tiene el problema de las casillas-.
+        est_Observacion: $("#est_Observacion").val(),
         est_Barrio: $("#est_Barrio").val(),
         est_Correo: $("#est_Correo").val(),
 
@@ -1140,7 +1145,11 @@ est_NoResolucion: $("#est_NoResolucion").val(),
             est_Direccion: $("#est_Direccion").val(),
             // ver nota arriba: la ubicacion no viaja
 
-            est_Barrio: $("#est_Barrio").val(),
+            // Nota del estado del registro (migracion 018). Es un input de texto,
+        // asi que si no existe en la pantalla .val() da undefined y jQuery lo
+        // omite del POST -no tiene el problema de las casillas-.
+        est_Observacion: $("#est_Observacion").val(),
+        est_Barrio: $("#est_Barrio").val(),
             est_Correo: $("#est_Correo").val(),
 
             //est_Telefono: $("#est_Telefono").val(),

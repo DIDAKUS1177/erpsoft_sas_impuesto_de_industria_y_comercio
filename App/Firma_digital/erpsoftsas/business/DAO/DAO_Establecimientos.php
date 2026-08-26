@@ -42,6 +42,8 @@ class DAO_Establecimientos extends \erpsoftsas\DAOGeneral {
     protected $_est_Tarjeta_profesional_revisor;
     
     protected $_est_Observacion_cierre;
+    /** Nota del estado del registro (migracion 018). Distinta de la del cese. */
+    protected $_est_Observacion;
 
     protected $_est_Autorizacion;
     
@@ -90,6 +92,7 @@ class DAO_Establecimientos extends \erpsoftsas\DAOGeneral {
         'est_Activo' => array('tipodato' => 'integer'),
         'est_Autorizacion'=> array('tipodato' => 'integer'),
         'est_Observacion_cierre' => array('tipodato' => 'varchar'),
+        'est_Observacion' => array('tipodato' => 'varchar'),
         'est_Fecha_cierre' => array('tipodato' => 'varchar'),
         'est_Resolucion_cierre' => array('tipodato' => 'varchar'),
         'est_Area' => array('tipodato' => 'varchar'),

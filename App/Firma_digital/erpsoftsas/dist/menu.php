@@ -236,6 +236,17 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 							</a>
 						</li>
 
+						<!-- Configuracion del municipio: el EAN de recaudo y las cuentas de
+						     los bancos. Va aqui, bajo Administracion ICA, por el mismo motivo
+						     que Recaudo: el EAN gobierna el codigo de barras con el que el
+						     banco cobra a TODO el municipio. El controlador exige rol 1 o 2;
+						     no se confia en que el item no se vea. -->
+						<li class="menu_1645">
+							<a id="ICA_Configuracion" onclick="menu.validarIngreso(1645,12)" style="cursor:pointer;">
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></i> Configuración
+							</a>
+						</li>
+
 						<!-- DATOS BASICOS -->
 						<li class="dropdown" id="MICA_DatosBasicos">
 							<a href="javascript:;" class="dropdown-toggle">

@@ -155,13 +155,12 @@ class PlacetoPay {
         return [
             'aprobado'      => $estado === 'APPROVED',
             'estado'        => $estado,
-            // dec_BancoPago es VARCHAR(10) en ind_declaraciones_ica -- nombres de
-            // banco reales (p.ej. "Placetopay Bank", 16 caracteres) no caben, y
-            // SQL Server rechaza el UPDATE entero por el intento de truncar en
-            // vez de truncarlo solo (visto en pruebas: error 2628 "String or
-            // binary data would be truncated"). Se recorta aqui, antes de que
-            // llegue a cualquier UPDATE.
-            'banco'         => substr($banco, 0, 10),
+            // El recorte lo hace PagoDeclaracion, con el largo REAL de la
+            // columna. Aqui se recortaba a 10 por un comentario que decia que
+            // dec_BancoPago era VARCHAR(10); son 60, comprobado contra
+            // INFORMATION_SCHEMA el 2026-08-25. Con el tope viejo, "Banco de
+            // Bogota" se guardaba como "Banco de B".
+            'banco'         => $banco,
             'autorizacion'  => $transaccion['authorization'] ?? '',
             'fecha'         => $respuesta['status']['date'] ?? date('c'),
 
@@ -206,17 +205,19 @@ class PlacetoPay {
             return false;
         }
 
-        // La guarda de dec_Pagado evita que dos caminos a la vez -la
-        // notificacion del banco y el retorno del usuario, que llegan casi
-        // juntos- apliquen el pago dos veces.
-        $con->consultar(
-            "UPDATE ind_declaraciones_ica
-                SET dec_Pagado = 1, dec_FechaPago = GETDATE(), dec_FechaRealPago = GETDATE(),
-                    dec_ValorPago = ?, dec_BancoPago = ?
-              WHERE dec_Id = ? AND ISNULL(dec_Pagado, 0) = 0",
-            [$valor, $info['banco'], (int) $idDeclaracion]
-        );
+        /*
+         * El pago lo registra PagoDeclaracion, que es el unico sitio que toca
+         * esas columnas. Antes este UPDATE llenaba cinco y el recaudo bancario
+         * cuatro, y dos no las llenaba nadie: la misma declaracion quedaba con
+         * datos distintos segun por donde entrara la plata.
+         */
+        require_once __DIR__ . '/class.pagoDeclaracion.php';
 
-        return true;
+        return \erpsoftsas\PagoDeclaracion::registrar($con, $idDeclaracion, [
+            'valor' => $valor,
+            'banco' => $info['banco'],
+            'via'   => \erpsoftsas\PagoDeclaracion::VIA_PSE,
+            // Sin fechaPago: en PSE el pago acaba de ocurrir.
+        ]);
     }
 }

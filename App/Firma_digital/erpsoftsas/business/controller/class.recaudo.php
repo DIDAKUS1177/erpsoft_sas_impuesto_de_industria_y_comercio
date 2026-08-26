@@ -181,18 +181,27 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
         $idBanco     = $analisis['banco']['id'] ?? null;
         $nombreBanco = $analisis['banco']['nombre'] ?? '';
 
+        /*
+         * El pago lo registra PagoDeclaracion, que es el unico sitio que toca
+         * esas columnas. Antes este UPDATE llenaba cuatro y el de PSE cinco, y
+         * dos no las llenaba nadie: la misma declaracion quedaba con datos
+         * distintos segun por donde entrara la plata.
+         *
+         * Aqui SI se manda la fecha de pago: la del archivo del banco es la de
+         * ventanilla, que puede ser de dias atras. dec_FechaRealPago guarda
+         * aparte cuando se cargo el archivo.
+         */
+        require_once dirname(__DIR__) . '/class.pagoDeclaracion.php';
+
         $aplicados = 0;
         foreach ($analisis['aplicables'] as $item) {
-            $r = $con->consultar(
-                "UPDATE ind_declaraciones_ica
-                    SET dec_Pagado    = 1,
-                        dec_FechaPago = ?,
-                        dec_ValorPago = ?,
-                        dec_BancoPago = ?
-                  WHERE dec_Id = ? AND ISNULL(dec_Pagado, 0) = 0",
-                [$fechaPago, $item['valor'], $nombreBanco, $item['dec_Id']]
-            );
-            if ($r !== false) { $aplicados++; }
+            $marcada = \erpsoftsas\PagoDeclaracion::registrar($con, $item['dec_Id'], [
+                'valor'     => $item['valor'],
+                'banco'     => $nombreBanco,
+                'via'       => \erpsoftsas\PagoDeclaracion::VIA_RECAUDO,
+                'fechaPago' => $fechaPago,
+            ]);
+            if ($marcada) { $aplicados++; }
         }
 
         $con->consultar(

@@ -396,16 +396,26 @@
      El control de permiso sigue en el servidor (_filtrarCese en
      class.establecimientos.php): solo la Alcaldia registra un cese. -->
 
-<!-- ===================== OBSERVACIÓN Y AUTORIZACIÓN ===================== -->
+<!-- ===================== OBSERVACIÓN ===================== -->
+<!-- Este bloque habia quedado como un titulo VACIO: la observacion del cese
+     se fue al RIT y la autorizacion de notificacion al contribuyente -es una
+     manifestacion de la persona, pedirla en cada local la repetia-, pero
+     nadie quito el encabezado. El cliente lo reporto el 2026-08-25:
+     "dejar solo observacion con su casilla para escribir en el estado".
+
+     Columna PROPIA, no est_Observacion_cierre: esa la imprime el RIT como la
+     observacion del cese, asi que una nota de "Inscripcion" escrita ahi
+     saldria en el formulario como si el contribuyente hubiera cesado. Ver la
+     migracion 018. -->
 <div class="bloque-form">
-<div class="titulo-bloque">Observación y Autorización</div>
-
-<!-- La observacion del cese se fue al RIT junto con el resto del bloque. -->
-
-<!-- Punto 8: la autorizacion de notificacion electronica es del
-     CONTRIBUYENTE, no de cada local, asi que vive unicamente en el RIT.
-     Pedirla en cada establecimiento la repetia sin sentido. -->
-
+<div class="titulo-bloque">Observación</div>
+<div class="row">
+<div class="col-md-12">
+<label>Observación del estado del registro
+	<span class="text-muted" style="font-weight:400;">(opcional, uso interno)</span></label>
+<input type="text" class="form-control" id="est_Observacion" name="est_Observacion" maxlength="255">
+</div>
+</div>
 </div>
 
 

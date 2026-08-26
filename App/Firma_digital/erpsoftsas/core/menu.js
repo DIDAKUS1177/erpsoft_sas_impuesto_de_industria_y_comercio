@@ -50,6 +50,11 @@ class Menu {
                     // Recaudo por codigo de barras (archivo Asobancaria).
                     window.location = 'recaudo.php';
                     break;
+                case 12:
+                    // Configuracion del municipio: EAN de recaudo y cuentas de
+                    // los bancos, que hasta ahora solo se cambiaban con SQL.
+                    window.location = 'configuracion.php';
+                    break;
                 
                 case 100:
                     window.location = 'consultasPazySalvoPredial.php';
