@@ -1786,6 +1786,7 @@ actualizarDeclaracionIca(valor, numeroCampo){
                 establecimientos.ajustarNombresPorTipoPersona();
                 establecimientos.pintarSeleccionMultiple(d.ind_RegimenTributario, d.ind_Responsabilidades);
                 establecimientos.pintarExenciones(d.ind_NoSujetas, d.ind_SinAvisosTableros);
+                establecimientos.listarAnexosRIT();
 
                 // Autorizacion de notificacion electronica: sin ella el
                 // servidor rechaza el guardado (ver _guardarRIT).
@@ -1867,6 +1868,199 @@ actualizarDeclaracionIca(valor, numeroCampo){
      * recorre $_POST con array_key_exists: sin el campo oculto, desmarcar una
      * exencion nunca llegaria al servidor y no habria manera de apagarla.
      */
+    /**
+     * Los tres documentos que el cliente marco como obligatorios. El uso de
+     * suelo queda fuera a proposito: lo pidio como opcional.
+     */
+    static get DOCUMENTOS_OBLIGATORIOS() {
+        return {
+            rut:    'RUT',
+            camara: 'Cámara de comercio o acta de constitución',
+            cedula: 'Documento de identificación del representante legal'
+        };
+    }
+
+    /**
+     * Sube un documento del RIT.
+     *
+     * Va contra el mismo controlador que los anexos de establecimiento, pero
+     * mandando ind_Id en vez de est_Id: desde la migracion 017 un anexo puede
+     * colgar del contribuyente. Toda la validacion -extension, tipo real del
+     * contenido, tamaño, tope de archivos- vive alli y no se repite aqui: lo
+     * que se comprueba en el navegador se salta desde la consola.
+     */
+    subirAnexoRIT() {
+        const idContribuyente = $('#rit_ind_Id').val();
+        if (!idContribuyente) {
+            swal({ type: 'info', title: 'Primero guarde el RIT',
+                   text: 'Los documentos se cargan una vez el registro existe.' });
+            return;
+        }
+
+        const $archivo = $('#ritAnexoArchivo');
+        if ($archivo.length === 0 || !$archivo[0].files.length) {
+            swal({ type: 'info', title: 'No eligió ningún archivo' });
+            return;
+        }
+
+        const datos = new FormData();
+        datos.append('funcion', 1);
+        datos.append('ind_Id', idContribuyente);
+        datos.append('tipo', $('#ritAnexoTipo').val());
+        datos.append('anexos[]', $archivo[0].files[0]);
+
+        const $boton = $('#btnSubirAnexoRIT');
+        $boton.prop('disabled', true);
+
+        $.ajax({
+            url: '../business/controller/class.anexos.php',
+            type: 'POST',
+            data: datos,
+            processData: false,   // sin esto jQuery serializa y pierde el archivo
+            contentType: false,   // el navegador pone el boundary del multipart
+            dataType: 'json',
+            success: function (resp) {
+                $boton.prop('disabled', false);
+                $archivo.val('');
+
+                swal({
+                    type: resp.ok == 1 ? 'success' : 'error',
+                    title: resp.ok == 1 ? 'Documento cargado' : 'No se pudo cargar',
+                    text: resp.mensaje || ''
+                });
+
+                establecimientos.listarAnexosRIT();
+            },
+            error: function (xhr) {
+                $boton.prop('disabled', false);
+                console.log('Error al subir el anexo del RIT:', xhr.responseText);
+                swal({ type: 'error', title: 'Error en el servidor',
+                       text: 'No se recibió respuesta válida.' });
+            }
+        });
+    }
+
+    /** Lista los documentos ya cargados y avisa de los que falten. */
+    listarAnexosRIT() {
+        const idContribuyente = $('#rit_ind_Id').val();
+        if ($('#tbodyAnexosRIT').length === 0) { return; }
+
+        if (!idContribuyente) {
+            $('#tbodyAnexosRIT').html(
+                '<tr><td colspan="5" class="text-center text-muted py-3">' +
+                'Guarde el RIT para poder adjuntar documentos.</td></tr>');
+            return;
+        }
+
+        $.ajax({
+            url: '../business/controller/class.anexos.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { funcion: 2, ind_Id: idContribuyente },
+            success: function (resp) {
+                const etiquetas = {
+                    rut: 'RUT', camara: 'Cámara de comercio', cedula: 'Documento de identificación',
+                    usosuelo: 'Uso de suelo', cese: 'Cese', otro: 'Otro'
+                };
+
+                const lista = (resp.ok == 1 && resp.datos) ? resp.datos : [];
+
+                if (!lista.length) {
+                    $('#tbodyAnexosRIT').html(
+                        '<tr><td colspan="5" class="text-center text-muted py-3">' +
+                        'Todavía no hay documentos cargados.</td></tr>');
+                } else {
+                    let filas = '';
+                    lista.forEach(function (a) {
+                        const kb = Math.max(1, Math.round((a.anx_Tamano || 0) / 1024));
+                        filas +=
+                            '<tr>' +
+                            '<td>' + establecimientos.escapeHtml(etiquetas[a.anx_Tipo] || a.anx_Tipo || '') + '</td>' +
+                            // El nombre lo escribe quien sube: se escapa. Ver la nota de
+                            // escapeHtml, que existe por un XSS real encontrado aqui.
+                            '<td>' + establecimientos.escapeHtml(a.anx_NombreOriginal) + '</td>' +
+                            '<td>' + kb + ' KB</td>' +
+                            '<td>' + establecimientos.escapeHtml(a.anx_FechaCarga) + '</td>' +
+                            '<td>' +
+                              '<a class="btn btn-sm btn-outline-info" target="_blank" ' +
+                                 'href="../extensiones/anexo.php?id=' + encodeURIComponent(a.anx_Id) + '">Ver</a> ' +
+                              '<button type="button" class="btn btn-sm btn-outline-danger" ' +
+                                 'onclick="establecimientos.eliminarAnexoRIT(' + Number(a.anx_Id) + ')">Quitar</button>' +
+                            '</td>' +
+                            '</tr>';
+                    });
+                    $('#tbodyAnexosRIT').html(filas);
+                }
+
+                establecimientos.avisarDocumentosFaltantes(lista);
+            },
+            error: function () {
+                $('#tbodyAnexosRIT').html(
+                    '<tr><td colspan="5" class="text-center text-muted py-3">' +
+                    'No se pudieron cargar los documentos.</td></tr>');
+            }
+        });
+    }
+
+    /** Retira un documento del RIT. El borrado es logico: el archivo sigue en disco. */
+    eliminarAnexoRIT(idAnexo) {
+        swal({
+            title: '¿Retirar este documento?',
+            text: 'Dejará de aparecer en el RIT. El archivo no se borra del servidor.',
+            type: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, retirar',
+            cancelButtonText: 'Cancelar'
+        }).then(function (r) {
+            if (!r.value) { return; }
+
+            $.ajax({
+                url: '../business/controller/class.anexos.php',
+                type: 'POST',
+                dataType: 'json',
+                data: { funcion: 3, anx_Id: idAnexo },
+                success: function (resp) {
+                    swal({
+                        type: resp.ok == 1 ? 'success' : 'error',
+                        title: resp.ok == 1 ? 'Documento retirado' : 'No se pudo retirar',
+                        text: resp.mensaje || ''
+                    });
+                    establecimientos.listarAnexosRIT();
+                },
+                error: function () {
+                    swal({ type: 'error', title: 'Error en el servidor',
+                           text: 'No se recibió respuesta válida.' });
+                }
+            });
+        });
+    }
+
+    /**
+     * Dice cuales de los obligatorios faltan.
+     *
+     * Es un aviso, no un bloqueo: el RIT se diligencia en varias sesiones y
+     * negar el guardado por un documento pendiente dejaria al contribuyente
+     * sin poder guardar ni lo que ya tiene escrito.
+     */
+    avisarDocumentosFaltantes(lista) {
+        const $aviso = $('#ritAvisoDocumentos');
+        if ($aviso.length === 0) { return; }
+
+        const cargados = (lista || []).map(a => a.anx_Tipo);
+        const obligatorios = Establecimientos.DOCUMENTOS_OBLIGATORIOS;
+        const faltan = Object.keys(obligatorios).filter(t => cargados.indexOf(t) === -1);
+
+        if (!faltan.length) {
+            $aviso.hide();
+            return;
+        }
+
+        $aviso.html(
+            '<b><i class="fa fa-exclamation-triangle"></i> Faltan documentos obligatorios:</b> ' +
+            faltan.map(t => obligatorios[t]).join(', ') + '.'
+        ).show();
+    }
+
     recogerExenciones() {
         $('#rit_ind_NoSujetas').val($('#rit_chk_NoSujetas').is(':checked') ? 1 : 0);
         $('#rit_ind_SinAvisosTableros').val($('#rit_chk_SinAvisos').is(':checked') ? 1 : 0);

@@ -36,7 +36,7 @@ if ($idAnexo <= 0) {
 $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
 $anexo = $con->obnerFila($con->consultar(
-    "SELECT a.anx_IdEstablecimiento, a.anx_NombreOriginal, a.anx_Ruta,
+    "SELECT a.anx_IdEstablecimiento, a.anx_IdContribuyente, a.anx_NombreOriginal, a.anx_Ruta,
             a.anx_Extension, a.anx_Activo
        FROM ind_establecimiento_anexos a
       WHERE a.anx_Id = ?",
@@ -51,7 +51,24 @@ if (!$anexo || (int) $anexo['anx_Activo'] !== 1) {
 /* ---- Quien puede verlo --------------------------------------------------
    Misma regla que subir/listar/eliminar (class.anexos.php), centralizada ahi
    para que las cuatro vias no se desalineen con el tiempo. */
-if (!\erpsoftsas\ControladorAnexos::puedeOperarSobreEstablecimiento($anexo['anx_IdEstablecimiento'], $con)) {
+/*
+ * Desde la migracion 017 un anexo puede colgar del establecimiento o del
+ * CONTRIBUYENTE -el RUT, la camara de comercio y la cedula del representante
+ * se suben desde el RIT-. Se comprueba el permiso segun de quien sea, y si no
+ * tiene dueño se rechaza en vez de dejarlo pasar: una fila huerfana no es de
+ * nadie, y "de nadie" no puede significar "de cualquiera".
+ */
+$permitido = false;
+
+if (!empty($anexo['anx_IdEstablecimiento'])) {
+    $permitido = \erpsoftsas\ControladorAnexos::puedeOperarSobreEstablecimiento(
+        $anexo['anx_IdEstablecimiento'], $con);
+} elseif (!empty($anexo['anx_IdContribuyente'])) {
+    $permitido = \erpsoftsas\ControladorAnexos::puedeOperarSobreContribuyente(
+        $anexo['anx_IdContribuyente'], $con);
+}
+
+if (!$permitido) {
     http_response_code(403);
     exit('Este archivo pertenece a otro contribuyente.');
 }

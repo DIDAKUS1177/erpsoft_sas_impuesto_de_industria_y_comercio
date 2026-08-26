@@ -451,6 +451,58 @@
 					<input type="hidden" name="ind_NoSujetas" id="rit_ind_NoSujetas" value="0">
 					<input type="hidden" name="ind_SinAvisosTableros" id="rit_ind_SinAvisosTableros" value="0">
 
+					<!-- Documentos del RIT. Pedidos el 2026-08-25:
+					     RUT, camara de comercio o acta de constitucion, y documento del
+					     representante legal como obligatorios; uso de suelo opcional.
+
+					     Se apoya en el mecanismo de anexos que ya existia para los
+					     establecimientos (class.anexos.php): valida la extension Y el tipo
+					     real del contenido -un .pdf con un ejecutable dentro se rechaza-,
+					     el nombre del archivo en disco lo genera el servidor, la carpeta
+					     esta blindada con .htaccess y el borrado es logico. La migracion
+					     017 le añadio poder colgar del contribuyente.
+
+					     "Obligatorio" aqui es un aviso, no un bloqueo del guardado: el RIT
+					     se diligencia en varias sesiones y bloquear el guardado por un
+					     documento pendiente dejaria al contribuyente sin poder guardar
+					     nada. Lo que se hace es decir cuales faltan. -->
+					<hr>
+					<h5 class="mb-3" style="font-weight:600;">Documentos</h5>
+
+					<div id="ritAvisoDocumentos" class="alert alert-warning mb-3" style="display:none; font-size:13px;"></div>
+
+					<div class="row">
+						<div class="col-md-4 form-group">
+							<label>Tipo de documento</label>
+							<select class="form-control" id="ritAnexoTipo">
+								<option value="rut">RUT (obligatorio)</option>
+								<option value="camara">Cámara de comercio o acta de constitución (obligatorio)</option>
+								<option value="cedula">Documento de identificación del representante legal o propietario (obligatorio)</option>
+								<option value="usosuelo">Uso de suelo (opcional)</option>
+							</select>
+						</div>
+						<div class="col-md-5 form-group">
+							<label>Archivo <span class="text-muted" style="font-weight:400;">(PDF, JPG o PNG, hasta 10 MB)</span></label>
+							<input type="file" class="form-control" id="ritAnexoArchivo" accept=".pdf,.jpg,.jpeg,.png">
+						</div>
+						<div class="col-md-3 form-group">
+							<label>&nbsp;</label>
+							<button type="button" class="btn btn-primary btn-block" id="btnSubirAnexoRIT"
+							        onclick="establecimientos.subirAnexoRIT()">
+								<i class="fa fa-upload"></i> Cargar
+							</button>
+						</div>
+					</div>
+
+					<div class="table-responsive">
+						<table class="table table-sm">
+							<thead>
+								<tr><th>Tipo</th><th>Archivo</th><th>Tamaño</th><th>Cargado</th><th>Acciones</th></tr>
+							</thead>
+							<tbody id="tbodyAnexosRIT"></tbody>
+						</table>
+					</div>
+
 					<!-- Régimen tributario y responsabilidades. Pedidos el 2026-08-25,
 					     los dos de selección MÚLTIPLE ("para seleccionar 1 o varias").
 					     Se guardan como códigos separados por coma en una sola columna

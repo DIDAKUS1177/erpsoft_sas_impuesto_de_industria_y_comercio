@@ -203,29 +203,132 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
         return (bool) $propio;
     }
 
+    /**
+     * Un anexo cuelga de un LOCAL o de la PERSONA, nunca de los dos a la vez.
+     *
+     * El RUT, el certificado de camara y la cedula del representante son del
+     * contribuyente: pedirlos en cada local los hacia repetir tantas veces
+     * como locales tuviera. El cese y el uso de suelo si son del local.
+     *
+     * Devuelve ['tipo' => 'contribuyente'|'establecimiento', 'id' => N] o un
+     * mensaje de rechazo en 'error'. Se prefiere el contribuyente cuando
+     * llegan los dos, porque el unico camino que manda ind_Id es el RIT.
+     */
+    private static function _dueno()
+    {
+        $idContribuyente = (int) ($_POST['ind_Id'] ?? 0);
+        $idEstablecimiento = (int) ($_POST['est_Id'] ?? 0);
+
+        if ($idContribuyente > 0) {
+            return ['tipo' => 'contribuyente', 'id' => $idContribuyente];
+        }
+        if ($idEstablecimiento > 0) {
+            return ['tipo' => 'establecimiento', 'id' => $idEstablecimiento];
+        }
+        return ['error' => 'No se indicó a qué registro pertenece el archivo'];
+    }
+
+    /**
+     * ¿Existe el dueño? Sin esto se podrian crear carpetas con cualquier
+     * numero que alguien mande.
+     */
+    private static function _duenoExiste(array $dueno, $con)
+    {
+        $sql = $dueno['tipo'] === 'contribuyente'
+            ? "SELECT ind_Id AS id FROM ind_contribuyentes WHERE ind_Id = ?"
+            : "SELECT est_Id AS id FROM ind_establecimientos WHERE est_Id = ?";
+
+        return (bool) $con->obnerFila($con->consultar($sql, [$dueno['id']]));
+    }
+
+    /** Permiso sobre el dueño, sea del tipo que sea. */
+    private static function _puedeOperar(array $dueno, $con)
+    {
+        return $dueno['tipo'] === 'contribuyente'
+            ? self::puedeOperarSobreContribuyente($dueno['id'], $con)
+            : self::puedeOperarSobreEstablecimiento($dueno['id'], $con);
+    }
+
+    /**
+     * Mismo criterio que puedeOperarSobreEstablecimiento: los roles de
+     * Alcaldia (1 y 2) pueden con cualquiera, y el resto solo con el suyo,
+     * cruzado por numero de documento porque no hay columna que ate el
+     * usuario al contribuyente.
+     *
+     * Sin esta comprobacion bastaria cambiar un numero en la peticion para
+     * subir -o descargar- documentos de otro contribuyente: el RUT y la
+     * cedula del representante son justamente lo que no puede quedar suelto.
+     */
+    public static function puedeOperarSobreContribuyente($idContribuyente, $con)
+    {
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+
+        if (empty($_SESSION['id_usuario'])) { return false; }
+
+        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
+        if (in_array($rol, [1, 2], true)) { return true; }
+
+        $propio = $con->obnerFila($con->consultar(
+            "SELECT c.ind_Id
+               FROM ind_contribuyentes c
+               INNER JOIN conf_usuarios u ON u.usu_NumeroDocumento = c.ind_NumeroIdentificacion
+              WHERE u.usu_Id = ? AND c.ind_Id = ?",
+            [(int) $_SESSION['id_usuario'], (int) $idContribuyente]
+        ));
+
+        return (bool) $propio;
+    }
+
+    /**
+     * Carpeta donde viven los archivos de un dueño.
+     *
+     * Las de contribuyente llevan prefijo para no chocar con las de
+     * establecimiento, que son solo el numero y ya existen en disco.
+     */
+    private static function _subcarpeta(array $dueno)
+    {
+        return $dueno['tipo'] === 'contribuyente'
+            ? 'contribuyente_' . $dueno['id']
+            : (string) $dueno['id'];
+    }
+
+    /**
+     * Dueño real de una fila ya guardada. Se usa para comprobar permisos
+     * sobre un anexo concreto: lo que importa es de quien ES el archivo, no
+     * lo que diga la peticion.
+     *
+     * Un anexo de local puede traer ademas su contribuyente (lo dejo asi el
+     * relleno de la migracion 017), asi que manda el establecimiento cuando
+     * hay uno.
+     */
+    private static function _duenoDeLaFila(array $fila)
+    {
+        if (!empty($fila['anx_IdEstablecimiento'])) {
+            return ['tipo' => 'establecimiento', 'id' => (int) $fila['anx_IdEstablecimiento']];
+        }
+        if (!empty($fila['anx_IdContribuyente'])) {
+            return ['tipo' => 'contribuyente', 'id' => (int) $fila['anx_IdContribuyente']];
+        }
+        return null;
+    }
+
     private function _subir()
     {
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
-        $idEstablecimiento = (int) ($_POST['est_Id'] ?? 0);
-        if ($idEstablecimiento <= 0) {
-            $this->_mensaje = 'No se indicó el establecimiento';
+        $dueno = self::_dueno();
+        if (isset($dueno['error'])) {
+            $this->_mensaje = $dueno['error'];
             return [];
         }
 
-        // El establecimiento tiene que existir: sin esto se podrian crear
-        // carpetas con cualquier numero que alguien mande.
-        $est = $con->obnerFila($con->consultar(
-            "SELECT est_Id FROM ind_establecimientos WHERE est_Id = ?",
-            [$idEstablecimiento]
-        ));
-        if (!$est) {
-            $this->_mensaje = 'El establecimiento no existe';
+        if (!self::_duenoExiste($dueno, $con)) {
+            $this->_mensaje = 'El registro indicado no existe';
             return [];
         }
 
-        if (!self::puedeOperarSobreEstablecimiento($idEstablecimiento, $con)) {
-            $this->_mensaje = 'No tiene permiso para cargar archivos en este establecimiento';
+        if (!self::_puedeOperar($dueno, $con)) {
+            $this->_mensaje = 'No tiene permiso para cargar archivos en este registro';
             return [];
         }
 
@@ -234,21 +337,24 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
             return [];
         }
 
+        $columnaDueno = $dueno['tipo'] === 'contribuyente'
+            ? 'anx_IdContribuyente' : 'anx_IdEstablecimiento';
+
         $yaActivos = $con->obnerFila($con->consultar(
             "SELECT COUNT(*) AS n FROM ind_establecimiento_anexos
-              WHERE anx_IdEstablecimiento = ? AND anx_Activo = 1",
-            [$idEstablecimiento]
+              WHERE $columnaDueno = ? AND anx_Activo = 1",
+            [$dueno['id']]
         ));
         $cantidadNueva = count((array) $_FILES['anexos']['name']);
         if ((int) ($yaActivos['n'] ?? 0) + $cantidadNueva > self::MAX_ANEXOS_POR_ESTABLECIMIENTO) {
-            $this->_mensaje = 'Este establecimiento ya tiene el máximo de '
+            $this->_mensaje = 'Este registro ya tiene el máximo de '
                 . self::MAX_ANEXOS_POR_ESTABLECIMIENTO . ' archivos. Retire alguno antes de subir otro.';
             return [];
         }
 
         $tipo = substr(trim((string) ($_POST['tipo'] ?? 'otro')), 0, 40);
 
-        $carpeta = self::carpetaBase() . '/' . $idEstablecimiento;
+        $carpeta = self::carpetaBase() . '/' . self::_subcarpeta($dueno);
         if (!is_dir($carpeta) && !mkdir($carpeta, 0750, true)) {
             $this->_mensaje = 'No se pudo crear la carpeta de anexos';
             return [];
@@ -320,14 +426,19 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
             }
             @chmod($destino, 0640);
 
+            // Solo una de las dos columnas de dueño lleva valor; la otra
+            // queda en nulo. El CHECK de la migracion 017 impide que se
+            // queden las dos vacias, que dejaria el archivo huerfano en disco.
             $con->consultar(
                 "INSERT INTO ind_establecimiento_anexos
-                    (anx_IdEstablecimiento, anx_Tipo, anx_NombreOriginal,
+                    (anx_IdEstablecimiento, anx_IdContribuyente, anx_Tipo, anx_NombreOriginal,
                      anx_Ruta, anx_Extension, anx_Tamano, anx_IdUsuario)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)",
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 [
-                    $idEstablecimiento, $tipo, $nombreOriginal,
-                    $idEstablecimiento . '/' . $nombreDisco,
+                    $dueno['tipo'] === 'establecimiento' ? $dueno['id'] : null,
+                    $dueno['tipo'] === 'contribuyente'   ? $dueno['id'] : null,
+                    $tipo, $nombreOriginal,
+                    self::_subcarpeta($dueno) . '/' . $nombreDisco,
                     $extension, (int) $tamanos[$i], $this->_idUsuario(),
                 ]
             );
@@ -351,24 +462,27 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
     {
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
-        $idEstablecimiento = (int) ($_POST['est_Id'] ?? 0);
-        if ($idEstablecimiento <= 0) {
-            $this->_mensaje = 'No se indicó el establecimiento';
+        $dueno = self::_dueno();
+        if (isset($dueno['error'])) {
+            $this->_mensaje = $dueno['error'];
             return [];
         }
 
-        if (!self::puedeOperarSobreEstablecimiento($idEstablecimiento, $con)) {
-            $this->_mensaje = 'No tiene permiso para ver los anexos de este establecimiento';
+        if (!self::_puedeOperar($dueno, $con)) {
+            $this->_mensaje = 'No tiene permiso para ver los anexos de este registro';
             return [];
         }
+
+        $columnaDueno = $dueno['tipo'] === 'contribuyente'
+            ? 'anx_IdContribuyente' : 'anx_IdEstablecimiento';
 
         $stmt = $con->consultar(
             "SELECT anx_Id, anx_Tipo, anx_NombreOriginal, anx_Extension,
                     anx_Tamano, anx_FechaCarga
                FROM ind_establecimiento_anexos
-              WHERE anx_IdEstablecimiento = ? AND anx_Activo = 1
+              WHERE $columnaDueno = ? AND anx_Activo = 1
               ORDER BY anx_FechaCarga DESC",
-            [$idEstablecimiento]
+            [$dueno['id']]
         );
 
         $lista = [];
@@ -401,7 +515,8 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
         }
 
         $anexo = $con->obnerFila($con->consultar(
-            "SELECT anx_IdEstablecimiento FROM ind_establecimiento_anexos WHERE anx_Id = ?",
+            "SELECT anx_IdEstablecimiento, anx_IdContribuyente
+               FROM ind_establecimiento_anexos WHERE anx_Id = ?",
             [$idAnexo]
         ));
         if (!$anexo) {
@@ -409,7 +524,11 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
             return [];
         }
 
-        if (!self::puedeOperarSobreEstablecimiento($anexo['anx_IdEstablecimiento'], $con)) {
+        // El permiso se comprueba sobre el dueño REAL de la fila, no sobre lo
+        // que venga en la peticion: mandar un anx_Id ajeno junto a un ind_Id
+        // propio no debe dejar borrar el anexo de otro.
+        $duenoReal = self::_duenoDeLaFila($anexo);
+        if (!$duenoReal || !self::_puedeOperar($duenoReal, $con)) {
             $this->_mensaje = 'No tiene permiso para quitar este anexo';
             return [];
         }
