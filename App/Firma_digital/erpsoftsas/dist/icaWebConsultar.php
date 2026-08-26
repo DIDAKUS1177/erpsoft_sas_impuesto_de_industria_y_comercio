@@ -567,7 +567,7 @@ Guardar
                                     class="btn btn-sm btn-warning"
                                     id="btnGenerarOficial"
                                     disabled>
-                                <i class="fa fa-check-circle"></i> Guardar Borrador
+                                <i class="fa fa-check-circle"></i> Guardar y liquidar
                             </button>
 
                         </div>
@@ -786,13 +786,18 @@ Guardar
                                 </div>
 
                                                                 <!-- LIQUIDAR -->
-                                <button type="button"
-                                        class="btn btn-sm"
-                                        style="background-color:#0b3d91; color:white;"
-                                        id="btnValidarDeclaracion"
-                                        disabled>
-                                    <i class="fa fa-check"></i> Liquidar
-                                </button>
+                                <!-- El boton "Liquidar" se retira. Instruccion del cliente:
+                                     "liquidar solo al guardar".
+
+                                     En este sistema liquidar y guardar SON la misma operacion:
+                                     el calculo lo hace sp_calculo_comercio del lado del
+                                     servidor, sobre la fila ya grabada, asi que un "liquidar
+                                     sin guardar" no existe. Tener dos botones para una sola
+                                     operacion fue justo lo que produjo los reportes de "no
+                                     liquida" y "no guarda": cada pantalla tenia el manejador
+                                     real colgado de uno distinto y el otro mentia.
+
+                                     Queda un unico boton, y dice lo que hace. -->
 
                             <h4 class="titulo-seccion">Liquidación Privada</h4>
 

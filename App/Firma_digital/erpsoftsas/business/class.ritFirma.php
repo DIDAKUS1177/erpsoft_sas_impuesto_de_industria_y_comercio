@@ -33,7 +33,7 @@ class RitFirma
     /** Version del formato del hash. Si algun dia cambia QUE se firma, subir
      *  este numero invalida las firmas viejas a proposito, en vez de dejar
      *  hashes viejos y nuevos conviviendo sin poder distinguirlos. */
-    const VERSION = 'v2';
+    const VERSION = 'v3';
 
     /**
      * Los datos del RIT que quedan amparados por la firma, en un orden fijo.
@@ -61,6 +61,10 @@ class RitFirma
             // cambiar despues de firmar sin que la firma se invalidara.
             'ind_RegimenTributario', 'ind_Responsabilidades',
             'ind_NoSujetas', 'ind_SinAvisosTableros',
+            // El cese subio a la persona con la migracion 019, y el formulario
+            // lo imprime: si no estuviera aqui, se podria declarar un cese
+            // despues de firmar sin que la firma se invalidara.
+            'ind_FechaCese', 'ind_CausalCese', 'ind_ObservacionCese',
         ];
 
         $fila = $con->obnerFila($con->consultar(

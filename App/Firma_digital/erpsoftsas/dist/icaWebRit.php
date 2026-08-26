@@ -307,10 +307,14 @@
 					</div>
 
 					<div class="row">
-						<div class="col-md-3 form-group">
-							<label>Establecimiento que cesa</label>
-							<select class="form-control" id="rit_cese_Establecimiento"></select>
-						</div>
+						<!-- Fuera el selector de establecimiento: el cese que se declara y se
+						     firma aqui es el del CONTRIBUYENTE (migracion 019). Cerrar un local
+						     suelto y seguir con los otros es otro hecho, y se hace desde el
+						     estado del registro del establecimiento, con su constancia.
+
+						     Pedirlo aqui era ademas incoherente con el propio formulario: la
+						     casilla 29, "Numero de Establecimiento que clausura", se retiro a
+						     peticion del cliente en la revision anterior. -->
 						<div class="col-md-3 form-group">
 							<label>Fecha de cese</label>
 							<input type="date" class="form-control cese-solo-admin" id="rit_est_Fecha_cierre">

@@ -354,34 +354,40 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
      */
 
     /**
-     * funcion 21 - Cese de actividades de UN establecimiento.
+     * funcion 21 - Cese de actividades del CONTRIBUYENTE.
      *
-     * Existe como endpoint propio, y no reusando la funcion 2 (editar), por
-     * dos razones:
+     * Subio del establecimiento a la persona con la migracion 019. Lo que se
+     * firma y se imprime en el RIT es que el CONTRIBUYENTE dejo de ejercer
+     * actividades en el municipio; cerrar un local suelto y seguir con los
+     * otros es otro hecho, y vive en el estado del registro del
+     * establecimiento, con su constancia de cierre adjunta.
      *
-     *  - La funcion 2 arrastra la validacion de codigo duplicado, que compara
-     *    $_POST['est_Codigo'] contra los demas establecimientos. Al mandar
-     *    solo los campos del cese ese codigo llega vacio y la comparacion
-     *    puede dar positivo contra cualquier fila que tambien lo tenga vacio,
-     *    rechazando un cese perfectamente valido.
+     * Antes esto pedia un establecimiento concreto, y el formulario impreso ya
+     * no recoge cual: la casilla 29 -"Numero de Establecimiento que clausura"-
+     * se retiro a peticion del cliente. Pedir en pantalla un dato que el papel
+     * no imprime era la incoherencia que quedaba.
      *
-     *  - El cese lo captura ahora la pantalla del RIT (reunion 2026-08-19), y
-     *    esa pantalla no tiene cargado el establecimiento completo. Mandar el
-     *    formulario entero solo para cerrar un local seria pedirle datos que
-     *    no tiene a la vista.
-     *
-     * El dato sigue viviendo en ind_establecimientos: lo que cesa es el LOCAL,
-     * no la persona. Un contribuyente puede cerrar uno y seguir con los otros.
+     * Sigue siendo endpoint propio y no la funcion 2 (editar) porque esa
+     * arrastra la validacion de codigo duplicado, que con los campos del cese
+     * a solas puede rechazar un cese perfectamente valido.
      */
     protected function _guardarCese()
     {
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
-        $idEstablecimiento = (int) ($_POST['est_Id'] ?? 0);
-
-        if (!self::_puedeSobreEstablecimiento($idEstablecimiento, $con)) {
+        $idContribuyente = (int) ($_POST['ind_Id'] ?? 0);
+        if ($idContribuyente <= 0) {
             $this->_ok = 0;
-            $this->_mensaje = 'No tiene permiso sobre este establecimiento';
+            $this->_mensaje = 'No se indicó el contribuyente';
+            return [];
+        }
+
+        $existe = $con->obnerFila($con->consultar(
+            "SELECT ind_Id FROM ind_contribuyentes WHERE ind_Id = ?", [$idContribuyente]
+        ));
+        if (!$existe) {
+            $this->_ok = 0;
+            $this->_mensaje = 'El contribuyente no existe';
             return [];
         }
 
@@ -395,26 +401,27 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
 
         // 1 Fusion, 2 Escision, 3 Liquidacion, 4 Otro. Cualquier otra cosa se
         // guarda como "sin causal" en vez de colarse a la base.
-        $causal = trim((string) ($_POST['est_Causal'] ?? ''));
+        $causal = trim((string) ($_POST['est_Causal'] ?? $_POST['ind_CausalCese'] ?? ''));
         if (!in_array($causal, ['1', '2', '3', '4'], true)) { $causal = ''; }
 
-        $fecha = trim((string) ($_POST['est_Fecha_cierre'] ?? ''));
-        $obs   = trim((string) ($_POST['est_Observacion_cierre'] ?? ''));
+        $fecha = trim((string) ($_POST['est_Fecha_cierre'] ?? $_POST['ind_FechaCese'] ?? ''));
+        $obs   = trim((string) ($_POST['est_Observacion_cierre'] ?? $_POST['ind_ObservacionCese'] ?? ''));
 
         // Sin fecha no hay cese: se limpian los tres campos juntos, para que no
-        // quede una causal huerfana que haga ver el local como cerrado.
+        // quede una causal huerfana que haga ver al contribuyente como cesado.
         if ($fecha === '') {
             $causal = '';
             $obs    = '';
         }
 
         $ok = $con->consultar(
-            "UPDATE ind_establecimientos
-                SET est_Fecha_cierre        = NULLIF(?, ''),
-                    est_Causal              = NULLIF(?, ''),
-                    est_Observacion_cierre  = NULLIF(?, '')
-              WHERE est_Id = ?",
-            [$fecha, $causal, $obs, $idEstablecimiento]
+            "UPDATE ind_contribuyentes
+                SET ind_FechaCese          = NULLIF(?, ''),
+                    ind_CausalCese         = NULLIF(?, ''),
+                    ind_ObservacionCese    = NULLIF(?, ''),
+                    ind_FechaActualizacion = GETDATE()
+              WHERE ind_Id = ?",
+            [$fecha, $causal, $obs, $idContribuyente]
         );
 
         if ($ok === false) {
@@ -430,7 +437,7 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
             ? 'Se retiró el cese de actividades'
             : 'Cese de actividades guardado';
 
-        return [];
+        return ['ind_Id' => $idContribuyente];
     }
 
 

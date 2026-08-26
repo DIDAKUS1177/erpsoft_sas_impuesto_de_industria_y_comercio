@@ -488,7 +488,6 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
 
             // Los dos hacen lo mismo; deshabilitar uno solo dejaba fuera el
             // unico que la pantalla mostraba habilitado.
-            $("#btnValidarDeclaracion").prop("disabled", false);
             $("#btnGenerarOficial").prop("disabled", false);
 
               // 🔥 AQUÍ ESTÁ LA CLAVE
@@ -1615,7 +1614,6 @@ $("#btnCrearDeclaracion").off("click").on("click", function () {
     $("#numDeclaracion").val(numeroGenerado);
 
     // Activar botones
-    $("#btnValidarDeclaracion").prop("disabled", false);
     $("#btnDescargarPDF").prop("disabled", true);
     $("#btnGenerarOficial").prop("disabled", false);
 
@@ -1678,7 +1676,10 @@ $("#btnValidarDeclaracion").on("click", function () {
 });
 */
 
-$("#btnGenerarOficial, #btnValidarDeclaracion").off("click").on("click", function () {
+// Ya no hay dos botones: "Liquidar" se retiro por instruccion del cliente
+// -"liquidar solo al guardar"-, porque en este sistema liquidar y guardar
+// son la misma operacion. Queda un unico manejador sobre el unico boton.
+$("#btnGenerarOficial").off("click").on("click", function () {
 
     if(!establecimientos.validarBasesActividades()){
         return;

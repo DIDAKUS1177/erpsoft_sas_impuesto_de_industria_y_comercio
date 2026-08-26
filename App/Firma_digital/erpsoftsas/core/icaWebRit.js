@@ -1786,6 +1786,7 @@ actualizarDeclaracionIca(valor, numeroCampo){
                 establecimientos.ajustarNombresPorTipoPersona();
                 establecimientos.pintarSeleccionMultiple(d.ind_RegimenTributario, d.ind_Responsabilidades);
                 establecimientos.pintarExenciones(d.ind_NoSujetas, d.ind_SinAvisosTableros);
+                establecimientos.pintarCese(d);
                 establecimientos.listarAnexosRIT();
 
                 // Autorizacion de notificacion electronica: sin ella el
@@ -2410,7 +2411,7 @@ actualizarDeclaracionIca(valor, numeroCampo){
         // desbloquear el resto, que no es lo que se quiere.
         var $campos = $('#formRIT').find('input, select, textarea')
                           .not('.cese-solo-admin')
-                          .not('#rit_cese_Establecimiento');
+                          ;
 
         $campos.filter('input, textarea').prop('readonly', bloqueado);
         $campos.filter('select').prop('disabled', bloqueado);
@@ -2516,48 +2517,20 @@ actualizarDeclaracionIca(valor, numeroCampo){
        seguridad.
        ================================================================ */
 
-    cargarEstablecimientosCese() {
-        var self = this;
-        $.ajax({
-            url: '../business/controller/class.establecimientos.php',
-            type: 'POST',
-            dataType: 'json',
-            data: { funcion: 3 },
-            success: function (resp) {
-                var $s = $('#rit_cese_Establecimiento');
-                $s.empty().append('<option value="">Seleccione…</option>');
-
-                var lista = (resp && resp.datos) ? resp.datos : [];
-                self._ceseDatos = {};
-
-                for (var i = 0; i < lista.length; i++) {
-                    var e = lista[i];
-                    self._ceseDatos[e.est_Id] = e;
-                    $s.append('<option value="' + e.est_Id + '">' +
-                              $('<div>').text(e.est_Nombre || ('Establecimiento ' + e.est_Id)).html() +
-                              '</option>');
-                }
-
-                self.aplicarPermisoCese();
-            },
-            error: function () { /* el ajaxError global de menu.php ya avisa */ }
-        });
-    }
-
-    /** Vuelca en el formulario el cese del establecimiento elegido. */
-    mostrarCeseDe(idEstablecimiento) {
-        var e = (this._ceseDatos || {})[idEstablecimiento];
-
-        if (!e) {
-            $('#rit_est_Fecha_cierre').val('');
-            $('#rit_est_Causal').val('');
-            $('#rit_est_Observacion_cierre').val('');
-            return;
-        }
-
-        // sqlsrv devuelve las fechas como objeto; el input date quiere AAAA-MM-DD.
-        // Hay filas con la fecha centinela 1900-01-01, que significa "sin cese".
-        var f = e.est_Fecha_cierre;
+    /**
+     * Vuelca el cese del CONTRIBUYENTE en el formulario.
+     *
+     * Antes habia un selector de establecimiento y una consulta aparte para
+     * llenarlo: el cese vivia en el local. Con la migracion 019 subio a la
+     * persona, asi que el dato llega en la misma respuesta del RIT y no hace
+     * falta pedir nada mas. Cerrar un local suelto y seguir con los otros se
+     * hace desde el estado del registro del establecimiento.
+     */
+    pintarCese(d) {
+        // sqlsrv devuelve las fechas como objeto; el input date quiere
+        // AAAA-MM-DD. Y hay filas con la centinela 1900-01-01, que es en lo que
+        // SQL Server convierte una cadena vacia y significa "sin cese".
+        var f = d.ind_FechaCese;
         var texto = '';
         if (f) {
             texto = (typeof f === 'string') ? f.substring(0, 10)
@@ -2566,8 +2539,10 @@ actualizarDeclaracionIca(valor, numeroCampo){
         }
 
         $('#rit_est_Fecha_cierre').val(texto);
-        $('#rit_est_Causal').val(e.est_Causal || '');
-        $('#rit_est_Observacion_cierre').val(e.est_Observacion_cierre || '');
+        $('#rit_est_Causal').val(d.ind_CausalCese || '');
+        $('#rit_est_Observacion_cierre').val(d.ind_ObservacionCese || '');
+
+        this.aplicarPermisoCese();
     }
 
     /** Quien no es Alcaldia ve el cese pero no lo toca. */
@@ -2581,11 +2556,11 @@ actualizarDeclaracionIca(valor, numeroCampo){
     }
 
     guardarCeseRIT() {
-        var id = $('#rit_cese_Establecimiento').val();
+        var id = $('#rit_ind_Id').val();
 
         if (!id) {
-            swal({ type: 'warning', title: 'Falta el establecimiento',
-                   text: 'Indique cuál establecimiento cesa actividades.' });
+            swal({ type: 'warning', title: 'Primero guarde el RIT',
+                   text: 'El cese se registra sobre un registro ya guardado.' });
             return;
         }
 
@@ -2596,7 +2571,7 @@ actualizarDeclaracionIca(valor, numeroCampo){
             dataType: 'json',
             data: {
                 funcion: 21,
-                est_Id: id,
+                ind_Id: id,
                 est_Fecha_cierre: $('#rit_est_Fecha_cierre').val(),
                 est_Causal: $('#rit_est_Causal').val(),
                 est_Observacion_cierre: $('#rit_est_Observacion_cierre').val()
@@ -2608,7 +2583,6 @@ actualizarDeclaracionIca(valor, numeroCampo){
                 }
                 swal({ type: 'success', title: 'Listo', text: resp.mensaje, timer: 2000 });
                 // El cese entra en el hash del RIT: cambiarlo tumba la firma.
-                self.cargarEstablecimientosCese();
                 self.consultarFirmaRIT();
             },
             error: function () {
@@ -2737,15 +2711,11 @@ $(document).on('click', '#btnActualizarRIT', function () {
     establecimientos.actualizarRIT();
 });
 
-$(document).on('change', '#rit_cese_Establecimiento', function () {
-    establecimientos.mostrarCeseDe($(this).val());
-});
 
 $(document).on('click', '#btnGuardarCeseRIT', function () {
     establecimientos.guardarCeseRIT();
 });
 
-establecimientos.cargarEstablecimientosCese();
 
 // Estado de firma al abrir la pantalla.
 establecimientos.consultarFirmaRIT();

@@ -545,7 +545,6 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
             // solo recalcula en pantalla (ICA + avisos y tableros + bomberil)
             // para ver el total antes de guardar; quien graba de verdad sigue
             // siendo "Finalizar Declaración".
-            $("#btnValidarDeclaracion").prop("disabled", false);
 
               // 🔥 AQUÍ ESTÁ LA CLAVE
             $("#btnDescargarPDF")
@@ -1720,7 +1719,6 @@ $("#btnCrearDeclaracion").off("click").on("click", function () {
     $("#numDeclaracion").val(numeroGenerado);
 
     // Activar botones
-    $("#btnValidarDeclaracion").prop("disabled", false);
     $("#btnDescargarPDF").prop("disabled", true);
     $("#btnGenerarOficial").prop("disabled", true);
 
@@ -1774,7 +1772,10 @@ $("#btnCrearDeclaracion").off("click").on("click", function () {
  * resultado seria peor que hoy: pasaria de "no guarda" a "guarda y ademas pone
  * en cero las retenciones, los anticipos y las sanciones".
  */
-$("#btnGenerarOficial, #btnValidarDeclaracion").off("click").on("click", function () {
+// Ya no hay dos botones: "Liquidar" se retiro por instruccion del cliente
+// -"liquidar solo al guardar"-, porque en este sistema liquidar y guardar
+// son la misma operacion. Queda un unico manejador sobre el unico boton.
+$("#btnGenerarOficial").off("click").on("click", function () {
 
     if(!establecimientos.validarBasesActividades()){
         return;
