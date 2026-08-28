@@ -1560,6 +1560,10 @@ actualizarDeclaracionIca(valor, numeroCampo){
 
             $('[data-campo="total_a_pagar"]').val(establecimientos.formatearCOP(establecimientos.limpiarEntero(d.dec_ValorConcepto20)));
 
+            // Tras repintar, el renglon 31 tiene que quedar coherente con la
+            // opcion elegida: con "Ninguna" marcada no puede quedar un importe.
+            if (typeof sancionSegunTipo === 'function') { sancionSegunTipo(); }
+
             /*
              * Punto 16 de la revision del 2026-08-21: "Que no salga este aviso cada
              * que se modifica una casilla".
@@ -1876,6 +1880,10 @@ $("#btnGenerarOficial").off("click").on("click", function () {
 
             $('[data-campo="total_a_pagar"]').val(establecimientos.formatearCOP(establecimientos.limpiarEntero(d.dec_ValorConcepto20)));
 
+            // Tras repintar, el renglon 31 tiene que quedar coherente con la
+            // opcion elegida: con "Ninguna" marcada no puede quedar un importe.
+            if (typeof sancionSegunTipo === 'function') { sancionSegunTipo(); }
+
             swal({
                 type: 'success',
                 title: 'Liquidación realizada',
@@ -1912,11 +1920,63 @@ $("#btnGenerarOficial").off("click").on("click", function () {
 // Elegir "Ninguna" hace lo que antes hacia desmarcar la casilla: limpia el
 // detalle de "Otra" para que no quede un texto suelto de una sancion que ya
 // no esta seleccionada.
+/*
+ * "Ninguna" tiene que dejar el renglon 31 EN CERO.
+ *
+ * Lo reporto el cliente el 2026-08-28: "me sigue liquidando la sancion, ¿se
+ * acuerda que habiamos quedado que no la liquidara?". Y tenia razon: elegir
+ * "Ninguna" solo ocultaba el detalle de "Otra" y limpiaba ese texto, pero
+ * dejaba intacto el IMPORTE. En su pantalla se veia "Ninguna" marcada y
+ * 500.000 en la casilla de al lado, y esos 500.000 seguian sumando al total.
+ *
+ * Dos cosas contradiciendose en la misma fila: la opcion decia que no hay
+ * sancion y la cifra decia que si. El total hacia caso a la cifra.
+ *
+ * Ahora elegir "Ninguna" pone el importe en cero, lo bloquea, y GUARDA ese
+ * cero -por eso el trigger('change'), que es lo que dispara el guardado del
+ * renglon-. Sin el trigger la pantalla quedaria en cero y la base seguiria
+ * con los 500.000, que es la misma incoherencia al reves.
+ */
+function sancionSegunTipo() {
+    var ninguna  = $("#chkSinSancion").is(":checked");
+    var $importe = $('[data-campo="sanciones"]');
+
+    if ($importe.length === 0) { return; }
+
+    $importe.prop("readonly", ninguna).toggleClass("campo-bloqueado", ninguna);
+
+    if (ninguna) {
+        var tenia = establecimientos.limpiarNumero
+                        ? establecimientos.limpiarNumero($importe.val())
+                        : parseFloat($importe.val()) || 0;
+
+        // Solo se toca si de verdad habia algo: asi no se manda un guardado
+        // inutil cada vez que se abre la declaracion.
+        if (tenia) {
+            $importe.val(establecimientos.formatearCOP(0)).trigger("change");
+        }
+    }
+}
+
 $(document).on("change", "#chkSinSancion", function () {
     if ($(this).is(":checked")) {
         $("#inputOtraSancion").hide();
         $("#txtOtraSancion").val('');
     }
+});
+
+/*
+ * Y al ABRIR la declaracion, no solo al cambiar de opcion.
+ *
+ * "Ninguna" viene marcada por defecto en el HTML, asi que sin esto la casilla
+ * del importe nacia desbloqueada y se podia escribir un valor encima de
+ * "Ninguna" — la misma contradiccion que se esta cerrando, solo que al reves.
+ *
+ * Se engancha al evento del modal en vez de a quien lo abre, porque el modal
+ * se abre desde varios sitios y asi da igual cual sea.
+ */
+$(document).on("shown.bs.modal", "#modal-CrearDeclaracion", function () {
+    sancionSegunTipo();
 });
 
 // Mostrar input "Otra"
@@ -1929,6 +1989,7 @@ $(document).on("change", "input[name='tipoSancion']", function(){
         $("#txtOtraSancion").val('');
     }
 
+    sancionSegunTipo();
 });
 
 // ==========================================

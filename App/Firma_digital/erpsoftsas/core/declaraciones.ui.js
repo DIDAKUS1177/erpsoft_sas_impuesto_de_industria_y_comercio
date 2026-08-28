@@ -664,6 +664,55 @@ var EditarDeclaracion = (function () {
                     establecimientos.calcularIngresos();
                 }
 
+                /*
+                 * La Liquidacion Privada tambien se pinta al abrir.
+                 *
+                 * Antes solo se pintaban los ingresos y las actividades, asi que
+                 * los renglones 26 a 38 se quedaban en el "0" que trae el HTML
+                 * aunque la declaracion tuviera valores guardados. La pantalla
+                 * decia 0 y la base decia otra cosa, y el total -que se calcula
+                 * sobre lo GUARDADO- no cuadraba con lo que se veia.
+                 *
+                 * Eso es lo que el cliente reporto el 2026-08-28 como "me sigue
+                 * liquidando la sancion": el renglon aparentaba estar vacio y su
+                 * importe seguia sumando.
+                 */
+                var v = function (campo, valor) {
+                    $('[data-campo="' + campo + '"]').val(aCOP(valor));
+                };
+
+                v('industria_comercio',               d.dec_ValorConcepto1);
+                v('avisos_tableros',                  d.dec_ValorConcepto2);
+                v('sobretasa_bomberil',               d.dec_ValorConcepto3);
+                v('total_impuesto_cargo',             d.dec_ValorConcepto4);
+                v('valor_exencion_exoneracion',       d.dec_ValorConcepto5);
+                v('menos_retenciones',                d.dec_ValorConcepto6);
+                v('menos_autoretenciones',            d.dec_ValorConcepto7);
+                v('anticipo_anterior',                d.dec_ValorConcepto8);
+                v('anticipo_siguiente',               d.dec_ValorConcepto9);
+                v('sanciones',                        d.dec_ValorConcepto10);
+                v('saldo_favor_vigencias_anteriores', d.dec_ValorConcepto11);
+                v('total_saldo_a_cargo',              d.dec_ValorConcepto12);
+                v('total_saldo_a_favor',              d.dec_ValorConcepto13);
+                v('valor_a_pagar',                    d.dec_ValorConcepto14);
+                v('descuento_pronto_pago',            d.dec_ValorConcepto15);
+                v('interes_mora',                     d.dec_ValorConcepto16);
+                v('total_a_pagar',                    d.dec_ValorConcepto20);
+
+                /*
+                 * Y la sancion queda coherente con su opcion: si hay importe
+                 * guardado, se marca el tipo; si no, "Ninguna" y bloqueada.
+                 * Sin esto, una declaracion con sancion se abria con "Ninguna"
+                 * marcada -es el valor por defecto del HTML- y el importe al
+                 * lado, que es justo la contradiccion que se esta cerrando.
+                 */
+                if (Number(NumerosCOP.deBaseDeDatos(d.dec_ValorConcepto10)) > 0) {
+                    $("#chkSinSancion").prop("checked", false);
+                } else {
+                    $("#chkSinSancion").prop("checked", true);
+                }
+                if (typeof sancionSegunTipo === 'function') { sancionSegunTipo(); }
+
                 // Actividades: se muestran con la base/tarifa/impuesto TAL
                 // COMO quedaron guardadas la ultima vez, no la lista
                 // agregada desde cero que usa "Crear Declaración".

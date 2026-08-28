@@ -403,6 +403,25 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
         ));
 
         if ($existente) {
+            /*
+             * Tambien aqui se cruza el anticipo del año anterior.
+             *
+             * El cruce estaba solo despues del INSERT, asi que solo corria la
+             * PRIMERA vez. Si el contribuyente abrio el borrador de este año
+             * antes de que se presentara el del año pasado -una declaracion
+             * extemporanea, por ejemplo-, el renglon 29 se quedaba en cero
+             * para siempre y habia que teclearlo a mano.
+             *
+             * Es seguro repetirlo: el UPDATE lleva "AND ISNULL(...) = 0", asi
+             * que nunca pisa un valor ya diligenciado.
+             */
+            $this->_cruzarAnticipoDelAnioAnterior(
+                $con,
+                $existente['dec_Id'] ?? $existente['dec_NumeroDeclaracion'] ?? 0,
+                $idContribuyente,
+                $anio
+            );
+
             $this->_ok = 1;
             $this->_mensaje = "Ya existe una declaración en curso para este contribuyente; se abre esa";
             return $existente;

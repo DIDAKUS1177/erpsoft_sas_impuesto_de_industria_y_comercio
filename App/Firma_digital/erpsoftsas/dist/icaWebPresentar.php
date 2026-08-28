@@ -820,8 +820,21 @@ Guardar
                             <td>21</td>
                             <td>IMPUESTO DE AVISOS Y TABLEROS (15% de renglón 20)</td>
                             <td>
-                            <input type="text" class="form-control campo-total"
-                            data-campo="avisos_tableros" numeroCampo="2" value="0">
+                            <!-- Bloqueado: lo calcula el sistema (15% del renglon 20), y
+                                 desde la exencion "Sin Avisos y Tableros" del RIT tambien
+                                 puede salir en cero.
+
+                                 Estaba tecleable, y no era inofensivo: al escribir aqui se
+                                 guardaba el valor y el procedimiento se llamaba con
+                                 @POSICION_CONCEPTO = 2, que hace que el cursor arranque en
+                                 el 3 -o sea que se saltaba justo la formula de este renglon
+                                 y lo tecleado se quedaba-. Un contribuyente exento podia
+                                 escribir un importe aqui y sobrevivia a la liquidacion.
+
+                                 Se quita tambien numeroCampo para que el manejador de
+                                 core/icaWebPresentar.js lo descarte y no dispare guardado. -->
+                            <input type="text" class="form-control campo-total campo-bloqueado"
+                            data-campo="avisos_tableros" value="0" readonly>
                             </td>
                             </tr>
 <!---
@@ -838,8 +851,10 @@ Guardar
                             <td>23</td>
                             <td>SOBRETASA BOMBERIL (Ley 1575 de 2012) si la hay, liquidela segun el acuerdo municipal o distrital</td>
                             <td>
-                            <input type="text" class="form-control campo-total"
-                            data-campo="sobretasa_bomberil" numeroCampo="3" value="0">
+                            <!-- Bloqueado por lo mismo que el 21: lo calcula el sistema
+                                 (5% del renglon 20) y estaba tecleable. -->
+                            <input type="text" class="form-control campo-total campo-bloqueado"
+                            data-campo="sobretasa_bomberil" value="0" readonly>
                             </td>
                             </tr>
 
