@@ -187,6 +187,22 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
             if (!$fila) { return 'No tiene permiso sobre esta declaración.'; }
         }
 
+        /*
+         * Las funciones 6 y 14 no identifican la declaracion por dec_Id sino
+         * por dec_NumeroDeclaracion, que viaja como 'idDeclaracion'. Sin esta
+         * comprobacion el filtro de arriba no las cubre: bastaba mandar el
+         * numero de otro contribuyente para liquidar -o, con la 14, para LEER-
+         * una declaracion ajena, que son datos con reserva tributaria.
+         */
+        if (!empty($_POST['idDeclaracion'])) {
+            $fila = $con->obnerFila($con->consultar(
+                "SELECT dec_Id FROM ind_declaraciones_ica
+                  WHERE dec_NumeroDeclaracion = ? AND dec_IdContribuyente = ?",
+                [$_POST['idDeclaracion'], $propio]
+            ));
+            if (!$fila) { return 'No tiene permiso sobre esta declaración.'; }
+        }
+
         // Un establecimiento concreto tambien.
         if (!empty($_POST['dec_IdEstablecimiento'])) {
             $fila = $con->obnerFila($con->consultar(
@@ -268,6 +284,10 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
 
                 case 13:
                     $respuesta = $_obj->_consultarDeclaracionParaEditar();
+                break;
+
+                case 14:
+                    $respuesta = $_obj->_liquidarSinGuardar();
                 break;
 
                 default:
@@ -890,6 +910,134 @@ private function _insertarActividadesDeclaracionIca(){
 }
 
 
+/**
+ * funcion 14 - Liquida SIN guardar. Solo para ver las cifras en pantalla.
+ *
+ * El cliente pidio el 2026-08-26 que volviera el boton "Liquidar" de antes:
+ * "el boton de liquidar como el pasado, no guardarlo sino como estaba previo".
+ *
+ * POR QUE NO SE CALCULA EN EL NAVEGADOR
+ *
+ * Seria lo obvio y seria un error. Las formulas de los renglones bloqueados no
+ * estan en el codigo: viven en la columna con_Observaciones de ind_Conceptos y
+ * sp_calculo_comercio las inyecta como texto en un UPDATE. Reescribirlas en
+ * JavaScript significaria tener DOS liquidadores -uno en el navegador y otro en
+ * la base- que hay que acordarse de cambiar a la vez. El dia que alguien ajuste
+ * una tarifa en la tabla, la pantalla mostraria una cifra y el PDF otra, y el
+ * contribuyente firmaria la que no vio.
+ *
+ * COMO SE HACE ENTONCES
+ *
+ * Se ejecuta la liquidacion DE VERDAD, con el procedimiento de siempre, dentro
+ * de una transaccion que SIEMPRE se deshace. Se leen los resultados antes del
+ * rollback y se devuelven. La base queda exactamente como estaba -incluidas las
+ * actividades, que la funcion 6 borra y reinserta- y las cifras que ve el
+ * contribuyente son las mismas que va a guardar si pulsa "Guardar y liquidar".
+ *
+ * Una sola fuente de calculo, y nada escrito. Que es lo que se pidio.
+ *
+ * El rollback va en finally: si el SP revienta a mitad, la transaccion tiene
+ * que cerrarse igual o la conexion queda con una transaccion abierta y la
+ * siguiente peticion que la reuse hereda el desastre.
+ */
+private function _liquidarSinGuardar()
+{
+    $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+
+    $actividades   = json_decode($_POST['actividades'] ?? '[]', true) ?: [];
+    $totales       = json_decode($_POST['totales'] ?? '[]', true) ?: [];
+    $idDeclaracion = $_POST['idDeclaracion'] ?? null;
+
+    if (!$idDeclaracion) {
+        $this->_ok = 0;
+        $this->_mensaje = "Id de declaración requerido";
+        return [];
+    }
+
+    $abierta = false;
+
+    try {
+        $con->begin();
+        $abierta = true;
+
+        $con->consultar(
+            "UPDATE ind_declaraciones_ica SET
+                dec_TotalIngresos            = ?,
+                dec_IngresosFueraMunicipio   = ?,
+                dec_IngresosDevoluciones     = ?,
+                dec_IngresosExportaciones    = ?,
+                dec_IngresosVentas           = ?,
+                dec_IngresosActividades      = ?,
+                dec_IngresosOtrasActividades = ?,
+                dec_BaseGravable             = ?,
+                dec_CapacidadInstalada       = COALESCE(?, dec_CapacidadInstalada),
+                dec_ValorImpuesto            = COALESCE(?, dec_ValorImpuesto)
+              WHERE dec_NumeroDeclaracion = ?",
+            [
+                $totales['dec_TotalIngresos']            ?? 0,
+                $totales['dec_IngresosFueraMunicipio']   ?? 0,
+                $totales['dec_IngresosDevoluciones']     ?? 0,
+                $totales['dec_IngresosExportaciones']    ?? 0,
+                $totales['dec_IngresosVentas']           ?? 0,
+                $totales['dec_IngresosActividades']      ?? 0,
+                $totales['dec_IngresosOtrasActividades'] ?? 0,
+                $totales['dec_BaseGravable']             ?? 0,
+                $totales['dec_CapacidadInstalada']       ?? null,
+                $totales['dec_ValorImpuesto']            ?? null,
+                $idDeclaracion,
+            ]
+        );
+
+        $con->consultar("DELETE FROM ind_declaraciones_ica_actividades
+                          WHERE dia_IdDeclaracion = ?", [$idDeclaracion]);
+
+        foreach ($actividades as $a) {
+            $con->consultar(
+                "INSERT INTO ind_declaraciones_ica_actividades
+                     (dia_IdDeclaracion, dia_IdActividad, dia_BaseGravable,
+                      dia_Tarifa, dia_ValorImpuesto, dia_Activo, dia_FechaCreador)
+                 VALUES (?,?,?,?,?,1,GETDATE())",
+                [
+                    $a['dia_IdDeclaracion'],
+                    $a['dia_IdActividad'],
+                    $a['dia_BaseGravable'],
+                    $a['dia_Tarifa'],
+                    $a['dia_ValorImpuesto'],
+                ]
+            );
+        }
+
+        $this->_ejecutarSpLiquidacion($_POST['anio'] ?? null,
+                                      $_POST['mes'] ?? null,
+                                      $_POST['numero'] ?? null, 0);
+
+        // Se lee ANTES de deshacer: despues del rollback la fila vuelve a
+        // tener los valores viejos.
+        $datos = $con->obnerFila($con->consultar(
+            "SELECT * FROM ind_declaraciones_ica WHERE dec_NumeroDeclaracion = ?",
+            [$idDeclaracion]
+        ));
+
+        $this->_ok = 1;
+        $this->_mensaje = "Liquidación calculada (no se guardó nada)";
+
+        return $datos ?: [];
+
+    } catch (\Exception $e) {
+
+        $this->_ok = 0;
+        $this->_mensaje = $e->getMessage();
+        return [];
+
+    } finally {
+        if ($abierta) {
+            // Nunca hay commit: el proposito del metodo es no dejar rastro.
+            try { $con->rollback(); } catch (\Exception $e) { /* ya cerrada */ }
+        }
+    }
+}
+
+
 private function _ejecutarSpLiquidacion($anio,$mes,$numero, $campoSeleccionado){
 
     $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
@@ -1339,6 +1487,21 @@ private function _consultarDeclaracionesListado(){
 
     $res = $con->consultar($sql, [$filtro]);
 
+    /*
+     * ¿Se puede pagar en linea?
+     *
+     * Depende del convenio de recaudo de la entidad, que desde la migracion
+     * 023 es configuracion y puede estar vacio -un municipio recien montado no
+     * lo tiene todavia-. Sin el, ofrecer el boton de PSE es ofrecer algo que
+     * solo puede fallar.
+     *
+     * Se resuelve UNA vez para todo el listado, no por fila: es el mismo dato
+     * para todas y la clase ya cachea, pero preguntarlo dentro del bucle
+     * sugeriria que puede variar entre declaraciones.
+     */
+    include_once SERVER . '/business/class.placetopay.php';
+    $pagoEnLinea = (int) \PlacetoPay::configurado();
+
     $data = [];
 
     while($row = $con->obnerFila($res)){
@@ -1348,6 +1511,8 @@ private function _consultarDeclaracionesListado(){
         // contador o de revisor registrado -tiene_correo_contador ya trae
         // ese calculo hecho desde el SQL de arriba-.
         $row['requiere_contador'] = (int) ($row['tiene_correo_contador'] ?? 0);
+
+        $row['pago_en_linea'] = $pagoEnLinea;
 
         $data[] = $row;
     }

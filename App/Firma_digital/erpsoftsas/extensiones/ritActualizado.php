@@ -212,11 +212,30 @@ $row = $con->obnerFila($con->consultar($sql, [$idEstablecimiento, $idContribuyen
 
 // Ver la nota de "opcion de uso" mas abajo. Se resuelven aqui, sobre el
 // contribuyente, porque puede no haber establecimiento del que leerlas.
-$firmaPrevia = $con->obnerFila($con->consultar(
-    "SELECT TOP 1 rif_Id FROM ind_rit_firmas WHERE rif_IdContribuyente = ?",
+/*
+ * "Inscripcion" solo la PRIMERA vez.
+ *
+ * Corregido el 2026-08-26: "no deberia salir inscripcion sino actualizacion;
+ * si apenas inicia es inscripcion, por el contrario actualizacion". La regla
+ * anterior miraba si el RIT se habia FIRMADO alguna vez, y por eso un registro
+ * que llevaba tiempo en el sistema pero sin firmar seguia saliendo como
+ * inscripcion.
+ *
+ * Ahora se mira si el RIT ya EXISTE -ind_RIT_FechaCreacion, que se llena la
+ * primera vez que se diligencia-, que es lo que distingue inscribirse de
+ * reportar una novedad. La firma se sigue teniendo en cuenta como respaldo:
+ * un RIT firmado esta creado por definicion, aunque la fecha no se hubiera
+ * registrado en su momento.
+ */
+$previo = $con->obnerFila($con->consultar(
+    "SELECT TOP 1 1 AS x
+       FROM ind_contribuyentes c
+      WHERE c.ind_Id = ?
+        AND (c.ind_RIT_FechaCreacion IS NOT NULL
+             OR EXISTS (SELECT 1 FROM ind_rit_firmas f WHERE f.rif_IdContribuyente = c.ind_Id))",
     [$idContribuyente]
 ));
-$ritYaFormalizado = (bool) $firmaPrevia;
+$ritYaFormalizado = (bool) $previo;
 
 /*
  * Se descarta 1900-01-01 ademas de NULL: SQL Server convierte una cadena
@@ -534,14 +553,22 @@ $enPalabras = function ($codigos) use ($ETIQUETAS_MULTIPLE) {
 $regimenTexto = $enPalabras($row['ind_RegimenTributario'] ?? '');
 if ($regimenTexto === '') { $regimenTexto = htmlspecialchars((string) $regimenNombre, ENT_QUOTES, 'UTF-8'); }
 
-$responsabilidadesTexto = $enPalabras($row['ind_Responsabilidades'] ?? '');
-if ($responsabilidadesTexto === '') { $responsabilidadesTexto = 'Ninguna'; }
+/*
+ * Responsabilidades y condiciones frente al impuesto van en la MISMA casilla.
+ *
+ * Estaban en dos filas separadas; el cliente las junto el 2026-08-26. Se
+ * guardan aparte -las condiciones son banderas de si/no de la migracion 016 y
+ * las responsabilidades una lista de codigos-, pero se imprimen juntas porque
+ * para quien lee el formulario son lo mismo: lo que el contribuyente declara
+ * sobre su situacion frente al impuesto.
+ */
+$partes = [];
+$resp = $enPalabras($row['ind_Responsabilidades'] ?? '');
+if ($resp !== '')                          { $partes[] = $resp; }
+if (!empty($row['ind_NoSujetas']))         { $partes[] = 'Realiza actividades no sujetas o no gravadas'; }
+if (!empty($row['ind_SinAvisosTableros'])) { $partes[] = 'Sin Avisos y Tableros'; }
 
-// Las dos exenciones subieron del establecimiento en la migracion 016.
-$condiciones = [];
-if (!empty($row['ind_NoSujetas']))         { $condiciones[] = 'Realiza actividades no sujetas o no gravadas'; }
-if (!empty($row['ind_SinAvisosTableros'])) { $condiciones[] = 'Sin Avisos y Tableros'; }
-$condicionTexto = $condiciones ? implode(' · ', $condiciones) : 'Ninguna';
+$responsabilidadesTexto = $partes ? implode(' · ', $partes) : 'Ninguna';
 
 // Codigos CIIU del RUT (migracion 005): son los de la DIAN, de cuatro
 // digitos, distintos de los del acuerdo municipal que salen en la tabla de
@@ -568,8 +595,8 @@ if (!empty($d['actividades'])) {
 
     $actividadesHtml = '
     <tr>
-        <td width="22%" align="center"><b>Código de Actividad</b></td>
-        <td width="78%"><b>Descripción</b></td>
+        <td width="22%" align="center" bgcolor="#cae6e7"><b>Código de Actividad</b></td>
+        <td width="78%" bgcolor="#cae6e7"><b>Descripción</b></td>
     </tr>';
 
     foreach ($d['actividades'] as $act) {
@@ -630,6 +657,26 @@ if ($establecimientosHtml === '') {
 HTML
 =========================== */
 
+/*
+ * LOS COLORES SON LOS MISMOS DE LA DECLARACION
+ *
+ * Pedido del cliente el 2026-08-26: los dos formularios se entregan juntos y
+ * en blanco y negro el RIT parecia de otro sistema. La paleta sale de
+ * extensiones/declaracion.php:
+ *
+ *   #cae6e7  celeste de los rotulos
+ *   #e1dada  gris de los encabezados de bloque
+ *   negro    barras de seccion (esas ya coincidian)
+ *
+ * Los rotulos llevan el color como atributo bgcolor celda a celda, que es como
+ * lo hace la declaracion, y no como clase.
+ *
+ * OJO AL EDITAR EL <style> DE ABAJO: el parser de TCPDF no entiende comentarios
+ * CSS. Un bloque de comentario ahi dentro se imprime como texto plano y, si
+ * menciona nombres de etiqueta, se los come como si fueran etiquetas de verdad
+ * -asi se perdio el formulario entero en una prueba de este mismo cambio-. Por
+ * eso esta explicacion vive aqui, en PHP, y no dentro de la hoja de estilo.
+ */
 $html = '
 
 <style>
@@ -649,6 +696,7 @@ border:0.1px solid #000;
 font-size:10px;
 font-weight:bold;
 text-align:center;
+background-color:#e1dada;
 }
 
 .section{
@@ -738,8 +786,8 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 </tr>
 
 <tr>
-<td  class="center" width="50%"><b>4. Tipo de Documento</b></td>
-<td  class="center" width="50%"><b>5. Naturaleza Jurídica</b></td>
+<td  class="center" width="50%" bgcolor="#cae6e7"><b>4. Tipo de Documento</b></td>
+<td  class="center" width="50%" bgcolor="#cae6e7"><b>5. Naturaleza Jurídica</b></td>
 </tr>
 
 <tr>
@@ -766,25 +814,25 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
      no existe en el formulario oficial del RIT. La razon social pasa a ocupar el
      ancho que quedaba. El dato en la base NO se toca; solo deja de imprimirse. -->
 <tr>
-<td width="25%"><b>6. Apellidos y Nombres ó Razón Social</b></td>
+<td width="25%" bgcolor="#cae6e7"><b>6. Apellidos y Nombres ó Razón Social</b></td>
 <td width="75%">'.$d['razon'].'</td>
 </tr>
 
 <tr>
-<td width="25%"><b>8. Dirección de Notificación</b></td>
+<td width="25%" bgcolor="#cae6e7"><b>8. Dirección de Notificación</b></td>
 <td width="25%">'.$d['direccion'].'</td>
-<td width="13%"><b>9. Municipio</b></td>
+<td width="13%" bgcolor="#cae6e7"><b>9. Municipio</b></td>
 <td width="11%">'.$d['municipio'].'</td>
-<td width="16%"><b>10. Departamento</b></td>
+<td width="16%" bgcolor="#cae6e7"><b>10. Departamento</b></td>
 <td width="10%">'.$d['departamento'].'</td>
 </tr>
 
 
 <tr>
-<td width="25%"><b>11. Teléfono</b></td>
+<td width="25%" bgcolor="#cae6e7"><b>11. Teléfono</b></td>
 <td width="25%">'.$d['telefono'].'</td>
 
-<td width="20%"><b>12. Régimen Tributario:</b></td>
+<td width="20%" bgcolor="#cae6e7"><b>12. Régimen Tributario:</b></td>
 <td width="30%">'.$regimenTexto.'</td>
 
 </tr>
@@ -795,33 +843,31 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
      imprimian en ninguna parte. Cada fila lleva dos celdas al 50% para no
      mezclar numeros de columna dentro de la misma tabla: TCPDF pinta trozos
      de borde sueltos cuando las filas no cuadran entre si. -->
+<!-- Las dos condiciones frente al impuesto se imprimen dentro de
+     Responsabilidades, no en una fila aparte: el cliente las junto en la
+     pantalla el 2026-08-26 y el papel tiene que decir lo mismo que se ve. -->
 <tr>
-<td width="30%"><b>Responsabilidades:</b></td>
+<td width="30%" bgcolor="#cae6e7"><b>Responsabilidades:</b></td>
 <td width="70%">'.$responsabilidadesTexto.'</td>
 </tr>
 
 <tr>
-<td width="30%"><b>Condición frente al impuesto:</b></td>
-<td width="70%">'.$condicionTexto.'</td>
-</tr>
-
-<tr>
-<td width="30%"><b>Códigos CIIU del RUT:</b></td>
+<td width="30%" bgcolor="#cae6e7"><b>Códigos CIIU del RUT:</b></td>
 <td width="70%">'.$ciiuTexto.'</td>
 </tr>
 
 <tr>
-<td width="30%"><b>Autoriza notificación electrónica:</b></td>
+<td width="30%" bgcolor="#cae6e7"><b>Autoriza notificación electrónica:</b></td>
 <td width="70%">'.$autorizaTexto.'</td>
 </tr>
 
 <tr>
-<td width="15%"><b>13. Contador</b></td>
-<td width="10%"><b>Nombre:</b></td>
+<td width="15%" bgcolor="#cae6e7"><b>13. Contador</b></td>
+<td width="10%" bgcolor="#cae6e7"><b>Nombre:</b></td>
 <td width="15%">'.$d['contador_nombre'].'</td>
-<td width="10%"><b>Cedula:</b></td>
+<td width="10%" bgcolor="#cae6e7"><b>Cedula:</b></td>
 <td width="15%">'.$d['contador_cc'].'</td>
-<td width="22%"><b>Tarjeta Profesional No:</b></td>
+<td width="22%" bgcolor="#cae6e7"><b>Tarjeta Profesional No:</b></td>
 <td width="13%">'.$d['contador_tp'].'</td>
 </tr>
 
@@ -829,12 +875,12 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
      20/15 en las dos ultimas celdas y "Tarjeta Profesional No:" se partia en
      dos lineas, dejando la fila mas alta que la de arriba. -->
 <tr>
-<td width="15%"><b>14. Revisor Fiscal</b></td>
-<td width="10%"><b>Nombre:</b></td>
+<td width="15%" bgcolor="#cae6e7"><b>14. Revisor Fiscal</b></td>
+<td width="10%" bgcolor="#cae6e7"><b>Nombre:</b></td>
 <td width="15%">'.$d['revisor_nombre'].'</td>
-<td width="10%"><b>Cedula:</b></td>
+<td width="10%" bgcolor="#cae6e7"><b>Cedula:</b></td>
 <td width="15%">'.$d['revisor_cc'].'</td>
-<td width="22%"><b>Tarjeta Profesional No:</b></td>
+<td width="22%" bgcolor="#cae6e7"><b>Tarjeta Profesional No:</b></td>
 <td width="13%">'.$d['revisor_tp'].'</td>
 </tr>
 
@@ -844,20 +890,20 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
      su propia fila -y no dentro de las casillas 13 y 14- porque esas ya tienen
      siete celdas y meter dos mas desalinearia la tabla entera. -->
 <tr>
-<td width="30%"><b>Correo del contador:</b></td>
+<td width="30%" bgcolor="#cae6e7"><b>Correo del contador:</b></td>
 <td width="70%">'.$esc($row['ind_EmailContador']).'</td>
 </tr>
 
 <tr>
-<td width="30%"><b>Correo del revisor fiscal:</b></td>
+<td width="30%" bgcolor="#cae6e7"><b>Correo del revisor fiscal:</b></td>
 <td width="70%">'.$esc($row['ind_EmailRevisor']).'</td>
 </tr>
 
 <tr>
 <!-- Punto 7: el cliente pidio dejarlo en "Numero de matricula mercantil". -->
-<td width="40%"><b>15. Número de matrícula mercantil:</b></td>
+<td width="40%" bgcolor="#cae6e7"><b>15. Número de matrícula mercantil:</b></td>
 <td width="10%">'.$d['matricula'].'</td>
-<td width="39%"><b>16. Fecha de la Matricula mercantil:</b></td>
+<td width="39%" bgcolor="#cae6e7"><b>16. Fecha de la Matricula mercantil:</b></td>
 <td width="11%">'.$d['fecha_matricula'].'</td>
 
 </tr>
@@ -885,16 +931,16 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
      deja de pintarse. -->
 
 <tr>
-<td width="15%"><b>19. Fecha inicio actividades</b></td>
+<td width="15%" bgcolor="#cae6e7"><b>19. Fecha inicio actividades</b></td>
 <td width="35%">'.$d['fecha_inicio'].'</td>
-<td width="15%"><b>20. Teléfono</b></td>
+<td width="15%" bgcolor="#cae6e7"><b>20. Teléfono</b></td>
 <td width="35%">'.$d['telefono'].'</td>
 </tr>
 
 <tr>
-<td width="25%"><b>21. Dirección del lugar en donde se ejerce la actividad</b></td>
+<td width="25%" bgcolor="#cae6e7"><b>21. Dirección del lugar en donde se ejerce la actividad</b></td>
 <td width="25%">'.$d['direccion_actividad'].'</td>
-<td width="25%"><b>22. Correo Electronico</b></td>
+<td width="25%" bgcolor="#cae6e7"><b>22. Correo Electronico</b></td>
 <td width="25%">'.$d['correo'].'</td>
 </tr>
 
@@ -909,16 +955,16 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 </tr>
 
 <tr>
-<td width="25%"><b>23. Apellidos y Nombres</b></td>
+<td width="25%" bgcolor="#cae6e7"><b>23. Apellidos y Nombres</b></td>
 <td width="25%">'.$d['representante'].'</td>
-<td width="25%"><b>24. Identificación</b></td>
+<td width="25%" bgcolor="#cae6e7"><b>24. Identificación</b></td>
 <td width="25%">'.$d['cc_representante'].'</td>
 </tr>
 
 <tr>
-<td width="25%"><b>25. Correo Electronico</b></td>
+<td width="25%" bgcolor="#cae6e7"><b>25. Correo Electronico</b></td>
 <td width="25%">'.$d['email_representante'].'</td>
-<td width="25%"><b>26. Telefono</b></td>
+<td width="25%" bgcolor="#cae6e7"><b>26. Telefono</b></td>
 <td width="25%">'.$d['telefono'].'</td>
 </tr>
 
@@ -950,15 +996,15 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
      a la derecha que ninguna otra fila del formulario tiene. Los anchos se
      reparten ahora entre las celdas que si dicen algo, y suman 100.
 
-     La observacion pierde el numero: el "29" del formulario oficial es
-     "Numero de Establecimiento que clausura", que ya no se imprime, asi que
-     reusarlo para otra cosa era confundir dos casillas distintas. Su rotulo
-     se alinea con el de la fila de arriba (20%) para que las dos columnas
-     empiecen en la misma vertical. -->
+     La observacion lleva el numero 29, por indicacion del cliente el
+     2026-08-26. Ese numero era antes "Numero de Establecimiento que clausura",
+     casilla que ellos mismos retiraron; al quedar libre, lo reutilizan para la
+     observacion. Su rotulo se alinea con el de la fila de arriba (20%) para
+     que las dos columnas empiecen en la misma vertical. -->
 <tr>
-<td width="20%"><b>27. Fecha de cese actividades:</b></td>
+<td width="20%" bgcolor="#cae6e7"><b>27. Fecha de cese actividades:</b></td>
 <td width="15%">'.$d['fecha_cese'].'</td>
-<td width="11%"><b>28. Causal:</b></td>
+<td width="11%" bgcolor="#cae6e7"><b>28. Causal:</b></td>
 <td width="8%">Fusión</td>
 <td width="5%">'.($d['causal'] === '1' ? 'X' : '').'</td>
 <td width="8%">Escisión</td>
@@ -970,7 +1016,7 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 </tr>
 
 <tr>
-<td width="20%"><b>Observación:</b></td>
+<td width="20%" bgcolor="#cae6e7"><b>29. Observación:</b></td>
 <td width="80%">'.$d['observacion_cese'].'</td>
 </tr>
 
@@ -1035,8 +1081,8 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 <!-- Punto 8: "Representante Legal o propietario". Una persona natural no es
      representante de si misma, es propietaria. -->
 <tr>
-<td width="50%"><b>NOMBRE (Representante Legal o propietario) </b> '.$d['representante'].'</td>
-<td width="50%"><b>NOMBRE </b> '.$d['nombre_funcionario'].' </td>
+<td width="50%" bgcolor="#cae6e7"><b>NOMBRE (Representante Legal o propietario) </b> '.$d['representante'].'</td>
+<td width="50%" bgcolor="#cae6e7"><b>NOMBRE </b> '.$d['nombre_funcionario'].' </td>
 </tr>
 
 <tr>

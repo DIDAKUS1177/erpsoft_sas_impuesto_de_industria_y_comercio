@@ -19,6 +19,27 @@ if (file_exists($configPath)) {
 }
 
 $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+
+/*
+ * Sin convenio de recaudo no hay nada que cobrar.
+ *
+ * Se comprueba lo PRIMERO, antes de tocar la base. Hasta ahora nadie lo
+ * miraba: la clase leia las constantes directamente, asi que en una
+ * instalacion sin convenio -un municipio recien montado- PHP fallaba al leer
+ * una constante inexistente y el contribuyente veia una pagina en blanco,
+ * sin mensaje ni forma de saber que pasaba.
+ *
+ * Desde la migracion 023 los datos salen de conf_parametros y pueden estar
+ * legitimamente vacios, asi que la comprobacion deja de ser una precaucion
+ * teorica: es el estado normal de una instalacion nueva.
+ */
+if (!PlacetoPay::configurado()) {
+    http_response_code(503);
+    die('El pago en línea no está disponible: la Alcaldía todavía no ha configurado '
+      . 'el convenio de recaudo. Puede pagar en el banco con el código de barras '
+      . 'impreso en su declaración.');
+}
+
 $idDeclaracion = $_GET['dec_Id'] ?? 0;
 
 $row = $con->obnerFila($con->consultar(

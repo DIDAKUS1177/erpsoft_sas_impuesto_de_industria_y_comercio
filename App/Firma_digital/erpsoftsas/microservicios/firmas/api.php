@@ -112,6 +112,35 @@ class FirmasAPI
             $nombre = $usuario['usu_Nombre'];
 
             /*
+             * El codigo va al correo del REPRESENTANTE LEGAL.
+             *
+             * Instruccion del cliente el 2026-08-26: "al correo del
+             * representante legal, las firmas a este correo". Quien firma el
+             * RIT o la declaracion es la persona que representa legalmente al
+             * contribuyente, y ese es su correo; el de la cuenta puede ser el
+             * de un asistente que solo diligencia.
+             *
+             * Se cae al correo de la cuenta cuando el representante no tiene
+             * uno registrado -contribuyentes viejos, o persona natural que se
+             * representa a si misma-, porque quedarse sin poder firmar seria
+             * peor que mandarlo al correo con el que entro.
+             */
+            $rep = $conSql->obnerFila($conSql->consultar(
+                "SELECT c.ind_Email_representante, c.ind_Nombre_representante
+                   FROM ind_contribuyentes c
+                   INNER JOIN conf_usuarios u
+                           ON u.usu_NumeroDocumento = c.ind_NumeroIdentificacion
+                  WHERE u.usu_Id = ?",
+                [$idUsuario]
+            ));
+
+            $correoRep = trim((string) ($rep['ind_Email_representante'] ?? ''));
+            if ($correoRep !== '') {
+                $email  = $correoRep;
+                $nombre = trim((string) ($rep['ind_Nombre_representante'] ?? '')) ?: $nombre;
+            }
+
+            /*
              * Sin correo no hay a donde mandar el codigo, y hasta el
              * 2026-08-25 eso NO se comprobaba: se seguia adelante con el
              * correo en nulo, el envio reventaba con un fatal de PHP, y la
@@ -123,20 +152,17 @@ class FirmasAPI
              * ahi cargando", y le pasa a cualquier contribuyente recien
              * inscrito, que es justo cuando toca firmar el RIT por primera vez.
              *
-             * OJO: el codigo va al correo de la CUENTA (conf_usuarios), no al
-             * de notificacion que el contribuyente escribe en el RIT
-             * (ind_Email). Son dos campos distintos y hoy no se sincronizan;
-             * cual de los dos debe mandar esta pendiente de decidir con la
-             * Alcaldia. Mientras tanto se avisa con nombre propio en vez de
-             * dejar la pantalla colgada.
+             * Con la regla del 2026-08-26 el destinatario es el correo del
+             * REPRESENTANTE LEGAL (arriba), y solo si no hay se usa el de la
+             * cuenta. Llegar aqui significa que faltan los dos.
              */
             if (trim((string) $email) === '') {
                 header('Content-type: application/json');
                 echo json_encode([
                     'ok' => 0,
-                    'mensaje' => 'Su usuario no tiene un correo registrado, y el código de '
-                               . 'firma se envía ahí. Actualice su correo en Información del '
-                               . 'Contribuyente, o comuníquese con la Alcaldía.'
+                    'mensaje' => 'No hay a dónde enviar el código: no está registrado el correo '
+                               . 'del representante legal ni el de su usuario. Regístrelo en el '
+                               . 'RIT, o comuníquese con la Alcaldía.'
                 ]);
                 return;
             }
@@ -236,12 +262,22 @@ class FirmasAPI
             return ['ok' => false, 'mensaje' => 'No se encontró la declaración'];
         }
 
-        $nombre = trim((string)$fila['ind_NombreContador']);
-        $email  = trim((string)$fila['ind_EmailContador']);
+        /*
+         * Manda el REVISOR FISCAL, y solo si no hay se usa el contador.
+         *
+         * Era al reves hasta el 2026-08-26. Lo corrigio el cliente en la
+         * reunion: "si tienen al revisor y al contador, se le da prioridad al
+         * revisor; y si solo tiene contador, solo al contador". Tiene sentido
+         * jerarquico -el revisor fiscal dictamina sobre la contabilidad que
+         * lleva el contador-, asi que cuando estan los dos firma el de mayor
+         * responsabilidad.
+         */
+        $nombre = trim((string)$fila['ind_NombreRevisor']);
+        $email  = trim((string)$fila['ind_EmailRevisor']);
 
         if ($email === '') {
-            $nombre = trim((string)$fila['ind_NombreRevisor']);
-            $email  = trim((string)$fila['ind_EmailRevisor']);
+            $nombre = trim((string)$fila['ind_NombreContador']);
+            $email  = trim((string)$fila['ind_EmailContador']);
         }
 
         if ($email === '') {
@@ -792,6 +828,28 @@ class FirmasAPI
         $idContribuyente = $permiso['id'];
         $idUsuario       = $permiso['usuario'];
 
+        /*
+         * Sin los soportes obligatorios no se firma.
+         *
+         * Pedido por el cliente el 2026-08-26. Se comprueba ANTES de consumir
+         * el OTP: si se hiciera despues, el codigo quedaria gastado y el
+         * contribuyente tendria que pedir otro para el mismo intento.
+         *
+         * Subirlos sigue siendo un aviso y no un bloqueo mientras se
+         * diligencia; lo que queda cerrado es dar el RIT por firmado.
+         */
+        include_once SERVER . '/business/class.ritFirma.php';
+        $faltan = \erpsoftsas\RitFirma::documentosFaltantes($conSql, $idContribuyente);
+        if ($faltan) {
+            echo json_encode([
+                'ok'      => 0,
+                'mensaje' => 'No se puede firmar el RIT: faltan documentos obligatorios ('
+                             . implode(', ', $faltan) . '). Cárguelos en la sección '
+                             . '"Documentos" y vuelva a intentarlo.',
+            ]);
+            return;
+        }
+
         // --- OTP: se valida y se consume aqui mismo ---
         $errorCodigo = $this->_consumirCodigo($conSql, $idUsuario, 'rit');
         if ($errorCodigo !== null) {
@@ -800,7 +858,6 @@ class FirmasAPI
         }
 
         // --- Huella de lo que se esta firmando ---
-        include_once SERVER . '/business/class.ritFirma.php';
         $hash = \erpsoftsas\RitFirma::hashActual($conSql, $idContribuyente);
 
         if ($hash === '') {

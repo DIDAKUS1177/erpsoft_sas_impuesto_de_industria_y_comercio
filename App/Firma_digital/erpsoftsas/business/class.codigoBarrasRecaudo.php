@@ -60,37 +60,26 @@ class CodigoBarrasRecaudo
 
     /** Se resuelven una vez por peticion; no hace falta ir a la base en cada PDF. */
     private static $eanCache = false;
-    private static $parametros = null;
 
     /**
      * Lee un parametro de conf_parametros. Devuelve null si no existe, esta
      * inactivo, la tabla no esta (instalacion sin la migracion 009) o la base
      * no responde: en todos esos casos el llamador debe poder seguir.
      */
+    /**
+     * Un parametro de conf_parametros.
+     *
+     * El mecanismo -leer la tabla una vez, cachear, tratar el vacio como no
+     * puesto- se mudo a business/class.parametros.php cuando aparecio el
+     * segundo consumidor (las credenciales de la pasarela de pago). Este
+     * metodo se conserva porque lo llaman ean() y fechaVigencia(), pero solo
+     * delega: no volver a poner logica aqui.
+     */
     private static function parametro($clave)
     {
-        if (self::$parametros === null) {
-            self::$parametros = [];
-            try {
-                if (class_exists('\\ConexionMysqlUsuariosSqlServer\\ConexionSQLServer')) {
-                    $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
-                    $st = $con->consultar(
-                        "SELECT par_Clave, par_Valor FROM conf_parametros
-                          WHERE ISNULL(par_Estado, 1) = 1", []
-                    );
-                    while ($f = $con->obnerFila($st)) {
-                        self::$parametros[$f['par_Clave']] = $f['par_Valor'];
-                    }
-                }
-            } catch (\Exception $e) {
-                error_log('[codigoBarras] no se pudieron leer los parametros: ' . $e->getMessage());
-            }
-        }
+        include_once __DIR__ . '/class.parametros.php';
 
-        $v = self::$parametros[$clave] ?? null;
-        $v = ($v === null) ? null : trim((string) $v);
-
-        return ($v === null || $v === '') ? null : $v;
+        return \erpsoftsas\Parametros::valor($clave);
     }
 
     /**

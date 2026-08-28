@@ -57,6 +57,21 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
     }
 
     /**
+     * Dos correos son el mismo si solo se diferencian en la caja o en espacios.
+     *
+     * Es el criterio de SQL Server, que es quien acaba guardandolos, y por eso
+     * es el que hay que usar para decidir si algo esta repetido. Vacio nunca
+     * cuenta como repetido: hay cuentas sin correo y no son duplicadas entre si.
+     */
+    private static function _mismoCorreo($a, $b)
+    {
+        $a = mb_strtolower(trim((string) $a));
+        $b = mb_strtolower(trim((string) $b));
+
+        return $a !== '' && $a === $b;
+    }
+
+    /**
     *** Realiza el proceso de Crear Usuarios.
     **/  
     protected function _agregarUsuario() {
@@ -83,7 +98,14 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
         $nomduplicado=0;
 
         for($i=0; $i<$longitud; $i++){  
-            if($nomUsurio[$i]['usu_Correo'] == $_objUsuario->get_usu_Correo()){
+            // El correo se compara SIN distinguir mayusculas ni espacios.
+            //
+            // Con == a secas, "Cristian@x.com" y "cristian@x.com" son distintos
+            // para PHP pero el MISMO para SQL Server, que compara sin distinguir
+            // mayusculas por su collation. O sea que esta comprobacion daba el
+            // visto bueno a un correo que la base considera repetido: bastaba
+            // cambiar una letra de caja para colar un duplicado.
+            if(self::_mismoCorreo($nomUsurio[$i]['usu_Correo'], $_objUsuario->get_usu_Correo())){
                $nomduplicado=1;
                 break;
             }
@@ -195,7 +217,14 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
         $longitud = count($nomUsurio);
         $nomduplicado=0;
         for($i=0; $i<$longitud; $i++){  
-            if($nomUsurio[$i]['usu_Correo'] == $_objUsuario->get_usu_Correo()){
+            // El correo se compara SIN distinguir mayusculas ni espacios.
+            //
+            // Con == a secas, "Cristian@x.com" y "cristian@x.com" son distintos
+            // para PHP pero el MISMO para SQL Server, que compara sin distinguir
+            // mayusculas por su collation. O sea que esta comprobacion daba el
+            // visto bueno a un correo que la base considera repetido: bastaba
+            // cambiar una letra de caja para colar un duplicado.
+            if(self::_mismoCorreo($nomUsurio[$i]['usu_Correo'], $_objUsuario->get_usu_Correo())){
                $nomduplicado=1;
                 break;
             }

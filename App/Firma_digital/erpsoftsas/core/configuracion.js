@@ -41,13 +41,42 @@ class Configuracion {
 
                 let filas = '';
                 (resp.datos || []).forEach(function (p) {
+                    /*
+                     * Un parametro sensible -hoy, la clave del convenio de
+                     * recaudo- llega SIN valor: el servidor no lo manda nunca,
+                     * solo dice si esta puesto. Asi que la casilla nace vacia y
+                     * lo unico que se muestra es su estado.
+                     *
+                     * El tipo password no es por la ocultacion visual, que aqui
+                     * sobra porque no hay nada escrito: es para que el gestor de
+                     * contraseñas del navegador no la guarde ni la autocomplete
+                     * como si fuera un campo cualquiera.
+                     *
+                     * Dejarla en blanco no borra la clave; el servidor lo trata
+                     * como "no la estoy cambiando". El texto de ayuda lo dice,
+                     * porque un campo vacio junto a un boton Guardar invita a
+                     * pensar lo contrario.
+                     */
+                    const sensible = Number(p.par_Sensible) === 1;
+                    const puesto   = Number(p.par_Puesto) === 1;
+
+                    const casilla = sensible
+                        ? '<input type="password" class="form-control form-control-sm" ' +
+                              'id="par_' + Number(p.par_Id) + '" value="" autocomplete="new-password" ' +
+                              'placeholder="' + (puesto ? 'Escriba una nueva para cambiarla'
+                                                        : 'Sin configurar') + '">' +
+                          '<small class="' + (puesto ? 'text-success' : 'text-muted') + '">' +
+                              (puesto ? '<i class="fa fa-check"></i> Configurada · dejarla en blanco no la borra'
+                                      : 'Sin configurar') + '</small>'
+                        : '<input type="text" class="form-control form-control-sm" ' +
+                              'id="par_' + Number(p.par_Id) + '" ' +
+                              'value="' + self.escapeHtml(p.par_Valor) + '">';
+
                     filas +=
                         '<tr>' +
                         '<td><b>' + self.escapeHtml(p.par_Nombre || p.par_Clave) + '</b><br>' +
                             '<small class="text-muted">' + self.escapeHtml(p.par_Clave) + '</small></td>' +
-                        '<td><input type="text" class="form-control form-control-sm" ' +
-                            'id="par_' + Number(p.par_Id) + '" ' +
-                            'value="' + self.escapeHtml(p.par_Valor) + '"></td>' +
+                        '<td>' + casilla + '</td>' +
                         '<td><small>' + self.escapeHtml(p.par_Descripcion) + '</small></td>' +
                         '<td><small>' + self.escapeHtml(p.par_FechaActualizacion) + '</small></td>' +
                         '<td><button type="button" class="btn btn-sm btn-primary" ' +

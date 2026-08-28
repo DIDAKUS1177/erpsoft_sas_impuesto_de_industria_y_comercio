@@ -533,7 +533,7 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
             // aparte que lo habilitaba a el -ese boton ya no esta en el
             // formulario, asi que nada volvia a habilitarlo nunca y la
             // liquidacion completa quedaba imposible de guardar.
-            $("#btnGenerarOficial").prop("disabled", false);
+            $("#btnGenerarOficial, #btnLiquidar").prop("disabled", false);
 
             // "Liquidar" nace disabled en el HTML y aqui nadie lo volvia a
             // habilitar: en esta pantalla solo lo hacia el manejador de
@@ -1720,7 +1720,7 @@ $("#btnCrearDeclaracion").off("click").on("click", function () {
 
     // Activar botones
     $("#btnDescargarPDF").prop("disabled", true);
-    $("#btnGenerarOficial").prop("disabled", true);
+    $("#btnGenerarOficial, #btnLiquidar").prop("disabled", true);
 
 
     swal({
@@ -1849,7 +1849,7 @@ $("#btnGenerarOficial").off("click").on("click", function () {
             
             
             $("#btnDescargarPDF").prop("disabled", false);
-            $("#btnGenerarOficial").prop("disabled", false);
+            $("#btnGenerarOficial, #btnLiquidar").prop("disabled", false);
 
             let d = arr.datos;
             console.log (arr.datos);

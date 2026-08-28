@@ -82,6 +82,8 @@ class Establecimientos {
             });
         } else {
             $("#formCrearEstablecimientos").trigger("reset");
+            // Se vacia a proposito: al crear, el codigo lo reparte el servidor.
+            $("#est_Codigo").val('');
             // El nuevo local cuelga del contribuyente en sesion. Para la
             // Alcaldia (que no tiene uno propio) el servidor respeta lo que
             // llegue; para el contribuyente lo fija el, sin poder elegir otro.
@@ -1538,112 +1540,18 @@ limpiarTablaActividades(){
 }
 
 
-liquidarDeclaracion() {
-
-    const redondearMiles = v => Math.round(v / 1000) * 1000;
-
-    // ===============================
-    // 1. INDUSTRIA Y COMERCIO (ICA)
-    // ===============================
-    let ica = 0;
-
-    $("#tbodyActividades tr").each(function () {
-
-        if (!$(this).find(".chkSeleccion").is(":checked")) return;
-
-        const base   = parseFloat($(this).find(".base-gravable").val()) || 0;
-        const tarifa = parseFloat($(this).data("tarifa")) || 0;
-
-        ica += base * tarifa;
-    });
-
-    ica = redondearMiles(ica); // 🔥 CLAVE
-
-    // ===============================
-    // 2. AVISOS Y TABLEROS (15 % ICA)
-    // ===============================
-    let avisosTableros = redondearMiles(ica * 0.15);
-
-    // ===============================
-    // 3. SOBRETASA BOMBERIL (5 % ICA)
-    // ===============================
-    let sobretasaBomberil = redondearMiles(ica * 0.05);
-
-    // ===============================
-    // 4. TOTAL IMPUESTO A CARGO
-    // ===============================
-    let totalImpuestoCargo =
-        ica +
-        avisosTableros +
-        sobretasaBomberil;
-
-    totalImpuestoCargo = redondearMiles(totalImpuestoCargo);
-
-    // ===============================
-    // 5. OTROS CONCEPTOS (0 por ahora)
-    // ===============================
-    const exencion        = 0;
-    const retenciones     = 0;
-    const autoreten       = 0;
-    const anticipoAnt     = 0;
-    const anticipoSig     = 0;
-    const sanciones       = 0;
-    const saldoFavorAnt   = 0;
-
-    // ===============================
-    // 6. VALOR A PAGAR
-    // ===============================
-    let valorAPagar =
-        totalImpuestoCargo -
-        exencion -
-        retenciones -
-        autoreten -
-        anticipoAnt +
-        anticipoSig +
-        sanciones -
-        saldoFavorAnt;
-
-    valorAPagar = redondearMiles(Math.max(valorAPagar, 0));
-
-    // ===============================
-    // 7. DESCUENTO PRONTO PAGO
-    // ===============================
-    const descuentoProntoPago = redondearMiles(
-        parseFloat($('[data-campo="descuento_pronto_pago"]').val()) || 0
-    );
-
-    // ===============================
-    // 8. INTERÉS DE MORA
-    // ===============================
-    const interesMora = redondearMiles(
-        parseFloat($('[data-campo="interes_mora"]').val()) || 0
-    );
-
-    // ===============================
-    // 9. TOTAL A PAGAR
-    // ===============================
-    let totalAPagar =
-        valorAPagar -
-        descuentoProntoPago +
-        interesMora;
-
-    totalAPagar = redondearMiles(Math.max(totalAPagar, 0));
-
-    // ===============================
-    // 10. PINTAR RESULTADOS
-    // ===============================
-    const fmt = v => v.toLocaleString("es-CO");
-
-    $('[data-campo="industria_comercio"]').val(fmt(ica));
-    $('[data-campo="avisos_tableros"]').val(fmt(avisosTableros));
-    $('[data-campo="sobretasa_bomberil"]').val(fmt(sobretasaBomberil));
-    $('[data-campo="total_impuesto_cargo"]').val(fmt(totalImpuestoCargo));
-
-    $('[data-campo="valor_a_pagar"]').val(fmt(valorAPagar));
-    $('[data-campo="total_a_pagar"]').val(fmt(totalAPagar));
-
-    return totalAPagar;
-}
+/*
+ * Aqui estaba liquidarDeclaracion(): un segundo liquidador escrito en
+ * JavaScript, con el 15% de avisos y el 5% de bomberil en duro y todo lo demas
+ * -exenciones, retenciones, autorretenciones, anticipos, sanciones, saldos a
+ * favor- puesto en cero a ciegas.
+ *
+ * Se retira el 2026-08-26. Ya no lo llamaba nadie: el boton "Liquidar" de esta
+ * pantalla pide el calculo al servidor, igual que las otras dos. Se quita en
+ * vez de dejarlo muerto porque un liquidador dormido es una trampa: el dia que
+ * alguien lo vuelva a enganchar, mostrara cifras de otra epoca. La formula viva
+ * es la de ind_Conceptos, y solo hay una.
+ */
 
 
 
@@ -2020,27 +1928,35 @@ $("#btnGenerarOficial").off("click").on("click", function () {
 
 
 
+/*
+ * "Liquidar" de esta pantalla: lo calcula el SERVIDOR, como en las demas.
+ *
+ * Aqui vivia un segundo liquidador escrito en JavaScript: se calculaba el ICA
+ * a mano, y luego avisos al 15% y bomberil al 5% con los porcentajes escritos
+ * en el codigo, poniendo en cero a ciegas exenciones, retenciones,
+ * autorretenciones, anticipos, sanciones y saldos a favor.
+ *
+ * Eran dos liquidadores para un mismo impuesto, y ya se estaban separando: las
+ * formulas de verdad viven en la columna con_Observaciones de ind_Conceptos, y
+ * el 2026-08-26 se les anadio la exencion de avisos y tableros. Este de aqui no
+ * se entero: a un contribuyente exento le habria seguido mostrando el 15%, y
+ * los renglones que el mismo llena le salian siempre en cero.
+ *
+ * Ahora pide el calculo por la funcion 14, la misma que usan las otras dos
+ * pantallas, que ejecuta el procedimiento de siempre dentro de una transaccion
+ * que se deshace: cifras reales, y no se guarda nada.
+ */
 $("#btnValidarDeclaracion").on("click", function () {
-
-    const total = establecimientos.liquidarDeclaracion();
-
-    if (total <= 0) {
-        swal({
-            type: 'warning',
-            title: 'Sin valores',
-            text: 'Debe ingresar valores para poder liquidar'
-        });
+    if (typeof LiquidacionEnPantalla === 'undefined') {
+        swal({ type: 'error', title: 'No disponible',
+               text: 'No se pudo cargar el liquidador. Recargue la página.' });
         return;
     }
 
+    LiquidacionEnPantalla.calcular();
+
     $("#btnDescargarPDF").prop("disabled", false);
     $("#btnGenerarOficial").prop("disabled", false);
-
-    swal({
-        type: 'success',
-        title: 'Liquidación realizada',
-        text: 'Cálculos aplicados correctamente'
-    });
 });
 
 // Anexos: la carga va aparte del guardado del formulario porque necesita que

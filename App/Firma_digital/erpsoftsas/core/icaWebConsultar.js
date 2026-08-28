@@ -488,7 +488,7 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
 
             // Los dos hacen lo mismo; deshabilitar uno solo dejaba fuera el
             // unico que la pantalla mostraba habilitado.
-            $("#btnGenerarOficial").prop("disabled", false);
+            $("#btnGenerarOficial, #btnLiquidar").prop("disabled", false);
 
               // 🔥 AQUÍ ESTÁ LA CLAVE
             $("#btnDescargarPDF")
@@ -1615,7 +1615,7 @@ $("#btnCrearDeclaracion").off("click").on("click", function () {
 
     // Activar botones
     $("#btnDescargarPDF").prop("disabled", true);
-    $("#btnGenerarOficial").prop("disabled", false);
+    $("#btnGenerarOficial, #btnLiquidar").prop("disabled", false);
 
 
     swal({
@@ -1664,7 +1664,7 @@ $("#btnValidarDeclaracion").on("click", function () {
         return;
     }
     $("#btnDescargarPDF").prop("disabled", false);
-    $("#btnGenerarOficial").prop("disabled", false);
+    $("#btnGenerarOficial, #btnLiquidar").prop("disabled", false);
 
     swal({
         type: 'success',
@@ -1753,7 +1753,7 @@ $("#btnGenerarOficial").off("click").on("click", function () {
             
             
             $("#btnDescargarPDF").prop("disabled", false);
-            $("#btnGenerarOficial").prop("disabled", false);
+            $("#btnGenerarOficial, #btnLiquidar").prop("disabled", false);
 
             let d = arr.datos;
             console.log (arr.datos);

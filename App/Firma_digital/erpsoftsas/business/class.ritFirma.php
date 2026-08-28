@@ -36,6 +36,63 @@ class RitFirma
     const VERSION = 'v3';
 
     /**
+     * Los documentos que hay que haber cargado para poder firmar el RIT.
+     *
+     * La clave es el anx_Tipo con que se guardan; el valor, como se le nombra
+     * al contribuyente. El uso de suelo queda fuera a proposito: el cliente lo
+     * pidio opcional.
+     */
+    const DOCUMENTOS_OBLIGATORIOS = [
+        'rut'    => 'RUT',
+        'camara' => 'Camara de comercio o acta de constitucion',
+        'cedula' => 'Documento de identificacion del representante legal',
+    ];
+
+    /**
+     * Cuales de los documentos obligatorios le faltan al contribuyente.
+     *
+     * SUBIRLOS ES UN AVISO; FIRMAR ES UN BLOQUEO.
+     *
+     * Guardar el RIT con documentos pendientes se permite -se diligencia en
+     * varias sesiones, y negar el guardado dejaria al contribuyente sin poder
+     * conservar ni lo que ya escribio-. Firmar es otra cosa: la firma es el
+     * acto que cierra el registro, y el cliente pidio el 2026-08-26 que sin los
+     * soportes no se pueda dar por cerrado.
+     *
+     * Va aqui, junto al hash, y no en el controlador de anexos, porque es una
+     * regla de la FIRMA: quien decide si el RIT se puede firmar es esta clase.
+     * El navegador tambien lo comprueba, para avisar antes de gastar un OTP,
+     * pero esa comprobacion se salta desde la consola y esta no.
+     *
+     * @return array<string,string> tipo => etiqueta, vacio si no falta ninguno
+     */
+    public static function documentosFaltantes($con, $idContribuyente)
+    {
+        $idContribuyente = (int) $idContribuyente;
+        if ($idContribuyente <= 0) { return self::DOCUMENTOS_OBLIGATORIOS; }
+
+        $stmt = $con->consultar(
+            "SELECT DISTINCT anx_Tipo
+               FROM ind_establecimiento_anexos
+              WHERE anx_IdContribuyente = ?
+                AND anx_Activo = 1
+                AND anx_Tipo IS NOT NULL",
+            [$idContribuyente]
+        );
+
+        $cargados = [];
+        while ($fila = $con->obnerFila($stmt)) {
+            $cargados[strtolower(trim((string) $fila['anx_Tipo']))] = true;
+        }
+
+        $faltan = [];
+        foreach (self::DOCUMENTOS_OBLIGATORIOS as $tipo => $etiqueta) {
+            if (!isset($cargados[$tipo])) { $faltan[$tipo] = $etiqueta; }
+        }
+        return $faltan;
+    }
+
+    /**
      * Los datos del RIT que quedan amparados por la firma, en un orden fijo.
      * El orden importa: json_encode de un arreglo asociativo respeta el orden
      * de insercion, y dos ejecuciones tienen que producir el mismo texto.

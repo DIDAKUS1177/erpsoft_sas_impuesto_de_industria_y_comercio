@@ -25,25 +25,58 @@ class ConexionSQLServer {
         return self::$_obj;
     }
 
+    /*
+     * TRANSACCIONES: van por la API del driver, no por consulta
+     *
+     * Los tres metodos mandaban "BEGIN TRANSACTION" / "COMMIT" / "ROLLBACK"
+     * como si fueran consultas normales, y con esta conexion eso NO funciona:
+     * la cadena abre MARS (varios conjuntos de resultados activos a la vez), y
+     * en MARS cada sqlsrv_query es su propio lote. SQL Server deshace toda
+     * transaccion que siga abierta al terminar el lote donde nacio, asi que el
+     * BEGIN moria en el acto y devolvia el error 3997:
+     *
+     *   "A transaction that was started in a MARS batch is still active at the
+     *    end of the batch. The transaction is rolled back."
+     *
+     * O sea que el begin() no abria nada: lo que viniera despues corria suelto
+     * y el rollback() no tenia nada que deshacer. Una red de seguridad que no
+     * estaba puesta.
+     *
+     * sqlsrv_begin_transaction actua sobre la CONEXION, no sobre un lote, asi
+     * que la transaccion sobrevive a las consultas siguientes, que es lo unico
+     * que se le pide.
+     *
+     * Descubierto el 2026-08-26 al escribir _liquidarSinGuardar(), que necesita
+     * un rollback que de verdad deshaga. Los demas controladores que usan
+     * transacciones van por ConexionMysqlUsuariosCentral\ConexionSQL, otra
+     * clase: este arreglo no los toca.
+     */
+
     /**
      * Inicia una transacción
      */
     public function begin() {
-        $this->consultar("BEGIN TRANSACTION");
+        if (!sqlsrv_begin_transaction($this->_link)) {
+            throw new \Exception("No se pudo iniciar la transacción: " . print_r(sqlsrv_errors(), true));
+        }
     }
 
     /**
      * Confirma una transacción
      */
     public function commit() {
-        $this->consultar("COMMIT TRANSACTION");
+        if (!sqlsrv_commit($this->_link)) {
+            throw new \Exception("No se pudo confirmar la transacción: " . print_r(sqlsrv_errors(), true));
+        }
     }
 
     /**
      * Revierte una transacción
      */
     public function rollback() {
-        $this->consultar("ROLLBACK TRANSACTION");
+        if (!sqlsrv_rollback($this->_link)) {
+            throw new \Exception("No se pudo revertir la transacción: " . print_r(sqlsrv_errors(), true));
+        }
     }
 
     /**

@@ -113,9 +113,35 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
     {
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
+        /*
+         * UN PARAMETRO SENSIBLE NO SALE DE AQUI.
+         *
+         * par_Sensible (migracion 023) marca los valores que no se pueden
+         * mostrar: hoy, la clave secreta del convenio de recaudo. De esos se
+         * manda si estan puestos o no, nunca el valor.
+         *
+         * Sin esto, mover un secreto del archivo del servidor a la base seria
+         * un retroceso y no una mejora: quedaria a la vista de cualquier
+         * usuario con rol 1 o 2, viajando en un JSON y pintado en una casilla
+         * de texto del navegador. El archivo de hoy, al menos, solo lo ve
+         * quien entra al servidor.
+         *
+         * COALESCE porque una instalacion sin la migracion 023 no tiene la
+         * columna... salvo que entonces la consulta ni compila. Se comprueba
+         * antes si existe, y si no, se tratan todos como no sensibles: es el
+         * comportamiento que habia antes de la migracion.
+         */
+        $haySensible = (bool) $con->obnerFila($con->consultar(
+            "SELECT 1 AS x FROM sys.columns
+              WHERE object_id = OBJECT_ID('dbo.conf_parametros')
+                AND name = 'par_Sensible'", []
+        ));
+
+        $columnaSensible = $haySensible ? 'par_Sensible' : 'CAST(0 AS BIT) AS par_Sensible';
+
         $stmt = $con->consultar(
             "SELECT par_Id, par_Clave, par_Valor, par_Nombre, par_Descripcion,
-                    par_Patron, par_FechaActualizacion
+                    par_Patron, par_FechaActualizacion, $columnaSensible
                FROM conf_parametros
               WHERE ISNULL(par_Estado, 1) = 1
               ORDER BY par_Clave",
@@ -127,6 +153,18 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
             if ($f['par_FechaActualizacion'] instanceof \DateTime) {
                 $f['par_FechaActualizacion'] = $f['par_FechaActualizacion']->format('Y-m-d H:i');
             }
+
+            $f['par_Sensible'] = (int) !empty($f['par_Sensible']);
+
+            if ($f['par_Sensible']) {
+                // Se sustituye por la unica informacion que la pantalla
+                // necesita: si hay algo guardado.
+                $f['par_Puesto'] = (int) (trim((string) $f['par_Valor']) !== '');
+                $f['par_Valor']  = '';
+            } else {
+                $f['par_Puesto'] = (int) (trim((string) $f['par_Valor']) !== '');
+            }
+
             $lista[] = $f;
         }
 
@@ -147,13 +185,44 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
             return [];
         }
 
+        $haySensible = (bool) $con->obnerFila($con->consultar(
+            "SELECT 1 AS x FROM sys.columns
+              WHERE object_id = OBJECT_ID('dbo.conf_parametros')
+                AND name = 'par_Sensible'", []
+        ));
+        $columnaSensible = $haySensible ? 'par_Sensible' : 'CAST(0 AS BIT) AS par_Sensible';
+
         $par = $con->obnerFila($con->consultar(
-            "SELECT par_Clave, par_Nombre, par_Patron FROM conf_parametros WHERE par_Id = ?",
+            "SELECT par_Clave, par_Nombre, par_Patron, $columnaSensible
+               FROM conf_parametros WHERE par_Id = ?",
             [$id]
         ));
         if (!$par) {
             $this->_mensaje = 'El parámetro no existe';
             return [];
+        }
+
+        $sensible = !empty($par['par_Sensible']);
+
+        /*
+         * DEJAR UN SECRETO EN BLANCO NO LO BORRA.
+         *
+         * La pantalla nunca muestra el valor de un parametro sensible, asi que
+         * la casilla llega siempre vacia. Si eso se guardara tal cual, abrir
+         * Configuracion y pulsar Guardar en cualquier otra fila borraria la
+         * clave del convenio sin que nadie lo pretendiera, y los pagos
+         * dejarian de funcionar sin mas explicacion.
+         *
+         * Vacio significa "no lo estoy cambiando". Para borrarlo de verdad se
+         * hace desde la base, que es una operacion deliberada y rara.
+         *
+         * En los parametros normales el vacio SI se guarda: es como se apaga
+         * un parametro opcional, y asi funcionaba antes.
+         */
+        if ($sensible && $valor === '') {
+            $this->_ok = 1;
+            $this->_mensaje = 'La clave no se modificó (dejarla en blanco no la borra).';
+            return ['par_Id' => $id];
         }
 
         /*
@@ -166,16 +235,36 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
         if ($valor !== '' && $patron !== '') {
             /*
              * El patrón se guarda CON sus anclas (^...$) y sin delimitadores:
-             * comprobado en la base, RECAUDO_EAN trae '^[0-9]{13}$'. Solo se
-             * le ponen las barras. Añadirle otras anclas produciría '^^...$$',
-             * que hoy funciona por casualidad pero se rompe en cuanto un
-             * patrón use alternancia.
+             * comprobado en la base, RECAUDO_EAN trae '^[0-9]{13}$'. Aquí solo
+             * se le ponen. Añadirle otras anclas produciría '^^...$$', que hoy
+             * funciona por casualidad pero se rompe en cuanto un patrón use
+             * alternancia.
              *
-             * Si el patrón estuviera mal escrito, preg_match devuelve false y
-             * el valor se rechaza: ante una regla que no se entiende, no
-             * dejar pasar es lo seguro.
+             * EL DELIMITADOR NO PUEDE SER LA BARRA.
+             *
+             * Era '/' . $patron . '/', y eso rompe cualquier patrón que
+             * contenga una barra — que es justo lo que necesita un patrón de
+             * URL. Con '^https://...' PHP cierra la expresión en la primera
+             * barra interna y lo que sigue lo lee como modificadores: la
+             * expresión queda inválida, preg_match devuelve false y el valor
+             * BUENO se rechaza con "no tiene el formato esperado".
+             *
+             * Encontrado el 2026-08-26 al añadir PASARELA_BASEURL: nadie
+             * habría podido guardar la dirección de la pasarela. No se vio
+             * antes porque el único patrón que existía, el del EAN, son trece
+             * dígitos y no lleva barras.
+             *
+             * Se usa '#', y se escapa por si algún patrón futuro lo trae. En
+             * PCRE '\#' es simplemente '#', así que escaparlo nunca cambia lo
+             * que la expresión significa.
+             *
+             * Si aun así el patrón estuviera mal escrito, preg_match devuelve
+             * false y el valor se rechaza: ante una regla que no se entiende,
+             * no dejar pasar es lo seguro.
              */
-            if (!@preg_match('/' . $patron . '/', $valor)) {
+            $expresion = '#' . str_replace('#', '\#', $patron) . '#';
+
+            if (!@preg_match($expresion, $valor)) {
                 $this->_mensaje = 'El valor de "' . $par['par_Nombre'] . '" no tiene el formato esperado.';
                 return [];
             }
@@ -188,14 +277,24 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
             [$valor, $id]
         );
 
-        // Queda constancia de quién cambió qué: el EAN gobierna el recaudo de
-        // todo el municipio y un cambio silencioso ahí es difícil de rastrear.
-        error_log(sprintf('[configuracion] usuario %s cambio %s a "%s"',
-            $_SESSION['id_usuario'] ?? '?', $par['par_Clave'], $valor));
+        /*
+         * Queda constancia de quien cambio que: el EAN gobierna el recaudo de
+         * todo el municipio y un cambio silencioso ahi es dificil de rastrear.
+         *
+         * De un parametro sensible se anota QUE se cambio, no A QUE: escribir
+         * la clave del convenio en el log del servidor la dejaria en un archivo
+         * de texto que se rota, se copia y se manda a soporte.
+         */
+        error_log(sprintf('[configuracion] usuario %s cambio %s a %s',
+            $_SESSION['id_usuario'] ?? '?',
+            $par['par_Clave'],
+            $sensible ? '(valor no registrado por ser sensible)' : '"' . $valor . '"'));
 
         $this->_ok = 1;
-        $this->_mensaje = 'Parámetro actualizado';
-        return ['par_Id' => $id, 'par_Valor' => $valor];
+        $this->_mensaje = $sensible ? 'Clave actualizada' : 'Parámetro actualizado';
+
+        // Un valor sensible tampoco vuelve en la respuesta.
+        return $sensible ? ['par_Id' => $id] : ['par_Id' => $id, 'par_Valor' => $valor];
     }
 
     private function _consultarBancos()

@@ -144,7 +144,11 @@ var DeclaracionesUI = (function () {
         // "pagada pero sin presentar", un estado que despues no se puede
         // corregir. crearSesion.php lo valida tambien del lado del servidor;
         // esto solo evita ofrecer un boton que va a rebotar.
-        if (clave === 'presentada') {
+        // Y solo si la entidad tiene convenio de recaudo configurado
+        // (pago_en_linea, migracion 023). Sin el, el boton solo puede llevar
+        // a un mensaje de "no disponible"; se prefiere no ofrecerlo. El
+        // servidor lo vuelve a comprobar: esta URL se puede llamar a mano.
+        if (clave === 'presentada' && Number(d.pago_en_linea) === 1) {
             botones += '<a href="../extensiones/pse/crearSesion.php?dec_Id=' + d.dec_Id + '" target="_blank" ' +
                            'class="btn btn-danger btn-sm" title="Pagar por PSE">' +
                            '<i class="fa fa-money"></i></a>';
@@ -687,7 +691,7 @@ var EditarDeclaracion = (function () {
                     establecimientos.calcularTotalesActividades();
                 }
 
-                $('#btnGenerarOficial').prop('disabled', false);
+                $('#btnGenerarOficial, #btnLiquidar').prop('disabled', false);
                 $('#btnDescargarPDF')
                     .prop('disabled', false)
                     .attr('onclick', "window.open('../extensiones/declaracion.php?dec_Id=" + d.dec_Id + "', '_blank')");
@@ -733,3 +737,145 @@ if (typeof $ !== 'undefined' && !window.__erpRedAjax) {
         }
     });
 }
+
+
+/* ===========================================================================
+   EL BOTON "LIQUIDAR": CALCULA Y NO GUARDA
+   ---------------------------------------------------------------------------
+   Vuelve por pedido del cliente el 2026-08-26: "el boton de liquidar como el
+   pasado, no guardarlo sino como estaba previo. El liquidar solo debe sumar o
+   restar los bloqueados, lo demas debe salir en 0".
+
+   Son DOS botones con dos trabajos distintos, no dos nombres para el mismo:
+
+       Liquidar             calcula y muestra. No escribe nada.
+       Guardar y liquidar   calcula y guarda. Es el que deja rastro.
+
+   La vez pasada dos botones fueron el problema -uno tenia el manejador real y
+   el otro mentia-, asi que aqui se hace al reves de entonces: los dos van al
+   servidor, los dos usan el MISMO procedimiento de liquidacion y ninguno
+   calcula por su cuenta. La unica diferencia esta en el backend: la funcion 14
+   deshace la transaccion al terminar (ver _liquidarSinGuardar).
+
+   Por que no se calcula en el navegador: las formulas de los renglones
+   bloqueados viven en la tabla ind_Conceptos, no en el codigo. Reescribirlas
+   en JavaScript daria dos liquidadores que se irian separando en silencio, y
+   el contribuyente acabaria firmando una cifra distinta de la que vio.
+
+   "Lo demas debe salir en 0" no hay que programarlo: los renglones que llena
+   el contribuyente -retenciones, anticipos, sanciones- son suyos y Liquidar no
+   los inventa. Salen en cero mientras no los escriba.
+   =========================================================================== */
+var LiquidacionEnPantalla = {
+
+    /** Arma el mismo cuerpo que manda "Guardar y liquidar". */
+    _datosDelFormulario: function () {
+        var n = function (sel) { return establecimientos.numero($(sel).val()); };
+
+        var totales = {
+            dec_TotalIngresos:            n('[data-campo="ingresos_total_pais"]'),
+            dec_IngresosFueraMunicipio:   n('[data-campo="menos_fuera_municipio"]'),
+            dec_IngresosDevoluciones:     n('[data-campo="devoluciones"]'),
+            dec_IngresosExportaciones:    n('[data-campo="exportaciones"]'),
+            dec_IngresosVentas:           n('[data-campo="venta_activos"]'),
+            dec_IngresosActividades:      n('[data-campo="actividades_excluidas"]'),
+            dec_IngresosOtrasActividades: n('[data-campo="otras_exentas"]'),
+            dec_BaseGravable:             n('[data-campo="ingresos_gravables"]'),
+            dec_CapacidadInstalada:       n('[data-campo="capacidad_instalada"]'),
+            dec_ValorImpuesto:            n('[data-campo="valor_impuesto"]')
+        };
+
+        var idDeclaracion = $('#numDeclaracion').val();
+        var actividades = [];
+
+        $('#tbodyActividades tr').each(function () {
+            actividades.push({
+                dia_IdDeclaracion: idDeclaracion,
+                dia_IdActividad:   $(this).find('.actividad-id').val(),
+                dia_BaseGravable:  establecimientos.numero($(this).find('.base-gravable').val()),
+                dia_Tarifa:        parseFloat($(this).find('.tarifa').val()) || 0,
+                dia_ValorImpuesto: establecimientos.numero($(this).find('.impuesto').val())
+            });
+        });
+
+        return {
+            funcion: 14,
+            actividades: JSON.stringify(actividades),
+            idDeclaracion: idDeclaracion,
+            totales: JSON.stringify(totales),
+            anio: $('#anioDeclaracion').val(),
+            mes: $('#periodoDeclaracion').val(),
+            numero: idDeclaracion,
+            _cuantasActividades: actividades.length
+        };
+    },
+
+    /**
+     * Vuelca los renglones calculados al formulario.
+     *
+     * Solo toca los BLOQUEADOS. Los que llena el contribuyente se dejan como
+     * estan: pisarlos con lo que devuelve el servidor le borraria en pantalla
+     * lo que acaba de escribir.
+     */
+    pintar: function (d) {
+        var v = function (campo, valor) {
+            $('[data-campo="' + campo + '"]').val(
+                establecimientos.formatearCOP(establecimientos.limpiarEntero(valor)));
+        };
+
+        v('industria_comercio',     d.dec_ValorConcepto1);
+        v('avisos_tableros',        d.dec_ValorConcepto2);
+        v('sobretasa_bomberil',     d.dec_ValorConcepto3);
+        v('total_impuesto_cargo',   d.dec_ValorConcepto4);
+        v('total_saldo_a_cargo',    d.dec_ValorConcepto12);
+        v('total_saldo_a_favor',    d.dec_ValorConcepto13);
+        v('valor_a_pagar',          d.dec_ValorConcepto14);
+        v('total_a_pagar',          d.dec_ValorConcepto20);
+    },
+
+    calcular: function () {
+        if (!establecimientos.validarBasesActividades()) { return; }
+
+        var datos = this._datosDelFormulario();
+
+        if (datos._cuantasActividades === 0) {
+            swal('Sin actividades', 'Agregue al menos una actividad para liquidar.', 'error');
+            return;
+        }
+        delete datos._cuantasActividades;
+
+        var self = this;
+
+        $.ajax({
+            url: '../business/controller/class.declaracionesICA.php',
+            type: 'POST',
+            dataType: 'json',
+            data: datos,
+            success: function (arr) {
+                if (arr.ok != 1 || !arr.datos) {
+                    swal('No se pudo liquidar', arr.mensaje || 'Intente de nuevo.', 'error');
+                    return;
+                }
+
+                self.pintar(arr.datos);
+
+                swal({
+                    type: 'info',
+                    title: 'Liquidación calculada',
+                    text: 'Estas son las cifras que quedarían. Todavía no se ha guardado nada: '
+                        + 'use "Guardar y liquidar" para conservarlas.'
+                });
+            },
+            // Sin error() la pantalla se queda muda si el backend no devuelve
+            // JSON valido. Es exactamente como murio el Liquidar anterior.
+            error: function (xhr) {
+                console.error('Liquidar (sin guardar):', xhr.responseText);
+                swal('Error', 'No se pudo liquidar. Intente de nuevo; si persiste, avise a soporte.', 'error');
+            }
+        });
+    }
+};
+
+$(document).on('click', '#btnLiquidar', function () {
+    LiquidacionEnPantalla.calcular();
+});

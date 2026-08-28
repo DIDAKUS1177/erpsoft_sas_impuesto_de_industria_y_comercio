@@ -20,13 +20,78 @@
  */
 class PlacetoPay {
 
+    /*
+     * EL CONVENIO DE RECAUDO SE CONFIGURA, NO SE DESPLIEGA
+     *
+     * Estos tres datos -direccion, usuario y clave secreta- los entrega el
+     * banco y son propios del convenio de CADA entidad. El cliente lo dijo el
+     * 2026-08-26 hablando de Banco de Bogota y BBVA: "dependiendo del contrato
+     * es diferente".
+     *
+     * Hasta entonces eran constantes de config.municipio.php, un archivo que
+     * no se sube por git y que solo se edita entrando al servidor. Cambiar de
+     * convenio, rotar un secreto o pasar de pruebas a produccion era, por eso,
+     * un despliegue.
+     *
+     * Ahora salen de conf_parametros (migracion 023) y la constante queda de
+     * respaldo, exactamente como se hizo con el EAN de recaudo. La tabla manda;
+     * si esta vacia, el archivo; si tampoco, null y no se cobra.
+     */
+    const PARAM_BASEURL   = 'PASARELA_BASEURL';
+    const PARAM_LOGIN     = 'PASARELA_LOGIN';
+    const PARAM_SECRETKEY = 'PASARELA_SECRETKEY';
+
+    private static function parametro($clave, $constante, $patron = null)
+    {
+        include_once __DIR__ . '/class.parametros.php';
+
+        return \erpsoftsas\Parametros::valorOConstante($clave, $constante, $patron);
+    }
+
+    /** Direccion del servicio, sin barra final. */
+    public static function baseUrl()
+    {
+        $v = self::parametro(self::PARAM_BASEURL, 'PLACETOPAY_BASEURL',
+                             '#^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~/-]*)?$#');
+
+        return $v === null ? null : rtrim($v, '/');
+    }
+
+    public static function login()
+    {
+        return self::parametro(self::PARAM_LOGIN, 'PLACETOPAY_LOGIN');
+    }
+
+    public static function secretKey()
+    {
+        return self::parametro(self::PARAM_SECRETKEY, 'PLACETOPAY_SECRETKEY');
+    }
+
+    /**
+     * ¿Esta el convenio completo?
+     *
+     * Hace falta porque hasta ahora nadie lo preguntaba: la pantalla pintaba
+     * el boton "Pagar PSE" siempre, y si faltaba cualquiera de las tres
+     * constantes PHP lanzaba un error fatal al leerla -pantalla en blanco, sin
+     * mensaje-. Un municipio recien instalado, sin convenio todavia, veia un
+     * boton que solo podia romperse.
+     *
+     * Los tres tienen que estar: con dos de tres no se puede cobrar nada.
+     */
+    public static function configurado()
+    {
+        return self::baseUrl() !== null
+            && self::login() !== null
+            && self::secretKey() !== null;
+    }
+
     private static function auth() {
         $seed = date('c');
         $nonceCrudo = random_bytes(16);
-        $tranKey = base64_encode(hash('sha256', $nonceCrudo . $seed . PLACETOPAY_SECRETKEY, true));
+        $tranKey = base64_encode(hash('sha256', $nonceCrudo . $seed . self::secretKey(), true));
 
         return [
-            'login'   => PLACETOPAY_LOGIN,
+            'login'   => self::login(),
             'tranKey' => $tranKey,
             'nonce'   => base64_encode($nonceCrudo),
             'seed'    => $seed,
@@ -87,7 +152,7 @@ class PlacetoPay {
             'locale'       => 'es_CO',
         ];
 
-        $data = self::post(PLACETOPAY_BASEURL . '/session', $payload);
+        $data = self::post(self::baseUrl() . '/session', $payload);
 
         if (empty($data['status']) || $data['status']['status'] !== 'OK') {
             $mensaje = $data['status']['message'] ?? 'Respuesta desconocida';
@@ -124,7 +189,7 @@ class PlacetoPay {
         $estado = $body['status']['status'] ?? '';
         $fecha = $body['status']['date'] ?? '';
 
-        $firmaLocal = hash($algoritmo, $requestId . $estado . $fecha . PLACETOPAY_SECRETKEY);
+        $firmaLocal = hash($algoritmo, $requestId . $estado . $fecha . self::secretKey());
 
         return hash_equals($firmaLocal, $firmaRecibida);
     }
@@ -135,7 +200,7 @@ class PlacetoPay {
      */
     public static function consultarSesion($requestId) {
         $payload = ['auth' => self::auth()];
-        return self::post(PLACETOPAY_BASEURL . '/session/' . (int) $requestId, $payload);
+        return self::post(self::baseUrl() . '/session/' . (int) $requestId, $payload);
     }
 
     /**

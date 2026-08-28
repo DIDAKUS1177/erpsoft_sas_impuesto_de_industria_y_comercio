@@ -106,3 +106,115 @@ comprobar cómo se ve esto en producción antes de planear una limpieza.
 
 Cuando se limpien, el índice definitivo (sin el filtro por `dec_Id`) está
 escrito al pie de la migración `020`.
+
+## Correos repetidos (2026-08-26)
+
+La migración `022` pone un índice único sobre `conf_usuarios.usu_Correo`. Antes
+de aplicarla hay que dejar la tabla sin repeticiones, o la creación del índice
+falla a propósito con un mensaje claro.
+
+Para ver si una base las tiene:
+
+```sql
+-- cuentas que comparten correo (bloquea la migración 022)
+SELECT LOWER(LTRIM(RTRIM(usu_Correo))) AS correo, COUNT(*) AS veces
+  FROM conf_usuarios
+ WHERE usu_Correo IS NOT NULL AND LTRIM(RTRIM(usu_Correo)) <> ''
+ GROUP BY LOWER(LTRIM(RTRIM(usu_Correo)))
+HAVING COUNT(*) > 1;
+
+-- contribuyentes que comparten correo de notificación
+SELECT LOWER(LTRIM(RTRIM(ind_Email))) AS correo, COUNT(*) AS veces
+  FROM ind_contribuyentes
+ WHERE ind_Email IS NOT NULL AND LTRIM(RTRIM(ind_Email)) <> ''
+ GROUP BY LOWER(LTRIM(RTRIM(ind_Email)))
+HAVING COUNT(*) > 1;
+
+-- una misma dirección en las dos tablas, pero de documentos distintos
+SELECT u.usu_Id, u.usu_Usuario, u.usu_Correo, c.ind_Id, c.ind_PrimerNombre
+  FROM conf_usuarios u
+  INNER JOIN ind_contribuyentes c
+          ON LOWER(LTRIM(RTRIM(c.ind_Email))) = LOWER(LTRIM(RTRIM(u.usu_Correo)))
+ WHERE LTRIM(RTRIM(c.ind_NumeroIdentificacion)) <> LTRIM(RTRIM(u.usu_NumeroDocumento));
+```
+
+**Al resolverlas, la unicidad se mide por DOCUMENTO, no por fila.** Dos registros
+de contribuyente con el mismo `ind_NumeroIdentificacion` son la misma persona y
+*deben* poder compartir correo — el cliente pidió justamente que el correo de la
+cuenta y el del RIT sean el mismo. La tercera consulta ya excluye ese caso; las
+dos primeras no, así que léelas junto al documento antes de tocar nada.
+
+Ese es también el motivo de que **no** haya índice único sobre
+`ind_contribuyentes.ind_Email`: la regla de esa columna es por contribuyente y
+cruza las dos tablas, y un índice no sabe expresar ninguna de las dos cosas. La
+hace `business/controller/class.contribuyentes.php`.
+
+### Qué se limpió en la copia local
+
+Tres identidades distintas se repartían dos direcciones:
+
+| Identidad | Documento | Registros | Correo |
+|---|---|---|---|
+| Cristian Manrique (natural) | 1052400234 | `usu 12`, `ind 24` | `cristianmd99@gmail.com` |
+| SISTEMAS ERPSOFT S.A.S | 901632232 | `usu 16`, `ind 26` | `cristianmd99+erpsoft@gmail.com` |
+| Cuenta de pruebas | 1052400237 | `usu 17` | `cristianmd99+cris@gmail.com` |
+
+Las direcciones nuevas usan el sufijo `+` de Gmail: llegan al mismo buzón de
+siempre, así que no se pierde correo ni se inventa la dirección de nadie.
+
+## Parámetros de configuración (`conf_parametros`)
+
+La tabla existe desde la migración `009` y es donde vive todo lo que **cambia de
+una entidad a otra**: el EAN de recaudo, y desde la `023` las credenciales de la
+pasarela de pago. La Alcaldía las edita desde la pantalla de Configuración, sin
+desplegar nada.
+
+### Cómo se lee un parámetro desde el código
+
+Siempre por `business/class.parametros.php`. **No volver a copiar el
+mecanismo**: estuvo duplicado dentro de `class.codigoBarrasRecaudo.php` y el
+segundo consumidor obligó a extraerlo.
+
+```php
+include_once SERVER . '/business/class.parametros.php';
+
+// solo la tabla
+$v = \erpsoftsas\Parametros::valor('RECAUDO_EAN');
+
+// la tabla y, si no hay nada, la constante del config (el patrón habitual)
+$v = \erpsoftsas\Parametros::valorOConstante(
+        'PASARELA_BASEURL', 'PLACETOPAY_BASEURL', '#^https://\S+$#');
+```
+
+La tabla manda; la constante de `config.municipio.php` queda de respaldo para
+instalaciones sin la migración correspondiente. Un parámetro **vacío es
+"no configurado"**, no "configurado en blanco" — por eso `null` y no `''`.
+
+### Al añadir un parámetro nuevo
+
+- **El patrón (`par_Patron`) se guarda con anclas y SIN delimitadores.** El
+  validador les pone `#` alrededor; hasta el 2026-08-26 les ponía `/`, y eso
+  rompía cualquier patrón que llevara una barra — el de una URL, sin ir más
+  lejos. Si el patrón lleva `#`, se escapa solo.
+- **Si el valor es un secreto, `par_Sensible = 1`.** Con esa marca el
+  controlador no lo devuelve nunca al navegador, no lo escribe en el log, y
+  guardar en blanco no lo borra. Sin ella, cualquier usuario de la Alcaldía lo
+  vería en pantalla y quedaría copiado en los logs del servidor.
+- **Nace vacío**, para que el código siga cayendo a la constante y aplicar la
+  migración no cambie ningún comportamiento.
+- **No sembrar credenciales reales en el `.sql`**: es un archivo versionado.
+
+### Un límite con el que ya se tropezó
+
+`conf_migraciones.mig_Nota` es `varchar(500)`. Una nota más larga hace fallar la
+migración entera con *"String or binary data would be truncated"*, y encima
+después de haber aplicado los cambios de arriba. Contar los caracteres antes.
+
+### Lo que la 023 NO resuelve
+
+Cambiar de **proveedor** de pasarela. Los parámetros permiten apuntar a otro
+convenio del mismo proveedor —otra entidad, otro ambiente, otro banco del
+grupo—, que es lo que cubre «depende del contrato» en la mayoría de los casos.
+Si una entidad firmara con una pasarela de otro fabricante, el protocolo es
+distinto y eso es un adaptador (`business/class.placetopay.php` tendría que
+pasar a ser una implementación de una interfaz), no un parámetro.

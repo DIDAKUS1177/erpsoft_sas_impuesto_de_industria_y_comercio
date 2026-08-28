@@ -2494,6 +2494,52 @@ actualizarDeclaracionIca(valor, numeroCampo){
             return;
         }
 
+        /*
+         * Sin los soportes obligatorios no se firma (cliente, 2026-08-26).
+         *
+         * Esto es cortesia, no seguridad: avisa antes de gastar un codigo. La
+         * regla de verdad esta en la funcion 9 de la API, que la vuelve a
+         * comprobar y no se puede saltar desde la consola.
+         *
+         * Se consulta al servidor en vez de mirar el aviso amarillo de la
+         * pantalla: ese aviso solo se refresca al listar, y quien acaba de
+         * quitar un documento en otra pestaña lo veria desactualizado.
+         */
+        var self = this;
+        var idContribuyente = $('#rit_ind_Id').val();
+
+        $.ajax({
+            url: '../business/controller/class.anexos.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { funcion: 2, ind_Id: idContribuyente },
+            success: function (resp) {
+                const cargados = (resp.ok == 1 && resp.datos ? resp.datos : []).map(a => a.anx_Tipo);
+                const obligatorios = Establecimientos.DOCUMENTOS_OBLIGATORIOS;
+                const faltan = Object.keys(obligatorios).filter(t => cargados.indexOf(t) === -1);
+
+                if (faltan.length) {
+                    swal({
+                        type: 'warning',
+                        title: 'Faltan documentos obligatorios',
+                        text: 'Para firmar el RIT debe cargar: ' +
+                              faltan.map(t => obligatorios[t]).join(', ') + '.'
+                    });
+                    self.listarAnexosRIT();   // deja el aviso amarillo al dia
+                    return;
+                }
+
+                self._abrirVentanaDeFirmaRIT();
+            },
+            // Si no se puede comprobar, se deja pasar: el servidor lo vuelve a
+            // mirar antes de registrar nada. Bloquear aqui por una peticion
+            // caida dejaria al contribuyente sin poder firmar.
+            error: function () { self._abrirVentanaDeFirmaRIT(); }
+        });
+    }
+
+    /** Abre el modal de firma. Separado de firmarRIT() solo para no anidar. */
+    _abrirVentanaDeFirmaRIT() {
         var self = this;
         FirmaOTP.abrirRit(function () {
             // Firmar cierra la novedad: la pantalla vuelve a bloquearse.

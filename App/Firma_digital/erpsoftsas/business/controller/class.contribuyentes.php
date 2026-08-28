@@ -12,12 +12,91 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
     private $_ok;
     private $_mensaje;
 
+    /**
+     * Nadie entra aqui sin sesion, y no todo el mundo puede con todo.
+     *
+     * EL AGUJERO QUE CIERRA (encontrado el 2026-08-26, comprobado en vivo)
+     *
+     * run() despachaba directo al switch. Las funciones 6, 7 y 8 comprueban
+     * permiso por su cuenta, pero las demas no comprobaban NADA, y este
+     * controlador es el que guarda el padron de contribuyentes: cedulas, NIT,
+     * direcciones, telefonos, correos y representantes legales. Datos con
+     * reserva tributaria.
+     *
+     * Un POST con funcion=3 y SIN NINGUNA COOKIE devolvia el padron entero.
+     * Uno con funcion=2 reescribia la ficha de cualquier contribuyente, y con
+     * funcion=1 metia uno nuevo. Sin identificarse.
+     *
+     * QUE PUEDE CADA QUIEN
+     *
+     *   roles 1 y 2 (Alcaldia)  todo, que es su trabajo: inscriben en ventanilla
+     *   los demas               solo LO SUYO, y solo leerlo
+     *
+     * Escribir en el padron -crear, editar, inactivar- y buscar en el padron
+     * completo quedan reservados a la Alcaldia. Un contribuyente no tiene por
+     * que poder listar a los demas ni corregirse a si mismo el numero de
+     * documento; para lo suyo esta el RIT, que es la funcion 7 y ya valida.
+     *
+     * A la consulta se le FIJA el filtro en vez de rechazarla: las pantallas
+     * del contribuyente (icaWebRit, establecimientos) piden su propio ind_Id,
+     * asi que siguen funcionando igual, pero el que venga en el POST deja de
+     * decidir nada. Mismo criterio que class.declaracionesICA.php.
+     */
+    private static function _verificarAcceso()
+    {
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+
+        if (empty($_SESSION['id_usuario'])) {
+            return 'Debe iniciar sesión.';
+        }
+
+        $rol     = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
+        $funcion = (int) ($_POST['funcion'] ?? 0);
+
+        if (in_array($rol, [1, 2], true)) { return null; }
+
+        // 1 agregar · 2 editar · 4 inactivar · 5 buscar en todo el padron
+        if (in_array($funcion, [1, 2, 4, 5], true)) {
+            return 'No tiene permiso sobre el registro de contribuyentes.';
+        }
+
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+
+        $propio = $con->obnerFila($con->consultar(
+            "SELECT TOP 1 c.ind_Id
+               FROM ind_contribuyentes c
+               INNER JOIN conf_usuarios u
+                       ON u.usu_NumeroDocumento = c.ind_NumeroIdentificacion
+              WHERE u.usu_Id = ?
+              ORDER BY c.ind_Id",
+            [(int) $_SESSION['id_usuario']]
+        ));
+
+        if (!$propio) {
+            return 'Su usuario no está asociado a un contribuyente.';
+        }
+
+        // La consulta solo devuelve lo suyo, venga lo que venga en el POST.
+        if ($funcion === 3) {
+            $_POST['ind_Id'] = (int) $propio['ind_Id'];
+        }
+
+        return null;
+    }
+
     public static function run() 
     {
         // Instanciamos el controlador
         $_obj = new self();
         // Obtenemos el número de función que indica la operación a ejecutar
         $_obj->_funcion = isset($_POST['funcion']) ? $_POST['funcion'] : null;
+
+        $negado = self::_verificarAcceso();
+        if ($negado !== null) {
+            header('Content-type: application/json');
+            echo json_encode(["ok" => 0, "mensaje" => $negado, "datos" => []]);
+            return;
+        }
 
         try {
             // Iniciamos la transacción (adaptar a tu clase de conexión)
@@ -880,7 +959,7 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
 
             // Un correo mal escrito deja al contribuyente sin poder firmar,
             // porque el OTP no llega a ningun lado.
-            if (in_array($campo, ['ind_EmailContador', 'ind_EmailRevisor', 'ind_Email_representante'], true)) {
+            if (in_array($campo, ['ind_Email', 'ind_EmailContador', 'ind_EmailRevisor', 'ind_Email_representante'], true)) {
                 if ($valor !== '' && !filter_var($valor, FILTER_VALIDATE_EMAIL)) {
                     $this->_ok = 0;
                     $this->_mensaje = 'El correo "' . $valor . '" no es válido';
@@ -928,6 +1007,89 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             return [];
         }
 
+        /*
+         * El correo de notificacion del RIT y el de la cuenta son EL MISMO.
+         *
+         * Instruccion del cliente el 2026-08-26: "si deben ser iguales, el de
+         * usuario y el del RIT es el mismo... no permitir repeticion de
+         * correos electronicos de base de datos".
+         *
+         * Eran dos campos sueltos que nadie sincronizaba, y por eso el codigo
+         * de firma llegaba a un correo distinto del que el contribuyente
+         * acababa de escribir -fue justo el sintoma que reportaron-.
+         *
+         * Se comprueba ANTES de escribir: si el correo ya es de otro, no se
+         * guarda nada. Guardar el RIT y fallar despues al sincronizar dejaria
+         * los dos campos distintos otra vez, que es lo que se quiere evitar.
+         */
+        if (array_key_exists('ind_Email', $_POST)) {
+            $correo = trim((string) $_POST['ind_Email']);
+
+            /*
+             * Si el correo NO cambio, no se comprueba nada.
+             *
+             * El formulario manda siempre el campo entero (serialize()), asi
+             * que hasta guardar un telefono reenvia el correo tal cual. Sin
+             * esta salida, un contribuyente que YA tuviera el correo repetido
+             * -de antes, cuando nada lo impedia- se quedaba con el RIT
+             * congelado: no podia corregir su direccion, ni su telefono, ni
+             * sus codigos CIIU, porque el guardado entero aborta aqui. Y el
+             * mensaje le echaba la culpa a un correo que no habia tocado.
+             *
+             * La regla es para el correo que se ESTA poniendo. Lo que ya
+             * estaba se limpia por su lado, no negandole el resto del
+             * formulario a quien lo padece.
+             */
+            $actual = $con->obnerFila($con->consultar(
+                "SELECT ind_Email FROM ind_contribuyentes WHERE ind_Id = ?",
+                [$idContribuyente]
+            ));
+            $sinCambio = $actual
+                && mb_strtolower(trim((string) $actual['ind_Email'])) === mb_strtolower($correo);
+
+            if ($correo !== '' && !$sinCambio) {
+                /*
+                 * "De otro" se mide por DOCUMENTO, no por fila.
+                 *
+                 * El documento es quien es el contribuyente; la fila es solo
+                 * donde quedo escrito. En esta base hay un documento con DOS
+                 * registros de contribuyente -la misma persona, inscrita dos
+                 * veces-, y comparando por ind_Id el segundo registro le daria
+                 * "ese correo ya es de otro" a la persona sobre si misma.
+                 *
+                 * Justo lo contrario de lo que pidio el cliente, que fue que el
+                 * correo de la cuenta y el del RIT SEAN el mismo. Del lado de
+                 * conf_usuarios ya se comparaba por documento; faltaba igualar
+                 * el otro lado.
+                 *
+                 * El documento vacio no agrupa: sin el, dos registros sueltos
+                 * pasarian por la misma persona sin serlo.
+                 */
+                $ajeno = $con->obnerFila($con->consultar(
+                    "DECLARE @doc VARCHAR(50) =
+                         (SELECT LTRIM(RTRIM(ISNULL(ind_NumeroIdentificacion, '')))
+                            FROM ind_contribuyentes WHERE ind_Id = ?);
+
+                     SELECT TOP 1 1 AS x FROM conf_usuarios u
+                      WHERE u.usu_Correo = ?
+                        AND (@doc = '' OR LTRIM(RTRIM(ISNULL(u.usu_NumeroDocumento, ''))) <> @doc)
+                     UNION ALL
+                     SELECT TOP 1 1 FROM ind_contribuyentes c
+                      WHERE c.ind_Email = ?
+                        AND c.ind_Id <> ?
+                        AND (@doc = '' OR LTRIM(RTRIM(ISNULL(c.ind_NumeroIdentificacion, ''))) <> @doc)",
+                    [$idContribuyente, $correo, $correo, $idContribuyente]
+                ));
+
+                if ($ajeno) {
+                    $this->_ok = 0;
+                    $this->_mensaje = 'El correo "' . $correo . '" ya está registrado por otro '
+                                    . 'contribuyente. Cada correo puede pertenecer a uno solo.';
+                    return [];
+                }
+            }
+        }
+
         $valores[] = $idContribuyente;
 
         $con->consultar(
@@ -937,10 +1099,75 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             $valores
         );
 
+        /*
+         * Y se sincroniza con la cuenta de acceso, para que sean el mismo.
+         *
+         * SE SINCRONIZA UNA CUENTA, NO TODAS LAS DEL DOCUMENTO
+         *
+         * El cruce natural es por numero de documento, pero un documento puede
+         * tener mas de una cuenta -en esta base, el 1052400237 tiene dos-. El
+         * UPDATE por documento les ponia el MISMO correo a todas, y eso ahora
+         * es imposible: desde la migracion 022 hay un indice unico sobre
+         * usu_Correo. El motor rechazaba el UPDATE y, de paso, se llevaba por
+         * delante el guardado del RIT entero.
+         *
+         * Con dos cuentas no hay forma honesta de adivinar cual es "la" cuenta
+         * del contribuyente, y elegir mal seria mandarle el codigo de firma al
+         * buzon equivocado. Asi que se sincroniza solo cuando hay UNA, y
+         * cuando no, se dice. La anomalia de fondo -dos cuentas para un mismo
+         * documento- la resuelve la Alcaldia, no este UPDATE.
+         *
+         * Que la sincronizacion falle nunca tumba el guardado: lo escrito en
+         * el RIT es valido y ya esta grabado. Pero se AVISA, porque callarlo
+         * dejaria el codigo de firma yendo al correo viejo sin que se sepa.
+         */
+        $avisoSincronizacion = '';
+
+        if (array_key_exists('ind_Email', $_POST) && trim((string) $_POST['ind_Email']) !== '') {
+            $correoNuevo = trim((string) $_POST['ind_Email']);
+
+            try {
+                $cuentas = [];
+                $stmt = $con->consultar(
+                    "SELECT u.usu_Id
+                       FROM conf_usuarios u
+                       INNER JOIN ind_contribuyentes c
+                               ON c.ind_NumeroIdentificacion = u.usu_NumeroDocumento
+                      WHERE c.ind_Id = ?",
+                    [$idContribuyente]
+                );
+                while ($f = $con->obnerFila($stmt)) { $cuentas[] = (int) $f['usu_Id']; }
+
+                if (count($cuentas) === 1) {
+                    $con->consultar(
+                        "UPDATE conf_usuarios
+                            SET usu_Correo = ?, usu_FechaActualizacion = GETDATE()
+                          WHERE usu_Id = ?",
+                        [$correoNuevo, $cuentas[0]]
+                    );
+                } elseif (count($cuentas) > 1) {
+                    $avisoSincronizacion = ' Ojo: este documento tiene más de una cuenta de '
+                        . 'acceso, así que el correo no se copió a ninguna para no elegir mal. '
+                        . 'La Alcaldía debe dejar una sola cuenta por contribuyente.';
+                }
+                // Sin cuentas no hay nada que sincronizar y no es un problema:
+                // la Alcaldia inscribe contribuyentes que aun no tienen usuario.
+
+            } catch (\Throwable $e) {
+                $avisoSincronizacion = ' El correo del RIT se guardó, pero no se pudo poner '
+                    . 'también en la cuenta de acceso porque ya pertenece a otra. Avise a la '
+                    . 'Alcaldía: hasta que se resuelva, el código de firma seguirá llegando '
+                    . 'al correo anterior de la cuenta.';
+
+                error_log('[contribuyentes] no se pudo sincronizar usu_Correo del contribuyente '
+                          . $idContribuyente . ': ' . $e->getMessage());
+            }
+        }
+
         $this->_ok = 1;
-        $this->_mensaje = $ignorados
+        $this->_mensaje = ($ignorados
             ? 'RIT actualizado. Los datos de contador y revisor solo los puede cambiar el administrador.'
-            : 'RIT actualizado';
+            : 'RIT actualizado') . $avisoSincronizacion;
 
         return ['ind_Id' => $idContribuyente, 'ignorados' => $ignorados];
     }

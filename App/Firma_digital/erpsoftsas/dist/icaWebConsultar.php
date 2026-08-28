@@ -562,6 +562,20 @@ Guardar
                                 <i class="fa fa-file-pdf-o"></i> PDF BORRADOR
                             </button>
 
+                            <!-- LIQUIDAR: calcula y NO guarda.
+                                 El cliente lo pidio de vuelta el 2026-08-26.
+                                 Va ANTES de "Guardar y liquidar" porque ese es
+                                 el orden en que se usan: primero se mira como
+                                 queda, despues se conserva. El manejador esta
+                                 en core/declaraciones.ui.js, uno solo para las
+                                 dos pantallas que comparten este modal. -->
+                            <button type="button"
+                                    class="btn btn-sm btn-info"
+                                    id="btnLiquidar"
+                                    disabled>
+                                <i class="fa fa-calculator"></i> Liquidar
+                            </button>
+
                             <!-- GENERAR DECLARACIÓN OFICIAL -->
                             <button type="button"
                                     class="btn btn-sm btn-warning"

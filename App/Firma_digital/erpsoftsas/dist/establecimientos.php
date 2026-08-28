@@ -86,7 +86,12 @@
     
 
 		<!--Modal dependencia-->
-		<div class="modal fade" id="modal-Establecimientos" tabindex="-1" role="dialog" aria-labelledby="exampleModalFormTitle" aria-hidden="true">
+		<style>
+/* Un readonly de Bootstrap se ve igual que un campo editable; hay que marcarlo
+   para que se note que el sistema lo llena solo. */
+.campo-bloqueado { background-color:#eef1f4 !important; cursor:not-allowed; color:#55606b; }
+</style>
+<div class="modal fade" id="modal-Establecimientos" tabindex="-1" role="dialog" aria-labelledby="exampleModalFormTitle" aria-hidden="true">
 			<div class="modal-dialog modal-xl" role="document">
 				<div class="modal-content ">
 					<div class="modal-header">
@@ -154,14 +159,23 @@
 <div class="row">
 
 <div class="col-md-2">
-<label>* Código</label>
+<label>Código</label>
 <!-- est_Codigo es INT en la base: si aqui entra una letra, la consulta
      revienta y el endpoint devuelve un 500 vacio que la pantalla solo
      sabe traducir a "error de conexion". El servidor lo valida tambien
      (_validarCodigo), esto es para avisar antes de enviar. -->
-<input type="text" class="form-control" id="est_Codigo" name="est_Codigo"
-       inputmode="numeric" pattern="[0-9]*" maxlength="10"
-       title="Solo dígitos" required>
+<!-- El codigo lo asigna el sistema, no el usuario. Pedido el 2026-08-26:
+     "debe crearse un codigo de manera automatica, no colocarlo el usuario al
+     crear". Antes era obligatorio escribirlo, y por eso los doce que existen
+     tienen codigos puestos a mano y sin criterio: unos son el NIT, otros son
+     12, 121 o 999.
+
+     Al CREAR sale vacio y de solo lectura; el servidor reparte el numero.
+     Al EDITAR se muestra el que ya tiene, tambien de solo lectura: cambiarlo
+     dejaria sin sentido cualquier referencia anterior a ese local. -->
+<input type="text" class="form-control campo-bloqueado" id="est_Codigo" name="est_Codigo"
+       readonly placeholder="Lo asigna el sistema"
+       title="El código lo asigna el sistema al guardar">
 </div>
 
 <!--
@@ -953,7 +967,13 @@ Guardar
 		<script src="../src/plugins/switchery/switchery.min.js"></script>
 		<script src="../src/plugins/sweetalert2/sweetalert2.all.js"></script>
 		<script src="../core/geografia.js?v=<?php echo time(); ?>"></script>
+		<script src="../core/numeros.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/establecimientos.js?v=<?php echo time(); ?>"></script>
+		<!-- El modulo compartido de declaraciones. Se carga aqui desde el
+		     2026-08-26 para que el boton "Liquidar" de esta pantalla use el
+		     MISMO calculo del servidor que icaWebPresentar e icaWebConsultar,
+		     en vez del que tenia propio en el navegador. -->
+		<script src="../core/declaraciones.ui.js?v=<?php echo time(); ?>"></script>
 		<!-- <script src="../core/Permisos.js"></script> -->
         <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
         <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
