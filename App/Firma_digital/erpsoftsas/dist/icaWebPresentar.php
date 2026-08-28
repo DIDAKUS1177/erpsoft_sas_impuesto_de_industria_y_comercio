@@ -543,26 +543,21 @@ Guardar
                                 <i class="fa fa-file-pdf-o"></i> PDF BORRADOR
                             </button>
 
-                            <!-- LIQUIDAR: calcula y NO guarda.
-                                 El cliente lo pidio de vuelta el 2026-08-26.
-                                 Va ANTES de "Guardar y liquidar" porque ese es
-                                 el orden en que se usan: primero se mira como
-                                 queda, despues se conserva. El manejador esta
-                                 en core/declaraciones.ui.js, uno solo para las
-                                 dos pantallas que comparten este modal. -->
-                            <button type="button"
-                                    class="btn btn-sm btn-info"
-                                    id="btnLiquidar"
-                                    disabled>
-                                <i class="fa fa-calculator"></i> Liquidar
-                            </button>
+                            <!-- GUARDAR.
+                                 Se llamaba "Guardar y liquidar"; el cliente pidio
+                                 el 2026-08-28 que dijera solo "Guardar". Hace lo
+                                 mismo: graba y liquida. El nombre corto es el que
+                                 entiende quien lo usa -guardar es la accion; que
+                                 ademas liquide es consecuencia-.
 
-                            <!-- GENERAR DECLARACIÓN OFICIAL -->
+                                 "Liquidar" NO va aqui arriba: volvio a su sitio de
+                                 siempre, junto a la tabla de totales, tambien por
+                                 pedido del cliente. -->
                             <button type="button"
                                     class="btn btn-sm btn-warning"
                                     id="btnGenerarOficial"
                                     disabled>
-                                <i class="fa fa-check-circle"></i> Guardar y liquidar
+                                <i class="fa fa-check-circle"></i> Guardar
                             </button>
 
                         </div>
@@ -780,19 +775,21 @@ Guardar
 
                                 </div>
 
-                                                                <!-- LIQUIDAR -->
-                                <!-- El boton "Liquidar" se retira. Instruccion del cliente:
-                                     "liquidar solo al guardar".
+                                <!-- LIQUIDAR: calcula y NO guarda.
+                                     Aqui es donde estuvo siempre, pegado a la tabla de
+                                     totales. Se subio a la cabecera del modal el
+                                     2026-08-26 y el cliente pidio el 28 que volviera:
+                                     se usa mirando los renglones de al lado, y arriba
+                                     obligaba a subir la vista para pulsarlo.
 
-                                     En este sistema liquidar y guardar SON la misma operacion:
-                                     el calculo lo hace sp_calculo_comercio del lado del
-                                     servidor, sobre la fila ya grabada, asi que un "liquidar
-                                     sin guardar" no existe. Tener dos botones para una sola
-                                     operacion fue justo lo que produjo los reportes de "no
-                                     liquida" y "no guarda": cada pantalla tenia el manejador
-                                     real colgado de uno distinto y el otro mentia.
-
-                                     Queda un unico boton, y dice lo que hace. -->
+                                     El manejador esta en core/declaraciones.ui.js, uno
+                                     solo para las pantallas que comparten este modal. -->
+                                <button type="button"
+                                        class="btn btn-sm btn-info mb-3"
+                                        id="btnLiquidar"
+                                        disabled>
+                                    <i class="fa fa-calculator"></i> Liquidar
+                                </button>
 
                             <h4 class="titulo-seccion">Liquidación Privada</h4>
 

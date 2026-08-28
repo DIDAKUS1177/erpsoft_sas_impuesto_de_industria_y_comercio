@@ -123,6 +123,48 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
         }
     }
 
+    /**
+     * El dec_Id de una declaracion a partir de su NUMERO.
+     *
+     * EL ERROR QUE ARREGLA (encontrado el 2026-08-28, reportado por el cliente)
+     *
+     * La tabla de actividades se engancha por dia_IdDeclaracion, y ese campo es
+     * el dec_Id: asi lo lee sp_calculo_comercio -"da.dia_iddeclaracion =
+     * di.dec_id"- y asi lo leen los dos PDF.
+     *
+     * Pero la pantalla manda el NUMERO de declaracion, no el id. Durante mucho
+     * tiempo dio igual, porque el numero ERA el identity de la fila: los dos
+     * valores coincidian y nadie lo noto.
+     *
+     * La migracion 012 rompio esa coincidencia. Desde entonces el numero es un
+     * consecutivo por año (2026000001) y el id sigue siendo 232, de modo que
+     * las actividades se guardaban colgadas de un id que no existe. El
+     * procedimiento no las encontraba, sumaba cero, y el impuesto salia en
+     * CERO; el PDF tampoco las imprimia. Medido: la misma actividad da 700.000
+     * cuando numero e id coinciden y 0 cuando no.
+     *
+     * Se traduce aqui, en un solo sitio, en vez de cambiar el procedimiento:
+     * dia_IdDeclaracion se llama "Id" y todo lo que lo LEE espera el id. Lo que
+     * estaba mal era lo que lo escribia.
+     *
+     * Acepta que le pasen ya un dec_Id -devuelve ese mismo-, porque hay
+     * caminos internos que lo hacen y no deben romperse.
+     */
+    private static function _idDeLaDeclaracion($con, $numeroOId)
+    {
+        $v = trim((string) $numeroOId);
+        if ($v === '' || !ctype_digit($v)) { return null; }
+
+        $fila = $con->obnerFila($con->consultar(
+            "SELECT TOP 1 dec_Id FROM ind_declaraciones_ica
+              WHERE dec_NumeroDeclaracion = ? OR dec_Id = ?
+              ORDER BY CASE WHEN dec_NumeroDeclaracion = ? THEN 0 ELSE 1 END",
+            [$v, $v, $v]
+        ));
+
+        return isset($fila['dec_Id']) ? (int) $fila['dec_Id'] : null;
+    }
+
     private static function _contribuyenteDeLaSesion($con)
     {
         if (session_status() === PHP_SESSION_NONE) { @session_start(); }
@@ -845,10 +887,23 @@ private function _insertarActividadesDeclaracionIca(){
         ]);
 
 
+        /*
+         * Las actividades se enganchan por dec_Id, no por el numero.
+         * Ver _idDeLaDeclaracion(): el numero dejo de coincidir con el id en la
+         * migracion 012, y guardarlas por el numero las dejaba invisibles para
+         * el procedimiento de liquidacion y para los PDF.
+         */
+        $idFila = self::_idDeLaDeclaracion($con, $idDeclaracion);
+        if ($idFila === null) {
+            $this->_ok = 0;
+            $this->_mensaje = "No se encontró la declaración " . $idDeclaracion;
+            return [];
+        }
+
         // ELIMINAR ACTIVIDADES EXISTENTES
         $sqlDelete = "DELETE FROM ind_declaraciones_ica_actividades 
                       WHERE dia_IdDeclaracion = ?";
-        $con->consultar($sqlDelete, [$idDeclaracion]);
+        $con->consultar($sqlDelete, [$idFila]);
 
         // INSERTAR NUEVAS
         foreach($actividades as $a){
@@ -867,8 +922,10 @@ private function _insertarActividadesDeclaracionIca(){
                 VALUES (?,?,?,?,?,1,GETDATE())
             ";
 
+            // Se ignora el dia_IdDeclaracion que manda el navegador: lleva el
+            // numero, y aqui tiene que ir el id de la fila.
             $con->consultar($sqlInsert, [
-                $a['dia_IdDeclaracion'],
+                $idFila,
                 $a['dia_IdActividad'],
                 $a['dia_BaseGravable'],
                 $a['dia_Tarifa'],
@@ -988,8 +1045,14 @@ private function _liquidarSinGuardar()
             ]
         );
 
+        // Mismo criterio que la funcion 6: las actividades van por dec_Id.
+        $idFila = self::_idDeLaDeclaracion($con, $idDeclaracion);
+        if ($idFila === null) {
+            throw new \Exception('No se encontró la declaración ' . $idDeclaracion);
+        }
+
         $con->consultar("DELETE FROM ind_declaraciones_ica_actividades
-                          WHERE dia_IdDeclaracion = ?", [$idDeclaracion]);
+                          WHERE dia_IdDeclaracion = ?", [$idFila]);
 
         foreach ($actividades as $a) {
             $con->consultar(
@@ -998,7 +1061,7 @@ private function _liquidarSinGuardar()
                       dia_Tarifa, dia_ValorImpuesto, dia_Activo, dia_FechaCreador)
                  VALUES (?,?,?,?,?,1,GETDATE())",
                 [
-                    $a['dia_IdDeclaracion'],
+                    $idFila,
                     $a['dia_IdActividad'],
                     $a['dia_BaseGravable'],
                     $a['dia_Tarifa'],
