@@ -597,8 +597,25 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
             $this->_cruzarAnticipoDelAnioAnterior($con, $id, $idContribuyente, $anio);
 
             $this->_ok = 1;
-            $this->_mensaje = "Declaración creada correctamente ID = $id";
+            $this->_mensaje = "Declaración creada correctamente, N° $numero";
 
+            /*
+             * Se devuelve la FILA, no el objeto.
+             *
+             * getArray() arma la respuesta con los atributos del objeto DAO, y
+             * ahi el numero sigue en null: se escribe con el UPDATE de arriba y
+             * nadie lo pone de vuelta en el objeto. Asi que al CREAR viajaba
+             * dec_NumeroDeclaracion = null y la pantalla caia al dec_Id — que es
+             * exactamente el "¿por que sale 183?" que reporto el cliente, y por
+             * lo que el arreglo de la pantalla no bastaba por si solo.
+             *
+             * Releyendo la fila los dos caminos -crear y reabrir- devuelven la
+             * misma forma de dato, con el numero de verdad y todos los renglones.
+             */
+            $fila = $con->obnerFila($con->consultar(
+                "SELECT * FROM ind_declaraciones_ica WHERE dec_Id = ?", [$id]
+            ));
+            if ($fila) { return $fila; }
         }
 
         return $_obj->getArray();
@@ -687,29 +704,96 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
     }
 
 
+    /**
+     * funcion 4 - Descarta un BORRADOR.
+     *
+     * ESTE BOTON NUNCA HABIA FUNCIONADO
+     *
+     * Hacia set_dec_Activo(0), y la columna dec_Activo NO EXISTE: ni en el
+     * esquema, ni en ninguna migracion, ni en el mapa del DAO. Aparecia una
+     * sola vez en todo el proyecto, justo en esa linea.
+     *
+     * El __call del DAO descarta en silencio los setters que no reconoce, asi
+     * que guardar() armaba la sentencia sin nada que asignar:
+     *
+     *     UPDATE ind_declaraciones_ica SET  WHERE dec_Id = 183
+     *
+     * que es un error de sintaxis. La excepcion no la atrapaba nadie -run()
+     * solo captura DeclaracionesICAException, que es una SUBCLASE- asi que
+     * salia un fatal de PHP, una respuesta sin JSON, y la pantalla decia
+     * "Error de conexion". Siempre. Comprobado ejecutandolo.
+     *
+     * Importa mas de lo que parece: era la unica forma de deshacerse de un
+     * borrador. Sin ella, quien tuviera uno viejo con datos quedaba atrapado
+     * -el sistema se lo vuelve a abrir cada vez- y la unica salida era pedirle
+     * a la Alcaldia que borrara la fila a mano.
+     *
+     * SE BORRA DE VERDAD, Y SOLO SI ES UN BORRADOR
+     *
+     * No hay columna de baja logica y no se inventa una: un borrador no es un
+     * acto juridico -no existe hasta que se presenta-, asi que descartarlo es
+     * borrarlo. Lo que si se hace es no dejar borrar nada que ya tenga valor
+     * legal: presentada no, firmada no. Y se borran antes sus actividades,
+     * que de otro modo quedarian sueltas.
+     */
     protected function _inactivarDeclaracion()
     {
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
-        $_obj = new \erpsoftsas\DAO_DeclaracionesICA();
-
-        $_obj->set_dec_Id($_POST['dec_Id'] ?? null);
-        $_obj->set_dec_Activo(0);
-
-        if (!$_obj->guardar()) {
-
+        $fila = self::_filaDeLaDeclaracion($con, $_POST['dec_Id'] ?? '');
+        if ($fila === null) {
             $this->_ok = 0;
-            $this->_mensaje = $_obj->getMysqlError();
+            $this->_mensaje = 'La declaración no existe.';
+            return [];
+        }
+        $id = $fila['id'];
 
-        } else {
+        /*
+         * Las firmas se guardan por NUMERO (fd_NumeroDeclaracion), no por id.
+         * Se comprueban contra los dos valores: durante un tiempo la pantalla
+         * mando el id creyendo que era el numero, asi que puede haber firmas
+         * anotadas de las dos formas y ninguna debe pasarse por alto.
+         */
+        $d = $con->obnerFila($con->consultar(
+            "SELECT d.dec_Estado, d.dec_NumeroDeclaracion,
+                    (SELECT COUNT(*) FROM firmas_declaraciones f
+                      WHERE f.fd_NumeroDeclaracion IN (d.dec_NumeroDeclaracion, d.dec_Id)) firmas
+               FROM ind_declaraciones_ica d WHERE d.dec_Id = ?",
+            [$id]
+        ));
 
-            $id = $_obj->get_dec_Id();
-
-            $this->_ok = 1;
-            $this->_mensaje = "Declaración inactivada correctamente ID = $id";
-
+        if ((int) ($d['dec_Estado'] ?? 0) === 2) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Una declaración presentada no se puede borrar. '
+                            . 'Si hay que corregirla, use "Corregir".';
+            return [];
         }
 
-        return $_obj->getArray();
+        if ((int) ($d['firmas'] ?? 0) > 0) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Esta declaración ya tiene firmas registradas y no se puede borrar. '
+                            . 'Devuélvala a borrador si necesita cambiarla.';
+            return [];
+        }
+
+        try {
+            $con->consultar("DELETE FROM ind_declaraciones_ica_actividades WHERE dia_IdDeclaracion = ?", [$id]);
+            $con->consultar("DELETE FROM ind_declaraciones_ica WHERE dec_Id = ?", [$id]);
+        } catch (\Throwable $e) {
+            error_log('[declaraciones] no se pudo borrar el borrador ' . $id . ': ' . $e->getMessage());
+            $this->_ok = 0;
+            $this->_mensaje = 'No se pudo borrar la declaración. Intente de nuevo; si persiste, avise a soporte.';
+            return [];
+        }
+
+        // Queda constancia: es un borrado real.
+        error_log(sprintf('[declaraciones] usuario %s borro el borrador %s (N° %s)',
+            $_SESSION['id_usuario'] ?? '?', $id, $d['dec_NumeroDeclaracion'] ?: $id));
+
+        $this->_ok = 1;
+        $this->_mensaje = 'Borrador descartado. Puede crear la declaración de nuevo.';
+
+        return ['dec_Id' => $id];
     }
 
 
