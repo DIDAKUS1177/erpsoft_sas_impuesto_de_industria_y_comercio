@@ -1076,6 +1076,31 @@ private function _insertarActividadesDeclaracionIca(){
 
     try{
 
+        /*
+         * TODO se resuelve desde la FILA, no desde lo que manda la pantalla.
+         *
+         * La pantalla pone $("#numDeclaracion").val(d.dec_Id) y desde ahi manda
+         * ese valor como "idDeclaracion" Y como "numero". Mientras el numero fue
+         * el identity de la fila daba igual. Desde la migracion 012 no lo es, y
+         * entonces los UPDATE con "WHERE dec_NumeroDeclaracion = <id>" no tocaban
+         * ninguna fila -sin error: un UPDATE de cero filas no falla- y
+         * sp_calculo_comercio, que filtra por numero, no encontraba la
+         * declaracion y no calculaba nada.
+         *
+         * Comprobado: mandando el dec_Id no se guardaba ni un renglon manual.
+         *
+         * VA LO PRIMERO. En una version anterior de este arreglo quedo DESPUES
+         * del UPDATE de totales, asi que $idFila llegaba nulo justo ahi y los
+         * ingresos no se guardaban. Resolver primero y usar despues.
+         */
+        $fila = self::_filaDeLaDeclaracion($con, $idDeclaracion);
+        if ($fila === null) {
+            $this->_ok = 0;
+            $this->_mensaje = "No se encontró la declaración " . $idDeclaracion;
+            return [];
+        }
+        $idFila = $fila['id'];
+
     // ==========================
         // 1. ACTUALIZAR DECLARACIÓN
         // ==========================
@@ -1123,27 +1148,6 @@ private function _insertarActividadesDeclaracionIca(){
          * migracion 012, y guardarlas por el numero las dejaba invisibles para
          * el procedimiento de liquidacion y para los PDF.
          */
-        /*
-         * TODO se resuelve desde la FILA, no desde lo que manda la pantalla.
-         *
-         * La pantalla pone $("#numDeclaracion").val(d.dec_Id) y desde ahi manda
-         * ese valor como "idDeclaracion" Y como "numero". Mientras el numero fue
-         * el identity de la fila daba igual. Desde la migracion 012 no lo es, y
-         * entonces los UPDATE con "WHERE dec_NumeroDeclaracion = <id>" no tocaban
-         * ninguna fila -sin error: un UPDATE de cero filas no falla- y
-         * sp_calculo_comercio, que filtra por numero, no encontraba la
-         * declaracion y no calculaba nada.
-         *
-         * Comprobado: mandando el dec_Id no se guardaba ni un renglon manual.
-         */
-        $fila = self::_filaDeLaDeclaracion($con, $idDeclaracion);
-        if ($fila === null) {
-            $this->_ok = 0;
-            $this->_mensaje = "No se encontró la declaración " . $idDeclaracion;
-            return [];
-        }
-        $idFila = $fila['id'];
-
         // ELIMINAR ACTIVIDADES EXISTENTES
         $sqlDelete = "DELETE FROM ind_declaraciones_ica_actividades 
                       WHERE dia_IdDeclaracion = ?";
@@ -1259,6 +1263,13 @@ private function _liquidarSinGuardar()
         $con->begin();
         $abierta = true;
 
+        // Mismo criterio que la funcion 6, y tambien ANTES del UPDATE.
+        $fila = self::_filaDeLaDeclaracion($con, $idDeclaracion);
+        $idFila = $fila === null ? null : $fila['id'];
+        if ($idFila === null) {
+            throw new \Exception('No se encontró la declaración ' . $idDeclaracion);
+        }
+
         $con->consultar(
             "UPDATE ind_declaraciones_ica SET
                 dec_TotalIngresos            = ?,
@@ -1286,13 +1297,6 @@ private function _liquidarSinGuardar()
                 $idFila,
             ]
         );
-
-        // Mismo criterio que la funcion 6: manda la fila, no lo que llega.
-        $fila = self::_filaDeLaDeclaracion($con, $idDeclaracion);
-        $idFila = $fila === null ? null : $fila['id'];
-        if ($idFila === null) {
-            throw new \Exception('No se encontró la declaración ' . $idDeclaracion);
-        }
 
         $con->consultar("DELETE FROM ind_declaraciones_ica_actividades
                           WHERE dia_IdDeclaracion = ?", [$idFila]);

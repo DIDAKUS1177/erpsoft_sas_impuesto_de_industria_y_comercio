@@ -2809,7 +2809,11 @@ $(document).on("change", ".campo-total", function(){
 
     let valor = $(this).val();
     let numeroCampo = $(this).attr("numeroCampo");
-    
+
+    // Mismo guard que en las otras dos pantallas: los campos de ingresos no
+    // tienen numeroCampo y no deben disparar el guardado por renglon.
+    if (!numeroCampo) { return; }
+
     establecimientos.actualizarDeclaracionIca(valor, numeroCampo);
 
 });

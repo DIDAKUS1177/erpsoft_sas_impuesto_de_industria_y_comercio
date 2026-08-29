@@ -1555,7 +1555,22 @@ $(document).on("change", ".campo-total", function(){
 
     let valor = $(this).val();
     let numeroCampo = $(this).attr("numeroCampo");
-    
+
+    /*
+     * Los campos de "Totales" -los nueve de ingresos, arriba- comparten la clase
+     * .campo-total con los de la Liquidacion Privada, pero NO tienen numeroCampo:
+     * no mapean a una columna dec_ValorConceptoN. Sin este guard se disparaba un
+     * guardado con el renglon vacio.
+     *
+     * Presentar ya tenia el guard; aqui faltaba. Antes solo ensuciaba -intentaba
+     * escribir en una columna inexistente-, pero desde que el renglon se valida
+     * contra una lista blanca el servidor contesta "Renglón no válido" y la
+     * pantalla sacaria un error rojo cada vez que se toca un ingreso.
+     *
+     * Esos nueve si se guardan: van junto con las actividades al pulsar Guardar.
+     */
+    if (!numeroCampo) { return; }
+
     establecimientos.actualizarDeclaracionIca(valor, numeroCampo);
 
 });
@@ -1858,7 +1873,7 @@ $("#btnGenerarOficial").off("click").on("click", function () {
  * renglon-. Sin el trigger la pantalla quedaria en cero y la base seguiria
  * con los 500.000, que es la misma incoherencia al reves.
  */
-function sancionSegunTipo() {
+function sancionSegunTipo(guardar) {
     var ninguna  = $("#chkSinSancion").is(":checked");
     var $importe = $('[data-campo="sanciones"]');
 
@@ -1866,13 +1881,25 @@ function sancionSegunTipo() {
 
     $importe.prop("readonly", ninguna).toggleClass("campo-bloqueado", ninguna);
 
-    if (ninguna) {
+    /*
+     * SOLO SE GUARDA CUANDO LO ELIGE UNA PERSONA. NUNCA AL ABRIR.
+     *
+     * Antes guardaba siempre que viera "Ninguna" marcada, y eso podia BORRAR
+     * una sancion ya guardada: al abrir el modal "Ninguna" viene marcada por
+     * defecto en el HTML, y la casilla puede traer todavia el importe de la
+     * declaracion anterior porque el modal no se limpia entre una y otra. La
+     * funcion veia "Ninguna" + un importe, lo ponia en cero y lo GRABABA —
+     * encima de la declaracion recien abierta y antes de que llegaran sus
+     * datos de verdad.
+     *
+     * Al abrir solo se ajusta como se VE la casilla. Escribir en la base queda
+     * reservado al momento en que alguien elige la opcion a mano.
+     */
+    if (ninguna && guardar === true) {
         var tenia = establecimientos.limpiarNumero
                         ? establecimientos.limpiarNumero($importe.val())
                         : parseFloat($importe.val()) || 0;
 
-        // Solo se toca si de verdad habia algo: asi no se manda un guardado
-        // inutil cada vez que se abre la declaracion.
         if (tenia) {
             $importe.val(establecimientos.formatearCOP(0)).trigger("change");
         }
@@ -1910,7 +1937,8 @@ $(document).on("change", "input[name='tipoSancion']", function(){
         $("#txtOtraSancion").val('');
     }
 
-    sancionSegunTipo();
+    // true: aqui SI se guarda, porque la opcion la acaba de elegir una persona.
+    sancionSegunTipo(true);
 });
 
 // ==========================================
