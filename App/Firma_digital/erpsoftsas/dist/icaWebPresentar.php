@@ -582,7 +582,12 @@ Guardar
                                 <!-- NUMERO DECLARACIÓN -->
                                 <div class="col-sm-3">
                                     <label>Numero Declaración</label>
-                                    <input type="text" id="numDeclaracion" class="form-control input-sm" readonly>
+                                    <!-- Es el numero del formulario, lo asigna el sistema. Ya era readonly;
+                                         le faltaba VERSE bloqueado -el cliente creyo que
+                                         podia escribirlo-. -->
+                                    <input type="text" id="numDeclaracion"
+                                           class="form-control input-sm campo-bloqueado" readonly
+                                           title="Lo asigna el sistema">
                                 </div>
 
                                 <!-- AÑO -->

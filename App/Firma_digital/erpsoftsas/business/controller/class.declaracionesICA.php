@@ -150,19 +150,33 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
      * Acepta que le pasen ya un dec_Id -devuelve ese mismo-, porque hay
      * caminos internos que lo hacen y no deben romperse.
      */
-    private static function _idDeLaDeclaracion($con, $numeroOId)
+    private static function _filaDeLaDeclaracion($con, $numeroOId)
     {
         $v = trim((string) $numeroOId);
         if ($v === '' || !ctype_digit($v)) { return null; }
 
         $fila = $con->obnerFila($con->consultar(
-            "SELECT TOP 1 dec_Id FROM ind_declaraciones_ica
+            "SELECT TOP 1 dec_Id, dec_NumeroDeclaracion, dec_AnioDeclaracion, dec_MesDeclaracion
+               FROM ind_declaraciones_ica
               WHERE dec_NumeroDeclaracion = ? OR dec_Id = ?
               ORDER BY CASE WHEN dec_NumeroDeclaracion = ? THEN 0 ELSE 1 END",
             [$v, $v, $v]
         ));
 
-        return isset($fila['dec_Id']) ? (int) $fila['dec_Id'] : null;
+        if (!isset($fila['dec_Id'])) { return null; }
+
+        return [
+            'id'     => (int) $fila['dec_Id'],
+            'numero' => $fila['dec_NumeroDeclaracion'] ?: $fila['dec_Id'],
+            'anio'   => $fila['dec_AnioDeclaracion'],
+            'mes'    => $fila['dec_MesDeclaracion'],
+        ];
+    }
+
+    private static function _idDeLaDeclaracion($con, $numeroOId)
+    {
+        $f = self::_filaDeLaDeclaracion($con, $numeroOId);
+        return $f === null ? null : $f['id'];
     }
 
     private static function _contribuyenteDeLaSesion($con)
@@ -237,10 +251,19 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
          * una declaracion ajena, que son datos con reserva tributaria.
          */
         if (!empty($_POST['idDeclaracion'])) {
+            /*
+             * Se acepta que venga el numero O el dec_Id.
+             *
+             * La pantalla manda el dec_Id, asi que comparar solo contra
+             * dec_NumeroDeclaracion negaba el acceso al propio contribuyente en
+             * cuanto los dos valores dejaron de coincidir (migracion 012). Se
+             * comprueba contra los dos, y la propiedad se sigue exigiendo igual.
+             */
             $fila = $con->obnerFila($con->consultar(
-                "SELECT dec_Id FROM ind_declaraciones_ica
-                  WHERE dec_NumeroDeclaracion = ? AND dec_IdContribuyente = ?",
-                [$_POST['idDeclaracion'], $propio]
+                "SELECT TOP 1 dec_Id FROM ind_declaraciones_ica
+                  WHERE (dec_NumeroDeclaracion = ? OR dec_Id = ?)
+                    AND dec_IdContribuyente = ?",
+                [$_POST['idDeclaracion'], $_POST['idDeclaracion'], $propio]
             ));
             if (!$fila) { return 'No tiene permiso sobre esta declaración.'; }
         }
@@ -392,13 +415,26 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
         // este contribuyente para el periodo actual? De ser asi se reabre en
         // vez de duplicar -el indice unico de la BD lo impediria de todos
         // modos, pero preguntar antes evita depender de que falle el INSERT-.
+        /*
+         * Si ya hay una en curso se reabre ESA, y se reabre siempre LA MISMA.
+         *
+         * Faltaba el ORDER BY, y no es un detalle: sin el, SQL Server puede
+         * devolver cualquiera de las filas que cumplen. En esta base hay
+         * contribuyentes con 94 y 87 borradores del mismo periodo -restos de
+         * pruebas, anteriores al indice de la migracion 020-, asi que "cual se
+         * abre" era literalmente impredecible y podia cambiar entre dos clics.
+         *
+         * Se toma el mas reciente por dec_Id, que es lo unico que siempre crece.
+         * Es el que tiene mas probabilidad de ser en el que se estaba trabajando.
+         */
         $existente = $con->obnerFila($con->consultar(
-            "SELECT * FROM ind_declaraciones_ica
+            "SELECT TOP 1 * FROM ind_declaraciones_ica
              WHERE dec_IdContribuyente = ?
                AND dec_AnioDeclaracion = ?
                AND dec_MesDeclaracion = ?
                AND dec_DeclaracionCorrige IS NULL
-               AND (dec_Estado IS NULL OR dec_Estado <> 2)",
+               AND (dec_Estado IS NULL OR dec_Estado <> 2)
+             ORDER BY dec_Id DESC",
             [$idContribuyente, $anio, $mes]
         ));
 
@@ -422,8 +458,33 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
                 $anio
             );
 
+            /*
+             * Y se DICE que se reabrio, con numero y fecha.
+             *
+             * El cliente reporto el 2026-08-29: "¿por que cuando creo una nueva
+             * declaracion se coloca 183 en el numero?". Porque no era nueva: era
+             * un borrador suyo del 17 de abril, con 10.000.000 de ingresos y
+             * 500.000 de sancion ya dentro -la sancion que venia reportando como
+             * si el sistema se la inventara-.
+             *
+             * Reabrir es lo correcto: el boton "Crear" sale en la fila de cada
+             * establecimiento y son la misma persona, asi que crear otra seria
+             * duplicar. Lo que faltaba era decirlo. Un formulario que se abre
+             * con cifras que uno no escribio, y sin explicacion, se lee como
+             * que el sistema calcula mal.
+             */
+            $fecha = $existente['dec_FechaDeclaracion'] ?? null;
+            if ($fecha instanceof \DateTime) { $fecha = $fecha->format('d/m/Y'); }
+
             $this->_ok = 1;
-            $this->_mensaje = "Ya existe una declaración en curso para este contribuyente; se abre esa";
+            $this->_mensaje = 'Ya tenía una declaración en curso para este período: la N° '
+                . ($existente['dec_NumeroDeclaracion'] ?: $existente['dec_Id'])
+                . ($fecha ? ', creada el ' . $fecha : '')
+                . '. Se abre esa, con lo que hubiera guardado. No se creó una nueva '
+                . 'para no duplicar la declaración del período.';
+
+            $existente['_reabierta'] = 1;
+
             return $existente;
         }
 
@@ -888,7 +949,7 @@ private function _insertarActividadesDeclaracionIca(){
             -- COALESCE conserva el valor actual si no viene.
             dec_CapacidadInstalada = COALESCE(?, dec_CapacidadInstalada),
             dec_ValorImpuesto      = COALESCE(?, dec_ValorImpuesto)
-        WHERE dec_NumeroDeclaracion = ?
+        WHERE dec_Id = ?
         ";
 
         $con->consultar($sqlUpdate, [
@@ -902,7 +963,7 @@ private function _insertarActividadesDeclaracionIca(){
             $totales['dec_BaseGravable']             ?? 0,
             $totales['dec_CapacidadInstalada']       ?? null,
             $totales['dec_ValorImpuesto']            ?? null,
-            $idDeclaracion
+            $idFila
         ]);
 
 
@@ -912,12 +973,26 @@ private function _insertarActividadesDeclaracionIca(){
          * migracion 012, y guardarlas por el numero las dejaba invisibles para
          * el procedimiento de liquidacion y para los PDF.
          */
-        $idFila = self::_idDeLaDeclaracion($con, $idDeclaracion);
-        if ($idFila === null) {
+        /*
+         * TODO se resuelve desde la FILA, no desde lo que manda la pantalla.
+         *
+         * La pantalla pone $("#numDeclaracion").val(d.dec_Id) y desde ahi manda
+         * ese valor como "idDeclaracion" Y como "numero". Mientras el numero fue
+         * el identity de la fila daba igual. Desde la migracion 012 no lo es, y
+         * entonces los UPDATE con "WHERE dec_NumeroDeclaracion = <id>" no tocaban
+         * ninguna fila -sin error: un UPDATE de cero filas no falla- y
+         * sp_calculo_comercio, que filtra por numero, no encontraba la
+         * declaracion y no calculaba nada.
+         *
+         * Comprobado: mandando el dec_Id no se guardaba ni un renglon manual.
+         */
+        $fila = self::_filaDeLaDeclaracion($con, $idDeclaracion);
+        if ($fila === null) {
             $this->_ok = 0;
             $this->_mensaje = "No se encontró la declaración " . $idDeclaracion;
             return [];
         }
+        $idFila = $fila['id'];
 
         // ELIMINAR ACTIVIDADES EXISTENTES
         $sqlDelete = "DELETE FROM ind_declaraciones_ica_actividades 
@@ -953,11 +1028,9 @@ private function _insertarActividadesDeclaracionIca(){
         }
 
         
-        $anio   = $_POST['anio'];
-        $mes    = $_POST['mes'];
-        $numero = $_POST['numero'];
-        
-        $this->_ejecutarSpLiquidacion($anio,$mes,$numero,0);
+        // El procedimiento filtra por numero, año y mes: salen de la FILA, no
+        // del POST, que trae el id disfrazado de numero.
+        $this->_ejecutarSpLiquidacion($fila['anio'], $fila['mes'], $fila['numero'], 0);
 
         // ==========================
         // 5. CONSULTAR RESULTADO FINAL
@@ -965,8 +1038,8 @@ private function _insertarActividadesDeclaracionIca(){
         $res = $con->consultar("
             SELECT *
             FROM ind_declaraciones_ica
-            WHERE dec_NumeroDeclaracion = ?
-        ", [$idDeclaracion]);
+            WHERE dec_Id = ?
+        ", [$idFila]);
 
         $data = $con->obnerFila($res);
 
@@ -1048,7 +1121,7 @@ private function _liquidarSinGuardar()
                 dec_BaseGravable             = ?,
                 dec_CapacidadInstalada       = COALESCE(?, dec_CapacidadInstalada),
                 dec_ValorImpuesto            = COALESCE(?, dec_ValorImpuesto)
-              WHERE dec_NumeroDeclaracion = ?",
+              WHERE dec_Id = ?",
             [
                 $totales['dec_TotalIngresos']            ?? 0,
                 $totales['dec_IngresosFueraMunicipio']   ?? 0,
@@ -1060,12 +1133,13 @@ private function _liquidarSinGuardar()
                 $totales['dec_BaseGravable']             ?? 0,
                 $totales['dec_CapacidadInstalada']       ?? null,
                 $totales['dec_ValorImpuesto']            ?? null,
-                $idDeclaracion,
+                $idFila,
             ]
         );
 
-        // Mismo criterio que la funcion 6: las actividades van por dec_Id.
-        $idFila = self::_idDeLaDeclaracion($con, $idDeclaracion);
+        // Mismo criterio que la funcion 6: manda la fila, no lo que llega.
+        $fila = self::_filaDeLaDeclaracion($con, $idDeclaracion);
+        $idFila = $fila === null ? null : $fila['id'];
         if ($idFila === null) {
             throw new \Exception('No se encontró la declaración ' . $idDeclaracion);
         }
@@ -1089,15 +1163,13 @@ private function _liquidarSinGuardar()
             );
         }
 
-        $this->_ejecutarSpLiquidacion($_POST['anio'] ?? null,
-                                      $_POST['mes'] ?? null,
-                                      $_POST['numero'] ?? null, 0);
+        $this->_ejecutarSpLiquidacion($fila['anio'], $fila['mes'], $fila['numero'], 0);
 
         // Se lee ANTES de deshacer: despues del rollback la fila vuelve a
         // tener los valores viejos.
         $datos = $con->obnerFila($con->consultar(
-            "SELECT * FROM ind_declaraciones_ica WHERE dec_NumeroDeclaracion = ?",
-            [$idDeclaracion]
+            "SELECT * FROM ind_declaraciones_ica WHERE dec_Id = ?",
+            [$idFila]
         ));
 
         $this->_ok = 1;
@@ -1167,23 +1239,28 @@ private function _actualizarDeclaracionIca(){
      // ==========================
         // 1. ACTUALIZAR DECLARACIÓN
         // ==========================
+        // Misma correccion que en la funcion 6: manda la fila.
+        $fila = self::_filaDeLaDeclaracion($con, $idDeclaracion);
+        if ($fila === null) {
+            $this->_ok = 0;
+            $this->_mensaje = "No se encontró la declaración " . $idDeclaracion;
+            return [];
+        }
+        $idFila = $fila['id'];
+
         $sqlUpdate = "
         UPDATE ind_declaraciones_ica SET
             ".$NombreCampo." = ?
-        WHERE dec_NumeroDeclaracion = ?
+        WHERE dec_Id = ?
         ";
 
         $con->consultar($sqlUpdate, [
             $valorLimpio,
-            $idDeclaracion
+            $idFila
         ]);
 
 
-        $anio   = $_POST['anio'];
-        $mes    = $_POST['mes'];
-        $numero = $_POST['numero'];
-        
-        $this->_ejecutarSpLiquidacion($anio,$mes,$numero,$campoSeleccionado);
+        $this->_ejecutarSpLiquidacion($fila['anio'], $fila['mes'], $fila['numero'], $campoSeleccionado);
 
         // ==========================
         // 5. CONSULTAR RESULTADO FINAL
@@ -1191,8 +1268,8 @@ private function _actualizarDeclaracionIca(){
         $res = $con->consultar("
             SELECT *
             FROM ind_declaraciones_ica
-            WHERE dec_NumeroDeclaracion = ?
-        ", [$idDeclaracion]);
+            WHERE dec_Id = ?
+        ", [$idFila]);
 
         $data = $con->obnerFila($res);
 

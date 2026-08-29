@@ -515,7 +515,27 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
             // particular: la declaracion es una sola por contribuyente.
             establecimientos.cargarActividadesContribuyente(idContribuyente);
 
-            $("#numDeclaracion").val(d.dec_Id);
+            /*
+             * Se muestra el NUMERO de la declaracion, no el id de la fila.
+             *
+             * Se ponia d.dec_Id, y por eso el cliente veia "183" al crear: es el
+             * identificador interno, no el numero del formulario. Desde la
+             * migracion 012 el numero es un consecutivo por año (2026000001) y
+             * es el que ve el contribuyente, va impreso en el PDF y viaja en el
+             * codigo de barras del banco. El id no le dice nada a nadie.
+             *
+             * Se cae al id si la declaracion es anterior a esa migracion y no
+             * tiene numero propio.
+             */
+            $("#numDeclaracion").val(d.dec_NumeroDeclaracion || d.dec_Id);
+
+            // Y si el servidor reabrio una que ya existia, se dice. Un formulario
+            // que aparece con cifras que uno no escribio, sin explicacion, se lee
+            // como que el sistema calcula mal — que es justo lo que paso.
+            if (Number(d._reabierta) === 1 && arr.mensaje) {
+                swal({ type: 'info', title: 'Se abrió su declaración en curso',
+                       text: arr.mensaje });
+            }
             $("#anioDeclaracion").val(d.dec_AnioDeclaracion);
             $("#periodoDeclaracion").val(d.dec_MesDeclaracion);
 
