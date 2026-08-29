@@ -150,6 +150,37 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
      * Acepta que le pasen ya un dec_Id -devuelve ese mismo-, porque hay
      * caminos internos que lo hacen y no deben romperse.
      */
+    /**
+     * Los numeros de renglon que existen de verdad como columna.
+     *
+     * Se leen del esquema en vez de escribirlos a mano: si mañana se anade un
+     * concepto nuevo, la lista se entera sola, y si alguien inventa un numero,
+     * no esta. Se cachea por peticion.
+     */
+    private static $renglones = null;
+
+    private static function _renglonesValidos($con)
+    {
+        if (self::$renglones !== null) { return self::$renglones; }
+
+        self::$renglones = [];
+        try {
+            $st = $con->consultar(
+                "SELECT name FROM sys.columns
+                  WHERE object_id = OBJECT_ID('dbo.ind_declaraciones_ica')
+                    AND name LIKE 'dec_ValorConcepto%'", []
+            );
+            while ($f = $con->obnerFila($st)) {
+                $n = substr($f['name'], strlen('dec_ValorConcepto'));
+                if (ctype_digit($n)) { self::$renglones[] = (int) $n; }
+            }
+        } catch (\Throwable $e) {
+            error_log('[declaraciones] no se pudieron leer los renglones: ' . $e->getMessage());
+        }
+
+        return self::$renglones;
+    }
+
     private static function _filaDeLaDeclaracion($con, $numeroOId)
     {
         $v = trim((string) $numeroOId);
@@ -786,6 +817,41 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
             return [];
         }
 
+        /*
+         * Si era el ULTIMO numero repartido, se devuelve al contador.
+         *
+         * El consecutivo se entrega al crear, asi que crear y descartar deja un
+         * hueco en la serie. Con un borrador eso no aporta nada -no llego a ser
+         * un documento, no se imprimio ni se pago- y ensucia la numeracion:
+         * probar tres veces dejaba la serie en 4.
+         *
+         * Solo se devuelve cuando el numero descartado es el ultimo entregado.
+         * Un hueco intermedio NO se reutiliza: si alguien creo una despues, su
+         * numero ya esta en circulacion y bajar el contador lo haria chocar.
+         *
+         * Los numeros de declaraciones PRESENTADAS no pasan por aqui: mas
+         * arriba se rechaza borrarlas.
+         */
+        $numero = $d['dec_NumeroDeclaracion'] ?? null;
+        if ($numero !== null && strlen((string) $numero) >= 10) {
+            try {
+                $anio      = (int) substr((string) $numero, 0, 4);
+                $secuencia = (int) substr((string) $numero, 4);
+
+                $con->consultar(
+                    "UPDATE ind_consecutivos
+                        SET cse_Valor = cse_Valor - 1, cse_FechaActualizacion = GETDATE()
+                      WHERE cse_Tipo = 'DECLARACION_ICA'
+                        AND cse_Anio = ?
+                        AND cse_Valor = ?",
+                    [$anio, $secuencia]
+                );
+            } catch (\Throwable $e) {
+                // Un hueco en la serie no es motivo para fallar el borrado.
+                error_log('[declaraciones] no se pudo devolver el consecutivo: ' . $e->getMessage());
+            }
+        }
+
         // Queda constancia: es un borrado real.
         error_log(sprintf('[declaraciones] usuario %s borro el borrador %s (N° %s)',
             $_SESSION['id_usuario'] ?? '?', $id, $d['dec_NumeroDeclaracion'] ?: $id));
@@ -1306,11 +1372,47 @@ private function _actualizarDeclaracionIca(){
     $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
     $idDeclaracion = $_POST['idDeclaracion'];
-    $campoSeleccionado = $_POST['campoSeleccionado'];
-
     $valorLimpio = $_POST['valorLimpio'];
-    
-    $NombreCampo = 'dec_ValorConcepto'.$campoSeleccionado;
+
+    /*
+     * EL NUMERO DE RENGLON SE VALIDA. AQUI HABIA UNA INYECCION SQL.
+     *
+     * El nombre de la columna se armaba concatenando lo que mandara el
+     * navegador -'dec_ValorConcepto' . $_POST['campoSeleccionado']- y se metia
+     * tal cual en el UPDATE. Un nombre de columna no se puede parametrizar, asi
+     * que lo que llegaba ahi era SQL.
+     *
+     * Comprobado en vivo el 2026-08-29: mandando
+     *
+     *     campoSeleccionado = 10 = 0, dec_Estado = 2, dec_ValorConcepto11
+     *
+     * la sentencia quedaba con "dec_Estado = 2" dentro y la declaracion pasaba
+     * a PRESENTADA sin firma, sin OTP y sin pasar por _presentarDeclaracion.
+     * Cualquiera con una sesion podia hacerlo sobre su propia declaracion; y
+     * por la misma via se podia escribir en cualquier columna de la tabla.
+     *
+     * La defensa no es escapar: es no dejar que el nombre venga de fuera. Se
+     * castea a entero y se comprueba contra las columnas que existen de verdad,
+     * de modo que lo que se concatena es SIEMPRE un numero que salio de una
+     * lista blanca.
+     */
+    $crudo = trim((string) ($_POST['campoSeleccionado'] ?? ''));
+    $n     = ctype_digit($crudo) ? (int) $crudo : 0;
+
+    // Se exige que sean SOLO digitos, no que empiecen por un digito: "1;DROP
+    // TABLE x" se castearia a 1 y pasaria. El casteo ya lo dejaba inofensivo
+    // -lo que se concatena es el entero-, pero aceptar basura y trabajar con
+    // ella oculta al que la manda. Se rechaza y queda en el log.
+    if ($n <= 0 || !in_array($n, self::_renglonesValidos($con), true)) {
+        $this->_ok = 0;
+        $this->_mensaje = 'Renglón no válido.';
+        error_log(sprintf('[declaraciones] renglon rechazado: %s (usuario %s)',
+            var_export($_POST['campoSeleccionado'] ?? null, true), $_SESSION['id_usuario'] ?? '?'));
+        return [];
+    }
+
+    $campoSeleccionado = $n;
+    $NombreCampo = 'dec_ValorConcepto' . $n;
 
     if(!$idDeclaracion){
         $this->_ok = 0;
