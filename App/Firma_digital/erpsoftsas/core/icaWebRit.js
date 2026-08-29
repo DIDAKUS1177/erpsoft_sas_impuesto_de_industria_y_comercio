@@ -689,7 +689,17 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
 
             const d = arr.datos;
 
-            console.log(d.dec_Id);
+            /*
+             * En blanco ANTES de rellenar.
+             *
+             * Este camino no escribia ninguno de los 29 campos de cifras, asi
+             * que abrir una declaracion, cerrarla y pulsar "Crear" dejaba en
+             * pantalla los ingresos, las retenciones y la sancion de la
+             * anterior — y "Guardar" los escribia en la nueva.
+             */
+            if (typeof limpiarFormularioDeclaracion === 'function') {
+                limpiarFormularioDeclaracion();
+            }
 
             establecimientos.cargarActividades(idEstablecimiento);
 

@@ -606,6 +606,46 @@ var FirmaOTP = (function () {
  * separado) porque ambas paginas tienen el mismo modal y los mismos ids
  * de campo.
  */
+/**
+ * Deja el formulario de la declaracion en blanco.
+ *
+ * EL MODAL NO SE LIMPIABA ENTRE UNA DECLARACION Y OTRA
+ *
+ * Es el mismo <div> reutilizado: se rellena al abrir y se oculta al cerrar,
+ * pero nadie lo vaciaba. Medido: el camino de CREAR no escribia NINGUNO de los
+ * 29 campos de cifras -solo numero, año, periodo, fecha, hora y opcion de uso-,
+ * asi que abrir una declaracion, cerrarla y pulsar "Crear" dejaba en pantalla
+ * los ingresos, las retenciones y la sancion de la anterior.
+ *
+ * Y no era solo visual: "Guardar" manda lo que hay en pantalla, asi que esas
+ * cifras se escribian en la declaracion nueva. Un contribuyente podia acabar
+ * con los ingresos de otro.
+ *
+ * El camino de EDITAR pinta 26 de los 29, asi que el arrastre era parcial pero
+ * existia igual -capacidad instalada, sobretasa de seguridad y valor del
+ * impuesto no los pintaba nadie-.
+ *
+ * Se llama ANTES de rellenar, en los dos caminos. Poner los valores con .val()
+ * no dispara ningun evento, asi que limpiar no guarda nada.
+ */
+function limpiarFormularioDeclaracion() {
+    $('[data-campo]').val('0');
+
+    $('#tbodyActividades').empty();
+    $('#totalBaseGravable, #totalImpuesto').val('');
+
+    $('#numDeclaracion, #anioDeclaracion, #periodoDeclaracion').val('');
+    $('#fechaDeclaracion, #horaDeclaracion').val('');
+
+    // La sancion vuelve a "Ninguna", que es como nace el formulario.
+    $('#chkSinSancion').prop('checked', true);
+    $('#txtOtraSancion').val('');
+    $('#inputOtraSancion').hide();
+
+    // Los botones que dependen de tener una declaracion abierta.
+    $('#btnDescargarPDF').prop('disabled', true);
+}
+
 var EditarDeclaracion = (function () {
 
     function abrir(decId) {
@@ -651,6 +691,10 @@ var EditarDeclaracion = (function () {
                 // siempre hicieron bien este parseFloat + formatearCOP.
                 // BD -> input: la conversion canonica vive en core/numeros.js.
                 var aCOP = function (v) { return NumerosCOP.deBaseDeDatosAInput(v); };
+
+                // En blanco antes de rellenar: si no, lo que esta declaracion no
+                // traiga se queda con el valor de la que se vio antes.
+                limpiarFormularioDeclaracion();
 
                 $('[data-campo="ingresos_total_pais"]').val(aCOP(d.dec_TotalIngresos));
                 $('[data-campo="menos_fuera_municipio"]').val(aCOP(d.dec_IngresosFueraMunicipio));
