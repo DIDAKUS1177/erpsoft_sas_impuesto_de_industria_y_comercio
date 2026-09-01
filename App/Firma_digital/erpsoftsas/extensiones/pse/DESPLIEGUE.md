@@ -78,8 +78,15 @@ Registrar ante PlacetoPay la URL pública del webhook para que la apunten en
 su sistema:
 
 ```
-https://paipa.erpsoftsas.com/erpsoftsas/extensiones/pse/webhook.php
+https://industria-comercio-paipa.erpsoftsas.com/erpsoftsas/extensiones/pse/webhook.php
 ```
+
+> **Ojo con el dominio.** Aquí decía `paipa.erpsoftsas.com`, que es el de
+> **predial** — otra aplicación, otro stack. Esa dirección devuelve 404
+> (comprobado el 2026-08-27), así que si se le hubiera dado al banco, las
+> notificaciones de pago no habrían llegado a ninguna parte, y el fallo sería
+> difícil de diagnosticar porque todo lo demás funcionaría. La correcta es la de
+> arriba, donde el archivo sí existe.
 
 Esto normalmente lo pide el mismo banco/PlacetoPay como parte del proceso de
 homologación — coordinarlo directamente con su contacto de soporte técnico.
