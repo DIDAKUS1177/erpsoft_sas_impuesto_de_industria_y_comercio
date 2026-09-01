@@ -683,7 +683,10 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
             $('#wrapper').removeClass('body-load');
 
             if(arr.ok != 1){
-                swal("Error","No se pudo crear la declaración","error");
+                // Motivo real del servidor, igual en las tres pantallas, y con
+                // salida cuando la hay -ver avisarNoSePudoCrear en
+                // core/declaraciones.ui.js-.
+                avisarNoSePudoCrear(arr);
                 return;
             }
 
@@ -720,10 +723,6 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
             // Y si el servidor reabrio una que ya existia, se dice. Un formulario
             // que aparece con cifras que uno no escribio, sin explicacion, se lee
             // como que el sistema calcula mal — que es justo lo que paso.
-            if (Number(d._reabierta) === 1 && arr.mensaje) {
-                swal({ type: 'info', title: 'Se abrió su declaración en curso',
-                       text: arr.mensaje });
-            }
             $("#anioDeclaracion").val(d.dec_AnioDeclaracion);
             $("#periodoDeclaracion").val(d.dec_MesDeclaracion);
 
@@ -1793,6 +1792,7 @@ actualizarDeclaracionIca(valor, numeroCampo){
                     'ind_Telefono', 'ind_Email', 'ind_Matricula',
                     'ind_Fecha_matricula', 'ind_Fecha_inicio', 'ind_Ind_camara_comercio',
                     'ind_Cedula_representante', 'ind_Nombre_representante', 'ind_Email_representante',
+                    'ind_Telefono_representante',
                     'ind_Cedula_contador', 'ind_Nombre_contador', 'ind_Tarjeta_profesional',
                     'ind_Cedula_revisor', 'ind_Nombre_revisor', 'ind_Tarjeta_profesional_revisor',
                     'ind_EmailContador', 'ind_EmailRevisor',

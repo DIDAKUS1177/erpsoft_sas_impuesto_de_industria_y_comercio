@@ -108,6 +108,7 @@ class RitFirma
             'ind_Telefono', 'ind_Email',
             'ind_Matricula', 'ind_Fecha_matricula', 'ind_Fecha_inicio', 'ind_Ind_camara_comercio',
             'ind_Cedula_representante', 'ind_Nombre_representante', 'ind_Email_representante',
+            'ind_Telefono_representante',
             'ind_CedulaContador', 'ind_NombreContador', 'ind_TarjetaProfContador', 'ind_EmailContador',
             'ind_CedulaRevisor', 'ind_NombreRevisor', 'ind_TarjetaProfRevisor', 'ind_EmailRevisor',
             'ind_Rut', 'ind_Rut_segundo', 'ind_Rut_tercero',

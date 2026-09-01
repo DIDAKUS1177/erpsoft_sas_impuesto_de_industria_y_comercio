@@ -579,6 +579,7 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             'ind_Matricula', 'ind_Fecha_matricula', 'ind_Fecha_inicio',
             'ind_Ind_camara_comercio',
             'ind_Cedula_representante', 'ind_Nombre_representante', 'ind_Email_representante',
+            'ind_Telefono_representante',
             'ind_Cedula_contador', 'ind_Nombre_contador', 'ind_Tarjeta_profesional',
             'ind_Cedula_revisor', 'ind_Nombre_revisor', 'ind_Tarjeta_profesional_revisor',
             // Codigos de actividad economica del RUT. Subieron del

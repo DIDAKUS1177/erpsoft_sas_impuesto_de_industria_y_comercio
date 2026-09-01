@@ -70,10 +70,27 @@ function _fecha(...$candidatas)
 {
     foreach ($candidatas as $f) {
         if (empty($f)) { continue; }
-        if ($f instanceof \DateTimeInterface) { return $f->format('d-m-Y'); }
 
-        $t = strtotime((string) $f);
-        if ($t !== false) { return date('d-m-Y', $t); }
+        $texto = ($f instanceof \DateTimeInterface)
+            ? $f->format('d-m-Y')
+            : (($t = strtotime((string) $f)) !== false ? date('d-m-Y', $t) : null);
+
+        if ($texto === null) { continue; }
+
+        /*
+         * 01-01-1900 NO ES UNA FECHA, ES UN HUECO.
+         *
+         * SQL Server guarda ese valor cuando le llega una cadena vacia en una
+         * columna de fecha, y en esta base hay establecimientos con
+         * est_Fecha_cierre = 1900-01-01 sin haber cesado nada. El guard que
+         * decide si se pinta el bloque de cese SI lo descartaba, pero esta
+         * funcion no, asi que la casilla 27 salia con «01-01-1900»: el
+         * certificado afirmaba que el negocio cerro en 1900.
+         * Medido en el contribuyente 30 el 2026-09-01.
+         */
+        if ($texto === '01-01-1900') { continue; }
+
+        return $texto;
     }
     return '';
 }
@@ -147,24 +164,41 @@ if ($idEstablecimiento && !$idContribuyente) {
     }
 }
 
-// El chequeo de pertenencia se hace sobre el establecimiento YA resuelto: si
-// se entro por ?contribuyente=, ese establecimiento ya se filtro por
-// est_IdContribuyente = ese contribuyente, asi que comprobar su dueño cubre
-// los dos caminos de entrada con una sola llamada -y de paso resuelve el caso
-// de parametros contradictorios (?codigo=1&contribuyente=999): si el
-// establecimiento 1 no es de la sesion actual, se rechaza igual.
-$permitido = $idEstablecimiento
-    // Con establecimiento se comprueba su dueño, que cubre los dos caminos de
-    // entrada de una vez: si se entro por ?contribuyente=, ese establecimiento
-    // ya salio filtrado por el; y si los parametros se contradicen
-    // (?codigo=1&contribuyente=999), el establecimiento 1 sigue sin ser de la
-    // sesion y se rechaza igual.
-    ? \erpsoftsas\ControladorAnexos::puedeOperarSobreEstablecimiento($idEstablecimiento, $con)
-    // Sin establecimiento hay que comprobar el contribuyente directamente, o
-    // cualquiera podria pedir el RIT de otro cambiando el numero en la
-    // direccion. Se cruza por numero de documento, que es como este sistema
-    // ata el usuario al contribuyente.
-    : _ritEsDeLaSesion($idContribuyente, $con);
+/*
+ * SE COMPRUEBA EL CONTRIBUYENTE QUE SE VA A IMPRIMIR. SIEMPRE.
+ *
+ * Aqui habia un bypass. La comprobacion se hacia SOLO sobre el establecimiento
+ * cuando venia ?codigo=, dando por hecho que «si se entro por ?contribuyente=,
+ * ese establecimiento ya salio filtrado por el». Eso es cierto cuando llega UN
+ * parametro, y falso cuando llegan LOS DOS: con
+ *
+ *     ?codigo=<establecimiento propio>&contribuyente=<ajeno>
+ *
+ * el bloque de arriba no resuelve el contribuyente -solo lo hace si viene
+ * vacio-, asi que se autorizaba mirando un establecimiento propio y se
+ * imprimia el RIT de otro. Reproducido el 2026-09-01: ?contribuyente=36 daba
+ * 403, y ?codigo=43&contribuyente=36 devolvia 200 con los datos del 36.
+ *
+ * La regla correcta no depende de por donde se entro: lo que hay que autorizar
+ * es el DOCUMENTO QUE SE VA A EMITIR, y ese es siempre el del contribuyente
+ * resuelto. Si ademas hay establecimiento, tiene que ser suyo y de la sesion.
+ */
+$permitido = _ritEsDeLaSesion($idContribuyente, $con);
+
+if ($permitido && $idEstablecimiento) {
+    // El establecimiento tambien tiene que ser de la sesion...
+    $permitido = \erpsoftsas\ControladorAnexos::puedeOperarSobreEstablecimiento($idEstablecimiento, $con);
+
+    // ...y ademas del contribuyente que se esta imprimiendo, o los dos
+    // parametros se estarian contradiciendo y el papel mezclaria dos registros.
+    if ($permitido) {
+        $coherente = $con->obnerFila($con->consultar(
+            "SELECT est_Id FROM ind_establecimientos WHERE est_Id = ? AND est_IdContribuyente = ?",
+            [(int) $idEstablecimiento, (int) $idContribuyente]
+        ));
+        $permitido = (bool) $coherente;
+    }
+}
 
 if (!$permitido) {
     http_response_code(403);
@@ -298,7 +332,17 @@ $stmtAct = $con->consultar(
        LEFT JOIN ind_actividadescomercio ca ON ca.acc_Id = a.atc_IdCodigoActividad
       WHERE a.atc_IdContribuyente = ?
       ORDER BY ca.acc_Codigo",
-    [$row['est_IdContribuyente']]
+    /*
+     * ind_Id, NO est_IdContribuyente.
+     *
+     * Esta consulta ancla en ind_contribuyentes y el establecimiento entra por
+     * LEFT JOIN, asi que est_IdContribuyente es NULL en cuanto el contribuyente
+     * no tiene local. Con NULL no casa ninguna fila y la casilla 18 salia
+     * «No registra actividades economicas» aunque las tuviera -es decir, en el
+     * caso que el RIT a nivel de contribuyente vino justamente a habilitar-.
+     * Mismo error que tenia unas lineas mas abajo la busqueda de la firma.
+     */
+    [$row['ind_Id']]
 );
 while ($a = $con->obnerFila($stmtAct)) {
     if (!empty($a['acc_Codigo'])) {
@@ -324,7 +368,17 @@ while ($a = $con->obnerFila($stmtAct)) {
 // (en PHP 8 eso es error fatal, no aviso).
 if (!defined('MUNICIPIO_SELLO_FIRMA')) define('MUNICIPIO_SELLO_FIRMA', 'Sello_Firma.png');
 include_once dirname(__DIR__) . '/business/class.ritFirma.php';
-$estadoFirmaRit = \erpsoftsas\RitFirma::firmaVigente($con, (int) $row['est_IdContribuyente']);
+/*
+ * La firma se busca por el CONTRIBUYENTE, no por est_IdContribuyente.
+ *
+ * Esta consulta ancla en ind_contribuyentes y el establecimiento entra por
+ * LEFT JOIN, asi que est_IdContribuyente es NULL en cuanto el contribuyente no
+ * tiene establecimiento -caso normal desde que el RIT y la declaracion son del
+ * contribuyente-. Con NULL el (int) daba 0, firmaVigente no encontraba nada y
+ * el formulario salia SIN FIRMA aunque estuviera firmado. Medido en el
+ * contribuyente 36, que no tiene establecimientos.
+ */
+$estadoFirmaRit = \erpsoftsas\RitFirma::firmaVigente($con, (int) $row['ind_Id']);
 $firmaRit       = $estadoFirmaRit['firmado'] ? $estadoFirmaRit['firma'] : null;
 
 $fechaFirmaRit = '';
@@ -351,6 +405,80 @@ $nombreCompleto = trim(
 $esc = function ($v) {
     return htmlspecialchars((string) ($v ?? ''), ENT_QUOTES, 'UTF-8');
 };
+
+/* ---------------------------------------------------------------------------
+   El usuario que tramita el RIT, para la casilla 31.
+
+   Se prefiere el firmante sobre el de la sesion: si el formulario ya esta
+   firmado, quien lo tramito es quien firmo, aunque hoy lo imprima otro.
+   --------------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------------
+   Los documentos adjuntos, para que el formulario diga cuales se aportaron.
+
+   El cliente pregunto el 2026-09-01 «¿donde quedan los archivos que se suben?,
+   esta duda es porque subieron el RUT y ya no se ve reflejado». El archivo
+   estaba: guardado, registrado y visible en la pantalla del RIT. Lo que no
+   aparecia por ningun lado era EN EL PAPEL, y el papel es lo que se lleva a
+   ventanilla. Quien lo recibe no tenia como saber que se aporto.
+
+   Se listan solo los vigentes (anx_Activo = 1). Se imprime el tipo y el nombre
+   del archivo, no la ruta: la ruta no le sirve a nadie en un papel y ademas
+   revela como se guardan.
+   --------------------------------------------------------------------------- */
+$anexosTexto = '';
+
+$resAnexos = $con->consultar(
+    "SELECT anx_Tipo, anx_NombreOriginal
+       FROM ind_establecimiento_anexos
+      WHERE anx_IdContribuyente = ?
+        AND anx_Activo = 1
+      ORDER BY anx_Id",
+    [(int) $row['ind_Id']]
+);
+
+$etiquetasAnexo = [
+    'rut'      => 'RUT',
+    'camara'   => 'Camara de comercio',
+    'cedula'   => 'Documento de identificacion',
+    'usosuelo' => 'Uso de suelo',
+    'cese'     => 'Cese',
+    'otro'     => 'Otro',
+];
+
+$listaAnexos = [];
+while ($fa = $con->obnerFila($resAnexos)) {
+    $tipo = strtolower(trim((string) $fa['anx_Tipo']));
+    $listaAnexos[] = ($etiquetasAnexo[$tipo] ?? ($fa['anx_Tipo'] ?: 'Documento'))
+                   . ': ' . $fa['anx_NombreOriginal'];
+}
+
+$anexosTexto = $listaAnexos ? $esc(implode(' · ', $listaAnexos)) : 'Ninguno';
+
+$usuarioTramite = ['nombre' => '', 'documento' => ''];
+
+$idUsuarioTramite = $firmaRit['rif_IdUsuario'] ?? ($_SESSION['id_usuario'] ?? null);
+
+if ($idUsuarioTramite) {
+    $filaUsuario = $con->obnerFila($con->consultar(
+        "SELECT usu_Nombres, usu_Apellidos, usu_NumeroDocumento
+           FROM conf_usuarios WHERE usu_Id = ?",
+        [(int) $idUsuarioTramite]
+    ));
+
+    if ($filaUsuario) {
+        $usuarioTramite['nombre'] = trim(
+            (string) ($filaUsuario['usu_Nombres'] ?? '') . ' ' .
+            (string) ($filaUsuario['usu_Apellidos'] ?? '')
+        );
+        $usuarioTramite['documento'] = (string) ($filaUsuario['usu_NumeroDocumento'] ?? '');
+    }
+}
+
+// Respaldo: si el usuario no esta en conf_usuarios -no deberia pasar-, al
+// menos el nombre que quedo guardado con la firma, antes que una casilla vacia.
+if ($usuarioTramite['nombre'] === '' && !empty($firmaRit['rif_NombreUsuario'])) {
+    $usuarioTramite['nombre'] = (string) $firmaRit['rif_NombreUsuario'];
+}
 
 $d = [
 
@@ -399,13 +527,51 @@ $d = [
 'dv' => $esc($row['ind_DV']),
 
 // PERSONA
-'razon' => $esc($row['ind_Persona'] == 1 ? $nombreCompleto : $row['est_Nombre']),
+/*
+ * CASILLA 6 — EL FORMULARIO DE UNA EMPRESA SALIA SIN EL NOMBRE DE LA EMPRESA.
+ *
+ * Decia: si es persona natural, el nombre completo; si no, est_Nombre. Pero
+ * est_Nombre es el nombre del ESTABLECIMIENTO, no la razon social, y desde que
+ * la declaracion es del contribuyente hay contribuyentes SIN establecimiento.
+ * Medido en el contribuyente 36 (persona juridica, NIT 902016224): la casilla 6
+ * salia EN BLANCO teniendo ind_PrimerNombre = 'inversiones panama'.
+ *
+ * La razon social de una juridica se guarda en ind_PrimerNombre -es donde la
+ * escribe la pantalla del RIT-, asi que es de ahi de donde tiene que salir. El
+ * nombre del establecimiento queda como ultimo respaldo, no como fuente.
+ */
+'razon' => $esc(
+    $row['ind_Persona'] == 1
+        ? $nombreCompleto
+        : (trim((string) $row['ind_PrimerNombre']) !== ''
+            ? $row['ind_PrimerNombre']
+            : ($row['est_Nombre'] ?? ''))
+),
 
 'direccion' => $esc($row['ind_Direccion']),
 'municipio' => $esc($row['ciu_Nombre']),
 'departamento' => $esc($row['ciu_Departamento']),
 
 'telefono' => $esc($row['ind_Telefono']),
+
+/*
+ * El telefono del REPRESENTANTE es otro dato.
+ *
+ * La casilla 26, dentro del bloque de Representacion Legal, venia imprimiendo
+ * ind_Telefono -el del contribuyente-, asi que el papel presentaba el telefono
+ * de la empresa como si fuera el del representante. En una persona juridica son
+ * dos personas distintas. Lo reporto el cliente el 2026-08-31.
+ *
+ * Se cae al del contribuyente cuando el del representante esta vacio: es lo que
+ * el formulario hacia hasta ahora, asi que las declaraciones ya impresas no
+ * cambian de aspecto, y en cuanto alguien escriba el suyo empieza a salir el
+ * correcto.
+ */
+'telefono_representante' => $esc(
+    trim((string) ($row['ind_Telefono_representante'] ?? '')) !== ''
+        ? $row['ind_Telefono_representante']
+        : $row['ind_Telefono']
+),
 'correo' => $esc($row['ind_Email']),
 
 // MATRÍCULA
@@ -435,7 +601,28 @@ $d = [
 'actividades' => $actividades,
 
 'nombre_comercial' => $esc($row['est_Nombre']),
-'direccion_actividad' => $esc($row['est_Direccion']),
+/*
+ * CASILLA 21 — sale del establecimiento, que es lo correcto: el rotulo dice
+ * «lugar en donde se ejerce la actividad». El cliente lo noto el 2026-09-01
+ * («parece que saca la direccion del establecimiento») y asi debe ser.
+ *
+ * Lo que faltaba era el respaldo: un contribuyente sin establecimiento dejaba
+ * la casilla EN BLANCO -medido en el contribuyente 36-. Cuando no hay
+ * establecimiento se cae a la direccion de notificacion del contribuyente, que
+ * es el unico domicilio que el sistema conoce de el, antes que dejar vacia una
+ * casilla del formulario oficial.
+ */
+'telefono_actividad' => $esc(
+    trim((string) ($row['est_Telefono'] ?? '')) !== ''
+        ? $row['est_Telefono']
+        : ($row['ind_Telefono'] ?? '')
+),
+
+'direccion_actividad' => $esc(
+    trim((string) ($row['est_Direccion'] ?? '')) !== ''
+        ? $row['est_Direccion']
+        : ($row['ind_Direccion'] ?? '')
+),
 
 // REPRESENTANTE
 'representante' => $esc($row['ind_Nombre_representante'] ?: $row['est_Nombre_representante']),
@@ -447,9 +634,30 @@ $d = [
 'cc_representante' => $esc($row['ind_Cedula_representante'] ?: $row['est_Cedula_representante']),
 'email_representante' => $esc($row['ind_Email_representante'] ?: $row['est_Email_representante']),
 
-// REPRESENTANTE
-'nombre_funcionario' => $esc('JUAN GABRIEL SUAREZ AVENDAÑO'),
-'cc_funcionario' => $esc('10101010'),
+/*
+ * QUIEN TRAMITA EL RIT (casilla 31).
+ *
+ * Aqui habia un nombre y una cedula ESCRITOS EN DURO:
+ * 'JUAN GABRIEL SUAREZ AVENDAÑO' y '10101010'. Es decir que TODO formulario
+ * que saliera del sistema -de cualquier contribuyente, y en cualquier
+ * municipio que instalara esto- afirmaba haber sido tramitado por esa persona.
+ *
+ * El cliente pidio el 2026-09-01 que debajo de la casilla 31 salga «el usuario
+ * con el que se realiza el RIT, el que esta registrado». Se resuelve en dos
+ * pasos, para que el papel diga la verdad tanto si el RIT ya se firmo como si
+ * todavia no:
+ *
+ *   1. Si hay firma del RIT, el que la hizo -viene en ind_rit_firmas-. Es el
+ *      dato correcto: el formulario lo tramito quien lo firmo, no quien lo
+ *      esta imprimiendo ahora.
+ *   2. Si aun no se ha firmado, el usuario de la sesion que lo esta generando.
+ *
+ * De conf_usuarios se toman nombre COMPLETO y numero de documento, porque
+ * ind_rit_firmas solo guarda rif_NombreUsuario y ahi cabe unicamente el
+ * nombre de pila -medido: la firma del contribuyente 30 dice solo «Prueba»-.
+ */
+'nombre_funcionario' => $esc($usuarioTramite['nombre']),
+'cc_funcionario' => $esc($usuarioTramite['documento']),
 
 
 // CONTADOR
@@ -499,9 +707,27 @@ $d = [
 ];
 
 $tipoDoc = $row['ind_IdTipoDocumento'];
-$d['doc_cc']  = ($tipoDoc == 1); 
-$d['doc_nit'] = ($tipoDoc == 2);
-$d['doc_ti']  = ($tipoDoc == 3);
+/*
+ * TIPO DE DOCUMENTO — EL PDF USABA UN CATALOGO QUE NO ES EL DEL SISTEMA.
+ *
+ * Aqui se daba por hecho 1=C.C., 2=NIT, 3=T.I. El catalogo real, el que pinta
+ * la pantalla (core/icaWebRit.js), es:
+ *
+ *     1 Cedula de Ciudadania · 3 Cedula de Extranjeria · 4 Pasaporte · 5 NIT
+ *
+ * O sea que el 2 no existe y el NIT es el 5. Medido: los tres contribuyentes
+ * con NIT salian con las TRES casillas vacias -ninguna X-, y una cedula de
+ * extranjeria se habria marcado como «T.I».
+ *
+ * El formulario impreso solo tiene tres casillas y una de ellas es T.I, que el
+ * sistema ya no ofrece. Se aprovecha esa tercera para lo que si existe:
+ * la cedula de extranjeria y el pasaporte, que de otro modo no tendrian donde
+ * marcarse. El rotulo de esa casilla se cambia mas abajo en consecuencia.
+ */
+$d['doc_cc']   = ($tipoDoc == 1);
+$d['doc_nit']  = ($tipoDoc == 5);
+$d['doc_otro'] = ($tipoDoc == 3 || $tipoDoc == 4);
+$d['doc_ti']   = $d['doc_otro'];   // compatibilidad con el nombre viejo
 
 $tipoPersona = $row['ind_Persona'];
 $d['persona_natural']   = ($tipoPersona == 1);
@@ -795,11 +1021,11 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 <td width="3%">'.($d['doc_cc'] ? 'X' : '').'</td>
 <td width="5%">NIT</td>
 <td width="3%">'.($d['doc_nit'] ? 'X' : '').'</td>
-<td width="5%">T.I</td>
-<td width="3%">'.($d['doc_ti'] ? 'X' : '').'</td>
-<td width="5%">No.</td>
+<td width="7%">OTRO</td>
+<td width="3%">'.($d['doc_otro'] ? 'X' : '').'</td>
+<td width="4%">No.</td>
 <td width="11%">'.$d['nit'].'</td>
-<td width="5%">DV</td>
+<td width="4%">DV</td>
 <td width="5%">'.$d['dv'].'</td>
 
 <td width="13%">Persona Natural</td>
@@ -915,6 +1141,15 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 
 '.$actividadesHtml.'
 
+<!-- Los documentos aportados. Va en una sola fila y en una sola linea a
+     proposito: el formulario es de UNA hoja y no tiene
+     SetAutoPageBreak, asi que cualquier bloque que crezca sin control lo parte
+     en dos sin avisar. Comprobado tras el cambio: sigue en una pagina. -->
+<tr>
+<td width="30%" bgcolor="#cae6e7"><b>Documentos adjuntos:</b></td>
+<td width="70%">'.$anexosTexto.'</td>
+</tr>
+
 <!-- Punto 13 de la revision del 2026-08-21: "Quitar establecimientos del
      contribuyente".
 
@@ -933,14 +1168,27 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 <tr>
 <td width="15%" bgcolor="#cae6e7"><b>19. Fecha inicio actividades</b></td>
 <td width="35%">'.$d['fecha_inicio'].'</td>
+<!-- Casilla 20: el telefono del LUGAR, no el de la persona. Ese es el de la
+     casilla 11, y hasta el 2026-09-01 las dos imprimian lo mismo porque no
+     existia donde guardar el del local (migracion 028). Mientras el
+     establecimiento no lo tenga, cae al del contribuyente: es lo que hacia
+     antes, asi que nada empeora, pero deja de ser una copia por diseno. -->
 <td width="15%" bgcolor="#cae6e7"><b>20. Teléfono</b></td>
-<td width="35%">'.$d['telefono'].'</td>
+<td width="35%">'.$d['telefono_actividad'].'</td>
 </tr>
 
+<!-- Pedido del cliente, 2026-09-01: la casilla 22 decia solo "Correo
+     Electronico", que no dice para que sirve. Es la direccion a la que la
+     Alcaldia notifica.
+
+     Se cambio SOLO EL ROTULO. En una primera version se movio ademas la
+     casilla para que el correo fuera antes que la direccion; el cliente
+     aclaro que no queria eso ("era solo el nombre, no cambiarla de
+     ubicacion"), asi que el orden es el original: 21 y luego 22. -->
 <tr>
 <td width="25%" bgcolor="#cae6e7"><b>21. Dirección del lugar en donde se ejerce la actividad</b></td>
 <td width="25%">'.$d['direccion_actividad'].'</td>
-<td width="25%" bgcolor="#cae6e7"><b>22. Correo Electronico</b></td>
+<td width="25%" bgcolor="#cae6e7"><b>22. Correo electrónico de notificación</b></td>
 <td width="25%">'.$d['correo'].'</td>
 </tr>
 
@@ -951,7 +1199,10 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 <table>
 
 <tr class="section">
-<td width="100%">C. REPRESENTACIÓN LEGAL</td>
+<!-- Pedido del cliente, 2026-09-01: antes decia solo "REPRESENTACION
+     LEGAL". Una persona natural no tiene representante, es propietaria de
+     su negocio, asi que el rotulo dejaba fuera a media base. -->
+<td width="100%">C. REPRESENTANTE LEGAL O PROPIETARIO</td>
 </tr>
 
 <tr>
@@ -965,7 +1216,7 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 <td width="25%" bgcolor="#cae6e7"><b>25. Correo Electronico</b></td>
 <td width="25%">'.$d['email_representante'].'</td>
 <td width="25%" bgcolor="#cae6e7"><b>26. Telefono</b></td>
-<td width="25%">'.$d['telefono'].'</td>
+<td width="25%">'.$d['telefono_representante'].'</td>
 </tr>
 
 

@@ -370,9 +370,19 @@
 							<label>Nombre</label>
 							<input type="text" class="form-control" name="ind_Nombre_representante" id="rit_ind_Nombre_representante" maxlength="100">
 						</div>
-						<div class="col-md-4 form-group">
+						<div class="col-md-2 form-group">
 							<label>Correo</label>
 							<input type="email" class="form-control" name="ind_Email_representante" id="rit_ind_Email_representante" maxlength="150">
+						</div>
+						<!-- Telefono propio del representante (migracion 025). No existia, y
+						     la casilla 26 del formulario impreso venia sacando el del
+						     contribuyente: en una persona juridica son dos personas y sus
+						     telefonos no tienen por que coincidir. Lo reporto el cliente. -->
+						<div class="col-md-2 form-group">
+							<label>Celular</label>
+							<input type="text" class="form-control" name="ind_Telefono_representante"
+							       id="rit_ind_Telefono_representante" maxlength="30"
+							       placeholder="Ej. 3125666656">
 						</div>
 					</div>
 
@@ -438,6 +448,66 @@
      Ojo, esto NO es la tabla de actividades que liquida el impuesto: esa va
      mas abajo y sale del catalogo del municipio. Estas tres casillas son
      texto libre con lo que dice el RUT de la DIAN. -->
+					<!-- Documentos del RIT. Pedidos el 2026-08-25:
+					     RUT, camara de comercio o acta de constitucion, y documento del
+					     representante legal como obligatorios; uso de suelo opcional.
+
+					     Se apoya en el mecanismo de anexos que ya existia para los
+					     establecimientos (class.anexos.php): valida la extension Y el tipo
+					     real del contenido -un .pdf con un ejecutable dentro se rechaza-,
+					     el nombre del archivo en disco lo genera el servidor, la carpeta
+					     esta blindada con .htaccess y el borrado es logico. La migracion
+					     017 le añadio poder colgar del contribuyente.
+
+					     "Obligatorio" no bloquea el GUARDADO -el RIT se diligencia en
+					     varias sesiones y negarlo dejaria al contribuyente sin poder
+					     conservar lo escrito-, pero desde el 2026-08-26 SI bloquea la
+					     FIRMA, que es el acto que cierra el registro. Lo comprueba la
+					     funcion 9 de microservicios/firmas/api.php, asi que no depende
+					     de esta pantalla.
+
+					     ESTE BLOQUE SE PERDIO el 2026-08-26 y se restauro el 31: al
+					     mover las casillas de "Condicion frente al impuesto" a
+					     Responsabilidades, el corte se llevo por delante los Documentos
+					     que venian justo despues. El cliente lo reporto -"antes permitia
+					     adjuntar y ahora no"- y tenia razon. -->
+					<hr>
+					<h5 class="mb-3" style="font-weight:600;">Documentos</h5>
+
+					<div id="ritAvisoDocumentos" class="alert alert-warning mb-3" style="display:none; font-size:13px;"></div>
+
+					<div class="row">
+						<div class="col-md-4 form-group">
+							<label>Tipo de documento</label>
+							<select class="form-control" id="ritAnexoTipo">
+								<option value="rut">RUT (obligatorio)</option>
+								<option value="camara">Cámara de comercio o acta de constitución (obligatorio)</option>
+								<option value="cedula">Documento de identificación del representante legal o propietario (obligatorio)</option>
+								<option value="usosuelo">Uso de suelo (opcional)</option>
+							</select>
+						</div>
+						<div class="col-md-5 form-group">
+							<label>Archivo <span class="text-muted" style="font-weight:400;">(PDF, JPG o PNG, hasta 10 MB)</span></label>
+							<input type="file" class="form-control" id="ritAnexoArchivo" accept=".pdf,.jpg,.jpeg,.png">
+						</div>
+						<div class="col-md-3 form-group">
+							<label>&nbsp;</label>
+							<button type="button" class="btn btn-primary btn-block" id="btnSubirAnexoRIT"
+							        onclick="establecimientos.subirAnexoRIT()">
+								<i class="fa fa-upload"></i> Cargar
+							</button>
+						</div>
+					</div>
+
+					<div class="table-responsive">
+						<table class="table table-sm">
+							<thead>
+								<tr><th>Tipo</th><th>Archivo</th><th>Tamaño</th><th>Cargado</th><th>Acciones</th></tr>
+							</thead>
+							<tbody id="tbodyAnexosRIT"></tbody>
+						</table>
+					</div>
+
 					<!-- Régimen tributario y responsabilidades. Pedidos el 2026-08-25,
 					     los dos de selección MÚLTIPLE ("para seleccionar 1 o varias").
 					     Se guardan como códigos separados por coma en una sola columna
