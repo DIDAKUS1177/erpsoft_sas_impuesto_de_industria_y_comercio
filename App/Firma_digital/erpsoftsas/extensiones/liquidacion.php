@@ -61,6 +61,45 @@ function dibujarMarcaDeAgua($pdf, $texto, $anchoPagina, $altoPagina) {
    CONEXION Y DATOS REALES (mismo patron que declaracion.php)
    ============================================================ */
 $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+
+/* ===========================================================================
+   SESION Y PERMISO — mismo agujero que tenia declaracion.php.
+
+   Confirmado el 2026-09-01: sin ninguna cookie se descargaba la liquidacion
+   de cualquier contribuyente cambiando el dec_Id de la URL. Se cierra con el
+   mismo criterio que ritActualizado.php y anexo.php: Alcaldia (roles 1 y 2)
+   ve cualquiera, el resto solo lo suyo.
+
+   La funcion se define aqui porque los dos generadores son archivos
+   independientes que se piden por URL; compartirla obligaria a un include
+   nuevo y este archivo ya tiene su propia copia de casi todo.
+   =========================================================================== */
+if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+if (empty($_SESSION['id_usuario'])) {
+    http_response_code(401);
+    exit('Debe iniciar sesión para descargar este documento.');
+}
+
+function _liquidacionEsDeLaSesion($idDeclaracion, $con)
+{
+    if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+    if (empty($_SESSION['id_usuario'])) { return false; }
+
+    $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
+    if (in_array($rol, [1, 2], true)) { return true; }
+
+    $propia = $con->obnerFila($con->consultar(
+        "SELECT d.dec_Id
+           FROM ind_declaraciones_ica d
+           INNER JOIN ind_contribuyentes c ON c.ind_Id = d.dec_IdContribuyente
+           INNER JOIN conf_usuarios u ON u.usu_NumeroDocumento = c.ind_NumeroIdentificacion
+          WHERE u.usu_Id = ? AND d.dec_Id = ?",
+        [(int) $_SESSION['id_usuario'], (int) $idDeclaracion]
+    ));
+
+    return (bool) $propia;
+}
+
 $idDeclaracion = $_GET['dec_Id'] ?? 0;
 
 $sql = "
@@ -71,7 +110,8 @@ SELECT
     ciu.ciu_Nombre,
     ciu.ciu_Departamento
 FROM ind_declaraciones_ica d
-INNER JOIN ind_establecimientos e
+-- LEFT: la declaracion puede no tener establecimiento (ver declaracion.php)
+LEFT JOIN ind_establecimientos e
     ON e.est_Id = d.dec_IdEstablecimiento
 INNER JOIN ind_contribuyentes c
     ON c.ind_Id = d.dec_IdContribuyente
@@ -86,6 +126,12 @@ if (!$row) {
     http_response_code(404);
     die('Declaración no encontrada.');
 }
+
+if (!_liquidacionEsDeLaSesion($idDeclaracion, $con)) {
+    http_response_code(403);
+    exit('No tiene permiso para ver esta declaración.');
+}
+
 
 $sqlAct = "
 SELECT

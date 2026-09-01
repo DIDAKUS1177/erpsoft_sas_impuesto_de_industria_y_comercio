@@ -178,6 +178,52 @@ CONEXIÓN Y DATOS
 =========================== */
 
 $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+
+/* ===========================================================================
+   SESION Y PERMISO — este archivo no comprobaba NADA.
+
+   Confirmado en vivo el 2026-09-01: un curl SIN NINGUNA COOKIE descargaba la
+   declaracion completa de cualquier contribuyente -NIT, ingresos, impuesto,
+   retenciones- cambiando un entero secuencial en la URL. Los dec_Id de esta
+   base van del 5 al 361, asi que no habia ni que adivinar.
+
+   Son datos con reserva tributaria. Es el mismo agujero que ya se cerro en
+   extensiones/ritActualizado.php y en extensiones/anexo.php, y se cierra con
+   el mismo criterio: los roles de Alcaldia (1 y 2) ven cualquiera, y el resto
+   solo lo suyo, cruzando el usuario con el contribuyente por numero de
+   documento -no hay columna que los ate directamente-.
+
+   Va ANTES de la consulta principal para no gastar trabajo en una peticion
+   que se va a rechazar, y antes de cualquier salida para que el
+   http_response_code sirva de algo.
+   =========================================================================== */
+if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+if (empty($_SESSION['id_usuario'])) {
+    http_response_code(401);
+    exit('Debe iniciar sesión para descargar este documento.');
+}
+
+/** ¿Esta declaracion es de quien tiene la sesion abierta? */
+function _declaracionEsDeLaSesion($idDeclaracion, $con)
+{
+    if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+    if (empty($_SESSION['id_usuario'])) { return false; }
+
+    $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
+    if (in_array($rol, [1, 2], true)) { return true; }
+
+    $propia = $con->obnerFila($con->consultar(
+        "SELECT d.dec_Id
+           FROM ind_declaraciones_ica d
+           INNER JOIN ind_contribuyentes c ON c.ind_Id = d.dec_IdContribuyente
+           INNER JOIN conf_usuarios u ON u.usu_NumeroDocumento = c.ind_NumeroIdentificacion
+          WHERE u.usu_Id = ? AND d.dec_Id = ?",
+        [(int) $_SESSION['id_usuario'], (int) $idDeclaracion]
+    ));
+
+    return (bool) $propia;
+}
+
 $idDeclaracion = $_GET['dec_Id'] ?? 0;
 
 
@@ -185,6 +231,23 @@ $idDeclaracion = $_GET['dec_Id'] ?? 0;
 QUERY PRINCIPAL
 =========================== */
 
+/*
+ * LEFT JOIN CON ESTABLECIMIENTOS, NO INNER. AQUI ESTABA EL -no puedo
+ * descargarla- QUE REPORTO EL CLIENTE EL 2026-09-01.
+ *
+ * La declaracion es del CONTRIBUYENTE, no del establecimiento: el boton de
+ * crear llama a crearDeclaracion(null, ...), asi que toda declaracion nueva
+ * nace con dec_IdEstablecimiento en NULL. Con un INNER JOIN esa fila
+ * desaparece del resultado y el generador contesta 404 -Declaracion no
+ * encontrada-.
+ *
+ * Medido: fallaban las OCHO creadas por ese camino (220 a 226), incluidas las
+ * dos ya presentadas. No era un problema de la 223, era de todas.
+ *
+ * Del establecimiento solo se usan cuatro campos, y tres -los del revisor
+ * fiscal- ya caian a su equivalente ind_*. El cuarto, la razon social, se
+ * corrige mas abajo.
+ */
 $sql = "
 SELECT 
     d.*,
@@ -193,7 +256,8 @@ SELECT
     ciu.ciu_Nombre,
     ciu.ciu_Departamento
 FROM ind_declaraciones_ica d
-INNER JOIN ind_establecimientos e 
+-- LEFT y no INNER: ver la nota justo encima de esta consulta
+LEFT JOIN ind_establecimientos e 
     ON e.est_Id = d.dec_IdEstablecimiento
 INNER JOIN ind_contribuyentes c 
     ON c.ind_Id = d.dec_IdContribuyente
@@ -209,6 +273,12 @@ if (!$row) {
     http_response_code(404);
     die('Declaración no encontrada.');
 }
+
+if (!_declaracionEsDeLaSesion($idDeclaracion, $con)) {
+    http_response_code(403);
+    exit('No tiene permiso para ver esta declaración.');
+}
+
 
 // Marca de agua: PRESENTADA si ya tiene fecha de presentacion (dec_Estado
 // = 2), BORRADOR en cualquier otro estado anterior (borrador, firmada,
@@ -464,7 +534,20 @@ $d = [
     // blanco es "no aplica"; una que dice "SELECCIONE" es un error a la vista.
     'clasificacion' => htmlspecialchars((string) ($actividades[0]['gru_Nombre'] ?? '')),
 
-    'razon' => $row['ind_Persona'] == 1 ? $nombreCompleto : $row['est_Nombre'],
+    /*
+     * La razon social sale del CONTRIBUYENTE, no del establecimiento.
+     *
+     * Mismo defecto que tenia la casilla 6 del RIT: para una persona juridica
+     * se imprimia est_Nombre, que es el nombre del local. Sin establecimiento
+     * quedaba vacio, asi que el formulario oficial de una empresa salia sin el
+     * nombre de la empresa. La razon social se guarda en ind_PrimerNombre, que
+     * es donde la escribe la pantalla del RIT.
+     */
+    'razon' => $row['ind_Persona'] == 1
+        ? $nombreCompleto
+        : (trim((string) ($row['ind_PrimerNombre'] ?? '')) !== ''
+            ? $row['ind_PrimerNombre']
+            : ($row['est_Nombre'] ?? '')),
     'tipo_documento' => $tipoDocumento,
     'nit' => $row['ind_NumeroIdentificacion'],
     'dv' => $row['ind_DV'],
