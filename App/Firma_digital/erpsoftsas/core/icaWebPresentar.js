@@ -497,12 +497,10 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
             $('#wrapper').removeClass('body-load');
 
             if(arr.ok != 1){
-                // El backend ya distingue casos reales (p.ej. "esta
-                // declaración ya fue presentada, genere una corrección") de
-                // errores genericos: mostrar SU mensaje en vez de uno fijo
-                // evita que el usuario vea "no se pudo crear" sin saber por
-                // que, cuando el sistema si sabe la razon exacta.
-                swal("Error", arr.mensaje || "No se pudo crear la declaración", "error");
+                // Motivo real del servidor, igual en las tres pantallas, y con
+                // salida cuando la hay -ver avisarNoSePudoCrear en
+                // core/declaraciones.ui.js-.
+                avisarNoSePudoCrear(arr);
                 return;
             }
 
@@ -542,10 +540,6 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
             // Y si el servidor reabrio una que ya existia, se dice. Un formulario
             // que aparece con cifras que uno no escribio, sin explicacion, se lee
             // como que el sistema calcula mal — que es justo lo que paso.
-            if (Number(d._reabierta) === 1 && arr.mensaje) {
-                swal({ type: 'info', title: 'Se abrió su declaración en curso',
-                       text: arr.mensaje });
-            }
             $("#anioDeclaracion").val(d.dec_AnioDeclaracion);
             $("#periodoDeclaracion").val(d.dec_MesDeclaracion);
 
@@ -646,10 +640,17 @@ consultarDeclaraciones(idEstablecimiento, idContribuyente) {
             });
 
             if (!pendientes.length) {
+
+                // El texto nombraba "Consultar Declaraciones" en negrita pero no
+                // llevaba alli. Se deja como enlace: es la misma frase que ya
+                // habia, ahora pulsable.
+                //
+                // (Llego a distinguir el caso "ya presento la de este periodo".
+                // Eso desaparecio: crear ya no se bloquea por haber presentado.)
                 $("#tbodyDeclaraciones").html(
                     '<tr><td colspan="8" class="text-center text-muted py-4">' +
                         'No hay declaraciones en curso. Las ya presentadas y pagadas están en ' +
-                        '<b>Consultar Declaraciones</b>.' +
+                        '<a href="icaWebConsultar.php"><b>Consultar Declaraciones</b></a>.' +
                     '</td></tr>'
                 );
                 return;
@@ -1531,6 +1532,84 @@ calcularTotalesActividades(){
 
 
 
+/**
+ * Las actividades tal como estan en la tabla del formulario.
+ *
+ * Lo mismo que arman "Guardar" (funcion 6) y "Liquidar" (funcion 14). Se saca
+ * aparte para que los tres caminos lean el formulario de una sola manera: la
+ * ultima vez que hubo dos lecturas distintas del mismo dato, una guardaba y la
+ * otra no, y las cifras se borraban solas.
+ */
+actividadesDelFormulario(){
+
+    let idDeclaracion = $("#numDeclaracion").val();
+    let actividades = [];
+
+    $("#tbodyActividades tr").each(function(){
+        actividades.push({
+            dia_IdDeclaracion: idDeclaracion,
+            dia_IdActividad:   $(this).find(".actividad-id").val(),
+            dia_BaseGravable:  establecimientos.numero($(this).find(".base-gravable").val()),
+            dia_Tarifa:        parseFloat($(this).find(".tarifa").val()) || 0,
+            dia_ValorImpuesto: establecimientos.numero($(this).find(".impuesto").val())
+        });
+    });
+
+    return actividades;
+}
+
+/**
+ * Los renglones de ingresos tal como estan en el formulario.
+ *
+ * UN SELECTOR EQUIVOCADO AQUI BORRA UN RENGLON DEL FORMULARIO OFICIAL.
+ *
+ * Esta funcion nacio el 2026-09-01 copiando la de "Liquidar", y en la copia se
+ * escribio 'total_ingresos' donde el campo se llama 'ingresos_total_pais'.
+ * $('[data-campo="total_ingresos"]').val() devuelve undefined, numero() lo
+ * convierte en 0, y ese 0 se guardaba encima de dec_TotalIngresos: el renglon 8
+ * del formulario impreso se iba a cero y el 10, que resta, salia NEGATIVO en
+ * cuanto alguien escribia una retencion.
+ *
+ * Es el mismo error que en la pantalla de establecimientos: leer un campo que
+ * no existe y mandar el hueco como si fuera un dato. Asi que no basta con
+ * corregir el nombre; hay que hacer imposible que vuelva a pasar.
+ *
+ * campo() devuelve undefined cuando el elemento NO ESTA en la pantalla, y las
+ * claves undefined se retiran antes de enviar. Un campo que existe y esta vacio
+ * SI viaja como 0, que es lo correcto: el contribuyente puede poner cero.
+ */
+totalesDelFormulario(){
+
+    const campo = function (nombre) {
+        const $e = $('[data-campo="' + nombre + '"]');
+        if ($e.length === 0) {
+            // No se calla: un selector roto es un defecto, no un caso normal.
+            console.error('totalesDelFormulario: no existe data-campo="' + nombre + '"');
+            return undefined;
+        }
+        return establecimientos.numero($e.val());
+    };
+
+    const totales = {
+        dec_TotalIngresos:            campo('ingresos_total_pais'),
+        dec_IngresosFueraMunicipio:   campo('menos_fuera_municipio'),
+        dec_IngresosDevoluciones:     campo('devoluciones'),
+        dec_IngresosExportaciones:    campo('exportaciones'),
+        dec_IngresosVentas:           campo('venta_activos'),
+        dec_IngresosActividades:      campo('actividades_excluidas'),
+        dec_IngresosOtrasActividades: campo('otras_exentas'),
+        dec_BaseGravable:             campo('ingresos_gravables'),
+        dec_CapacidadInstalada:       campo('capacidad_instalada'),
+        dec_ValorImpuesto:            campo('valor_impuesto')
+    };
+
+    Object.keys(totales).forEach(function (k) {
+        if (totales[k] === undefined) { delete totales[k]; }
+    });
+
+    return totales;
+}
+
 actualizarDeclaracionIca(valor, numeroCampo){
     
     let anio  = $("#anioDeclaracion").val();
@@ -1552,7 +1631,22 @@ actualizarDeclaracionIca(valor, numeroCampo){
             idDeclaracion: idDeclaracion,
             anio: anio,
             mes: mes,
-            numero: numero
+            numero: numero,
+
+            /*
+             * Se mandan tambien las ACTIVIDADES que hay en pantalla.
+             *
+             * Sin esto, el servidor recalculaba con las actividades guardadas
+             * en la base. Si el contribuyente no habia pulsado "Guardar" no
+             * habia ninguna, y liquidar sobre cero devolvia ceros que la
+             * pantalla repintaba encima de lo que "Liquidar" acababa de
+             * mostrar: el "pongo un dato y se pasa a 0" del 2026-09-01.
+             *
+             * "Liquidar" ya calculaba con el formulario; ahora esta llamada
+             * usa la misma fuente, asi que las dos dicen lo mismo.
+             */
+            actividades: JSON.stringify(establecimientos.actividadesDelFormulario()),
+            totales: JSON.stringify(establecimientos.totalesDelFormulario())
         },
         success: function(arr){
 
@@ -1637,6 +1731,8 @@ establecimientos.UsuarioActivo();
 $(document).on('click', '#btnNuevaDeclaracion', function () {
     establecimientos.crearDeclaracion(null, idContribuyente);
 });
+
+
 
 $(document).ready(function(){
     establecimientos.cargarAniosActividades();
@@ -2019,6 +2115,21 @@ $(document).on("change", "#chkSinSancion", function () {
  */
 $(document).on("shown.bs.modal", "#modal-CrearDeclaracion", function () {
     sancionSegunTipo();
+});
+
+/*
+ * Al CERRAR el modal se vuelve a pedir el listado.
+ *
+ * Dentro del modal se guarda, se liquida, se firma y se presenta, y nada de
+ * eso llegaba a la tabla de atras: el contribuyente cerraba la ventana y veia
+ * la fila como estaba antes de abrirla -otra cara de "que la base de datos se
+ * refresque"-.
+ *
+ * Se engancha a hidden.bs.modal, que se dispara cierre como se cierre: con la
+ * X, con Escape, pulsando fuera o desde codigo.
+ */
+$(document).on("hidden.bs.modal", "#modal-CrearDeclaracion", function () {
+    establecimientos.pintarAccionesDeclaracionContribuyente();
 });
 
 // Mostrar input "Otra"

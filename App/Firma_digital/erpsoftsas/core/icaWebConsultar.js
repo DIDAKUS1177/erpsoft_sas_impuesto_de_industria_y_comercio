@@ -464,7 +464,10 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
             $('#wrapper').removeClass('body-load');
 
             if(arr.ok != 1){
-                swal("Error","No se pudo crear la declaración","error");
+                // Motivo real del servidor, igual en las tres pantallas, y con
+                // salida cuando la hay -ver avisarNoSePudoCrear en
+                // core/declaraciones.ui.js-.
+                avisarNoSePudoCrear(arr);
                 return;
             }
 
@@ -501,10 +504,6 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
             // Y si el servidor reabrio una que ya existia, se dice. Un formulario
             // que aparece con cifras que uno no escribio, sin explicacion, se lee
             // como que el sistema calcula mal — que es justo lo que paso.
-            if (Number(d._reabierta) === 1 && arr.mensaje) {
-                swal({ type: 'info', title: 'Se abrió su declaración en curso',
-                       text: arr.mensaje });
-            }
             $("#anioDeclaracion").val(d.dec_AnioDeclaracion);
             $("#periodoDeclaracion").val(d.dec_MesDeclaracion);
 
@@ -1937,6 +1936,21 @@ $(document).on("shown.bs.modal", "#modal-CrearDeclaracion", function () {
     sancionSegunTipo();
 });
 
+/*
+ * Al CERRAR el modal se vuelve a pedir el listado.
+ *
+ * Dentro del modal se guarda, se liquida, se firma y se presenta, y nada de
+ * eso llegaba a la tabla de atras: el contribuyente cerraba la ventana y veia
+ * la fila como estaba antes de abrirla -otra cara de "que la base de datos se
+ * refresque"-.
+ *
+ * Se engancha a hidden.bs.modal, que se dispara cierre como se cierre: con la
+ * X, con Escape, pulsando fuera o desde codigo.
+ */
+$(document).on("hidden.bs.modal", "#modal-CrearDeclaracion", function () {
+    establecimientos.consultarDeclaraciones(null, establecimientos._idContribuyenteActual);
+});
+
 // Mostrar input "Otra"
 $(document).on("change", "input[name='tipoSancion']", function(){
 
@@ -1984,6 +1998,13 @@ establecimientos.borrarDeclaracion = function(dec_Id) {
             success: function (arr) {
                 if (arr.ok == 1) {
                     swal({ type: 'success', title: 'Borrado', text: 'El borrador se eliminó correctamente.' });
+
+                    // La fila borrada se quedaba en la tabla hasta recargar la
+                    // pagina. Es parte de lo que el cliente describio como "que
+                    // la base de datos se refresque". Presentar Declaracion ya
+                    // lo hacia; esta pantalla no.
+                    establecimientos.consultarDeclaraciones(
+                        null, establecimientos._idContribuyenteActual);
                 } else {
                     swal({ type: 'error', title: 'No se pudo borrar', text: arr.mensaje || 'Intente nuevamente.' });
                 }

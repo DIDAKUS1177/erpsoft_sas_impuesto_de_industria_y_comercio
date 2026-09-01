@@ -259,10 +259,23 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
             return 'No se pudo establecer a qué contribuyente corresponde la sesión.';
         }
 
-        // El filtro por contribuyente se fija: se ignora el que venga.
-        if (array_key_exists('dec_IdContribuyente', $_POST)) {
-            $_POST['dec_IdContribuyente'] = $propio;
-        }
+        /*
+         * El filtro por contribuyente se fija SIEMPRE, venga o no venga.
+         *
+         * Antes solo se pisaba si la clave ya estaba en el POST. Omitirla era
+         * entonces la forma de saltarse la guarda: la peticion salia sin filtro
+         * de contribuyente y la funcion 3 devolvia la tabla ENTERA -medido el
+         * 2026-08-31 con el usuario externo de prueba: 200 filas de seis
+         * contribuyentes distintos, con sus renglones de ingresos e impuesto-.
+         *
+         * Una guarda que solo corrige lo que le mandan, y no lo que le callan,
+         * no es una guarda. Ahora el contribuyente de la sesion se impone como
+         * filtro exista o no la clave, asi que ninguna funcion de este
+         * controlador puede consultar a ciegas.
+         *
+         * Para los roles de Alcaldia (1 y 2) esto no corre: ya salieron arriba.
+         */
+        $_POST['dec_IdContribuyente'] = $propio;
 
         // Una declaracion concreta tiene que ser suya.
         if (!empty($_POST['dec_Id'])) {
@@ -290,11 +303,39 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
              * cuanto los dos valores dejaron de coincidir (migracion 012). Se
              * comprueba contra los dos, y la propiedad se sigue exigiendo igual.
              */
+            /*
+             * SE AUTORIZA LA MISMA FILA QUE SE VA A TOCAR, NO OTRA QUE ENCAJE.
+             *
+             * Antes esta comprobacion resolvia el valor por su cuenta -"que
+             * exista ALGUNA fila mia cuyo numero O cuyo id sea este"- mientras
+             * que la operacion lo resuelve con _filaDeLaDeclaracion(), que
+             * desempata prefiriendo la coincidencia por NUMERO. Dos criterios
+             * distintos para el mismo dato ambiguo.
+             *
+             * Si un valor fuera a la vez el id de una declaracion mia y el
+             * numero de la de otro, el permiso se concedia mirando la mia y la
+             * operacion se ejecutaba sobre la ajena. Afecta a las funciones 6,
+             * 7 y 14: la 7 ESCRIBE.
+             *
+             * Hoy no es explotable -medido: cero colisiones cruzadas, y los
+             * numeros nuevos llevan prefijo de año, asi que no pueden chocar
+             * con un id-. Pero las 99 filas heredadas tienen numero igual al
+             * id y comparten ese espacio, asi que la propiedad depende de un
+             * accidente de los datos y no de una regla.
+             *
+             * Se resuelve la fila canonica primero, con el mismo metodo que
+             * usara la operacion, y se autoriza ESE id.
+             */
+            $filaCanonica = self::_filaDeLaDeclaracion($con, $_POST['idDeclaracion']);
+
+            if ($filaCanonica === null) {
+                return 'No tiene permiso sobre esta declaración.';
+            }
+
             $fila = $con->obnerFila($con->consultar(
-                "SELECT TOP 1 dec_Id FROM ind_declaraciones_ica
-                  WHERE (dec_NumeroDeclaracion = ? OR dec_Id = ?)
-                    AND dec_IdContribuyente = ?",
-                [$_POST['idDeclaracion'], $_POST['idDeclaracion'], $propio]
+                "SELECT dec_Id FROM ind_declaraciones_ica
+                  WHERE dec_Id = ? AND dec_IdContribuyente = ?",
+                [$filaCanonica['id'], $propio]
             ));
             if (!$fila) { return 'No tiene permiso sobre esta declaración.'; }
         }
@@ -439,111 +480,53 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
             return [];
         }
 
+        /*
+         * El año y el periodo los pone el sistema.
+         *
+         * El 2026-08-31 se llego a poner un selector de año en pantalla, porque
+         * el ICA se presenta el año siguiente al gravable y con el año fijo al
+         * del reloj nadie podria declarar en enero el año que acaba de cerrar.
+         * El cliente pidio retirarlo: «nada de años». Se retiro entero.
+         *
+         * QUEDA ANOTADO PORQUE EL PROBLEMA SIGUE AHI: llegado el 1 de enero,
+         * este date('Y') ofrecera el año nuevo y no el que toca declarar. No es
+         * un olvido, es una decision del cliente que habra que revisar antes de
+         * esa fecha.
+         */
         $anio = (int) date('Y');
         $mes  = 12;
 
-        // ¿Ya existe una declaracion (borrador o firmada, no presentada) de
-        // este contribuyente para el periodo actual? De ser asi se reabre en
-        // vez de duplicar -el indice unico de la BD lo impediria de todos
-        // modos, pero preguntar antes evita depender de que falle el INSERT-.
         /*
-         * Si ya hay una en curso se reabre ESA, y se reabre siempre LA MISMA.
+         * CREAR CREA. SIEMPRE.
          *
-         * Faltaba el ORDER BY, y no es un detalle: sin el, SQL Server puede
-         * devolver cualquiera de las filas que cumplen. En esta base hay
-         * contribuyentes con 94 y 87 borradores del mismo periodo -restos de
-         * pruebas, anteriores al indice de la migracion 020-, asi que "cual se
-         * abre" era literalmente impredecible y podia cambiar entre dos clics.
+         * Aqui vivian dos frenos, y el cliente pidio el 2026-08-31 quitar los
+         * dos: «cuando cree una nueva salga 200 y 201 y asi sucesivamente, nada
+         * mas; nada de años y presentadas, nada de eso».
          *
-         * Se toma el mas reciente por dec_Id, que es lo unico que siempre crece.
-         * Es el que tiene mas probabilidad de ser en el que se estaba trabajando.
+         *   1. Si el contribuyente ya tenia un borrador del periodo, se reabria
+         *      ESE en vez de crear otro. De ahi venia el «se queda en la 199»:
+         *      no era que el numero no avanzara, es que no se estaba creando
+         *      ninguna declaracion.
+         *
+         *   2. Si ya habia una PRESENTADA del periodo, se rechazaba y se
+         *      mandaba a Corregir.
+         *
+         * SE ADVIRTIO Y SE DECIDIO. Se le expuso que sin el primer freno un
+         * contribuyente acumula borradores del mismo periodo -que es como
+         * empezo todo este hilo- y que sin el segundo pueden convivir dos
+         * declaraciones ORIGINALES del mismo periodo, cosa que el propio
+         * cliente habia confirmado antes como requisito legal. Lo confirmo
+         * igualmente. Queda como decision suya.
+         *
+         * El indice que lo impedia a nivel de base (UQ_declaracion_periodo_nuevas)
+         * se retira en la migracion 027; sin retirarlo, el INSERT de abajo
+         * chocaria contra el y esto no serviria de nada.
+         *
+         * Lo que NO se toca: un numero sigue siendo unico (UQ_declaracion_numero).
+         * El numero viaja dentro del codigo de barras de recaudo, asi que dos
+         * declaraciones con el mismo serian dos recibos indistinguibles para el
+         * banco. Eso no es politica, es condicion para cobrar.
          */
-        $existente = $con->obnerFila($con->consultar(
-            "SELECT TOP 1 * FROM ind_declaraciones_ica
-             WHERE dec_IdContribuyente = ?
-               AND dec_AnioDeclaracion = ?
-               AND dec_MesDeclaracion = ?
-               AND dec_DeclaracionCorrige IS NULL
-               AND (dec_Estado IS NULL OR dec_Estado <> 2)
-             ORDER BY dec_Id DESC",
-            [$idContribuyente, $anio, $mes]
-        ));
-
-        if ($existente) {
-            /*
-             * Tambien aqui se cruza el anticipo del año anterior.
-             *
-             * El cruce estaba solo despues del INSERT, asi que solo corria la
-             * PRIMERA vez. Si el contribuyente abrio el borrador de este año
-             * antes de que se presentara el del año pasado -una declaracion
-             * extemporanea, por ejemplo-, el renglon 29 se quedaba en cero
-             * para siempre y habia que teclearlo a mano.
-             *
-             * Es seguro repetirlo: el UPDATE lleva "AND ISNULL(...) = 0", asi
-             * que nunca pisa un valor ya diligenciado.
-             */
-            $this->_cruzarAnticipoDelAnioAnterior(
-                $con,
-                $existente['dec_Id'] ?? $existente['dec_NumeroDeclaracion'] ?? 0,
-                $idContribuyente,
-                $anio
-            );
-
-            /*
-             * Y se DICE que se reabrio, con numero y fecha.
-             *
-             * El cliente reporto el 2026-08-29: "¿por que cuando creo una nueva
-             * declaracion se coloca 183 en el numero?". Porque no era nueva: era
-             * un borrador suyo del 17 de abril, con 10.000.000 de ingresos y
-             * 500.000 de sancion ya dentro -la sancion que venia reportando como
-             * si el sistema se la inventara-.
-             *
-             * Reabrir es lo correcto: el boton "Crear" sale en la fila de cada
-             * establecimiento y son la misma persona, asi que crear otra seria
-             * duplicar. Lo que faltaba era decirlo. Un formulario que se abre
-             * con cifras que uno no escribio, y sin explicacion, se lee como
-             * que el sistema calcula mal.
-             */
-            $fecha = $existente['dec_FechaDeclaracion'] ?? null;
-            if ($fecha instanceof \DateTime) { $fecha = $fecha->format('d/m/Y'); }
-
-            $this->_ok = 1;
-            $this->_mensaje = 'Ya tenía una declaración en curso para este período: la N° '
-                . ($existente['dec_NumeroDeclaracion'] ?: $existente['dec_Id'])
-                . ($fecha ? ', creada el ' . $fecha : '')
-                . '. Se abre esa, con lo que hubiera guardado. No se creó una nueva '
-                . 'para no duplicar la declaración del período.';
-
-            $existente['_reabierta'] = 1;
-
-            return $existente;
-        }
-
-        // El indice unico de la BD (UQ_declaracion_contribuyente_periodo)
-        // es por (contribuyente, año, periodo) y NO distingue el estado:
-        // si ya hay una PRESENTADA para este periodo, el INSERT de abajo
-        // choca con ella igual. Antes esto no se comprobaba aparte, asi que
-        // el error de SQL (duplicate key) quedaba sin capturar, tronaba
-        // como fatal de PHP, y el usuario recibia una respuesta vacia (500)
-        // sin ningun mensaje -"aprieto el boton y no pasa nada"-.
-        $yaPresentada = $con->obnerFila($con->consultar(
-            "SELECT dec_Id, dec_NumeroDeclaracion FROM ind_declaraciones_ica
-             WHERE dec_IdContribuyente = ?
-               AND dec_AnioDeclaracion = ?
-               AND dec_MesDeclaracion = ?
-               AND dec_DeclaracionCorrige IS NULL
-               AND dec_Estado = 2",
-            [$idContribuyente, $anio, $mes]
-        ));
-
-        if ($yaPresentada) {
-            $this->_ok = 0;
-            $this->_mensaje = "La declaración de este período ya fue presentada (N° "
-                . ($yaPresentada['dec_NumeroDeclaracion'] ?: $yaPresentada['dec_Id'])
-                . "). Para modificarla, genere una declaración de corrección "
-                . "desde Consultar Declaraciones.";
-            return [];
-        }
 
         $_obj = new \erpsoftsas\DAO_DeclaracionesICA();
 
@@ -562,7 +545,31 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
         $_obj->set_dec_HoraDeclaracion(date('H:i:s'));
         $_obj->set_dec_OpcionUso(1);
 
-        $_obj->set_dec_Estado(1); // borrador
+        /*
+         * EL BORRADOR ES dec_Estado NULL, Y AQUI NO SE ESCRIBE NINGUN ESTADO.
+         *
+         * Habia un set_dec_Estado(1) comentado como "borrador". Era doblemente
+         * equivocado y no hacia nada:
+         *
+         *   1. DAO_DeclaracionesICA no mapea dec_Estado -no esta como propiedad
+         *      ni en $_mapa-, y su __call solo asigna lo que existe, asi que la
+         *      llamada se descartaba en silencio. Comprobado: toda declaracion
+         *      nueva nace con dec_Estado NULL.
+         *   2. El valor 1 tampoco es "borrador". El diccionario de la columna
+         *      (migracion 001) dice: 0 borrador, 1 firmada, 2 presentada. Si
+         *      algun dia alguien "arreglara" el DAO añadiendo la columna, esa
+         *      linea empezaria a marcar como FIRMADA cada declaracion recien
+         *      creada, sin firma ninguna detras.
+         *
+         * Se retira en vez de corregirla porque NULL es de facto el borrador en
+         * todo el sistema: claveEstado() en el frontend lo trata asi por
+         * descarte, _revertirABorrador() vuelve a dejar NULL, y ninguna consulta
+         * filtra por dec_Estado = 0. Escribir un 0 aqui no arreglaria nada y
+         * dejaria dos representaciones del mismo estado conviviendo.
+         *
+         * Lo que no podia quedarse es la apariencia de que se escribe un estado
+         * que no se escribe.
+         */
 
         /*
          * guardar() no siempre devuelve false cuando el INSERT falla: la capa
@@ -689,6 +696,37 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
     }
 
 
+    /**
+     * funcion 3 - Consulta declaraciones por los filtros que vengan.
+     *
+     * EL FILTRO ERA CODIGO MUERTO: DEVOLVIA LA TABLA ENTERA
+     *
+     * DAO_DeclaracionesICA no declara ni un solo metodo set_: los resuelve
+     * todos por __call. Y method_exists() devuelve FALSE para los metodos
+     * magicos -comprobado en este mismo entorno-, asi que la condicion de
+     * abajo no se cumplia NUNCA, no se asignaba NINGUN filtro, y consultar()
+     * salia con "where 1=1".
+     *
+     * Medido el 2026-08-31 con la sesion del contribuyente de prueba: la
+     * peticion devolvia 200 de las 201 declaraciones de la base, de seis
+     * contribuyentes distintos, con todos sus renglones. Sobre datos con
+     * reserva tributaria eso es una fuga, no una molestia. Pasar el filtro
+     * correcto tampoco servia de nada: se descartaba igual.
+     *
+     * Se cambia a property_exists sobre el atributo, que es exactamente lo que
+     * comprueba el propio __call antes de asignar. Asi el filtro que se pide
+     * es el filtro que se aplica.
+     *
+     * Y SE EXIGE FILTRO DE CONTRIBUYENTE
+     *
+     * _verificarAcceso() ya impone el contribuyente de la sesion a todo lo que
+     * no sea rol de Alcaldia, asi que aqui siempre llega. La comprobacion se
+     * deja igual porque esta funcion no tiene ningun llamador en la interfaz
+     * -se revisaron las tres pantallas: sus "funcion: 3" van a otros
+     * controladores- y un endpoint sin dueño es justo el que nadie vuelve a
+     * mirar. Si algun dia alguien lo llama sin filtro, contesta que no en vez
+     * de volcar la tabla.
+     */
     private function _consultarDeclaraciones()
     {
 
@@ -698,10 +736,17 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
 
             $metodo = 'set_' . $campo;
 
-            if(method_exists($_obj,$metodo)){
+            // property_exists, no method_exists: los setters son magicos.
+            if (property_exists($_obj, '_' . $campo)) {
                 $_obj->$metodo($valor);
             }
 
+        }
+
+        if (empty($_POST['dec_IdContribuyente'])) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Consulta sin contribuyente: no se devuelven declaraciones.';
+            return [];
         }
 
         $_obj->habilita1ResultadoEnArray();
@@ -831,6 +876,17 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
          *
          * Los numeros de declaraciones PRESENTADAS no pasan por aqui: mas
          * arriba se rechaza borrarlas.
+         */
+        /*
+         * El numero vuelve a llevar el año (migracion 029), asi que se parte en
+         * año + secuencia y se busca la fila de ESE año.
+         *
+         * Ojo con el historial: esto ya estuvo escrito asi, se cambio el
+         * 2026-08-31 a la serie corrida de la migracion 027, y vuelve ahora
+         * porque el cliente pidio de nuevo el formato por año. La condicion de
+         * los diez caracteres es la que distingue un numero nuevo
+         * (2026000001) de los historicos de dos y tres digitos, que no pasan
+         * por ningun contador y no hay nada que devolverles.
          */
         $numero = $d['dec_NumeroDeclaracion'] ?? null;
         if ($numero !== null && strlen((string) $numero) >= 10) {
@@ -1101,87 +1157,17 @@ private function _insertarActividadesDeclaracionIca(){
         }
         $idFila = $fila['id'];
 
-    // ==========================
-        // 1. ACTUALIZAR DECLARACIÓN
-        // ==========================
-        $sqlUpdate = "
-        UPDATE ind_declaraciones_ica SET
-            dec_TotalIngresos = ?,
-            dec_IngresosFueraMunicipio = ?,
-            dec_IngresosDevoluciones = ?,
-            dec_IngresosExportaciones = ?,
-            dec_IngresosVentas = ?,
-            dec_IngresosActividades = ?,
-            dec_IngresosOtrasActividades = ?,
-            dec_BaseGravable = ?,
-
-            -- El JS de Liquidar no manda estos dos campos. Antes se leian
-            -- igual y eso hacia DOS cosas malas: (1) en PHP 8 lanzaba un
-            -- Warning de Undefined array key que en produccion
-            -- (display_errors on) se imprimia ANTES del JSON y rompia el
-            -- parseo, dejando el boton Liquidar sin hacer nada; (2) grababa
-            -- NULL encima del valor que ya tuviera la declaracion.
-            -- COALESCE conserva el valor actual si no viene.
-            dec_CapacidadInstalada = COALESCE(?, dec_CapacidadInstalada),
-            dec_ValorImpuesto      = COALESCE(?, dec_ValorImpuesto)
-        WHERE dec_Id = ?
-        ";
-
-        $con->consultar($sqlUpdate, [
-            $totales['dec_TotalIngresos']            ?? 0,
-            $totales['dec_IngresosFueraMunicipio']   ?? 0,
-            $totales['dec_IngresosDevoluciones']     ?? 0,
-            $totales['dec_IngresosExportaciones']    ?? 0,
-            $totales['dec_IngresosVentas']           ?? 0,
-            $totales['dec_IngresosActividades']      ?? 0,
-            $totales['dec_IngresosOtrasActividades'] ?? 0,
-            $totales['dec_BaseGravable']             ?? 0,
-            $totales['dec_CapacidadInstalada']       ?? null,
-            $totales['dec_ValorImpuesto']            ?? null,
-            $idFila
-        ]);
-
-
         /*
-         * Las actividades se enganchan por dec_Id, no por el numero.
-         * Ver _idDeLaDeclaracion(): el numero dejo de coincidir con el id en la
-         * migracion 012, y guardarlas por el numero las dejaba invisibles para
-         * el procedimiento de liquidacion y para los PDF.
+         * Guardado de totales y actividades: lo hace _guardarActividadesYTotales.
+         *
+         * Estaba escrito aqui dentro, y desde el 2026-09-01 lo necesita tambien
+         * la funcion 7 -escribir un renglon manual tiene que liquidar con las
+         * actividades del formulario, no con las de la base-. Copiarlo habria
+         * repetido el error que ya costo dos veces en este proyecto: se arregla
+         * una copia y la otra sigue rota.
          */
-        // ELIMINAR ACTIVIDADES EXISTENTES
-        $sqlDelete = "DELETE FROM ind_declaraciones_ica_actividades 
-                      WHERE dia_IdDeclaracion = ?";
-        $con->consultar($sqlDelete, [$idFila]);
+        $this->_guardarActividadesYTotales($con, $idFila, $actividades, is_array($totales) ? $totales : []);
 
-        // INSERTAR NUEVAS
-        foreach($actividades as $a){
-
-            $sqlInsert = "
-                INSERT INTO ind_declaraciones_ica_actividades
-                (
-                    dia_IdDeclaracion,
-                    dia_IdActividad,
-                    dia_BaseGravable,
-                    dia_Tarifa,
-                    dia_ValorImpuesto,
-                    dia_Activo,
-                    dia_FechaCreador
-                )
-                VALUES (?,?,?,?,?,1,GETDATE())
-            ";
-
-            // Se ignora el dia_IdDeclaracion que manda el navegador: lleva el
-            // numero, y aqui tiene que ir el id de la fila.
-            $con->consultar($sqlInsert, [
-                $idFila,
-                $a['dia_IdActividad'],
-                $a['dia_BaseGravable'],
-                $a['dia_Tarifa'],
-                $a['dia_ValorImpuesto']
-            ]);
-        }
-
-        
         // El procedimiento filtra por numero, año y mes: salen de la FILA, no
         // del POST, que trae el id disfrazado de numero.
         $this->_ejecutarSpLiquidacion($fila['anio'], $fila['mes'], $fila['numero'], 0);
@@ -1270,52 +1256,13 @@ private function _liquidarSinGuardar()
             throw new \Exception('No se encontró la declaración ' . $idDeclaracion);
         }
 
-        $con->consultar(
-            "UPDATE ind_declaraciones_ica SET
-                dec_TotalIngresos            = ?,
-                dec_IngresosFueraMunicipio   = ?,
-                dec_IngresosDevoluciones     = ?,
-                dec_IngresosExportaciones    = ?,
-                dec_IngresosVentas           = ?,
-                dec_IngresosActividades      = ?,
-                dec_IngresosOtrasActividades = ?,
-                dec_BaseGravable             = ?,
-                dec_CapacidadInstalada       = COALESCE(?, dec_CapacidadInstalada),
-                dec_ValorImpuesto            = COALESCE(?, dec_ValorImpuesto)
-              WHERE dec_Id = ?",
-            [
-                $totales['dec_TotalIngresos']            ?? 0,
-                $totales['dec_IngresosFueraMunicipio']   ?? 0,
-                $totales['dec_IngresosDevoluciones']     ?? 0,
-                $totales['dec_IngresosExportaciones']    ?? 0,
-                $totales['dec_IngresosVentas']           ?? 0,
-                $totales['dec_IngresosActividades']      ?? 0,
-                $totales['dec_IngresosOtrasActividades'] ?? 0,
-                $totales['dec_BaseGravable']             ?? 0,
-                $totales['dec_CapacidadInstalada']       ?? null,
-                $totales['dec_ValorImpuesto']            ?? null,
-                $idFila,
-            ]
-        );
-
-        $con->consultar("DELETE FROM ind_declaraciones_ica_actividades
-                          WHERE dia_IdDeclaracion = ?", [$idFila]);
-
-        foreach ($actividades as $a) {
-            $con->consultar(
-                "INSERT INTO ind_declaraciones_ica_actividades
-                     (dia_IdDeclaracion, dia_IdActividad, dia_BaseGravable,
-                      dia_Tarifa, dia_ValorImpuesto, dia_Activo, dia_FechaCreador)
-                 VALUES (?,?,?,?,?,1,GETDATE())",
-                [
-                    $idFila,
-                    $a['dia_IdActividad'],
-                    $a['dia_BaseGravable'],
-                    $a['dia_Tarifa'],
-                    $a['dia_ValorImpuesto'],
-                ]
-            );
-        }
+        /*
+         * Mismo guardado que "Guardar", con la diferencia de que esto vive
+         * dentro de una transaccion que SIEMPRE se deshace: se escribe para que
+         * el procedimiento tenga sobre que liquidar, se lee el resultado, y el
+         * rollback lo borra. De ahi que Liquidar no deje rastro.
+         */
+        $this->_guardarActividadesYTotales($con, $idFila, $actividades, is_array($totales) ? $totales : []);
 
         $this->_ejecutarSpLiquidacion($fila['anio'], $fila['mes'], $fila['numero'], 0);
 
@@ -1368,6 +1315,94 @@ private function _ejecutarSpLiquidacion($anio,$mes,$numero, $campoSeleccionado){
         return [];
     }
 
+}
+
+
+/**
+ * Guarda los totales de ingresos y las actividades de una declaracion.
+ *
+ * Vive aparte porque lo usan DOS caminos: "Guardar" (funcion 6) y, desde el
+ * 2026-09-01, tambien la escritura de un renglon manual (funcion 7). Antes solo
+ * lo hacia la 6, y esa asimetria era el defecto: la 7 liquidaba con lo que
+ * hubiera en la base aunque la pantalla tuviera otra cosa.
+ *
+ * Recibe el dec_Id YA RESUELTO. No acepta el "idDeclaracion" del navegador, que
+ * lleva el numero: engancharlas por el numero las deja invisibles para el
+ * procedimiento de liquidacion, que suma por dia_IdDeclaracion = dec_Id.
+ *
+ * @param object $con     conexion
+ * @param int    $idFila  dec_Id resuelto
+ * @param array  $actividades  filas de la tabla de actividades del formulario
+ * @param array  $totales      renglones de ingresos; si viene vacio no se tocan
+ */
+private function _guardarActividadesYTotales($con, $idFila, array $actividades, array $totales = [])
+{
+    if (count($totales)) {
+        /*
+         * UNA CLAVE QUE NO VIENE CONSERVA SU VALOR. NO ESCRIBE CERO.
+         *
+         * Estos ocho renglones se guardaban con "?? 0", asi que bastaba que la
+         * pantalla no mandara uno para que se escribiera un cero encima del
+         * dato bueno. Y paso: el 2026-09-01 la funcion que arma los totales
+         * leia data-campo="total_ingresos" cuando el campo se llama
+         * "ingresos_total_pais"; el selector devolvia undefined, la clave no
+         * viajaba, y el renglon 8 del formulario impreso se iba a CERO -con el
+         * renglon 10, que resta, saliendo negativo-.
+         *
+         * COALESCE distingue las dos cosas que "?? 0" confundia: mandar un cero
+         * a proposito (llega 0 y se guarda 0) y no mandar nada (llega null y se
+         * conserva lo que hubiera). Es el mismo trato que ya tenian capacidad
+         * instalada y valor del impuesto, por esta misma razon.
+         */
+        $con->consultar("
+            UPDATE ind_declaraciones_ica SET
+                dec_TotalIngresos            = COALESCE(?, dec_TotalIngresos),
+                dec_IngresosFueraMunicipio   = COALESCE(?, dec_IngresosFueraMunicipio),
+                dec_IngresosDevoluciones     = COALESCE(?, dec_IngresosDevoluciones),
+                dec_IngresosExportaciones    = COALESCE(?, dec_IngresosExportaciones),
+                dec_IngresosVentas           = COALESCE(?, dec_IngresosVentas),
+                dec_IngresosActividades      = COALESCE(?, dec_IngresosActividades),
+                dec_IngresosOtrasActividades = COALESCE(?, dec_IngresosOtrasActividades),
+                dec_BaseGravable             = COALESCE(?, dec_BaseGravable),
+                dec_CapacidadInstalada       = COALESCE(?, dec_CapacidadInstalada),
+                dec_ValorImpuesto            = COALESCE(?, dec_ValorImpuesto)
+            WHERE dec_Id = ?
+        ", [
+            $totales['dec_TotalIngresos']            ?? null,
+            $totales['dec_IngresosFueraMunicipio']   ?? null,
+            $totales['dec_IngresosDevoluciones']     ?? null,
+            $totales['dec_IngresosExportaciones']    ?? null,
+            $totales['dec_IngresosVentas']           ?? null,
+            $totales['dec_IngresosActividades']      ?? null,
+            $totales['dec_IngresosOtrasActividades'] ?? null,
+            $totales['dec_BaseGravable']             ?? null,
+            $totales['dec_CapacidadInstalada']       ?? null,
+            $totales['dec_ValorImpuesto']            ?? null,
+            $idFila
+        ]);
+    }
+
+    // Se reemplazan enteras: la pantalla manda siempre la tabla completa, asi
+    // que borrar y volver a insertar es lo unico que refleja una fila quitada.
+    $con->consultar(
+        "DELETE FROM ind_declaraciones_ica_actividades WHERE dia_IdDeclaracion = ?",
+        [$idFila]
+    );
+
+    foreach ($actividades as $a) {
+        $con->consultar("
+            INSERT INTO ind_declaraciones_ica_actividades
+                (dia_IdDeclaracion, dia_IdActividad, dia_BaseGravable,
+                 dia_Tarifa, dia_ValorImpuesto, dia_Activo, dia_FechaCreador)
+            VALUES (?,?,?,?,?,1,GETDATE())
+        ", [
+            $idFila,
+            $a['dia_IdActividad']   ?? 0,
+            $a['dia_BaseGravable']  ?? 0,
+            $a['dia_Tarifa']        ?? 0,
+            $a['dia_ValorImpuesto'] ?? 0
+        ]);
+    }
 }
 
 
@@ -1449,8 +1484,61 @@ private function _actualizarDeclaracionIca(){
             $idFila
         ]);
 
+        /*
+         * SE RECALCULA CON LO QUE HAY EN PANTALLA, NO CON LO QUE HAY EN LA BASE.
+         *
+         * Aqui estaba el "pongo un dato y se pasa a 0" que reporto el cliente el
+         * 2026-09-01, y es el mismo sintoma que Juan describio como "me cambia
+         * toda la declaracion".
+         *
+         * La pantalla tenia DOS fuentes de verdad. "Liquidar" (funcion 14)
+         * calcula con las actividades del FORMULARIO y no guarda nada -asi lo
+         * pidio el cliente-. Pero escribir una retencion disparaba esta funcion,
+         * que recalculaba con las actividades de la BASE. Si el contribuyente
+         * todavia no habia pulsado "Guardar", en la base no habia ninguna, el
+         * procedimiento liquidaba sobre cero y la pantalla repintaba ceros
+         * encima de las cifras que Liquidar acababa de mostrar.
+         *
+         * Reproducido de punta a punta: crear la N° 224 sin guardar, Liquidar
+         * -mostraba renglon 20 = 40.000, 21 = 6.000, 25 = 48.000- y escribir
+         * 1.000.000 en el renglon 28 devolvia 20 = 0, 21 = 0, 25 = 0. Y la
+         * declaracion 222 del cliente estaba justo asi: cero actividades
+         * guardadas y los dos renglones que alcanzo a teclear.
+         *
+         * Ahora, si la peticion trae las actividades del formulario, se guardan
+         * ANTES de liquidar. Con eso la base y la pantalla dicen lo mismo y el
+         * resultado ya no depende de si se pulso "Guardar" antes o despues.
+         *
+         * Si no vienen -una llamada vieja, o una pantalla que no las mande- se
+         * comporta como siempre y liquida con lo que haya guardado.
+         */
+        if (isset($_POST['actividades'])) {
+            $actividades = json_decode($_POST['actividades'], true);
+            $totales     = isset($_POST['totales']) ? json_decode($_POST['totales'], true) : [];
 
-        $this->_ejecutarSpLiquidacion($fila['anio'], $fila['mes'], $fila['numero'], $campoSeleccionado);
+            if (is_array($actividades) && count($actividades)) {
+                $this->_guardarActividadesYTotales($con, $idFila, $actividades, is_array($totales) ? $totales : []);
+            }
+        }
+
+        /*
+         * SE RECALCULA DESDE EL PRINCIPIO (0), NO DESDE EL RENGLON EDITADO.
+         *
+         * Aqui se pasaba $campoSeleccionado. El procedimiento solo recorre los
+         * conceptos con con_Codigo > @POSICION_CONCEPTO, asi que editar el
+         * renglon 28 dejaba SIN recalcular los renglones 20, 21 y 25. Medido:
+         * tras escribir en el 28, el 21 y el 25 se quedaban en cero.
+         *
+         * Ese parametro existia para que el recalculo no pisara el valor recien
+         * escrito. Ya no hace falta: la migracion 010 cambio la formula de los
+         * nueve renglones manuales (5,6,7,8,9,10,11,16,17) por una referencia a
+         * si mismos, de modo que recalcularlos los conserva. Protegerlos ademas
+         * saltandose los anteriores es lo que rompia el resto.
+         *
+         * "Guardar" (funcion 6) y "Liquidar" (funcion 14) ya pasaban 0. Esta era
+         * la unica que no, y por eso era la unica que dejaba la pantalla a medias.
+         */
+        $this->_ejecutarSpLiquidacion($fila['anio'], $fila['mes'], $fila['numero'], 0);
 
         // ==========================
         // 5. CONSULTAR RESULTADO FINAL
@@ -1701,6 +1789,88 @@ private function _crearCorreccion(){
         return [];
     }
 
+    /*
+     * SE CORRIGE EL ACTO VIGENTE, NO EL QUE SE PULSO.
+     *
+     * El boton "Corregir" se pinta sobre TODA fila presentada, incluidas las
+     * originales que una correccion posterior ya dejo sin efecto. Pulsando la
+     * de arriba se creaba una correccion HERMANA de la que ya existia -las dos
+     * colgando de la misma original- en vez de un eslabon de la cadena. Y el
+     * "N° DE DECLARACION A CORREGIR" que se imprime sale del enlace, asi que el
+     * formulario declaraba corregir un documento que ya no era el vigente.
+     *
+     * Corregir es sustituir lo ultimo que se presento del periodo. Si lo que se
+     * pulso no es eso, se sigue la cadena hasta el ultimo acto en firme y se
+     * dice, en vez de obedecer un clic que produce un documento incorrecto.
+     */
+    $vigente = $con->obnerFila($con->consultar(
+        "SELECT TOP 1 dec_Id, dec_NumeroDeclaracion
+           FROM ind_declaraciones_ica
+          WHERE dec_IdContribuyente = ?
+            AND dec_AnioDeclaracion = ?
+            AND dec_MesDeclaracion  = ?
+            AND dec_Estado = 2
+          ORDER BY dec_FechaPresentacion DESC, dec_Id DESC",
+        [$orig['dec_IdContribuyente'], $orig['dec_AnioDeclaracion'], $orig['dec_MesDeclaracion']]
+    ));
+
+    $seRedirigio = false;
+
+    if ($vigente && (int) $vigente['dec_Id'] !== (int) $orig['dec_Id']) {
+        $stmt = $con->consultar(
+            "SELECT * FROM ind_declaraciones_ica WHERE dec_Id = ?",
+            [$vigente['dec_Id']]
+        );
+        $filaVigente = $con->obnerFila($stmt);
+
+        if ($filaVigente) {
+            $orig          = $filaVigente;
+            $idDeclaracion = $filaVigente['dec_Id'];
+            $seRedirigio   = true;
+        }
+    }
+
+    /*
+     * UNA CORRECCION EN CURSO, NO UNA PILA DE ELLAS.
+     *
+     * Nada impedia pulsar "Corregir" dos veces: cada clic insertaba otra
+     * correccion de la misma declaracion, cada una con su consecutivo gastado.
+     * Medido el 2026-08-31 sobre el contribuyente de prueba: cuatro
+     * correcciones en borrador de las mismas presentadas, tres de ellas de la
+     * misma N° 189, y los numeros 2026000002 a 2026000005 consumidos sin que
+     * exista ningun documento detras.
+     *
+     * Es la misma regla que ya gobierna la creacion: mientras haya una en
+     * curso se reabre ESA en vez de duplicar. Una correccion es una
+     * declaracion, y el periodo sigue admitiendo un solo documento vivo.
+     *
+     * Solo se reabre lo que todavia es borrador: si la correccion anterior ya
+     * se presento, corregirla otra vez es legitimo -es la segunda correccion-
+     * y ahi si nace una nueva.
+     */
+    $enCurso = $con->obnerFila($con->consultar(
+        "SELECT TOP 1 dec_Id, dec_NumeroDeclaracion
+           FROM ind_declaraciones_ica
+          WHERE dec_DeclaracionCorrige = ?
+            AND (dec_Estado IS NULL OR dec_Estado <> 2)
+          ORDER BY dec_Id DESC",
+        [$orig['dec_NumeroDeclaracion'] ?: $orig['dec_Id']]
+    ));
+
+    if ($enCurso) {
+        $this->_ok = 1;
+        $this->_mensaje = 'Ya tenía una corrección en curso de la N° '
+            . ($orig['dec_NumeroDeclaracion'] ?: $orig['dec_Id'])
+            . ': la N° ' . ($enCurso['dec_NumeroDeclaracion'] ?: $enCurso['dec_Id'])
+            . '. Se abre esa, con lo que hubiera guardado. No se creó otra.';
+
+        return [
+            'dec_Id'                 => $enCurso['dec_Id'],
+            'dec_DeclaracionCorrige' => $orig['dec_NumeroDeclaracion'] ?: $orig['dec_Id'],
+            '_reabierta'             => 1
+        ];
+    }
+
     // Se copian todas las columnas menos las que deben nacer de cero:
     // el id (identity), el numero de formulario, el estado/fechas de
     // presentacion y pago, y el enlace de correccion (que se fija abajo).
@@ -1712,6 +1882,17 @@ private function _crearCorreccion(){
         // pago de la declaracion corregida, quedando con año de pago sin estar
         // pagada. Hasta ahora no se notaba porque nadie llenaba esa columna.
         'dec_AnioPago',
+        /*
+         * La fecha y la hora tambien nacen de cero.
+         *
+         * Se copiaban de la original, asi que una correccion hecha hoy salia
+         * fechada el dia en que se creo la declaracion corregida -medido:
+         * correcciones creadas el 31/08 con fecha 17/04/2026-. Esa fecha se
+         * imprime en el formulario, de modo que el papel afirmaba que el
+         * documento se hizo meses antes de existir. Se fijan abajo con la de
+         * hoy, igual que hace _agregarDeclaracion().
+         */
+        'dec_FechaDeclaracion', 'dec_HoraDeclaracion',
         'dec_FechaCreador', 'dec_FechaModificador', 'dec_Modificador'
     ];
 
@@ -1730,21 +1911,49 @@ private function _crearCorreccion(){
     $columnas[] = 'dec_DeclaracionCorrige';
     $valores[]  = $orig['dec_NumeroDeclaracion'] ?: $orig['dec_Id'];
 
+    date_default_timezone_set('America/Bogota');
+
+    $columnas[] = 'dec_FechaDeclaracion';
+    $valores[]  = date('Y-m-d');
+
+    $columnas[] = 'dec_HoraDeclaracion';
+    $valores[]  = date('H:i:s');
+
     $columnas[] = 'dec_FechaCreador';
     $valores[]  = date('Y-m-d H:i:s');
 
     $listaCols = implode(', ', $columnas);
     $marcas    = implode(', ', array_fill(0, count($columnas), '?'));
 
-    $con->consultar(
-        "INSERT INTO ind_declaraciones_ica ($listaCols) VALUES ($marcas)",
-        $valores
-    );
-
+    /*
+     * El id se pide en el MISMO lote del INSERT, con SCOPE_IDENTITY().
+     *
+     * Antes se releia con "SELECT TOP 1 ... WHERE dec_DeclaracionCorrige = ?
+     * ORDER BY dec_Id DESC", y esa clave no es unica: si dos sesiones corrigen
+     * a la vez, las dos leen el dec_Id mas alto y las dos escriben su
+     * consecutivo sobre esa misma fila. Una correccion se queda sin numero de
+     * formulario -y una declaracion sin numero no se puede pagar en banco,
+     * porque el numero es lo que viaja dentro del codigo de barras de recaudo-
+     * mientras la otra recibe dos numeros seguidos.
+     *
+     * SCOPE_IDENTITY() devuelve la identidad generada por ESTA sesion y en este
+     * ambito, asi que no puede confundirse con la fila de otra. No sirve
+     * @@IDENTITY, que cruzaria a un trigger.
+     *
+     * SET NOCOUNT ON NO ES OPCIONAL AQUI.
+     *
+     * Sin el, el INSERT emite su recuento de filas como PRIMER resultado del
+     * lote, y obnerFila() lee ese, no el SELECT. Medido: devolvia dec_Id nulo,
+     * y con el id nulo se saltaban las dos cosas que dependen de el -asignar el
+     * consecutivo y copiar las actividades-, asi que la correccion nacia SIN
+     * NUMERO y SIN actividades. Silenciar el recuento deja al SELECT como
+     * primer resultado.
+     */
     $nuevo = $con->obnerFila($con->consultar(
-        "SELECT TOP 1 dec_Id FROM ind_declaraciones_ica
-         WHERE dec_DeclaracionCorrige = ? ORDER BY dec_Id DESC",
-        [$orig['dec_NumeroDeclaracion'] ?: $orig['dec_Id']]
+        "SET NOCOUNT ON;
+         INSERT INTO ind_declaraciones_ica ($listaCols) VALUES ($marcas);
+         SELECT CAST(SCOPE_IDENTITY() AS BIGINT) AS dec_Id;",
+        $valores
     ));
 
     $idNuevo = $nuevo['dec_Id'] ?? null;
@@ -1785,7 +1994,11 @@ private function _crearCorreccion(){
 
     $this->_ok = 1;
     $this->_mensaje = "Declaración de corrección creada. "
-                    . "Corrige la N° " . ($orig['dec_NumeroDeclaracion'] ?: $orig['dec_Id']);
+                    . "Corrige la N° " . ($orig['dec_NumeroDeclaracion'] ?: $orig['dec_Id'])
+                    . ($seRedirigio
+                        ? ', que es la última presentada de este período. La que '
+                          . 'seleccionó ya había sido corregida.'
+                        : '');
 
     return [
         'dec_Id'                 => $idNuevo,

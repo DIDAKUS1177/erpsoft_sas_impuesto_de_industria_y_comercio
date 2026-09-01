@@ -91,6 +91,27 @@ var DeclaracionesUI = (function () {
                 // principio a fin, en vez de "manda el codigo" y luego
                 // "ahora si presenta" como dos acciones separadas.
                 if (Number(d.tiene_correo_contador) === 1) {
+                    /*
+                     * FIRMAR COMO CONTADOR ES UN ACTO PROPIO, CON SU BOTON.
+                     *
+                     * Pedido del cliente el 2026-09-01: «firma de contador
+                     * aparte de presentar». Hasta ahora la unica via era
+                     * pulsar "Presentar" y dejar que el sistema pidiera el
+                     * codigo por el camino, asi que firmar y presentar eran
+                     * el mismo gesto y no habia forma de hacer solo lo
+                     * primero. Eso importa cuando el contador y quien
+                     * presenta no son la misma persona: el contador tiene
+                     * que poder firmar y marcharse.
+                     *
+                     * "Presentar" NO cambia: sigue encadenando la firma que
+                     * falte y presentando de una sola vez, que es como lo
+                     * pidieron antes. Se suma una via, no se sustituye.
+                     */
+                    acciones += '<a href="javascript:void(0);" onclick="' + objJs + '.firmaContador(' + d.dec_Id + ', ' + d.dec_IdEstablecimiento + ')" ' +
+                                    'class="btn btn-info btn-sm mr-1" ' +
+                                    'title="Firmar como contador o revisor fiscal (solo firma, no presenta)">' +
+                                    '<i class="fa fa-pencil-square-o"></i> Firmar contador</a>';
+
                     acciones += '<a href="javascript:void(0);" onclick="' + objJs + '.presentarDeclaracion(' + d.dec_Id + ', ' + d.dec_IdEstablecimiento + ')" ' +
                                     'class="btn btn-success btn-sm mr-1" title="Presentar">' +
                                     '<i class="fa fa-paper-plane"></i></a>';
@@ -646,6 +667,31 @@ function limpiarFormularioDeclaracion() {
     $('#btnDescargarPDF').prop('disabled', true);
 }
 
+/**
+ * Explica por que NO se pudo crear la declaracion, y ofrece el camino.
+ *
+ * LAS TRES PANTALLAS NO DECIAN LO MISMO
+ *
+ * Presentar Declaracion mostraba el motivo real que manda el servidor;
+ * Consultar Declaraciones y el RIT mostraban un fijo "No se pudo crear la
+ * declaracion" y TIRABAN el mensaje. Es el mismo boton y el mismo backend, asi
+ * que segun por donde entrara, el mismo usuario recibia una explicacion o un
+ * error mudo. Aqui se unifica.
+ *
+ * Llego a ofrecer ademas un boton para ir a Corregir cuando el rechazo era
+ * "ya fue presentada". Ese rechazo ya no existe -el cliente pidio que crear
+ * cree siempre- asi que la rama se retiro por quedarse sin caso.
+ *
+ * @param {object} arr la respuesta completa del backend (ok = 0)
+ */
+function avisarNoSePudoCrear(arr) {
+
+    var d = arr.datos || {};
+    var texto = arr.mensaje || 'No se pudo crear la declaración.';
+
+    swal({ type: 'error', title: 'No se pudo crear', text: texto });
+}
+
 var EditarDeclaracion = (function () {
 
     function abrir(decId) {
@@ -952,11 +998,15 @@ var LiquidacionEnPantalla = {
 
                 self.pintar(arr.datos);
 
+                // El texto decia 'use "Guardar y liquidar"', y ese boton ya no
+                // existe: se renombro a "Guardar" cuando el cliente pidio
+                // separar las dos acciones. Mandaba al contribuyente a buscar
+                // algo que no esta en la pantalla.
                 swal({
                     type: 'info',
                     title: 'Liquidación calculada',
                     text: 'Estas son las cifras que quedarían. Todavía no se ha guardado nada: '
-                        + 'use "Guardar y liquidar" para conservarlas.'
+                        + 'pulse "Guardar" para conservarlas.'
                 });
             },
             // Sin error() la pantalla se queda muda si el backend no devuelve

@@ -66,6 +66,7 @@
 			<div class="card-box mb-30" id="ltsRol">
 				<div class="pd-20 d-flex justify-content-between align-items-center">
 					<h4 class="h4 mb-0">Declaraciones del Contribuyente</h4>
+
 					<button type="button" class="btn btn-primary" id="btnNuevaDeclaracion">
 						<i class="fa fa-file-text-o"></i> Crear Declaración
 					</button>
