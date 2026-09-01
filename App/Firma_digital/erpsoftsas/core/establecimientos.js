@@ -18,8 +18,42 @@
  */
 function flagCasilla(id) {
     const $c = $("#" + id);
-    if ($c.length === 0) return undefined;   // no esta en pantalla: no se manda
+    if ($c.length === 0) return undefined;   // no esta en pantalla
     return $c.is(":checked") ? 1 : 0;
+}
+
+/**
+ * Quita del cuerpo de la peticion las claves cuyo campo NO EXISTE en pantalla.
+ *
+ * AQUI ESTABA EL "ESTABLECIMIENTO NO PERMITE ACTUALIZAR".
+ *
+ * El formulario de esta pantalla tiene 16 campos, pero al guardar se leen 32:
+ * los otros 16 son de una version anterior del formulario y ya no existen. Se
+ * daba por hecho -esta escrito en un comentario de este mismo archivo- que
+ * $("#noexiste").val() devuelve undefined y que "jQuery lo omite del POST".
+ *
+ * ES FALSO. $.param convierte undefined en CADENA VACIA, asi que esos 16
+ * campos viajaban como "" y el guardado los escribia encima.
+ *
+ * Medido el 2026-09-01 sobre el establecimiento 43: pulsar actualizar sin
+ * tocar nada borraba la matricula (125), el RUT (1254), la cedula, el nombre y
+ * el correo del representante, y dejaba la fecha de matricula en 01-01-1900.
+ * Por eso "no actualiza": si actualizaba, pero destruyendo lo demas.
+ *
+ * La diferencia que importa: un campo que EXISTE y esta vacio si debe viajar
+ * vacio -asi el contribuyente puede borrar algo que escribio por error-. Lo
+ * que no puede viajar es un campo que la pantalla no muestra, porque entonces
+ * nadie decidio dejarlo vacio. undefined es exactamente esa distincion, y por
+ * eso se borra la clave en vez de mandarla.
+ *
+ * Cubre tambien flagCasilla(), que devolvia undefined con la misma creencia
+ * equivocada y por tanto apagaba la casilla de exencion de avisos.
+ */
+function soloLoQueExiste(datos) {
+    Object.keys(datos).forEach(function (clave) {
+        if (datos[clave] === undefined) { delete datos[clave]; }
+    });
+    return datos;
 }
 
 /*    METDOS DEL MODULO DE DEPENDENCIA    */
@@ -516,6 +550,7 @@ class Establecimientos {
 
                 $("#est_Nombre").val(d.est_Nombre);
                 $("#est_Direccion").val(d.est_Direccion);
+                $("#est_Telefono").val(d.est_Telefono || '');
                 // Unico pais del catalogo. Se fuerza a 'Colombia' en vez de respetar
                 // lo guardado porque los registros viejos tienen "1" (el value del
                 // <option> fijo anterior), que no matchearia ninguna opcion y dejaria
@@ -685,6 +720,7 @@ $("#est_NoResolucion").val(d.est_NoResolucion);
         est_IdContribuyente: $("#est_IdContribuyente").val(), // CORREGIDO
         est_Nombre: $("#est_Nombre").val(),
         est_Direccion: $("#est_Direccion").val(),
+        est_Telefono: $("#est_Telefono").val(),
         // est_Pais / est_Departamento / est_Ciudad ya no se envian: son
         // VARCHAR(5) y no aguantan un nombre de pais o departamento. El
         // servidor los descarta de todos modos. Ver class.establecimientos.php.
@@ -752,6 +788,9 @@ est_NoResolucion: $("#est_NoResolucion").val(),
 
     formData.actividades = JSON.stringify(actividades);
 
+    // Fuera las claves de campos que esta pantalla no muestra: viajaban como
+    // cadena vacia y borraban lo guardado. Ver soloLoQueExiste().
+    soloLoQueExiste(formData);
 
     $.ajax({
         url: '../business/controller/class.establecimientos.php',
@@ -1145,6 +1184,7 @@ est_NoResolucion: $("#est_NoResolucion").val(),
             est_IdContribuyente: $("#est_IdContribuyente").val(),
             est_Nombre: $("#est_Nombre").val(),
             est_Direccion: $("#est_Direccion").val(),
+            est_Telefono: $("#est_Telefono").val(),
             // ver nota arriba: la ubicacion no viaja
 
             // Nota del estado del registro (migracion 018). Es un input de texto,
@@ -1209,7 +1249,8 @@ est_NoResolucion: $("#est_NoResolucion").val(),
 
         formData.actividades = JSON.stringify(actividades);
 
-
+        // Mismo motivo que en el otro guardado. Ver soloLoQueExiste().
+        soloLoQueExiste(formData);
 
         $.ajax({
             url: '../business/controller/class.establecimientos.php',

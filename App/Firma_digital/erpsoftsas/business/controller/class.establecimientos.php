@@ -159,6 +159,39 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
         return $return;
     }
 
+    /**
+     * Una fecha vacia se guarda como NULL, no como 01-01-1900.
+     *
+     * SQL Server convierte la cadena vacia en 1900-01-01 al meterla en una
+     * columna de fecha. No es un valor: es el hueco disfrazado de dato. Y de
+     * ahi salio que el formulario impreso del RIT afirmara que el negocio ceso
+     * el 01-01-1900 -medido en el establecimiento 43, cuya est_Fecha_cierre
+     * valia 1900-01-01 sin que nadie hubiera cesado nada-.
+     *
+     * Se pasa a NULL antes de guardar. El DAO salta los nulos, asi que ademas
+     * de no inventar una fecha tampoco pisa la que hubiera.
+     *
+     * Las columnas son varchar en el mapa del DAO, pero la tabla las tiene como
+     * fecha; por eso la conversion ocurre igual y por eso hay que atajarla aqui.
+     */
+    private static function _fechasVaciasANulo()
+    {
+        $fechas = [
+            'est_Fecha_matricula',
+            'est_Fecha_inscripcion',
+            'est_Fecha_inicio',
+            'est_Fecha_cierre',
+            'est_Fecha_actividad',
+        ];
+
+        foreach ($fechas as $campo) {
+            if (array_key_exists($campo, $_POST) && trim((string) $_POST[$campo]) === '') {
+                $_POST[$campo] = null;
+            }
+        }
+    }
+
+
     protected function _editarEstablecimientos()
     {
         $errorCodigo = self::_validarCodigo();
@@ -187,6 +220,7 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
         }
 
         self::_filtrarCese();
+        self::_fechasVaciasANulo();
 
         $_obj = new \erpsoftsas\DAO_Establecimientos();
         $_obj->set_est_Id($_POST['est_Id'] ?? null);

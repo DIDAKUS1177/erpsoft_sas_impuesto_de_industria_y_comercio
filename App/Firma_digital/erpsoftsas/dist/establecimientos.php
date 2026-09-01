@@ -270,6 +270,21 @@
 <input type="email" class="form-control" id="est_Correo" name="est_Correo">
 </div>
 
+<!--
+    Telefono del establecimiento (migracion 028, 2026-09-01).
+
+    El formulario impreso del RIT tiene DOS casillas de telefono: la 11 es la
+    del contribuyente y la 20 la del lugar donde se ejerce la actividad. Hasta
+    hoy las dos imprimian el mismo numero porque no existia donde guardar el
+    del local, y el cliente lo reporto como "20 y 11 salen repetidos".
+    Mientras este vacio, la casilla 20 sigue cayendo al del contribuyente.
+-->
+<div class="col-md-3">
+<label>Teléfono</label>
+<input type="text" class="form-control" id="est_Telefono" name="est_Telefono"
+       maxlength="30" placeholder="Ej. 8 785 0000">
+</div>
+
 <!-- lo esta trayendo de ind_contribuyentes, no se si es necesario
 <div class="col-md-3">
 <label>Teléfono</label>

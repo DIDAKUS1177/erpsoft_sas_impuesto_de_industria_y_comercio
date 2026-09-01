@@ -14,6 +14,11 @@ class DAO_Establecimientos extends \erpsoftsas\DAOGeneral {
     protected $_est_Ciudad;
     protected $_est_Barrio;
     protected $_est_Correo;
+
+    // Telefono del establecimiento (migracion 028). Sin declararlo aqui, el
+    // __call de este DAO lo descarta en SILENCIO -solo asigna lo que existe
+    // como propiedad- y el campo nunca se guardaria.
+    protected $_est_Telefono;
     protected $_est_Activos;
     protected $_est_Area;
     protected $_est_Opcion_uso;
@@ -83,6 +88,7 @@ class DAO_Establecimientos extends \erpsoftsas\DAOGeneral {
         'est_Ciudad' => array('tipodato' => 'varchar'),
         'est_Barrio' => array('tipodato' => 'varchar'),
         'est_Correo' => array('tipodato' => 'varchar'),
+        'est_Telefono' => array('tipodato' => 'varchar'),
         'est_Activos' => array('tipodato' => 'integer'),
         'est_Local_municipio' => array('tipodato' => 'integer'),
         'est_Matricula' => array('tipodato' => 'varchar'),
