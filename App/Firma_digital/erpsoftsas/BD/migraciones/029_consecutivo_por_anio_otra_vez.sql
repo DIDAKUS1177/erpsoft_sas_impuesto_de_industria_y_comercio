@@ -125,7 +125,7 @@ GO
 IF NOT EXISTS (SELECT 1 FROM dbo.conf_migraciones WHERE mig_Nombre = '029_consecutivo_por_anio_otra_vez')
     INSERT INTO dbo.conf_migraciones (mig_Nombre, mig_Nota)
     VALUES ('029_consecutivo_por_anio_otra_vez',
-            'Deshace la 027: el numero vuelve al formato por año AAAA000001 de la migracion 012, por instruccion del cliente. Los 8 numeros de la serie corrida (219 a 226) se renumeran a la banda de su año; se comprobo antes que ninguna firma ni pago los referencia -las firmas guardan el dec_Id- y que la 027 nunca se desplegó. El formato por año evita ademas que el numero se cruce con el dec_Id, cosa que iba a pasar al llegar al 232.');
+            'El numero de declaracion queda con el formato por año AAAA000001 de la migracion 012, por instruccion del cliente. NO RENUMERA NADA: la 027 se reescribio antes de desplegarse y ya no cambia la numeracion, asi que no hay ninguna serie corrida que deshacer -y en produccion los numeros de 219 en adelante son declaraciones reales anteriores a la 012, que no se pueden tocar-. El formato por año evita ademas que el numero se cruce con el dec_Id.');
 GO
 
 /* ----------------------------------------------------------------------------
