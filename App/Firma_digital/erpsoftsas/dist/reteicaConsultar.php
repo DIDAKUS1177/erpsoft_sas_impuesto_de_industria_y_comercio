@@ -45,63 +45,15 @@
 
 	
     <style>
-        body {
-            background: #f5f6fa;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            font-family: 'Inter', sans-serif;
-        }
-
-        .box {
-            text-align: center;
-            padding: 40px 60px;
-            background: #ffffff;
-            border-radius: 15px;
-            box-shadow: 0 5px 25px rgba(0,0,0,0.10);
-        }
-
-        h1 {
-            font-size: 35px;
-            font-weight: 800;
-            margin-bottom: 10px;
-            color: #0b3d91;
-        }
-
-        p {
-            font-size: 16px;
-            margin-bottom: 25px;
-            color: #555;
-        }
-
-        .loader {
-            border: 6px solid #f3f3f3;
-            border-top: 6px solid #0b3d91;
-            border-radius: 50%;
-            width: 55px;
-            height: 55px;
-            margin: 0 auto 20px;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg);}
-            100% { transform: rotate(360deg);}
-        }
-
-        .btn-home {
-            background-color: #0b3d91;
-            color: white;
-            padding: 10px 25px;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: 600;
-        }
-
-        .btn-home:hover {
-            background-color: #072c6a;
-        }
+        /*
+         * El stub de esta pantalla centraba el contenido con
+         * "body { display:flex; align-items:center; height:100vh }" para el
+         * cartel de "en construccion". Con el menu lateral y una tabla real eso
+         * rompe el layout entero, asi que se retira y se usa el mismo esqueleto
+         * que el resto de pantallas internas.
+         */
+        .renglon-codigo { width: 60px; }
+        #tablaRenglones td, #tablaActividades td { vertical-align: middle; }
     </style>
 </head>
 <body>
@@ -111,12 +63,47 @@
 		<?php include 'menu.php'; ?>
 		<div class="mobile-menu-overlay"></div>
 
-		<div class="box">
-			<div class="loader"></div>
-			<h1>Página en construcción</h1>
-			<p>Estamos trabajando para habilitar esta sección muy pronto.</p>
-		</div>
+		<div class="main-container">
 
+			<div class="card-box mb-30">
+				<div class="pd-20">
+					<h4 class="h4" id="tituloModulo">Declaraciones</h4>
+				</div>
+				<div class="pb-20 px-3">
+
+					<div class="filtros-declaraciones">
+						<div class="campo">
+							<label for="filtroAnio">Año</label>
+							<select id="filtroAnio"></select>
+						</div>
+						<div class="campo">
+							<label for="filtroPeriodo">Período</label>
+							<select id="filtroPeriodo"></select>
+						</div>
+						<span class="conteo" id="conteoDeclaraciones"></span>
+					</div>
+
+					<div class="table-responsive">
+						<table class="table table-bordered table-striped table-sm" id="tablaDeclaraciones">
+							<thead style="background:#e9ecef; font-weight:600;">
+								<tr>
+									<th>Año</th>
+									<th>Período</th>
+									<th>N° Declaración</th>
+									<th>Estado</th>
+									<th>Corrección</th>
+									<th style="text-align:right;">Total a pagar</th>
+									<th class="text-center" style="width:150px;">Acciones</th>
+								</tr>
+							</thead>
+							<tbody></tbody>
+						</table>
+					</div>
+
+				</div>
+			</div>
+
+		</div>
 
 		<!-- /.modal-dialog -->
 		<!-- js -->
@@ -139,6 +126,8 @@
 		<!-- switchery js -->
 		<script src="../src/plugins/switchery/switchery.min.js"></script>
 		<script src="../src/plugins/sweetalert2/sweetalert2.all.js"></script>
+		<script src="../core/numeros.js?v=<?php echo time(); ?>"></script>
+		<script src="../core/retenciones.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/reteicaConsultar.js?v=<?php echo time(); ?>"></script>
 		<!-- <script src="../core/Permisos.js"></script> -->
 	</div>	

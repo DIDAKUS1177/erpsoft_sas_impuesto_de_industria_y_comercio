@@ -644,3 +644,184 @@ registra la firma (9 en vez de 7).
 
 Al tocar ese flujo hay que acordarse de las **tres** pantallas: comparten ids,
 así que un cambio en el HTML del modal debe replicarse en las tres.
+
+## Módulos RETEICA y AUTORRETEICA (2026-09-08)
+
+Retención de ICA (**mensual**, períodos 1–12) y autorretención (**bimestral**,
+1–6). Hasta esta fecha existían solo cuatro pantallas con el cartel de "página
+en construcción" y sus entradas de menú.
+
+```
+BD/migraciones/030_reteica_y_autorreteica.sql   4 tablas + catálogo de renglones
+business/class.retenciones.php                  el motor: TODO el ciclo de vida
+business/controller/class.reteica.php           qué distingue a retención
+business/controller/class.autorreteica.php      qué distingue a autorretención
+core/retenciones.js                             el motor de las 4 pantallas
+core/{reteica,autoretencion}{Presentar,Consultar}.js   solo el CONFIG de cada una
+dist/  las mismas cuatro, ya con formulario real
+```
+
+**Un motor y dos configuraciones, no dos copias.** Backend y frontend comparten
+el ciclo completo (crear, capturar, liquidar, presentar, corregir) y cada módulo
+solo declara sus tablas, su prefijo de columnas y su periodicidad. Se hizo así
+por lo que ya costó en este repo la duplicación de `declaracion.php` /
+`liquidacion.php` y de las funciones de cifras en tres JS.
+
+**No usan el DAO.** Todo va por `consultar()` con parámetros. El DAO concatena
+strings y mete la PK en el `WHERE` sin comillas; estos módulos no heredan eso.
+
+**Las fórmulas viven en la base**, en `ind_renglones_retencion`, no en PHP. El
+motor aplica solo los renglones que tienen fórmula; los que están en `NULL`
+salen en cero y la pantalla los marca *pendiente*. Eso permitió entregar los
+módulos con cinco casillas de autorretención sin resolver y **cerrarlas después
+sin tocar una línea de PHP**: la migración 031 son cinco `UPDATE`.
+
+**El cálculo quedó confirmado el 2026-09-09** (migración 031). La casilla 15 es
+`actividades + energía`, sumada UNA vez; el Excel la sumaba dos y el total a
+pagar salía 12.550.000 en vez de 6.800.000. El sistema reproduce hoy el ejemplo
+del cliente **cifra por cifra** (15 → 5.490.000, 16 → 824.000, 17 → 6.314.000,
+19 → 6.250.000, 23 → 6.800.000).
+
+**El redondeo es a MILES y FILA POR FILA**, en los dos módulos. No hizo falta
+preguntarlo: lo dicen las propias fórmulas de los formularios del cliente
+(`MROUND((I16*K16/1000),1000)` en RETEICA, `MROUND((M19*J19/1000),1000)` y
+`MROUND(M24*15%,1000)` en AUTORRETEICA). El ICA **no se toca**: redondea una sola
+vez sobre el total y es otro formulario.
+
+**El catálogo de actividades está por año y hoy solo tiene 2025**
+(`acc_Anio`, 69 filas). Pedir literalmente el año de la declaración devolvería
+un desplegable vacío, así que se toma el año vigente más reciente que no pase
+del declarado. Ojo también con los nombres: son `acc_*` (`acc_Id`, `acc_Codigo`,
+`acc_Nombre`, `acc_Tarifa`), no `act_*`.
+
+**`ind_contribuyentes` no tiene columna de razón social.** El nombre sale de los
+cuatro campos de persona natural, y en una persona jurídica la razón social vive
+en `ind_PrimerNombre`. Es la misma trampa que dejaba el nombre en blanco en el
+RIT de las jurídicas.
+
+### Firma y PDF (2026-09-08, mismo día)
+
+```
+extensiones/pdfRetenciones.php   utilidades comunes de los dos formularios
+extensiones/reteica.php          el formulario mensual
+extensiones/autorreteica.php     el formulario bimestral
+```
+
+**Sin firma no se presenta**, igual que en el ICA: la del declarante siempre, y
+la del contador o revisor cuando el contribuyente tiene uno registrado. El
+motivo del rechazo vuelve en `datos.falta` (`'declarante'` / `'contador'`) para
+que la pantalla pueda encadenar el OTP en vez de mostrar un error suelto.
+
+**`firmas_declaraciones` ahora distingue el módulo**, y no es cosmético: los
+tres formularios reparten números de series distintas, así que la retención
+2026000001 y la declaración de ICA 2026000001 existen a la vez. Comprobado en
+la prueba local: los dos módulos emitieron su propio 2026000001 el mismo día.
+
+En `microservicios/firmas/api.php`, `fd_Rol` sigue siendo el rol (`declarante` /
+`contador`) y el módulo va en `fd_Modulo`. **El rol del código OTP sí lleva el
+módulo dentro** (`ret:declarante`, `aut:contador`, ver `_rolCodigo()`), por lo
+mismo que el RIT tiene el suyo desde agosto: un código pedido para firmar el ICA
+no debe servir para firmar una retención. El prefijo va abreviado porque
+`codigo_Rol` es `varchar(20)`.
+
+**Los PDF son carta (215.9 × 279.4), no oficio.** El de ICA usa oficio porque
+tiene 38 casillas; estos cierran en 176mm y 240mm, así que oficio desperdiciaría
+media hoja. Los dos archivos aceptan `?medir=1`, que en vez de generar el PDF
+imprime dónde cerró el formulario — `SetAutoPageBreak` está en `false` y TCPDF
+no avisa si algo se sale del papel.
+
+Dos detalles del layout que costaron una vuelta y ya están resueltos en
+`pdfret_textoVertical()`: los renglones del rótulo rotado se apilan **hacia la
+derecha**, así que uno que se parta en tres invade la primera casilla de la
+tabla; y contar renglones con `GetStringWidth` no basta, porque `MultiCell`
+parte por palabras — hay que usar `getNumLines()` **y** exigir que la palabra
+más larga quepa entera, o sale "A. CONTRIBUYEN / TE".
+
+**El código de barras escaneable exige dos condiciones**: que esté presentada y
+que haya algo que pagar. Un GS1-128 por $0 no lo puede cobrar el cajero, y en
+autorretención es hoy el caso normal porque la casilla 23 sigue sin fórmula.
+
+### El modal de firma se genera desde JavaScript
+
+En el ICA el HTML del modal de OTP está **copiado en tres pantallas**, y este
+mismo archivo advierte que un cambio hay que replicarlo en las tres. Con los dos
+módulos nuevos serían cinco copias, así que `FirmaRetencion` (dentro de
+`core/retenciones.js`) lo construye una sola vez y lo cuelga del `body`. Misma
+apariencia, un solo sitio donde mantenerlo. Sus ids llevan prefijo `ret` para no
+chocar si algún día conviven con los del ICA en una pantalla.
+
+"Presentar" es **un solo botón de principio a fin**: guarda, intenta presentar y,
+si el backend responde `datos.falta`, abre el modal para esa firma y reintenta al
+terminar. No es un bucle infinito — cada vuelta ocurre solo tras una firma
+registrada, y solo hay dos firmas posibles.
+
+**Probado en vivo el 2026-09-09**, mandando los mismos parámetros que manda la
+pantalla, en los dos módulos: pedir código → se guarda con `codigo_Rol` =
+`ret:declarante` / `aut:contador` → firmar → presentar. Y la prueba que importa:
+un código pedido para el **ICA** (`codigo_Rol = 'declarante'`) se **rechaza** al
+intentar firmar con él una retención, y la declaración sigue sin poder
+presentarse. Esa separación es la razón de ser del prefijo.
+
+**Ojo con los correos al probar**: pedir el código dispara un envío SMTP real, y
+el contribuyente de prueba 30 tiene registrados los correos del representante y
+del contador de personas reales. Para la prueba se apuntaron temporalmente a
+`@pruebalocal.invalid` (dominio reservado por RFC 2606, no entrega a nadie) y se
+restauraron después, verificando que quedaran idénticos.
+
+### Las pantallas usan el diseño del ICA, no uno propio (2026-09-09)
+
+Nacieron con markup genérico de Bootstrap y se alinearon con `icaWebConsultar`,
+porque el cliente compara las pantallas entre sí y dos lenguajes visuales en el
+mismo sistema se leen como descuido. Lo que se adoptó:
+
+| | Se usa |
+|---|---|
+| Estructura | `main-container` > `card-box mb-30` > `pd-20` (con `h4`) + `pb-20 px-3` |
+| Filtros | `.filtros-declaraciones` / `.campo`, con `.conteo` a la derecha, **sin botón** (se aplican al cambiar, como el ICA) |
+| Tablas | `table-bordered table-striped table-sm`, cabecera `#e9ecef` |
+| Estados | `.chip-estado.est-borrador\|firmada\|presentada\|pagada` |
+| Vacíos | `.estado-vacio` con icono, título y texto |
+| Acciones | botones `btn-sm` **solo icono** con `title`, mismos colores que el ICA |
+
+Todas esas clases están definidas en `dist/menu.php`, que estas pantallas ya
+incluyen: no hay CSS nuevo que mantener. El modal de firma toma
+`var(--erp-primario)` en vez de un teal escrito a mano, para que siga al
+municipio.
+
+### Establecimientos vive en el primer nivel del menú — y ya se movió antes
+
+**Ojo antes de volver a tocarlo**, porque esto tiene historia:
+
+- **2026-08** (punto 5 de la lista): se sacó a primer nivel.
+- **2026-08-18**: el cliente pidió devolverlo dentro de Industria y Comercio.
+- **2026-09-09**: vuelve a primer nivel.
+
+El argumento de ahora **no es el de agosto**. En agosto el único módulo era el
+ICA, así que colgar Establecimientos de él era razonable. Hoy los mismos
+establecimientos los usan **tres** módulos —ICA, Retención y Autorretención— y
+tenerlos dentro de uno sugiere que pertenecen solo a ese. Van junto al RIT, que
+es el otro dato transversal del contribuyente.
+
+Sigue con el permiso **1640**: mover el elemento no cambia quién entra. Como
+elemento de primer nivel, la clase `menu_1640` va en el propio `<li>`, igual que
+`menu_1641` en el RIT — `menu.js` muestra `.menu_<boton>` y su `li.dropdown`
+contenedor.
+
+### Lo que falta
+
+Una pregunta al cliente:
+
+- **La exención de avisos y tableros.** El formulario cobra el 15% a todos, y así
+  quedó. Pero `ind_SinAvisosTableros` existe y en el ICA **sí** exime (migración
+  021). Cobrarle a un exento y eximir a quien no lo es son los dos errores.
+
+**La casilla 20 quedó resuelta** (2026-09-09): el cliente confirmó que la escribe
+el contribuyente. Ya estaba así —manual, como en su Excel—, así que no hubo que
+cambiar nada. Se anota para que nadie lo vuelva a abrir.
+
+Y lo técnico:
+
+- Probar el flujo desde el NAVEGADOR. El backend está verificado de punta a
+  punta, pero el modal en pantalla no se ha visto funcionando: el navegador
+  interno de la herramienta tiene bloqueado `localhost:8081`.
+- Cargar el catálogo de actividades de 2026 (hoy solo hay 2025).

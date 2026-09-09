@@ -218,3 +218,92 @@ grupo—, que es lo que cubre «depende del contrato» en la mayoría de los cas
 Si una entidad firmara con una pasarela de otro fabricante, el protocolo es
 distinto y eso es un adaptador (`business/class.placetopay.php` tendría que
 pasar a ser una implementación de una interfaz), no un parámetro.
+
+---
+
+## 030 — RETEICA y AUTORRETEICA
+
+Crea los dos módulos nuevos de retención: `ind_reteica` (+ sus actividades) y
+`ind_autorreteica` (+ las suyas), el catálogo `ind_renglones_retencion`, la
+columna `fd_Modulo` en `firmas_declaraciones` y el procedimiento
+`sp_siguiente_numero_retencion`.
+
+**No crea catálogo de actividades.** Las dos hojas que entregó el cliente para
+estos módulos se compararon contra `ind_actividadescomercio`: son las mismas 68
+y 69 filas que ya usa el ICA, con las mismas tarifas, salvo el código 219 que
+duplica al 218. Cargar un catálogo aparte habría dejado dos verdades que
+mantener sincronizadas.
+
+### Dos decisiones que conviene no deshacer sin leer esto
+
+**Las columnas se llaman como la casilla del formulario impreso.** En el ICA el
+concepto 1 es la casilla 20, el 2 es la 21, y esa traducción silenciosa está
+detrás de varios defectos: quien lee el papel y quien lee la base hablan de
+números distintos. Aquí `ValorConcepto17` **es** la casilla 17. Cuesta unas
+columnas con hueco —no hay 14 en autorretención— y ahorra toda una clase de
+equivocaciones.
+
+**Cuatro fórmulas nacen en `NULL` a propósito** (casillas 15, 16, 19, 20 y 23 de
+autorretención). El Excel, el Word y la hoja de conceptos del cliente describen
+el mismo cálculo de tres maneras distintas, y la de la 15 suma el impuesto de
+energía dos veces —cobra casi el doble—. El motor solo aplica los renglones que
+tienen fórmula, así que estas casillas salen en cero y la pantalla las marca
+como *pendiente*. Cuando el cliente confirme se llenan cuatro filas de la tabla
+y no hay que tocar PHP.
+
+Un renglón que llena el contribuyente **nunca** puede tener fórmula `'0'`: tiene
+que referenciarse a sí mismo (`ep.aut_ValorConcepto18`), o cada recálculo le
+escribe cero encima de lo que la persona acaba de escribir. Es el defecto que
+arregló la migración 010 en el ICA, y las hojas del cliente traen justamente
+`'0'` en los renglones manuales.
+
+### Al escribir contra estas tablas desde fuera de la aplicación
+
+`sqlcmd` deja `QUOTED_IDENTIFIER` en OFF, y las dos tablas tienen índice
+filtrado sobre el número (`UQ_reteica_numero`, `UQ_autorreteica_numero`). Un
+`INSERT` desde `sqlcmd` falla con el error 1934 si no se pone `SET
+QUOTED_IDENTIFIER ON` primero. La aplicación no se ve afectada: el driver
+`sqlsrv` de PHP ya lo trae en ON.
+
+### Pendiente antes de poder liquidar autorretención
+
+1. Las cuatro fórmulas en `NULL`.
+2. **El redondeo.** Los dos formularios nuevos redondean a miles fila por fila
+   (`MROUND(...,1000)`); el ICA redondea una sola vez sobre el total. Son
+   resultados distintos sobre los mismos datos. Mientras se decide, la base
+   guarda el valor exacto —del que se puede derivar cualquiera de los dos—.
+3. La exención de avisos y tableros (`ind_SinAvisosTableros`), que en el ICA sí
+   aplica desde la 021 y aquí está sin resolver.
+
+---
+
+## 031 — Las fórmulas de autorretención, confirmadas
+
+Llena las cinco casillas que la 030 dejó en `NULL`. El cliente resolvió la
+discrepancia el 2026-09-09: **la casilla 15 suma el impuesto de las actividades
+más el de energía UNA sola vez**.
+
+El Excel hacía `M24 = P23 + I23`, donde `P23` ya incluía la energía — la contaba
+dos veces y arrastraba hasta el final: 12.550.000 a pagar en vez de 6.800.000.
+
+Tras aplicar esta migración, el sistema reproduce el ejemplo del propio cliente
+cifra por cifra:
+
+| Casilla | Valor |
+|---|---|
+| 15 · Autorretenciones ICA | 5.490.000 |
+| 16 · Avisos y tableros | 824.000 |
+| 17 · Total a cargo | 6.314.000 |
+| 19 · Total liquidado | 6.250.000 |
+| 23 · Total a pagar | **6.800.000** |
+
+**El redondeo dejó de ser una pregunta.** Lo contestan las propias fórmulas de
+los formularios: `MROUND(...,1000)` **fila por fila** en los dos módulos, y
+también en la casilla 16. Se implementó en el motor (`_liquidar`). El ICA no se
+toca: redondea una sola vez sobre el total y es otro formulario. `ROUND()` de SQL
+Server redondea la mitad alejándose del cero igual que `MROUND` de Excel, así que
+823.500 da 824.000 en los dos.
+
+**Sigue abierto**: la exención de avisos (`ind_SinAvisosTableros`, que en el ICA
+sí exime) y si la casilla 20 debe calcularse como rama negativa de 17−18 o
+seguir siendo manual. Ambas son decisiones del cliente.

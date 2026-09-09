@@ -45,63 +45,15 @@
 
 	
     <style>
-        body {
-            background: #f5f6fa;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            font-family: 'Inter', sans-serif;
-        }
-
-        .box {
-            text-align: center;
-            padding: 40px 60px;
-            background: #ffffff;
-            border-radius: 15px;
-            box-shadow: 0 5px 25px rgba(0,0,0,0.10);
-        }
-
-        h1 {
-            font-size: 35px;
-            font-weight: 800;
-            margin-bottom: 10px;
-            color: #0b3d91;
-        }
-
-        p {
-            font-size: 16px;
-            margin-bottom: 25px;
-            color: #555;
-        }
-
-        .loader {
-            border: 6px solid #f3f3f3;
-            border-top: 6px solid #0b3d91;
-            border-radius: 50%;
-            width: 55px;
-            height: 55px;
-            margin: 0 auto 20px;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg);}
-            100% { transform: rotate(360deg);}
-        }
-
-        .btn-home {
-            background-color: #0b3d91;
-            color: white;
-            padding: 10px 25px;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: 600;
-        }
-
-        .btn-home:hover {
-            background-color: #072c6a;
-        }
+        /*
+         * El stub de esta pantalla centraba el contenido con
+         * "body { display:flex; align-items:center; height:100vh }" para el
+         * cartel de "en construccion". Con el menu lateral y una tabla real eso
+         * rompe el layout entero, asi que se retira y se usa el mismo esqueleto
+         * que el resto de pantallas internas.
+         */
+        .renglon-codigo { width: 60px; }
+        #tablaRenglones td, #tablaActividades td { vertical-align: middle; }
     </style>
 </head>
 <body>
@@ -111,12 +63,157 @@
 		<?php include 'menu.php'; ?>
 		<div class="mobile-menu-overlay"></div>
 
-		<div class="box">
-			<div class="loader"></div>
-			<h1>Página en construcción</h1>
-			<p>Estamos trabajando para habilitar esta sección muy pronto.</p>
-		</div>
+		<div class="main-container">
 
+			<!-- ============ CREAR / ESCOGER ============ -->
+			<div id="panelCrear">
+
+				<div class="card-box mb-30">
+					<div class="pd-20">
+						<h4 class="h4" id="tituloModulo">Presentar Declaración</h4>
+					</div>
+					<div class="pb-20 px-3">
+						<div class="filtros-declaraciones">
+							<div class="campo">
+								<label for="nuevoAnio">Año gravable</label>
+								<select id="nuevoAnio"></select>
+							</div>
+							<div class="campo">
+								<label for="nuevoPeriodo"><span id="etiquetaPeriodo">Período</span> a declarar</label>
+								<select id="nuevoPeriodo"></select>
+							</div>
+							<div class="campo">
+								<label>&nbsp;</label>
+								<button type="button" id="btnCrear" class="btn btn-primary btn-sm">
+									<i class="fa fa-plus"></i> Crear declaración
+								</button>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="card-box mb-30">
+					<div class="pd-20"><h4 class="h4">Mis declaraciones</h4></div>
+					<div class="pb-20 px-3">
+						<div class="table-responsive">
+							<table class="table table-bordered table-striped table-sm" id="tablaMias">
+								<thead style="background:#e9ecef; font-weight:600;">
+									<tr>
+										<th>Año</th>
+										<th>Período</th>
+										<th>N° Declaración</th>
+										<th>Estado</th>
+										<th style="text-align:right;">Total a pagar</th>
+										<th class="text-center" style="width:110px;">Acciones</th>
+									</tr>
+								</thead>
+								<tbody></tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+
+			</div>
+
+			<!-- ============ FORMULARIO ============ -->
+			<div id="panelFormulario" style="display:none">
+
+				<div class="card-box mb-30">
+					<div class="pd-20">
+						<div class="row align-items-center">
+							<div class="col-md-8">
+								<h4 class="h4 mb-10">Declaración No. <span id="encNumero"></span> <span id="encEstado"></span></h4>
+								<p class="mb-5"><strong id="encContribuyente"></strong></p>
+								<p class="text-muted mb-0">Año <span id="encAnio"></span> &mdash; Período <span id="encPeriodo"></span></p>
+								<p class="text-warning mb-0" id="encCorrige"></p>
+							</div>
+							<div class="col-md-4 text-right">
+								<a id="btnPdf" class="btn btn-primary btn-sm mr-1" target="_blank" href="#" title="Ver PDF"><i class="fa fa-download"></i> PDF</a>
+								<button type="button" id="btnVolver" class="btn btn-info btn-sm mr-1" title="Volver al listado"><i class="fa fa-arrow-left"></i></button>
+								<button type="button" id="btnDescartar" class="btn btn-danger btn-sm" title="Eliminar borrador"><i class="fa fa-trash"></i></button>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="alert alert-secondary" id="avisoCerrada" style="display:none">
+					Esta declaración ya fue presentada, por lo que no se puede editar.
+					Para modificarla use la opción <strong>Corregir</strong>.
+				</div>
+
+				<div class="card-box mb-30">
+					<div class="pd-20 d-flex justify-content-between align-items-center">
+						<h4 class="h4 mb-0">Actividades</h4>
+						<button type="button" id="btnAgregarActividad" class="btn btn-success btn-sm">
+							<i class="fa fa-plus"></i> Agregar actividad
+						</button>
+					</div>
+					<div class="pb-20 px-3">
+						<div class="table-responsive">
+							<table class="table table-bordered table-striped table-sm" id="tablaActividades">
+								<thead style="background:#e9ecef; font-weight:600;">
+									<tr>
+										<th>Actividad</th>
+										<th class="text-center" style="width:110px;">Tarifa (x mil)</th>
+										<th style="text-align:right; width:170px;">Base</th>
+										<th style="text-align:right; width:150px;">Valor</th>
+										<th style="width:50px;"></th>
+									</tr>
+								</thead>
+								<tbody></tbody>
+							</table>
+						</div>
+
+						<!-- Solo autorretención: impuesto de generación de energía
+						     (Ley 56 de 1981). No tiene número de casilla en el formulario. -->
+						<div id="bloqueEnergia" style="display:none">
+							<div class="row">
+								<div class="col-md-6">
+									<label style="font-weight:600; font-size:13px;">Impuesto por generación de energía (Ley 56 de 1981)</label>
+									<input type="text" id="impuestoEnergia" class="form-control text-right" inputmode="numeric" value="0">
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="card-box mb-30">
+					<div class="pd-20"><h4 class="h4 mb-0">Liquidación privada</h4></div>
+					<div class="pb-20 px-3">
+
+						<div id="avisoPendientes" style="display:none">
+							<div class="alert alert-warning">
+								Las casillas marcadas como <strong>pendiente</strong> no se liquidan todavía:
+								su fórmula está en revisión por la Alcaldía. Aparecen en cero.
+							</div>
+						</div>
+
+						<div class="table-responsive">
+							<table class="table table-bordered table-striped table-sm" id="tablaRenglones">
+								<thead style="background:#e9ecef; font-weight:600;">
+									<tr>
+										<th class="text-center" style="width:55px;">N°</th>
+										<th>Concepto</th>
+										<th style="text-align:right; width:200px;">Valor</th>
+									</tr>
+								</thead>
+								<tbody></tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+
+				<div class="card-box mb-30">
+					<div class="pd-20 text-right">
+						<button type="button" id="btnLiquidar"  class="btn btn-info">Liquidar</button>
+						<button type="button" id="btnGuardar"   class="btn btn-secondary">Guardar</button>
+						<button type="button" id="btnPresentar" class="btn btn-success">Presentar</button>
+					</div>
+				</div>
+
+			</div>
+
+		</div>
 
 		<!-- /.modal-dialog -->
 		<!-- js -->
@@ -139,6 +236,8 @@
 		<!-- switchery js -->
 		<script src="../src/plugins/switchery/switchery.min.js"></script>
 		<script src="../src/plugins/sweetalert2/sweetalert2.all.js"></script>
+		<script src="../core/numeros.js?v=<?php echo time(); ?>"></script>
+		<script src="../core/retenciones.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/reteicaPresentar.js?v=<?php echo time(); ?>"></script>
 		<!-- <script src="../core/Permisos.js"></script> -->
 	</div>	

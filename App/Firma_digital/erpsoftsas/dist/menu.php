@@ -199,6 +199,35 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 					</a>
 				</li>
 
+				<!-- ESTABLECIMIENTOS -->
+				<!--
+				  Historia, porque esto ya se movio antes y conviene no repetir la
+				  discusion a ciegas:
+
+				    2026-08 (punto 5)  se saco a primer nivel
+				    2026-08-18         el cliente pidio devolverlo dentro de
+				                       Industria y Comercio
+				    2026-09-09         vuelve a primer nivel
+
+				  El argumento de ahora NO es el de agosto. En agosto el unico
+				  modulo era el ICA, asi que colgar Establecimientos de el era
+				  razonable. Hoy los MISMOS establecimientos los usan tres modulos
+				  -ICA, Retencion y Autorretencion-, y tenerlos dentro de uno de
+				  los tres sugiere que pertenecen solo a ese. Van arriba, junto al
+				  RIT, que es el otro dato transversal del contribuyente.
+
+				  Sigue con el permiso 1640: mover el elemento en el menu no cambia
+				  quien puede entrar. menu.js muestra `.menu_<boton>` y su
+				  `li.dropdown` contenedor, asi que como elemento de primer nivel
+				  la clase va en el propio <li>, igual que en el RIT.
+				-->
+				<li class="dropdown menu_1640" id="MEstablecimientos">
+					<a id="ICAWeb_Establecimientos" onclick="menu.validarIngreso(1640,7)" class="dropdown-toggle no-arrow" style="cursor:pointer;" title="Establecimientos del contribuyente">
+						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><line x1="9" y1="9" x2="9" y2="9.01"/><line x1="9" y1="13" x2="9" y2="13.01"/><line x1="9" y1="17" x2="9" y2="17.01"/><line x1="15" y1="9" x2="15" y2="9.01"/><line x1="15" y1="13" x2="15" y2="13.01"/><line x1="15" y1="17" x2="15" y2="17.01"/></svg></span>
+						<span class="mtext">Establecimientos</span>
+					</a>
+				</li>
+
 				
 
 				<!-- CONSULTAS EXTERNAS -->
@@ -297,16 +326,8 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 
 					<ul class="submenu" id="SubICAWeb">
 
-						<!-- Reunion 2026-08-18: Establecimientos vuelve a ser SUBMODULO de
-						     Industria y Comercio. La lista anterior lo habia sacado a primer
-						     nivel (punto 5); el cliente cambio de opinion. El RIT si se queda
-						     arriba, como modulo propio. -->
-						<li class="menu_1640">
-							<a id="ICAWeb_Establecimientos" onclick="menu.validarIngreso(1640,7)" style="cursor:pointer;">
-								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><line x1="9" y1="9" x2="9" y2="9.01"/><line x1="9" y1="13" x2="9" y2="13.01"/><line x1="9" y1="17" x2="9" y2="17.01"/><line x1="15" y1="9" x2="15" y2="9.01"/><line x1="15" y1="13" x2="15" y2="13.01"/><line x1="15" y1="17" x2="15" y2="17.01"/></svg></i> Establecimientos
-							</a>
-						</li>
-
+						<!-- Establecimientos ya NO esta aqui: subio a primer nivel, junto
+						     al RIT. Ver la nota en ese bloque. -->
 
 						<li class="menu_1641">
 							<a id="ICAWeb_Presentar" onclick="menu.validarIngreso(1641,103)">

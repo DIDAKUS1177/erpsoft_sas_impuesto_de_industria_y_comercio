@@ -185,6 +185,11 @@ class FirmasAPI
         $codigo = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
         $expiracion = date('Y-m-d H:i:s', strtotime('+10 minutes'));
 
+        // El rol con que viaja el codigo lleva el modulo dentro (ver
+        // _rolCodigo): un codigo pedido para el ICA no debe firmar una
+        // retencion.
+        $rolCodigo = $this->_rolCodigo($rol);
+
         // Se anulan los codigos previos del MISMO rol: el del declarante y el
         // del contador conviven sin pisarse.
         $conSql->consultar(
@@ -193,7 +198,7 @@ class FirmasAPI
                AND codigo_IdEstablecimiento = ?
                AND codigo_Rol = ?
                AND codigo_Usado = 0",
-            [$idUsuario, $idEstablecimiento, $rol]
+            [$idUsuario, $idEstablecimiento, $rolCodigo]
         );
 
         $conSql->consultar(
@@ -201,7 +206,7 @@ class FirmasAPI
                 (codigo_Valor, codigo_IdUsuario, codigo_Email, codigo_IdEstablecimiento,
                  codigo_FechaExpiracion, codigo_Rol)
              VALUES (?, ?, ?, ?, ?, ?)",
-            [$codigo, $idUsuario, $email, $idEstablecimiento, $expiracion, $rol]
+            [$codigo, $idUsuario, $email, $idEstablecimiento, $expiracion, $rolCodigo]
         );
 
         $enviado = $this->_enviarCodigo($email, $nombre, $codigo);
@@ -220,6 +225,44 @@ class FirmasAPI
      * 'contador'. Contador y revisor fiscal comparten una sola casilla en el
      * formulario, por eso comparten también un solo rol.
      */
+    /**
+     * De que formulario es esta firma: 'ICA' (por defecto), 'RETEICA' o
+     * 'AUTORRETEICA'.
+     *
+     * Hace falta porque firmas_declaraciones identifica la firma por el NUMERO
+     * de declaracion, y los tres modulos reparten numeros de series distintas:
+     * la retencion 2026000001 y la declaracion de ICA 2026000001 son documentos
+     * diferentes. Sin esta columna la firma de una valdria para la otra.
+     */
+    private function _moduloFirma()
+    {
+        $m = strtoupper(trim($_POST['modulo'] ?? 'ICA'));
+        return in_array($m, ['RETEICA', 'AUTORRETEICA'], true) ? $m : 'ICA';
+    }
+
+    /**
+     * El rol con que se guarda el CODIGO OTP, que no es el mismo con que se
+     * guarda la firma.
+     *
+     * codigos_verificacion identifica cada codigo por (usuario, establecimiento,
+     * rol). Si los tres modulos usaran 'declarante' a secas, un codigo pedido
+     * para firmar la declaracion anual de ICA serviria para firmar una
+     * retencion, y al reves. Son tres autorizaciones distintas.
+     *
+     * Es exactamente el mismo razonamiento por el que el RIT tiene su propio
+     * rol desde el 2026-08-19.
+     *
+     * El prefijo va abreviado porque codigo_Rol es varchar(20):
+     * 'aut:declarante' son 14 caracteres, 'AUTORRETEICA:declarante' serian 23.
+     */
+    private function _rolCodigo($rol)
+    {
+        $modulo = $this->_moduloFirma();
+        if ($modulo === 'RETEICA')      { return 'ret:' . $rol; }
+        if ($modulo === 'AUTORRETEICA') { return 'aut:' . $rol; }
+        return $rol;
+    }
+
     private function _rolFirmante()
     {
         $rol = strtolower(trim($_POST['rol'] ?? 'declarante'));
@@ -248,14 +291,46 @@ class FirmasAPI
             return ['ok' => false, 'mensaje' => 'Número de declaración inválido'];
         }
 
-        $stmt = $conSql->consultar(
-            "SELECT c.ind_NombreContador, c.ind_EmailContador,
-                    c.ind_NombreRevisor,  c.ind_EmailRevisor
-             FROM ind_declaraciones_ica d
-             INNER JOIN ind_contribuyentes c ON c.ind_Id = d.dec_IdContribuyente
-             WHERE d.dec_Id = ?",
-            [$numeroDeclaracion]
-        );
+        /*
+         * De que tabla se busca el contribuyente depende del modulo. Antes
+         * estaba fijo en ind_declaraciones_ica, que para una retencion habria
+         * buscado un id de OTRA tabla y devuelto o nada, o -peor- el
+         * contribuyente equivocado si los ids coincidian.
+         *
+         * En ICA se busca por dec_Id porque es lo que manda esa pantalla; en
+         * los modulos nuevos por el NUMERO, que es lo que viaja en el POST y lo
+         * que se imprime en el papel.
+         */
+        $modulo = $this->_moduloFirma();
+
+        if ($modulo === 'RETEICA') {
+            $stmt = $conSql->consultar(
+                "SELECT c.ind_NombreContador, c.ind_EmailContador,
+                        c.ind_NombreRevisor,  c.ind_EmailRevisor
+                 FROM ind_reteica d
+                 INNER JOIN ind_contribuyentes c ON c.ind_Id = d.ret_IdContribuyente
+                 WHERE d.ret_NumeroDeclaracion = ?",
+                [$numeroDeclaracion]
+            );
+        } elseif ($modulo === 'AUTORRETEICA') {
+            $stmt = $conSql->consultar(
+                "SELECT c.ind_NombreContador, c.ind_EmailContador,
+                        c.ind_NombreRevisor,  c.ind_EmailRevisor
+                 FROM ind_autorreteica d
+                 INNER JOIN ind_contribuyentes c ON c.ind_Id = d.aut_IdContribuyente
+                 WHERE d.aut_NumeroDeclaracion = ?",
+                [$numeroDeclaracion]
+            );
+        } else {
+            $stmt = $conSql->consultar(
+                "SELECT c.ind_NombreContador, c.ind_EmailContador,
+                        c.ind_NombreRevisor,  c.ind_EmailRevisor
+                 FROM ind_declaraciones_ica d
+                 INNER JOIN ind_contribuyentes c ON c.ind_Id = d.dec_IdContribuyente
+                 WHERE d.dec_Id = ?",
+                [$numeroDeclaracion]
+            );
+        }
         $fila = $conSql->obnerFila($stmt);
 
         if (!$fila) {
@@ -509,9 +584,12 @@ class FirmasAPI
         $conSql = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
         $rol = $this->_rolFirmante();
 
+        $modulo = $this->_moduloFirma();
+
         // El codigo se valida y se consume aqui, no en una llamada aparte.
         // Vale tambien para refirmar: refirmar es volver a firmar.
-        $errorCodigo = $this->_consumirCodigo($conSql, $idUsuario, $rol);
+        // El rol lleva el modulo dentro: ver _rolCodigo().
+        $errorCodigo = $this->_consumirCodigo($conSql, $idUsuario, $this->_rolCodigo($rol));
         if ($errorCodigo !== null) {
             echo json_encode(['ok' => 0, 'mensaje' => $errorCodigo]);
             return;
@@ -540,12 +618,13 @@ class FirmasAPI
             $email  = $destino['email'];
         }
 
-        // La unicidad ahora es por (declaración, rol): el declarante y el
-        // contador firman la misma declaración sin pisarse.
+        // La unicidad es por (declaración, rol, MÓDULO): el declarante y el
+        // contador firman la misma declaración sin pisarse, y la retención
+        // 2026000001 no es la declaración de ICA 2026000001.
         $stmtCheck = $conSql->consultar(
             "SELECT fd_Id FROM firmas_declaraciones
-             WHERE fd_NumeroDeclaracion = ? AND fd_Rol = ?",
-            [$numeroDeclaracion, $rol]
+             WHERE fd_NumeroDeclaracion = ? AND fd_Rol = ? AND fd_Modulo = ?",
+            [$numeroDeclaracion, $rol, $modulo]
         );
         $existe = $conSql->obnerFila($stmtCheck);
 
@@ -567,9 +646,10 @@ class FirmasAPI
         } else {
             $conSql->consultar(
                 "INSERT INTO firmas_declaraciones
-                    (fd_NumeroDeclaracion, fd_IdUsuario, fd_NombreUsuario, fd_EmailUsuario, fd_Rol)
-                 VALUES (?, ?, ?, ?, ?)",
-                [$numeroDeclaracion, $idUsuario, $nombre, $email, $rol]
+                    (fd_NumeroDeclaracion, fd_IdUsuario, fd_NombreUsuario, fd_EmailUsuario,
+                     fd_Rol, fd_Modulo)
+                 VALUES (?, ?, ?, ?, ?, ?)",
+                [$numeroDeclaracion, $idUsuario, $nombre, $email, $rol, $modulo]
             );
             $msg = $rol === 'contador'
                  ? 'Declaración firmada por el contador / revisor fiscal'
@@ -604,11 +684,14 @@ class FirmasAPI
         $inClause = implode(',', $numerosLimpios);
 
         $conSql = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        // Filtrado por modulo: sin esto, una retencion firmada apareceria como
+        // firmada tambien en la pantalla del ICA, si comparten el numero.
         $stmt = $conSql->consultar(
             "SELECT fd_NumeroDeclaracion, fd_NombreUsuario,
                     CONVERT(VARCHAR(19), fd_FechaHora, 120) AS fd_FechaHora
              FROM firmas_declaraciones
-             WHERE fd_NumeroDeclaracion IN ($inClause)"
+             WHERE fd_NumeroDeclaracion IN ($inClause) AND fd_Modulo = ?",
+            [$this->_moduloFirma()]
         );
 
         $firmados = [];
