@@ -96,6 +96,40 @@ if (function_exists('sqlsrv_configure')) {
     sqlsrv_configure('WarningsReturnAsErrors', 0);
 }
 
+/*
+ * --reporte=<ruta>  deja TODO lo que imprime el script tambien en un archivo,
+ * relativo a la raiz de la aplicacion.
+ *
+ * Hace falta porque el panel de Plesk muestra la salida de una tarea de forma
+ * poco fiable: en el despliegue del 2026-09-09 solo se veia la primera linea, y
+ * de un script que toca el esquema uno quiere leerlo entero.
+ *
+ * Se hace con un bufer de salida y una funcion de cierre, no envolviendo cada
+ * echo. Asi captura TAMBIEN los errores fatales de PHP -que es justo lo que uno
+ * necesita ver y lo que se perdia- porque las funciones de cierre corren
+ * igualmente cuando el script muere.
+ *
+ * Es opcional: el archivo solo existe si alguien lo pide, con el nombre que
+ * elija, y conviene borrarlo despues -lista nombres de tablas y de la base-.
+ */
+$reporte = null;
+foreach ($argv as $arg) {
+    if (strpos($arg, '--reporte=') === 0) {
+        $reporte = $raiz . '/' . ltrim(substr($arg, 10), '/');
+        break;
+    }
+}
+
+if ($reporte) {
+    @file_put_contents($reporte, '');
+    ob_start();
+    register_shutdown_function(function () use ($reporte) {
+        $salida = ob_get_contents();
+        ob_end_flush();
+        @file_put_contents($reporte, $salida);
+    });
+}
+
 $aplicar = in_array('--aplicar', $argv, true);
 $filtros = array_values(array_filter(array_slice($argv, 1), function ($a) {
     return strpos($a, '--') !== 0;
