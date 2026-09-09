@@ -73,6 +73,21 @@ if (empty($_SERVER['DOCUMENT_ROOT'])) {
 require_once $raiz . '/business/globals.php';
 require_once $raiz . '/business/class.conexionSqlServer.php';
 
+/*
+ * globals.php fuerza display_errors=0 -a proposito: un aviso de PHP impreso
+ * antes de un json_encode corrompe la respuesta y deja las pantallas mudas-.
+ * Pero AQUI no hay JSON ni navegador: solo se llega por linea de comandos, y
+ * un fatal invisible convierte este script en lo peor posible, algo que toca
+ * el esquema y no dice que paso.
+ *
+ * Costo una vuelta en el despliegue del 2026-09-09: el script imprimio la
+ * linea de la base y murio en silencio. En Plesk solo se veia "se completo con
+ * errores", sin una sola pista.
+ */
+ini_set('display_errors', '1');
+ini_set('display_startup_errors', '1');
+error_reporting(E_ALL);
+
 /* Los mensajes informativos de SQL Server (PRINT, "N filas afectadas") llegan
    como advertencias; sin esto el driver los trata como error y aborta una
    migracion que en realidad fue bien. Es la misma razon por la que hizo falta
@@ -96,10 +111,29 @@ $donde = $con->obnerFila($con->consultar(
 ));
 echo "Base de datos: " . $donde['base'] . "   (servidor " . $donde['servidor'] . ")\n\n";
 
-/* Lo que ya esta aplicado. */
-$aplicadas = [];
-$stmt = $con->consultar("SELECT mig_Nombre FROM conf_migraciones");
-while ($f = $con->obnerFila($stmt)) { $aplicadas[trim($f['mig_Nombre'])] = true; }
+/*
+ * Lo que ya esta aplicado.
+ *
+ * Si conf_migraciones NO existe, esta base nunca vio el sistema de migraciones
+ * y hay que empezar por la 000, que es justamente la que crea esa tabla. Se
+ * dice con todas las letras en vez de morir con "Invalid object name": es la
+ * diferencia entre saber que hacer y no saber que paso.
+ */
+$existe = $con->obnerFila($con->consultar(
+    "SELECT OBJECT_ID('dbo.conf_migraciones') AS id"
+));
+
+if (empty($existe['id'])) {
+    echo "La tabla conf_migraciones NO existe en esta base.\n";
+    echo "Esta base nunca ha pasado por el sistema de migraciones.\n";
+    echo "Hay que empezar por 000_registro_de_migraciones, que es la que la crea.\n\n";
+    $aplicadas = [];
+} else {
+    $aplicadas = [];
+    $stmt = $con->consultar("SELECT mig_Nombre FROM conf_migraciones");
+    while ($f = $con->obnerFila($stmt)) { $aplicadas[trim($f['mig_Nombre'])] = true; }
+    echo "Migraciones ya registradas: " . count($aplicadas) . "\n\n";
+}
 
 $archivos = glob($raiz . '/BD/migraciones/*.sql');
 sort($archivos);
