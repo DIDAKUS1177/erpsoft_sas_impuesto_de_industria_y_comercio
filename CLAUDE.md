@@ -470,6 +470,40 @@ y **no es reutilizable** para esta app PHP de ICA — se investigó a fondo (202
 antes de decidir construir desde cero. Lo único rescatado de ahí fue la fórmula de
 firma del webhook, ya incorporada arriba.
 
+### Despliegue del 2026-09-09: lo que se aprendió a golpes
+
+Producción llevaba **desde el 11 de agosto** sin actualizar, así que el pull trajo
+86 commits de golpe. Y su base de datos **nunca había pasado por el sistema de
+migraciones**: 18 tablas, sin `conf_migraciones`. Quedó en 32 tablas con las 31
+migraciones aplicadas y registradas.
+
+**El servidor es WINDOWS con IIS**, no Linux. Se perdió un rato mandando
+`/bin/sh` y rutas `/opt/...` a las tareas programadas, que no existen ahí y
+fallan sin decir nada. El motor es `.\MSSQLSERVER2022` — **local a la máquina**,
+no expuesto a Internet, así que no hay forma de conectarse con un cliente SQL
+desde fuera sin RDP.
+
+**Plesk NO tiene consola SQL para SQL Server.** El "Web Admin" solo aparece en las
+bases MySQL; para MS SQL solo hay volcados. Por eso existe
+`BD/aplicar_migraciones.php`: se corre desde *Tareas programadas → Ejecutar un
+script PHP*, con `--aplicar` como argumento y **PHP 8.3**. Usar **"Ejecutar
+ahora"**, no "Aceptar" — no se quiere una tarea que aplique migraciones a diario.
+
+**El "Pull ahora" de Plesk se quedó clavado** en un commit y no avanzaba por más
+que se pulsara, ni con "Desplegar ahora". La salida: *Administrador de archivos →
+`+` → **Importar archivo mediante URL***, apuntando al raw de GitHub
+(`https://raw.githubusercontent.com/<owner>/<repo>/main/<ruta>`). Sobrescribe el
+archivo y es fiable. Queda pendiente averiguar por qué el pull no avanza.
+
+**PHP no puede escribir archivos en la carpeta de la aplicación** — misma familia
+que la trampa de TCPDF con los temporales. Un script que intente dejar un informe
+en disco falla en silencio.
+
+**Y la trampa de siempre**: `globals.php` fuerza `display_errors=0`, así que un
+fatal en un script de línea de comandos sale **mudo** y Plesk solo dice "se
+completó con errores". Todo script de mantenimiento debe encender
+`display_errors` para sí mismo.
+
 ### Despliegue (Plesk)
 
 - Subscripción: `industria-comercio-paipa.erpsoftsas.com` — **cuidado**, existen
