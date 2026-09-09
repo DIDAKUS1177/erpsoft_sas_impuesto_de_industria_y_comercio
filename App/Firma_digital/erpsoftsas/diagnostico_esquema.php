@@ -107,6 +107,50 @@ try {
         }
     }
 
+    /* Parametros de configuracion. Sin RECAUDO_EAN el codigo de barras se
+       imprime pero NO es pagable en banco: interesa saberlo. */
+    echo "
+PARAMETROS (conf_parametros):
+";
+    $st = $con->consultar(
+        "SELECT par_Clave, par_Valor, par_Sensible FROM conf_parametros ORDER BY par_Clave"
+    );
+    $hayPar = false;
+    while ($f = $con->obnerFila($st)) {
+        $hayPar = true;
+        $v = $f['par_Sensible'] ? '(sensible)'
+           : (trim((string) $f['par_Valor']) === '' ? '(VACIO)' : $f['par_Valor']);
+        printf("  %-26s %s
+", $f['par_Clave'], $v);
+    }
+    if (!$hayPar) { echo "  (sin filas)
+"; }
+
+    /* Catalogos que los modulos necesitan para liquidar. */
+    echo "
+CATALOGOS:
+";
+    $r = $con->obnerFila($con->consultar(
+        "SELECT COUNT(*) AS n FROM ind_actividadescomercio"
+    ));
+    echo "  actividades economicas        " . $r['n'] . "
+";
+
+    $st = $con->consultar(
+        "SELECT ren_Modulo, COUNT(*) AS n,
+                SUM(CASE WHEN ren_Formula IS NULL THEN 1 ELSE 0 END) AS sinFormula
+           FROM ind_renglones_retencion GROUP BY ren_Modulo"
+    );
+    $hayRen = false;
+    while ($f = $con->obnerFila($st)) {
+        $hayRen = true;
+        printf("  renglones %-18s %s  (sin formula: %s)
+",
+               $f['ren_Modulo'], $f['n'], $f['sinFormula']);
+    }
+    if (!$hayRen) { echo "  renglones de retencion        NINGUNO
+"; }
+
 } catch (\Throwable $e) {
     echo "\nERROR: " . $e->getMessage() . "\n";
 }
