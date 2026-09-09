@@ -62,9 +62,9 @@ ELSE
 GO
 
 
-IF NOT EXISTS (SELECT 1 FROM dbo.conf_migraciones WHERE mig_Nombre = '027_numeracion_corrida')
+IF NOT EXISTS (SELECT 1 FROM dbo.conf_migraciones WHERE mig_Nombre = '027_crear_no_bloquea_por_periodo')
     INSERT INTO dbo.conf_migraciones (mig_Nombre, mig_Nota)
-    VALUES ('027_numeracion_corrida',
+    VALUES ('027_crear_no_bloquea_por_periodo',
             'Retira UQ_declaracion_periodo_nuevas para que Crear Declaracion cree siempre, por instruccion del cliente; se le advirtio que permite dos originales del mismo periodo y lo confirmo. La version original cambiaba ademas el numero a serie corrida; se retiro antes de desplegarse porque el cliente pidio volver al formato por año y produccion habria renumerado declaraciones reales dos veces para nada.');
 GO
 
