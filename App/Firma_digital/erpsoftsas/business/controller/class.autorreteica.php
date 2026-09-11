@@ -75,12 +75,24 @@ class ControladorAutorreteica extends \erpsoftsas\ControladorRetencion
         $anioCatalogo = (isset($vigente['anio']) && $vigente['anio'] !== null)
                       ? (int) $vigente['anio'] : (int) $anio;
 
+        /*
+         * Las actividades del contribuyente viven en ind_actividad_contribuyente
+         * -la tabla NUEVA-. Las migraciones 005 y 007 las subieron del
+         * establecimiento al contribuyente y les quitaron el año; desde
+         * entonces la pantalla del RIT guarda ahi y a ind_actividad_establecimiento
+         * ya nadie escribe. Leer de la vieja devolvia CERO actividades para todo
+         * contribuyente cuyo RIT se tocara despues de esa migracion, y la
+         * autorretencion salia sin nada que precargar. Es la misma correccion que
+         * ya llevan el RIT (class.establecimientos.php) y el ICA.
+         *
+         * La tarifa se toma del catalogo del año vigente uniendo por acc_Id, igual
+         * que antes: el RIT guarda el acc_Id del catalogo, que es por año.
+         */
         $stmt = $con->consultar(
             "SELECT DISTINCT ac.acc_Id, ac.acc_Tarifa
-               FROM ind_actividad_establecimiento ae
-               INNER JOIN ind_establecimientos e   ON e.est_Id  = ae.ace_IdEstablecimiento
-               INNER JOIN ind_actividadescomercio ac ON ac.acc_Id = ae.ace_IdCodigoActividad
-              WHERE e.est_IdContribuyente = ?
+               FROM ind_actividad_contribuyente atc
+               INNER JOIN ind_actividadescomercio ac ON ac.acc_Id = atc.atc_IdCodigoActividad
+              WHERE atc.atc_IdContribuyente = ?
                 AND ac.acc_Anio = ?",
             [(int) $idContribuyente, $anioCatalogo]
         );

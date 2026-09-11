@@ -28,6 +28,54 @@ var Retenciones = (function () {
     'use strict';
 
     /* --------------------------------------------------------------------
+     * Puente de SweetAlert2 (v7 -> API v8+)
+     * --------------------------------------------------------------------
+     * Este proyecto trae SweetAlert2 v7.16.0, cuyo global es `swal` en
+     * minuscula: no tiene `.fire`, usa `type`/`onOpen` (no `icon`/`didOpen`) y
+     * su promesa resuelve en `.value` (no `.isConfirmed`). Este archivo se
+     * escribio contra la API v8+ (`Swal.fire`, `icon`, `didOpen`,
+     * `.isConfirmed`), asi que sin este puente TODA llamada a Swal lanzaba
+     * "Swal is not defined" y el flujo moria antes de abrir la declaracion:
+     * por eso "Crear declaracion" no hacia nada.
+     *
+     * Se traduce aqui, en un solo sitio, en vez de reescribir las ~15
+     * llamadas o cambiar la version -que romperia las demas pantallas del
+     * sistema, que si usan swal(...) v7-. Si algun dia se sube a la v11, este
+     * puente cede el paso solo (window.Swal ya existiria).
+     *
+     * sweetalert2 se carga antes que este archivo (ver el orden de <script> en
+     * las cuatro vistas), asi que window.swal ya existe cuando esto corre.
+     */
+    var Swal = window.Swal || (function (base) {
+        if (typeof base !== 'function') {
+            // Sin libreria de alertas: no romper el flujo por un aviso.
+            var noop = function () { return { then: function (f) { try { f({ isConfirmed: true, value: true }); } catch (e) {} return { catch: function () {} }; } }; };
+            return { fire: noop, showLoading: function () {}, close: function () {} };
+        }
+        function fire(a, b, c) {
+            var o;
+            if (a && typeof a === 'object') {
+                o = {};
+                for (var k in a) { if (a.hasOwnProperty(k)) { o[k] = a[k]; } }
+                if (o.icon && !o.type)      { o.type   = o.icon;    delete o.icon; }
+                if (o.didOpen && !o.onOpen) { o.onOpen = o.didOpen;  delete o.didOpen; }
+            } else {
+                o = { title: a, text: b, type: c };
+            }
+            function norm(res) {
+                var ok = !!(res && res.value);
+                return { isConfirmed: ok, isDismissed: !ok, value: res && res.value };
+            }
+            return base(o).then(norm, function () { return { isConfirmed: false, isDismissed: true }; });
+        }
+        return {
+            fire: fire,
+            showLoading: function () { return base.showLoading(); },
+            close: function () { return base.close(); }
+        };
+    })(window.swal);
+
+    /* --------------------------------------------------------------------
      * Conversacion con el backend
      * ------------------------------------------------------------------ */
 
