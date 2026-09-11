@@ -2006,12 +2006,12 @@ actualizarDeclaracionIca(valor, numeroCampo){
                         const kb = Math.max(1, Math.round((a.anx_Tamano || 0) / 1024));
                         filas +=
                             '<tr>' +
-                            '<td>' + establecimientos.escapeHtml(etiquetas[a.anx_Tipo] || a.anx_Tipo || '') + '</td>' +
+                            '<td>' + establecimientos.escaparHtml(etiquetas[a.anx_Tipo] || a.anx_Tipo || '') + '</td>' +
                             // El nombre lo escribe quien sube: se escapa. Ver la nota de
                             // escapeHtml, que existe por un XSS real encontrado aqui.
-                            '<td>' + establecimientos.escapeHtml(a.anx_NombreOriginal) + '</td>' +
+                            '<td>' + establecimientos.escaparHtml(a.anx_NombreOriginal) + '</td>' +
                             '<td>' + kb + ' KB</td>' +
-                            '<td>' + establecimientos.escapeHtml(a.anx_FechaCarga) + '</td>' +
+                            '<td>' + establecimientos.escaparHtml(a.anx_FechaCarga) + '</td>' +
                             '<td>' +
                               '<a class="btn btn-sm btn-outline-info" target="_blank" ' +
                                  'href="../extensiones/anexo.php?id=' + encodeURIComponent(a.anx_Id) + '">Ver</a> ' +

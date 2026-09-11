@@ -41,7 +41,18 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 	.sidebar-menu .dropdown-toggle .micon {
 		color: #ffffff !important;
 	}
-	
+
+	/*
+	 * El icono del titulo de la cabecera se CLONA del menu lateral (ver el
+	 * bloque que llena #headerPageTitle mas abajo), pero fuera de .sidebar-menu
+	 * la regla que dimensiona el SVG no aplica y el icono salia a ~168px: era el
+	 * "globo" gigante que aparecia sobre Establecimientos y las demas pantallas
+	 * de PRIMER NIVEL -las de submenu usan una flecha, no un SVG, por eso no lo
+	 * mostraban-. Se acota el tamaño aqui.
+	 */
+	#headerPageTitle .micon { display: inline-flex; align-items: center; }
+	#headerPageTitle .micon svg { width: 18px; height: 18px; }
+
 	/* Hover en el menú lateral */
 	.sidebar-menu .show > .dropdown-toggle,
 	.sidebar-menu .dropdown-toggle:hover {
