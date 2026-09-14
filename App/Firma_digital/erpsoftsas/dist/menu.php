@@ -53,6 +53,56 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 	#headerPageTitle .micon { display: inline-flex; align-items: center; }
 	#headerPageTitle .micon svg { width: 18px; height: 18px; }
 
+	/*
+	 * BOTONES DE ACCION EN TARJETA (icono + texto).
+	 * Pedido del cliente 2026-09-14: los botones de las filas dejan de ser
+	 * iconos sueltos y pasan a tarjetas con icono arriba y su nombre debajo,
+	 * A COLOR cuando la accion esta disponible y en GRIS (.acc-off) cuando no.
+	 * Solo cambia la forma: mismos botones, mismas funciones. Vive aqui porque
+	 * lo comparten los TRES modulos -ICA (core/declaraciones.ui.js) y
+	 * Retencion/Autorretencion (core/retenciones.js)-, que ya incluyen menu.php.
+	 */
+	.acc-cards {
+		display: inline-flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+		vertical-align: middle;
+	}
+	.acc-card {
+		display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+		width: 66px; min-height: 54px; padding: 6px 4px; gap: 3px;
+		border: 1px solid transparent; border-radius: 9px;
+		font-size: 11px; font-weight: 600; line-height: 1.12; text-align: center;
+		cursor: pointer; text-decoration: none; background: none;
+		transition: transform .08s ease, box-shadow .12s ease, filter .12s ease;
+	}
+	.acc-card i { font-size: 17px; line-height: 1; }
+	.acc-card .acc-lbl { display: block; white-space: normal; }
+	.acc-card:hover { transform: translateY(-1px); box-shadow: 0 2px 7px rgba(0,0,0,.14); text-decoration: none; filter: brightness(1.03); }
+	.acc-card:focus-visible { outline: 2px solid rgba(0,0,0,.28); outline-offset: 1px; }
+
+	/* Activo = a color (relleno suave + icono/texto y borde del color de la accion). */
+	.acc-card.acc-info      { color:#0b7285; background:#e3fafc; border-color:#c5f0f5; }
+	.acc-card.acc-warning   { color:#a5680a; background:#fff6e6; border-color:#ffe3b3; }
+	.acc-card.acc-primary   { color:#1864ab; background:#e7f1ff; border-color:#c9deff; }
+	.acc-card.acc-success   { color:#2b8a3e; background:#e9f8ee; border-color:#c3eccf; }
+	.acc-card.acc-danger    { color:#c92a2a; background:#ffecec; border-color:#ffd0d0; }
+	.acc-card.acc-secondary { color:#4c4fbf; background:#eeefff; border-color:#d7d9ff; }
+
+	/* Inhabilitado = gris, sin click. */
+	.acc-card.acc-off,
+	.acc-card[disabled],
+	.acc-card[aria-disabled="true"] {
+		color:#adb5bd !important; background:#f4f5f6 !important; border-color:#e6e8ea !important;
+		cursor: not-allowed; pointer-events: none; box-shadow: none; filter: none; transform: none;
+	}
+
+	/* Hover a color pleno para el que va a pulsar (el activo, no el gris). */
+	.acc-card.acc-info:hover      { background:#0b7285; color:#fff; border-color:#0b7285; }
+	.acc-card.acc-warning:hover   { background:#a5680a; color:#fff; border-color:#a5680a; }
+	.acc-card.acc-primary:hover   { background:#1864ab; color:#fff; border-color:#1864ab; }
+	.acc-card.acc-success:hover   { background:#2b8a3e; color:#fff; border-color:#2b8a3e; }
+	.acc-card.acc-danger:hover    { background:#c92a2a; color:#fff; border-color:#c92a2a; }
+	.acc-card.acc-secondary:hover { background:#4c4fbf; color:#fff; border-color:#4c4fbf; }
+
 	/* Hover en el menú lateral */
 	.sidebar-menu .show > .dropdown-toggle,
 	.sidebar-menu .dropdown-toggle:hover {

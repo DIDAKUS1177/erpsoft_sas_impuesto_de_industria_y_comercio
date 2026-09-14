@@ -169,6 +169,40 @@ var Retenciones = (function () {
         return $('<div>').text(t === null || t === undefined ? '' : t).html();
     }
 
+    /*
+     * Boton de accion en TARJETA (icono + texto), IGUAL que el ICA.
+     * Pedido del cliente 2026-09-14: los mismos botones y funciones de siempre,
+     * solo cambia la forma -icono arriba, su nombre debajo, a color cuando la
+     * accion esta disponible-. La CSS (.acc-cards/.acc-card) vive en
+     * dist/menu.php, compartida con el ICA. Estas pantallas usan delegacion de
+     * eventos (clase js-* + data-id), asi que el boton acepta clase e id;
+     * cuando es un enlace directo (PDF) usa href.
+     *
+     *   o.tipo    info|warning|primary|success|danger|secondary
+     *   o.icono   clase de Font Awesome
+     *   o.texto   etiqueta visible
+     *   o.title   tooltip
+     *   o.clase   clase js-* para la delegacion   (con o.id)
+     *   o.id      data-id de la fila
+     *   o.href    enlace directo   + o.target opcional (por defecto _blank)
+     */
+    function accBtn(o) {
+        var cls = 'acc-card acc-' + o.tipo + (o.clase ? ' ' + o.clase : '');
+        var cuerpo = '<i class="fa ' + o.icono + '"></i>'
+                   + '<span class="acc-lbl">' + o.texto + '</span>';
+        if (o.href) {
+            return '<a class="' + cls + '" target="' + (o.target || '_blank') + '" '
+                 + 'title="' + o.title + '" href="' + o.href + '">' + cuerpo + '</a>';
+        }
+        return '<button class="' + cls + '" data-id="' + o.id + '" '
+             + 'title="' + o.title + '">' + cuerpo + '</button>';
+    }
+
+    /** Envuelve las tarjetas de acciones de una fila. */
+    function accCards(html) {
+        return '<div class="acc-cards">' + html + '</div>';
+    }
+
     /** Los años que se ofrecen: el actual y los dos anteriores.
      *  El anterior hace falta de verdad: en enero se declara diciembre. */
     function aniosOfrecidos() {
@@ -490,17 +524,15 @@ var Retenciones = (function () {
 
             filas.forEach(function (f) {
 
-                /* Botones con icono y title, como en icaWebConsultar: la
-                   columna de acciones del ICA no lleva texto. */
-                var acciones =
-                    '<button class="btn btn-info btn-sm mr-1 js-ver" data-id="' + f.id + '" '
-                  + 'title="Ver declaración"><i class="fa fa-eye"></i></button>';
+                /* Botones en tarjeta (icono + texto), iguales que el ICA. */
+                var acciones = accBtn({ tipo: 'info', icono: 'fa-eye', texto: 'Ver',
+                                        title: 'Ver declaración', clase: 'js-ver', id: f.id });
 
                 // Corregir solo sobre una presentada; es la unica via legal de
                 // cambiar algo ya declarado.
                 if (f.estado === 2) {
-                    acciones += '<button class="btn btn-warning btn-sm mr-1 js-corregir" data-id="'
-                              + f.id + '" title="Corregir"><i class="fa fa-pencil"></i></button>';
+                    acciones += accBtn({ tipo: 'warning', icono: 'fa-pencil', texto: 'Corregir',
+                                         title: 'Corregir', clase: 'js-corregir', id: f.id });
                 }
 
                 /*
@@ -510,8 +542,8 @@ var Retenciones = (function () {
                  * usuario cree que el sistema fallo.
                  */
                 if (cfg.pdf) {
-                    acciones += '<a class="btn btn-primary btn-sm" target="_blank" title="Descargar PDF" href="'
-                              + cfg.pdf + '?id=' + f.id + '"><i class="fa fa-download"></i></a>';
+                    acciones += accBtn({ tipo: 'primary', icono: 'fa-download', texto: 'Descargar',
+                                         title: 'Descargar PDF', href: cfg.pdf + '?id=' + f.id });
                 }
 
                 $cuerpo.append(
@@ -522,7 +554,7 @@ var Retenciones = (function () {
                   + '<td>' + insignia(f) + '</td>'
                   + '<td>' + (f.corrige ? ('Corrige la ' + escapar(f.corrige)) : '—') + '</td>'
                   + '<td style="text-align:right;">' + pesos(f.total) + '</td>'
-                  + '<td class="text-center" style="white-space:nowrap;">' + acciones + '</td>'
+                  + '<td class="text-center">' + accCards(acciones) + '</td>'
                   + '</tr>'
                 );
             });
@@ -618,8 +650,9 @@ var Retenciones = (function () {
                       + '<td>' + escapar(f.numero) + '</td>'
                       + '<td>' + insignia(f) + '</td>'
                       + '<td style="text-align:right;">' + pesos(f.total) + '</td>'
-                      + '<td class="text-center"><button class="btn btn-info btn-sm js-abrir" data-id="'
-                      + f.id + '" title="Abrir"><i class="fa fa-folder-open"></i></button></td>'
+                      + '<td class="text-center">' + accCards(accBtn({
+                            tipo: 'info', icono: 'fa-folder-open', texto: 'Abrir',
+                            title: 'Abrir', clase: 'js-abrir', id: f.id })) + '</td>'
                       + '</tr>'
                     );
                 });

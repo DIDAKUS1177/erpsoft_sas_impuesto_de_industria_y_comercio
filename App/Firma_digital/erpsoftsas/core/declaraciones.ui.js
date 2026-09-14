@@ -39,44 +39,75 @@ var DeclaracionesUI = (function () {
      *                        llama) que expone editarDeclaracion/abrirFirmaDigital/
      *                        presentarDeclaracion, p.ej. "establecimientos".
      */
+    /*
+     * Boton de accion en TARJETA (icono + texto). A color cuando la accion
+     * esta disponible; en gris (acc-off) cuando no. Pedido del cliente
+     * 2026-09-14: los mismos botones y las mismas funciones de siempre, solo
+     * cambia la forma. La CSS (.acc-cards/.acc-card) vive en dist/menu.php y la
+     * comparten los tres modulos (ICA, Retencion y Autorretencion).
+     *
+     *   o.tipo    info|warning|primary|success|danger|secondary (color de la accion)
+     *   o.icono   clase de Font Awesome
+     *   o.texto   etiqueta visible bajo el icono
+     *   o.title   tooltip (se conserva el de antes)
+     *   o.onclick JS a ejecutar   (excluyente con o.href)
+     *   o.href    enlace directo   + o.target opcional
+     *   o.off     true = tarjeta gris, sin click
+     */
+    function accBtn(o) {
+        var cls = 'acc-card acc-' + o.tipo + (o.off ? ' acc-off' : '');
+        var ini = o.off
+            ? '<a href="#" aria-disabled="true" tabindex="-1"'
+            : (o.href
+                ? '<a href="' + o.href + '"' + (o.target ? ' target="' + o.target + '"' : '')
+                : '<a href="javascript:void(0);" onclick="' + o.onclick + '"');
+        return ini + ' class="' + cls + '" title="' + o.title + '">' +
+               '<i class="fa ' + o.icono + '"></i>' +
+               '<span class="acc-lbl">' + o.texto + '</span></a>';
+    }
+
+    function envolverAcciones(html) {
+        return '<div class="acc-cards">' + html + '</div>';
+    }
+
     function htmlAcciones(d, objJs) {
 
         objJs = objJs || 'establecimientos';
 
         if (!d || !d.dec_Id) {
-            var deshabilitado = function (clase, icono, titulo) {
-                return '<a href="#" class="btn ' + clase + ' btn-sm mr-1" title="' + titulo + '" ' +
-                       'aria-disabled="true" tabindex="-1" style="pointer-events:none;opacity:.4;">' +
-                       '<i class="fa ' + icono + '"></i></a>';
-            };
-            return deshabilitado('btn-warning', 'fa-pencil', 'Editar Borrador') +
-                   deshabilitado('btn-secondary', 'fa-certificate', 'Firmar') +
-                   deshabilitado('btn-info', 'fa-eye', 'Ver Borrador');
+            return envolverAcciones(
+                accBtn({ tipo: 'warning',   icono: 'fa-pencil',      texto: 'Editar', title: 'Editar borrador', off: true }) +
+                accBtn({ tipo: 'secondary', icono: 'fa-certificate', texto: 'Firmar', title: 'Firmar',          off: true }) +
+                accBtn({ tipo: 'info',      icono: 'fa-eye',         texto: 'Ver',    title: 'Ver borrador',     off: true })
+            );
         }
 
         var clave = estado(d).clave;
 
         // Descargar el formulario oficial esta disponible en todos los
         // estados: es el mismo documento, con o sin sello segun avance.
-        var descargar = '<a href="../extensiones/declaracion.php?dec_Id=' + d.dec_Id + '" target="_blank" ' +
-                            'class="btn btn-primary btn-sm mr-1" title="Descargar"><i class="fa fa-download"></i></a>';
+        var descargar = accBtn({ tipo: 'primary', icono: 'fa-download', texto: 'Descargar', title: 'Descargar',
+                                 href: '../extensiones/declaracion.php?dec_Id=' + d.dec_Id, target: '_blank' });
 
         if (clave === 'borrador') {
-            return '<a href="javascript:void(0);" onclick="' + objJs + '.editarDeclaracion(' + d.dec_Id + ')" ' +
-                       'class="btn btn-warning btn-sm mr-1" title="Editar"><i class="fa fa-pencil"></i></a>' +
-                   '<a href="javascript:void(0);" onclick="' + objJs + '.abrirFirmaDigital(' + d.dec_Id + ', ' + d.dec_IdEstablecimiento + ')" ' +
-                       'class="btn btn-secondary btn-sm mr-1" title="Firmar"><i class="fa fa-pencil-square-o"></i></a>' +
-                   descargar +
-                   '<a href="javascript:void(0);" onclick="' + objJs + '.borrarDeclaracion(' + d.dec_Id + ')" ' +
-                       'class="btn btn-danger btn-sm mr-1" title="Borrar borrador"><i class="fa fa-trash"></i></a>';
+            return envolverAcciones(
+                accBtn({ tipo: 'warning',   icono: 'fa-pencil',          texto: 'Editar', title: 'Editar',
+                         onclick: objJs + '.editarDeclaracion(' + d.dec_Id + ')' }) +
+                accBtn({ tipo: 'secondary', icono: 'fa-pencil-square-o', texto: 'Firmar', title: 'Firmar',
+                         onclick: objJs + '.abrirFirmaDigital(' + d.dec_Id + ', ' + d.dec_IdEstablecimiento + ')' }) +
+                descargar +
+                accBtn({ tipo: 'danger',    icono: 'fa-trash',           texto: 'Borrar', title: 'Borrar borrador',
+                         onclick: objJs + '.borrarDeclaracion(' + d.dec_Id + ')' })
+            );
         }
 
         if (clave === 'pendienteCont' || clave === 'firmada') {
             // "Editar borrador" sobre una firmada BORRA las firmas y devuelve
             // la declaracion a borrador (regla del cliente): dejarian de
             // acreditar el contenido si este cambia.
-            var acciones = '<a href="javascript:void(0);" onclick="' + objJs + '.editarFirmada(' + d.dec_Id + ')" ' +
-                               'class="btn btn-warning btn-sm mr-1" title="Editar borrador (elimina las firmas)"><i class="fa fa-pencil"></i></a>' +
+            var acciones = accBtn({ tipo: 'warning', icono: 'fa-pencil', texto: 'Editar',
+                                    title: 'Editar borrador (elimina las firmas)',
+                                    onclick: objJs + '.editarFirmada(' + d.dec_Id + ')' }) +
                            descargar;
 
             if (clave === 'pendienteCont') {
@@ -107,27 +138,25 @@ var DeclaracionesUI = (function () {
                      * falte y presentando de una sola vez, que es como lo
                      * pidieron antes. Se suma una via, no se sustituye.
                      */
-                    acciones += '<a href="javascript:void(0);" onclick="' + objJs + '.firmaContador(' + d.dec_Id + ', ' + d.dec_IdEstablecimiento + ')" ' +
-                                    'class="btn btn-info btn-sm mr-1" ' +
-                                    'title="Firmar como contador o revisor fiscal (solo firma, no presenta)">' +
-                                    '<i class="fa fa-pencil-square-o"></i> Firmar contador</a>';
+                    acciones += accBtn({ tipo: 'info', icono: 'fa-pencil-square-o', texto: 'Firmar contador',
+                                         title: 'Firmar como contador o revisor fiscal (solo firma, no presenta)',
+                                         onclick: objJs + '.firmaContador(' + d.dec_Id + ', ' + d.dec_IdEstablecimiento + ')' });
 
-                    acciones += '<a href="javascript:void(0);" onclick="' + objJs + '.presentarDeclaracion(' + d.dec_Id + ', ' + d.dec_IdEstablecimiento + ')" ' +
-                                    'class="btn btn-success btn-sm mr-1" title="Presentar">' +
-                                    '<i class="fa fa-paper-plane"></i></a>';
+                    acciones += accBtn({ tipo: 'success', icono: 'fa-paper-plane', texto: 'Presentar', title: 'Presentar',
+                                         onclick: objJs + '.presentarDeclaracion(' + d.dec_Id + ', ' + d.dec_IdEstablecimiento + ')' });
                 } else {
                     // Sin correo registrado no hay a donde mandar el codigo:
                     // se dice que falta el dato en vez de fallar al pulsar.
-                    acciones += '<button type="button" class="btn btn-success btn-sm mr-1" disabled ' +
-                                    'title="Registre el correo del contador o revisor fiscal en el RIT antes de presentar">' +
-                                    '<i class="fa fa-paper-plane"></i></button>';
+                    acciones += accBtn({ tipo: 'success', icono: 'fa-paper-plane', texto: 'Presentar',
+                                         title: 'Registre el correo del contador o revisor fiscal en el RIT antes de presentar',
+                                         off: true });
                 }
-                return acciones;
+                return envolverAcciones(acciones);
             }
 
-            return acciones +
-                   '<a href="javascript:void(0);" onclick="' + objJs + '.presentarDeclaracion(' + d.dec_Id + ', ' + d.dec_IdEstablecimiento + ')" ' +
-                       'class="btn btn-success btn-sm mr-1" title="Presentar"><i class="fa fa-paper-plane"></i></a>';
+            return envolverAcciones(acciones +
+                   accBtn({ tipo: 'success', icono: 'fa-paper-plane', texto: 'Presentar', title: 'Presentar',
+                            onclick: objJs + '.presentarDeclaracion(' + d.dec_Id + ', ' + d.dec_IdEstablecimiento + ')' }));
         }
 
         // presentada / pagada
@@ -144,10 +173,9 @@ var DeclaracionesUI = (function () {
          * quien no sabia que "Corregir" cumple ese papel sentia que la
          * pantalla no ofrecia ninguna salida despues de presentar.
          */
-        botones += '<a href="javascript:void(0);" onclick="' + objJs + '.corregirDeclaracion(' + d.dec_Id + ')" ' +
-                       'class="btn btn-warning btn-sm mr-1" ' +
-                       'title="¿Necesitas declarar de nuevo este período? Esta es la forma correcta: genera una corrección enlazada a la presentada.">' +
-                       '<i class="fa fa-pencil"></i> Corregir</a>';
+        botones += accBtn({ tipo: 'warning', icono: 'fa-pencil', texto: 'Corregir',
+                            title: '¿Necesitas declarar de nuevo este período? Esta es la forma correcta: genera una corrección enlazada a la presentada.',
+                            onclick: objJs + '.corregirDeclaracion(' + d.dec_Id + ')' });
 
         // Aqui vivia un boton de "Código de barras" que abria liquidacion.php.
         // Se quita: el codigo de barras NO es un documento aparte, va impreso
@@ -170,12 +198,11 @@ var DeclaracionesUI = (function () {
         // a un mensaje de "no disponible"; se prefiere no ofrecerlo. El
         // servidor lo vuelve a comprobar: esta URL se puede llamar a mano.
         if (clave === 'presentada' && Number(d.pago_en_linea) === 1) {
-            botones += '<a href="../extensiones/pse/crearSesion.php?dec_Id=' + d.dec_Id + '" target="_blank" ' +
-                           'class="btn btn-danger btn-sm" title="Pagar por PSE">' +
-                           '<i class="fa fa-money"></i></a>';
+            botones += accBtn({ tipo: 'danger', icono: 'fa-money', texto: 'Pagar PSE', title: 'Pagar por PSE',
+                                href: '../extensiones/pse/crearSesion.php?dec_Id=' + d.dec_Id, target: '_blank' });
         }
 
-        return botones;
+        return envolverAcciones(botones);
     }
 
     /**
