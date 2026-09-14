@@ -902,17 +902,30 @@
 
 <script>
 $(document).ready(function () {
-    swal({
-        icon: 'info',
-        title: 'Actualización requerida',
-        // Texto dictado por el cliente el 2026-08-25. El anterior hablaba de
-        // "datos del establecimiento" y de cargar documentos, dos cosas que ya
-        // no son lo que este aviso pide: el RIT es del contribuyente.
-        text: 'Se requiere realizar la actualización del Registro de Información Tributaria RIT para poder continuar con su trámite.',
-        button: 'Entendido',
-        closeOnClickOutside: false,
-        closeOnEsc: false
-    });
+    // El cliente pidio (2026-09-14) que este aviso salga SOLO la primera vez,
+    // no en cada visita. Se marca por contribuyente en el navegador; si ya se
+    // mostro, no vuelve a salir. El try/catch cubre navegacion privada.
+    var idContribuyente = '';
+    try { idContribuyente = localStorage.getItem('id_Contribuyente') || ''; } catch (e) {}
+    var claveAviso = 'ritAvisoActualizacion_' + idContribuyente;
+
+    var yaVisto = false;
+    try { yaVisto = !!localStorage.getItem(claveAviso); } catch (e) {}
+
+    if (!yaVisto) {
+        swal({
+            icon: 'info',
+            title: 'Actualización requerida',
+            // Texto dictado por el cliente el 2026-08-25. El anterior hablaba de
+            // "datos del establecimiento" y de cargar documentos, dos cosas que ya
+            // no son lo que este aviso pide: el RIT es del contribuyente.
+            text: 'Se requiere realizar la actualización del Registro de Información Tributaria RIT para poder continuar con su trámite.',
+            button: 'Entendido',
+            closeOnClickOutside: false,
+            closeOnEsc: false
+        });
+        try { localStorage.setItem(claveAviso, '1'); } catch (e) {}
+    }
 });
 </script>
 

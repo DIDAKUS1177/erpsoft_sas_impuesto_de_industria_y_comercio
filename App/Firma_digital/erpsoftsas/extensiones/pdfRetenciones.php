@@ -278,8 +278,13 @@ function pdfret_encabezado($titulo, $subtitulo)
  * el nombre de quien firmo y la fecha. La firma es electronica y su prueba esta
  * en firmas_declaraciones, con el codigo OTP que se consumio al registrarla.
  *
- * El sello va a 16x16mm. En el ICA se probo a 65 y a 30 y en los dos casos la
- * fila crecia tanto que empujaba el bloque de codigo de barras fuera del papel.
+ * El sello va a 24x24mm. Antes estaba a 16; el cliente pidio (2026-09-14) que
+ * fuera "un poco mas grande". En el ICA se probo a 65 y a 30 y la fila crecia
+ * tanto que empujaba el codigo de barras fuera del papel, PERO el ICA es oficio
+ * casi lleno; estos formularios son carta y cierran en 176mm (reteica) y 240mm
+ * (autorreteica) sobre 279.4mm, asi que +8mm de fila caben con holgura. No subir
+ * mucho mas sin medir con ?medir=1 sobre una declaracion PRESENTADA (el sello
+ * solo ocupa alto cuando hay firma).
  */
 function pdfret_firmas($firmaDeclarante, $firmaContador, $fechaSello, $nombreDeclarante, $datosContador)
 {
@@ -290,7 +295,7 @@ function pdfret_firmas($firmaDeclarante, $firmaContador, $fechaSello, $nombreDec
     <td width="47%"><b>FIRMA DEL DECLARANTE</b><br>';
 
     if ($firmaDeclarante) {
-        $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="16" height="16"><br>'
+        $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="24" height="24"><br>'
                . '<span style="font-size:8px;">'
                . htmlspecialchars($firmaDeclarante['fd_NombreUsuario'])
                . '<br>' . $fechaSello . '</span></div>';
@@ -305,7 +310,7 @@ function pdfret_firmas($firmaDeclarante, $firmaContador, $fechaSello, $nombreDec
     /* Contador y revisor comparten una sola casilla: el contribuyente tiene uno
        O el otro, no los dos firmando a la vez. Mismo criterio que el ICA. */
     if ($firmaContador) {
-        $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="16" height="16"><br>'
+        $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="24" height="24"><br>'
                . '<span style="font-size:8px;">'
                . htmlspecialchars($firmaContador['fd_NombreUsuario'])
                . '<br>' . $fechaSello . '</span></div>';

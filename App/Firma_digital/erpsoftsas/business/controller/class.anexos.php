@@ -383,8 +383,19 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
 
             $nombreOriginal = basename((string) $nombres[$i]);
 
-            if (($errores[$i] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-                $rechazados[] = "$nombreOriginal: no se pudo recibir";
+            $codigoError = $errores[$i] ?? UPLOAD_ERR_NO_FILE;
+            if ($codigoError !== UPLOAD_ERR_OK) {
+                // INI_SIZE / FORM_SIZE = el archivo supera lo que PHP acepta en el
+                // servidor (upload_max_filesize / post_max_size), que puede ser
+                // MENOR que los 10 MB que anuncia la pantalla. Se distingue para
+                // que el mensaje diga que hacer en vez de un generico. El arreglo
+                // de fondo es subir esos limites en los Ajustes PHP de Plesk.
+                if (in_array($codigoError, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+                    $rechazados[] = "$nombreOriginal: supera el límite de subida del servidor. "
+                                  . "Comprima el archivo o pida a soporte ampliar el límite.";
+                } else {
+                    $rechazados[] = "$nombreOriginal: no se pudo recibir (código $codigoError)";
+                }
                 continue;
             }
 
