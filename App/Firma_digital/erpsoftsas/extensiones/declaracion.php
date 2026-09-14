@@ -693,8 +693,19 @@ $d = [
     // Firmas
 
 
-    'declarante_nombre'      => $nombreCompleto,
-    'declarante_cc'          => $row['ind_NumeroIdentificacion'],
+    // Quien firma como declarante: una persona JURIDICA no firma, firma su
+    // REPRESENTANTE LEGAL (pedido del cliente 2026-09-14). Se muestra su nombre
+    // y su cedula, no la razon social con el NIT. Si no hay representante
+    // registrado, se cae a la razon social para no dejar la firma en blanco.
+    // La casilla 6 (razon social) NO cambia: esa es la identidad del contribuyente.
+    'declarante_nombre'      => ($row['ind_Persona'] == 1
+                                 || trim((string) ($row['ind_Nombre_representante'] ?? '')) === '')
+                                ? $nombreCompleto
+                                : $row['ind_Nombre_representante'],
+    'declarante_cc'          => ($row['ind_Persona'] == 1
+                                 || trim((string) ($row['ind_Cedula_representante'] ?? '')) === '')
+                                ? $row['ind_NumeroIdentificacion']
+                                : $row['ind_Cedula_representante'],
     // Contador y revisor fiscal comparten una sola casilla en el formulario
     // (ver bloque "F. FIRMAS"): un contribuyente tiene contador O revisor,
     // no ambos firmando, asi que se toma el que este diligenciado.
