@@ -31,6 +31,9 @@ $contribuyente = $con->obnerFila($con->consultar(
 ));
 if (!$contribuyente) { $contribuyente = []; }
 
+/* Ciudad y departamento para el declarante (formato completo del cliente). */
+$ubic = pdfret_ciudadDepto($con, $contribuyente['ind_IdCiudad'] ?? 0);
+
 $actividades = [];
 $stmt = $con->consultar(
     "SELECT a.*, ac.acc_Codigo, ac.acc_Nombre
@@ -68,33 +71,25 @@ $pdf = pdfret_nuevoPdf();
 
 $html = pdfret_encabezado(
     'DECLARACIÓN DE AUTORRETENCIÓN DEL IMPUESTO DE INDUSTRIA Y COMERCIO',
-    'Autorretención a título de industria y comercio — Declaración bimestral'
+    'Y SU COMPLEMENTARIO DE AVISOS Y TABLEROS — Declaración bimestral'
 );
+
+$marca      = function ($activo) { return $activo ? 'X' : '&#160;'; };
+$fechaDoc   = $fechaSello ? substr($fechaSello, 0, 10) : date('d/m/Y');
+$esJuridica = (int) ($contribuyente['ind_Persona'] ?? 0) === 2;
+$dv = (isset($contribuyente['ind_DV']) && $contribuyente['ind_DV'] !== null)
+      ? (string) (int) $contribuyente['ind_DV'] : '';
 
 $html .= '
 <table border="1" cellpadding="2" width="100%">
 <tr bgcolor="#e1dada">
-    <td width="12%"><b>DEPARTAMENTO</b></td>
-    <td width="9%">' . htmlspecialchars(mb_strtoupper(MUNICIPIO_DEPARTAMENTO, 'UTF-8')) . '</td>
-    <td width="9%"><b>MUNICIPIO</b></td>
-    <td width="8%">' . htmlspecialchars(mb_strtoupper(str_ireplace('Alcaldía de ', '', MUNICIPIO_NOMBRE), 'UTF-8')) . '</td>
-    <td width="7%"><b>8. AÑO</b></td>
-    <td width="6%">' . (int) $row['aut_Anio'] . '</td>
-    <td width="9%"><b>BIMESTRE</b></td>
-    <td width="17%">' . htmlspecialchars($bimestre) . '</td>
-    <td width="10%"><b>No. FORM.</b></td>
-    <td width="13%">' . htmlspecialchars((string) $numero) . '</td>
-</tr>
-</table>
-
-<table border="1" cellpadding="2" width="100%">
-<tr>
-    <td width="22%">DECLARACIÓN INICIAL</td>
-    <td width="5%" align="center"><b>' . ($esCorreccion ? '' : 'X') . '</b></td>
-    <td width="26%">DECLARACIÓN DE CORRECCIÓN</td>
-    <td width="5%" align="center"><b>' . ($esCorreccion ? 'X' : '') . '</b></td>
-    <td width="30%">No. DECLARACIÓN A CORREGIR</td>
-    <td width="12%">' . htmlspecialchars((string) ($row['aut_Corrige'] ?? '')) . '</td>
+    <td width="16%"><b>FORMULARIO ÚNICO</b></td>
+    <td width="18%"><b>VIGENCIA FISCAL</b></td>
+    <td width="10%" align="center">' . (int) $row['aut_Anio'] . '</td>
+    <td width="9%"><b>FECHA</b></td>
+    <td width="20%" align="center">' . htmlspecialchars($fechaDoc) . '</td>
+    <td width="12%"><b>No. FORM.</b></td>
+    <td width="15%" align="center">' . htmlspecialchars((string) $numero) . '</td>
 </tr>
 </table>
 
@@ -105,32 +100,58 @@ $pdf->writeHTML($html, true, false, true, false, '');
 $ySecA = $pdf->GetY() - DESFASE_GETY_RET;
 
 /* ===========================================================================
-   A. CONTRIBUYENTE (del RIT, no se edita aquí)
+   A. DECLARANTE (del RIT, no se edita aquí)
+
+   Formato completo del cliente: tipo de documento (NIT jurídica / C.C.
+   natural), nombre o razón social, dirección, ciudad y departamento, correo,
+   teléfono, período y tipo de declaración.
    =========================================================================== */
 
 $html = '
 <table border="1" cellpadding="2" width="100%">
 <tr>
-    <td width="5%" rowspan="3" bgcolor="#e1dada"></td>
-    <td width="4%">1</td>
-    <td width="36%"><b>APELLIDOS Y NOMBRES O RAZÓN SOCIAL</b></td>
-    <td width="55%">' . htmlspecialchars(pdfret_nombreContribuyente($contribuyente)) . '</td>
+    <td width="5%" bgcolor="#e1dada"></td>
+    <td width="21%"><b>1. TIPO DE DOCUMENTO</b></td>
+    <td width="11%">NIT [<b>' . $marca($esJuridica) . '</b>]</td>
+    <td width="11%">C.C. [<b>' . $marca(!$esJuridica) . '</b>]</td>
+    <td width="6%"><b>No.</b></td>
+    <td width="26%">' . htmlspecialchars((string) ($contribuyente['ind_NumeroIdentificacion'] ?? '')) . '</td>
+    <td width="7%"><b>D.V.</b></td>
+    <td width="13%" align="center">' . htmlspecialchars($dv) . '</td>
+</tr>
+</table>
+<table border="1" cellpadding="2" width="100%">
+<tr>
+    <td width="5%" bgcolor="#e1dada"></td>
+    <td width="35%"><b>2. NOMBRE O RAZÓN SOCIAL</b></td>
+    <td width="60%">' . htmlspecialchars(pdfret_nombreContribuyente($contribuyente)) . '</td>
 </tr>
 <tr>
-    <td>2</td>
-    <td><b>NIT / CÉDULA</b></td>
-    <td>' . htmlspecialchars((string) ($contribuyente['ind_NumeroIdentificacion'] ?? ''))
-          . (isset($contribuyente['ind_DV']) && $contribuyente['ind_DV'] !== null
-             ? ' - ' . (int) $contribuyente['ind_DV'] : '') . '</td>
+    <td width="5%" bgcolor="#e1dada"></td>
+    <td width="13%"><b>3. DIRECCIÓN</b></td>
+    <td width="37%">' . htmlspecialchars((string) ($contribuyente['ind_Direccion'] ?? '')) . '</td>
+    <td width="10%"><b>4. CIUDAD</b></td>
+    <td width="17%">' . htmlspecialchars($ubic['ciudad']) . '</td>
+    <td width="10%"><b>5. DPTO.</b></td>
+    <td width="8%">' . htmlspecialchars($ubic['departamento']) . '</td>
 </tr>
 <tr>
-    <td>3</td>
-    <td><b>DIRECCIÓN / TELÉFONO / CORREO</b></td>
-    <td>' . htmlspecialchars(trim(
-              (string) ($contribuyente['ind_Direccion'] ?? '') . '  ·  '
-            . (string) ($contribuyente['ind_Telefono']  ?? '') . '  ·  '
-            . (string) ($contribuyente['ind_Email']     ?? '')
-          )) . '</td>
+    <td width="5%" bgcolor="#e1dada"></td>
+    <td width="13%"><b>6. CORREO</b></td>
+    <td width="49%">' . htmlspecialchars((string) ($contribuyente['ind_Email'] ?? '')) . '</td>
+    <td width="13%"><b>7. TELÉFONO</b></td>
+    <td width="20%">' . htmlspecialchars((string) ($contribuyente['ind_Telefono'] ?? '')) . '</td>
+</tr>
+</table>
+<table border="1" cellpadding="2" width="100%">
+<tr>
+    <td width="5%" bgcolor="#e1dada"></td>
+    <td width="9%"><b>PERÍODO</b></td>
+    <td width="22%" align="center"><b>' . htmlspecialchars($bimestre) . '</b></td>
+    <td width="19%">CON PAGO [<b>' . $marca(!empty($row['aut_Pagado'])) . '</b>]</td>
+    <td width="16%">SIN PAGO [<b>' . $marca(empty($row['aut_Pagado'])) . '</b>]</td>
+    <td width="15%">CORRECCIÓN [<b>' . $marca($esCorreccion) . '</b>]</td>
+    <td width="14%">No. ' . htmlspecialchars((string) ($row['aut_Corrige'] ?? '')) . '</td>
 </tr>
 </table>
 
@@ -317,14 +338,18 @@ pdfret_textoVertical($pdf, 'D. LIQUIDACIÓN', 10, $ySecD, $ySecE);
    E. FIRMAS
    =========================================================================== */
 
+/* Persona juridica: firma el REPRESENTANTE LEGAL, no la razon social (pedido del
+   cliente 2026-09-14). Igual que en reteica.php. */
+$firmante = pdfret_firmanteDeclarante($contribuyente);
+
 $pdf->writeHTML(
     pdfret_firmas(
         $firmas['declarante'],
         $firmas['contador'],
         $fechaSello,
-        pdfret_nombreContribuyente($contribuyente),
+        $firmante['nombre'],
         [
-            'doc_declarante' => (string) ($contribuyente['ind_NumeroIdentificacion'] ?? ''),
+            'doc_declarante' => $firmante['documento'],
             'nombre'  => trim((string) ($contribuyente['ind_NombreRevisor'] ?? '')) !== ''
                        ? (string) $contribuyente['ind_NombreRevisor']
                        : (string) ($contribuyente['ind_NombreContador'] ?? ''),

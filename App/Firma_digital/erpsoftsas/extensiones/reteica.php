@@ -31,6 +31,13 @@ $contribuyente = $con->obnerFila($con->consultar(
 ));
 if (!$contribuyente) { $contribuyente = []; }
 
+/* Datos del RIT que pide el FORMATO COMPLETO del cliente (nombre del
+   establecimiento, actividad economica principal y secundaria con su codigo,
+   numero de establecimientos y regimen). No se capturan en la retencion: salen
+   del RIT, igual que en el PDF del ICA. Compartido con autorreteica; la logica
+   vive en pdfRetenciones.php. */
+$perfil = pdfret_perfilContribuyente($con, $row['ret_IdContribuyente'], $row['ret_Anio']);
+
 /* Las filas de actividad, con el nombre del catalogo. LEFT JOIN: si alguna vez
    se desactivara una actividad del catalogo, la declaracion ya presentada tiene
    que seguir imprimiendose -con la casilla en blanco, pero imprimiendose-. */
@@ -71,33 +78,37 @@ $pdf = pdfret_nuevoPdf();
 
 $html = pdfret_encabezado(
     'DECLARACIÓN DE RETENCIÓN DEL IMPUESTO DE INDUSTRIA Y COMERCIO',
-    'Retención en la fuente a título de industria y comercio — Declaración mensual'
+    'Y SU COMPLEMENTARIO DE AVISOS Y TABLEROS — Declaración mensual'
 );
 
+/* Marca de casilla tipo [X] / [ ]. &#160; (espacio duro) para que la celda no
+   se colapse cuando va vacia. */
+$marca    = function ($activo) { return $activo ? 'X' : '&#160;'; };
+$fechaDoc = $fechaSello ? substr($fechaSello, 0, 10) : date('d/m/Y');
+$regimen  = $perfil['regimen'];
+
+/* Vigencia fiscal / fecha / No. de formulario, y el RÉGIMEN. El régimen sale del
+   RIT (ver pdfret_regimenContribuyente): hoy casi siempre COMÚN, porque el RIT no
+   lo captura estructurado; cuando se capture, se marcará solo. */
 $html .= '
 <table border="1" cellpadding="2" width="100%">
 <tr bgcolor="#e1dada">
-    <td width="13%"><b>DEPARTAMENTO</b></td>
-    <td width="10%">' . htmlspecialchars(mb_strtoupper(MUNICIPIO_DEPARTAMENTO, 'UTF-8')) . '</td>
-    <td width="10%"><b>MUNICIPIO</b></td>
-    <td width="9%">' . htmlspecialchars(mb_strtoupper(str_ireplace('Alcaldía de ', '', MUNICIPIO_NOMBRE), 'UTF-8')) . '</td>
-    <td width="7%"><b>8. AÑO</b></td>
-    <td width="6%">' . (int) $row['ret_Anio'] . '</td>
-    <td width="7%"><b>9. MES</b></td>
-    <td width="11%">' . htmlspecialchars($mes) . '</td>
-    <td width="14%"><b>No. FORMULARIO</b></td>
-    <td width="13%">' . htmlspecialchars((string) $numero) . '</td>
+    <td width="14%"><b>FORMULARIO ÚNICO</b></td>
+    <td width="18%"><b>VIGENCIA FISCAL</b></td>
+    <td width="12%" align="center">' . (int) $row['ret_Anio'] . '</td>
+    <td width="9%"><b>FECHA</b></td>
+    <td width="20%" align="center">' . htmlspecialchars($fechaDoc) . '</td>
+    <td width="12%"><b>No. FORM.</b></td>
+    <td width="15%" align="center">' . htmlspecialchars((string) $numero) . '</td>
 </tr>
 </table>
 
 <table border="1" cellpadding="2" width="100%">
 <tr>
-    <td width="22%">DECLARACIÓN INICIAL</td>
-    <td width="5%" align="center"><b>' . ($esCorreccion ? '' : 'X') . '</b></td>
-    <td width="26%">DECLARACIÓN DE CORRECCIÓN</td>
-    <td width="5%" align="center"><b>' . ($esCorreccion ? 'X' : '') . '</b></td>
-    <td width="30%">10. No. DECLARACIÓN A CORREGIR</td>
-    <td width="12%">' . htmlspecialchars((string) ($row['ret_Corrige'] ?? '')) . '</td>
+    <td width="16%" bgcolor="#e1dada"><b>RÉGIMEN</b></td>
+    <td width="26%">RÉGIMEN COMÚN &nbsp;[<b>' . $marca($regimen === 'comun') . '</b>]</td>
+    <td width="28%">RÉGIMEN ESPECIAL &nbsp;[<b>' . $marca($regimen === 'especial') . '</b>]</td>
+    <td width="30%">GRAN CONTRIBUYENTE &nbsp;[<b>' . $marca($regimen === 'gran') . '</b>]</td>
 </tr>
 </table>
 
@@ -110,34 +121,77 @@ $ySecA = $pdf->GetY() - DESFASE_GETY_RET;
 /* ===========================================================================
    A. AGENTE RETENEDOR
 
-   Sale del RIT y no se edita aqui: si algo esta mal, se corrige en el RIT y
-   vuelve a imprimirse. Tener dos sitios donde editar el mismo dato es como se
-   acaba con dos versiones distintas del mismo contribuyente.
+   Formato completo del cliente (Hoja1 (2) del Excel): año, NIT/DV, correo,
+   razón social, nombre del establecimiento, actividad económica principal y
+   secundaria con código, número de establecimientos, dirección y teléfono, y
+   el tipo de declaración (con/sin pago o corrección).
+
+   Todo sale del RIT y no se edita aquí: si algo está mal se corrige en el RIT y
+   se reimprime. Tener dos sitios donde editar el mismo dato es como se acaba con
+   dos versiones distintas del mismo contribuyente.
    =========================================================================== */
+
+$dv = (isset($contribuyente['ind_DV']) && $contribuyente['ind_DV'] !== null)
+      ? (string) (int) $contribuyente['ind_DV'] : '';
 
 $html = '
 <table border="1" cellpadding="2" width="100%">
 <tr>
-    <td width="5%" rowspan="3" bgcolor="#e1dada"></td>
-    <td width="4%">1</td>
-    <td width="36%"><b>APELLIDOS Y NOMBRES O RAZÓN SOCIAL</b></td>
-    <td width="55%">' . htmlspecialchars(pdfret_nombreContribuyente($contribuyente)) . '</td>
+    <td width="5%" bgcolor="#e1dada"></td>
+    <td width="10%"><b>1. AÑO</b></td>
+    <td width="13%" align="center">' . (int) $row['ret_Anio'] . '</td>
+    <td width="8%"><b>2. NIT</b></td>
+    <td width="20%">' . htmlspecialchars((string) ($contribuyente['ind_NumeroIdentificacion'] ?? '')) . '</td>
+    <td width="7%"><b>D.V.</b></td>
+    <td width="6%" align="center">' . htmlspecialchars($dv) . '</td>
+    <td width="11%"><b>3. CORREO</b></td>
+    <td width="20%">' . htmlspecialchars((string) ($contribuyente['ind_Email'] ?? '')) . '</td>
+</tr>
+</table>
+<table border="1" cellpadding="2" width="100%">
+<tr>
+    <td width="5%" bgcolor="#e1dada"></td>
+    <td width="35%"><b>4. APELLIDOS Y NOMBRES O RAZÓN SOCIAL</b></td>
+    <td width="60%">' . htmlspecialchars(pdfret_nombreContribuyente($contribuyente)) . '</td>
 </tr>
 <tr>
-    <td>2</td>
-    <td><b>NIT / CÉDULA</b></td>
-    <td>' . htmlspecialchars((string) ($contribuyente['ind_NumeroIdentificacion'] ?? ''))
-          . (isset($contribuyente['ind_DV']) && $contribuyente['ind_DV'] !== null
-             ? ' - ' . (int) $contribuyente['ind_DV'] : '') . '</td>
+    <td width="5%" bgcolor="#e1dada"></td>
+    <td width="35%"><b>5. RAZÓN COMERCIAL / NOMBRE DEL ESTABLECIMIENTO</b></td>
+    <td width="60%">' . htmlspecialchars($perfil['establecimiento']) . '</td>
 </tr>
 <tr>
-    <td>3</td>
-    <td><b>DIRECCIÓN / TELÉFONO / CORREO</b></td>
-    <td>' . htmlspecialchars(trim(
-              (string) ($contribuyente['ind_Direccion'] ?? '') . '  ·  '
-            . (string) ($contribuyente['ind_Telefono']  ?? '') . '  ·  '
-            . (string) ($contribuyente['ind_Email']     ?? '')
-          )) . '</td>
+    <td width="5%" bgcolor="#e1dada"></td>
+    <td width="35%"><b>6. ACTIVIDAD ECONÓMICA PRINCIPAL</b></td>
+    <td width="45%">' . htmlspecialchars($perfil['act_principal']['nombre']) . '</td>
+    <td width="8%"><b>CÓDIGO</b></td>
+    <td width="7%" align="center">' . htmlspecialchars($perfil['act_principal']['codigo']) . '</td>
+</tr>
+<tr>
+    <td width="5%" bgcolor="#e1dada"></td>
+    <td width="26%"><b>ACTIVIDAD SECUNDARIA</b></td>
+    <td width="34%">' . htmlspecialchars($perfil['act_secundaria']['nombre']) . '</td>
+    <td width="7%"><b>CÓD.</b></td>
+    <td width="8%" align="center">' . htmlspecialchars($perfil['act_secundaria']['codigo']) . '</td>
+    <td width="13%"><b>No. ESTABLEC.</b></td>
+    <td width="7%" align="center">' . (int) $perfil['num_establec'] . '</td>
+</tr>
+<tr>
+    <td width="5%" bgcolor="#e1dada"></td>
+    <td width="14%"><b>7. DIRECCIÓN</b></td>
+    <td width="42%">' . htmlspecialchars((string) ($contribuyente['ind_Direccion'] ?? '')) . '</td>
+    <td width="15%"><b>8. TELÉFONO</b></td>
+    <td width="24%">' . htmlspecialchars((string) ($contribuyente['ind_Telefono'] ?? '')) . '</td>
+</tr>
+</table>
+<table border="1" cellpadding="2" width="100%">
+<tr>
+    <td width="5%" bgcolor="#e1dada"></td>
+    <td width="9%"><b>PERÍODO</b></td>
+    <td width="16%" align="center"><b>' . htmlspecialchars($mes) . '</b></td>
+    <td width="22%">CON PAGO &nbsp;[<b>' . $marca(!empty($row['ret_Pagado'])) . '</b>]</td>
+    <td width="17%">SIN PAGO &nbsp;[<b>' . $marca(empty($row['ret_Pagado'])) . '</b>]</td>
+    <td width="17%">CORRECCIÓN &nbsp;[<b>' . $marca($esCorreccion) . '</b>]</td>
+    <td width="14%">No. ' . htmlspecialchars((string) ($row['ret_Corrige'] ?? '')) . '</td>
 </tr>
 </table>
 
@@ -253,6 +307,13 @@ foreach ($renglones as $r) {
 $html .= '
 </table>
 
+<table border="1" cellpadding="3" width="100%">
+<tr>
+    <td width="26%" bgcolor="#e1dada"><b>TOTAL A PAGAR (EN LETRAS)</b></td>
+    <td width="74%"><b>' . htmlspecialchars(pdfret_numeroALetras($row['ret_ValorConcepto17'])) . '</b></td>
+</tr>
+</table>
+
 <br>
 ';
 
@@ -264,14 +325,18 @@ pdfret_textoVertical($pdf, 'C. LIQUIDACIÓN', 10, $ySecC, $ySecD);
    D. FIRMAS
    =========================================================================== */
 
+/* Persona juridica: firma el REPRESENTANTE LEGAL, no la razon social (pedido del
+   cliente 2026-09-14). pdfret_firmanteDeclarante decide segun ind_Persona. */
+$firmante = pdfret_firmanteDeclarante($contribuyente);
+
 $pdf->writeHTML(
     pdfret_firmas(
         $firmas['declarante'],
         $firmas['contador'],
         $fechaSello,
-        pdfret_nombreContribuyente($contribuyente),
+        $firmante['nombre'],
         [
-            'doc_declarante' => (string) ($contribuyente['ind_NumeroIdentificacion'] ?? ''),
+            'doc_declarante' => $firmante['documento'],
             /* Manda el revisor fiscal y, si no hay, el contador. Lo fijo el
                cliente el 2026-08-26: cuando estan los dos firma el de mayor
                responsabilidad. */

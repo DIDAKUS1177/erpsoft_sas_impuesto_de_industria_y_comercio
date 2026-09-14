@@ -520,6 +520,35 @@ function pdfret_nombreContribuyente($c)
 }
 
 
+/**
+ * Quien firma como DECLARANTE.
+ *
+ * Una persona JURIDICA no firma: firma su REPRESENTANTE LEGAL. El cliente pidio
+ * (2026-09-14) que en el bloque de firmas de una juridica aparezca el nombre y
+ * la cedula del representante legal (ind_Nombre_representante /
+ * ind_Cedula_representante), no la razon social con el NIT. En persona natural
+ * el declarante es el propio contribuyente. Si es juridica pero no hay
+ * representante registrado, se cae a la razon social para no dejar el nombre en
+ * blanco -mejor el dato que hay que ninguno-.
+ *
+ * Devuelve ['nombre' => ..., 'documento' => ...].
+ */
+function pdfret_firmanteDeclarante($c)
+{
+    if ((int) ($c['ind_Persona'] ?? 0) === 2) {
+        $nombre = trim((string) ($c['ind_Nombre_representante'] ?? ''));
+        $doc    = trim((string) ($c['ind_Cedula_representante'] ?? ''));
+        if ($nombre !== '') {
+            return ['nombre' => $nombre, 'documento' => $doc];
+        }
+    }
+    return [
+        'nombre'    => pdfret_nombreContribuyente($c),
+        'documento' => (string) ($c['ind_NumeroIdentificacion'] ?? ''),
+    ];
+}
+
+
 /** Las firmas de ESTE formulario. El modulo no es opcional: los tres reparten
  *  numeros de series distintas y 2026000001 existe en los tres a la vez. */
 function pdfret_firmasDe($con, $numero, $modulo)
@@ -569,4 +598,198 @@ function pdfret_pesos($v)
 function pdfret_porMil($tarifa)
 {
     return number_format(((float) $tarifa) * 1000, 1, ',', '.');
+}
+
+
+/* ===========================================================================
+   TOTAL EN LETRAS
+
+   El formulario completo que pidio el cliente (2026-09-14) trae el total a
+   pagar escrito con palabras. Se calcula aqui, en el generador, y no se guarda
+   en la base: es una representacion del numero, no un dato aparte que pueda
+   quedar desincronizado.
+   =========================================================================== */
+
+/** 0..999 en palabras (MAYUSCULAS). "CIEN" exacto; 100+ es "CIENTO ...". */
+function pdfret_letrasCentena($n)
+{
+    $unidades = [0 => '', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE',
+        'DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE', 'DIECISÉIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE',
+        'VEINTE', 'VEINTIUNO', 'VEINTIDÓS', 'VEINTITRÉS', 'VEINTICUATRO', 'VEINTICINCO', 'VEINTISÉIS',
+        'VEINTISIETE', 'VEINTIOCHO', 'VEINTINUEVE'];
+    $decenas  = [3 => 'TREINTA', 4 => 'CUARENTA', 5 => 'CINCUENTA', 6 => 'SESENTA',
+                 7 => 'SETENTA', 8 => 'OCHENTA', 9 => 'NOVENTA'];
+    $centenas = [1 => 'CIENTO', 2 => 'DOSCIENTOS', 3 => 'TRESCIENTOS', 4 => 'CUATROCIENTOS',
+                 5 => 'QUINIENTOS', 6 => 'SEISCIENTOS', 7 => 'SETECIENTOS', 8 => 'OCHOCIENTOS', 9 => 'NOVECIENTOS'];
+
+    $n = (int) $n;
+    if ($n === 0)   { return ''; }
+    if ($n === 100) { return 'CIEN'; }
+
+    $c     = intdiv($n, 100);
+    $resto = $n % 100;
+    $out   = $c ? $centenas[$c] : '';
+
+    if ($resto) {
+        if ($out !== '') { $out .= ' '; }
+        if ($resto <= 29) {
+            $out .= $unidades[$resto];
+        } else {
+            $d = intdiv($resto, 10);
+            $u = $resto % 10;
+            $out .= $decenas[$d] . ($u ? ' Y ' . $unidades[$u] : '');
+        }
+    }
+    return $out;
+}
+
+/** "UNO" -> "UN" delante de MIL/MILLON(ES): "VEINTIÚN MIL", "TREINTA Y UN MIL". */
+function pdfret_apocope($s)
+{
+    if ($s === 'UNO') { return 'UN'; }
+    $s = preg_replace('/VEINTIUNO$/u', 'VEINTIÚN', $s);
+    $s = preg_replace('/ UNO$/u', ' UN', $s);
+    return $s;
+}
+
+/** Entero >= 0 en palabras, agrupando por millones y miles. */
+function pdfret_letrasEntero($n)
+{
+    $n = (int) $n;
+    if ($n === 0) { return 'CERO'; }
+
+    $millones = intdiv($n, 1000000);
+    $miles    = intdiv($n % 1000000, 1000);
+    $resto    = $n % 1000;
+
+    $partes = [];
+    if ($millones) {
+        $partes[] = ($millones === 1)
+            ? 'UN MILLÓN'
+            : pdfret_apocope(pdfret_letrasEntero($millones)) . ' MILLONES';
+    }
+    if ($miles) {
+        $partes[] = ($miles === 1)
+            ? 'MIL'
+            : pdfret_apocope(pdfret_letrasCentena($miles)) . ' MIL';
+    }
+    if ($resto) {
+        $partes[] = pdfret_letrasCentena($resto);
+    }
+    return trim(implode(' ', $partes));
+}
+
+/** El total a pagar en palabras, como lo pide el formulario del cliente. */
+function pdfret_numeroALetras($numero)
+{
+    $n = (int) round((float) $numero);
+    if ($n <= 0) { return 'CERO PESOS M/CTE.'; }
+    return pdfret_letrasEntero($n) . ' PESOS M/CTE.';
+}
+
+
+/* ===========================================================================
+   PERFIL DEL CONTRIBUYENTE (para el formato completo)
+
+   El formulario completo (Hoja1 (2) del Excel del cliente) pide, ademas del
+   nombre y el NIT, el nombre del establecimiento, la actividad economica
+   principal y la secundaria con su codigo, el numero de establecimientos y el
+   regimen. Todo sale del RIT; no se captura en la retencion. Se resuelve aqui,
+   compartido por RETEICA y AUTORRETEICA, con el mismo criterio que el PDF del
+   ICA (declaracion.php): la actividad "principal" es la primera del RIT.
+
+   Ojo: la clasificacion COMERCIAL / SERVICIOS que muestra el Excel NO se puede
+   reconstruir -el sistema no guarda ese tipo por actividad-, asi que las
+   retenciones se listan en una sola tabla, como en el PDF del ICA.
+   =========================================================================== */
+function pdfret_perfilContribuyente($con, $idContribuyente, $anio)
+{
+    $idContribuyente = (int) $idContribuyente;
+    $anio            = (int) $anio;
+
+    // Nombre del establecimiento y cuantos hay (activos).
+    $est = $con->obnerFila($con->consultar(
+        "SELECT TOP 1 est_Nombre FROM ind_establecimientos
+          WHERE est_IdContribuyente = ? AND est_Activo = 1
+          ORDER BY est_Id",
+        [$idContribuyente]
+    ));
+    $conteo = $con->obnerFila($con->consultar(
+        "SELECT COUNT(*) AS n FROM ind_establecimientos
+          WHERE est_IdContribuyente = ? AND est_Activo = 1",
+        [$idContribuyente]
+    ));
+
+    /* Actividades del RIT, la mas reciente que no pase del año declarado (mismo
+       criterio que el catalogo: pedir literalmente el año podria devolver vacio).
+       La primera es la principal; la segunda, la secundaria. */
+    $acts = [];
+    $stmt = $con->consultar(
+        "SELECT ac.acc_Codigo, ac.acc_Nombre
+           FROM ind_actividad_contribuyente atc
+           INNER JOIN ind_actividadescomercio ac ON ac.acc_Id = atc.atc_IdCodigoActividad
+          WHERE atc.atc_IdContribuyente = ?
+            AND atc.atc_Anio = (
+                SELECT MAX(a2.atc_Anio) FROM ind_actividad_contribuyente a2
+                 WHERE a2.atc_IdContribuyente = atc.atc_IdContribuyente
+                   AND a2.atc_Anio <= ?)
+          ORDER BY atc.atc_Id",
+        [$idContribuyente, $anio]
+    );
+    while ($a = $con->obnerFila($stmt)) { $acts[] = $a; }
+
+    $fmtAct = function ($a) {
+        if (!$a) { return ['codigo' => '', 'nombre' => '']; }
+        return ['codigo' => (string) $a['acc_Codigo'], 'nombre' => (string) $a['acc_Nombre']];
+    };
+
+    return [
+        'establecimiento'   => $est ? (string) $est['est_Nombre'] : '',
+        'num_establec'      => $conteo ? (int) $conteo['n'] : 0,
+        'act_principal'     => $fmtAct($acts[0] ?? null),
+        'act_secundaria'    => $fmtAct($acts[1] ?? null),
+        'regimen'           => pdfret_regimenContribuyente($con, $idContribuyente),
+    ];
+}
+
+/**
+ * El regimen (COMUN / ESPECIAL / GRAN CONTRIBUYENTE) marcado.
+ *
+ * Se toma de ind_RegimenTributario / ind_IdRegimen, pero HOY esos campos vienen
+ * casi siempre vacios o con texto libre ("ORDINARIO,RESP_IVA"): el RIT no captura
+ * el regimen de ICA de forma estructurada. Por eso se marca COMUN por defecto
+ * -que es el caso de la inmensa mayoria- y solo se cambia si el texto dice
+ * explicitamente ESPECIAL o GRAN CONTRIBUYENTE. Devuelve 'comun'|'especial'|'gran'.
+ * Cuando el municipio empiece a capturarlo, este es el unico sitio a tocar.
+ */
+function pdfret_regimenContribuyente($con, $idContribuyente)
+{
+    $c = $con->obnerFila($con->consultar(
+        "SELECT ind_RegimenTributario, ind_IdRegimen
+           FROM ind_contribuyentes WHERE ind_Id = ?",
+        [(int) $idContribuyente]
+    ));
+    $texto = mb_strtoupper((string) ($c['ind_RegimenTributario'] ?? ''), 'UTF-8');
+
+    if (strpos($texto, 'GRAN') !== false)     { return 'gran'; }
+    if (strpos($texto, 'ESPECIAL') !== false) { return 'especial'; }
+    return 'comun';
+}
+
+
+/** Ciudad y departamento del contribuyente desde ind_IdCiudad (catalogo DIVIPOLA
+ *  conf_ciudades). El formato completo de autorretencion los pide por separado. */
+function pdfret_ciudadDepto($con, $idCiudad)
+{
+    $idCiudad = (int) $idCiudad;
+    if ($idCiudad <= 0) { return ['ciudad' => '', 'departamento' => '']; }
+
+    $c = $con->obnerFila($con->consultar(
+        "SELECT ciu_Nombre, ciu_Departamento FROM conf_ciudades WHERE ciu_Id = ?",
+        [$idCiudad]
+    ));
+    return [
+        'ciudad'       => $c ? (string) $c['ciu_Nombre'] : '',
+        'departamento' => $c ? (string) $c['ciu_Departamento'] : '',
+    ];
 }
