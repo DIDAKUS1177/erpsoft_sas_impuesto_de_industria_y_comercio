@@ -776,11 +776,13 @@ var Retenciones = (function () {
 
         $('#btnAgregarActividad').on('click', function () {
             filaActividad({ idActividad: '', tarifa: 0, base: 0, valor: 0 }, true);
+            recalcularEnVivo();
         });
 
         $('#tablaActividades').on('click', '.js-quitar', function () {
             $(this).closest('tr').remove();
             if (!$('#tablaActividades tbody tr').length) { pintarActividades(true); }
+            recalcularEnVivo();
         });
 
         // Al cambiar la actividad se refresca la tarifa mostrada, para que el
@@ -789,13 +791,82 @@ var Retenciones = (function () {
             var id = $(this).val(), $fila = $(this).closest('tr');
             var act = catalogo.filter(function (a) { return a.id == id; })[0];
             $fila.find('.js-tarifa').text(act ? ((act.tarifa * 1000).toFixed(1)) : '0.0');
+            recalcularEnVivo();
         });
+
+        /* -----------------------------------------------------------------
+         * CALCULO EN VIVO (vista previa; el servidor manda al guardar)
+         * -----------------------------------------------------------------
+         * El cliente pidio (2026-09-14) que los totales se vean sumar a
+         * medida que se escribe, no solo al pulsar "Liquidar". Se replica
+         * EXACTAMENTE la aritmetica del servidor -las mismas sumas/restas y
+         * el mismo redondeo a miles fila por fila- para que la vista previa
+         * coincida con lo que guarda el backend.
+         *
+         * La fuente de verdad SIGUE siendo el servidor: Guardar, Liquidar y
+         * Presentar repintan con la respuesta del backend; esto es solo lo
+         * que se ve mientras se teclea. Cada modulo declara su formula en
+         * cfg.calcular (junto a donde se define la pantalla), para no meter
+         * reglas de impuesto en el motor compartido.
+         *
+         * Referencias que deben coincidir:
+         *   valor de actividad  business/class.retenciones.php  ROUND(base*tarifa/1000,0)*1000
+         *   casillas derivadas  BD/migraciones/030 y 031 (columna ren_Formula)
+         */
+        function valorActividadFila($f) {
+            var base   = NumerosCOP.aEntero($f.find('.js-base').val());
+            var porMil = parseFloat($f.find('.js-tarifa').text()) || 0;  // tarifa "por mil"
+            var tarifa = porMil / 1000;                                  // -> fraccion, como acc_Tarifa
+            // Identico a class.retenciones.php: ROUND(base*tarifa/1000,0)*1000.
+            return Math.round(base * tarifa / 1000) * 1000;
+        }
+
+        function recalcularEnVivo() {
+            if (typeof cfg.calcular !== 'function') { return; }
+
+            // Lo que escribe el contribuyente (en cualquiera de las dos tablas).
+            var v = {};
+            $('.js-renglon').each(function () {
+                v[$(this).data('codigo')] = NumerosCOP.aEntero($(this).val());
+            });
+
+            // Valor de cada actividad, redondeado como el servidor, y su suma.
+            var sumaActividades = 0;
+            $('#tablaActividades tbody tr').each(function () {
+                var $f = $(this);
+                if (!$f.find('.js-base').length) { return; }   // fila "sin actividades"
+                var valor = valorActividadFila($f);
+                $f.find('.js-valor').text(pesos(valor));
+                sumaActividades += valor;
+            });
+
+            var energia = cfg.campoEnergia ? NumerosCOP.aEntero($('#impuestoEnergia').val()) : 0;
+
+            var derivadas = cfg.calcular(v, sumaActividades, energia) || {};
+            Object.keys(derivadas).forEach(function (cod) {
+                $('.js-calculado[data-codigo="' + cod + '"]').text(pesos(derivadas[cod]));
+            });
+        }
+
+        // Recalcular mientras se teclea, sin perder el foco: solo cambian los
+        // textos calculados (.js-valor / .js-calculado), nunca los campos que se
+        // estan editando.
+        $('#panelFormulario')
+            .on('input', '.js-renglon, .js-base, #impuestoEnergia', recalcularEnVivo);
 
         /* ---------------- renglones ---------------- */
 
         function pintarRenglones(editable) {
 
-            var $c = $('#tablaRenglones tbody').empty();
+            var $liq = $('#tablaRenglones tbody').empty();
+
+            // Cuando la pantalla separa los ingresos (autorretencion: ingresos ->
+            // actividades -> liquidacion, igual que el ICA), las casillas hasta
+            // cfg.ingresosHasta se pintan en su propia tabla, ANTES de las
+            // actividades. Si la pantalla no tiene #tablaIngresos (retencion),
+            // todo va a la tabla de liquidacion, como siempre.
+            var $ing = cfg.ingresosHasta ? $('#tablaIngresos tbody').empty() : $();
+            var separaIngresos = $ing.length > 0;
 
             abierta.renglones.forEach(function (r) {
 
@@ -822,7 +893,10 @@ var Retenciones = (function () {
                     + 'pendiente de confirmación por la Alcaldía.">pendiente</span>'
                     : '';
 
-                $c.append(
+                var $destino = (separaIngresos && Number(r.codigo) <= cfg.ingresosHasta)
+                    ? $ing : $liq;
+
+                $destino.append(
                     '<tr' + (r.pendiente ? ' class="table-warning"' : '') + '>'
                   + '<td class="text-muted">' + r.codigo + '</td>'
                   + '<td>' + escapar(r.nombre) + nota + '</td>'

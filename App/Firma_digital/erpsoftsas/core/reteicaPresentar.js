@@ -17,6 +17,22 @@ $(function () {
         actividadesEditables: true,
         campoEnergia: false,
         textoSinActividades: 'Agregue las actividades sobre las que practicó retención en el mes.',
-        pdf: '../extensiones/reteica.php'
+        pdf: '../extensiones/reteica.php',
+
+        // Retencion no tiene bloque de ingresos: se declara sobre las
+        // actividades de los terceros, asi que la tabla de actividades ya va
+        // primero y no hay nada que reordenar (por eso no lleva ingresosHasta).
+
+        /*
+         * Suma en vivo, identica al servidor (BD/migraciones/030):
+         *   14 = suma de las retenciones de las actividades
+         *   17 = 14 + 15 (sanciones) + 16 (intereses)
+         * Solo vista previa; el backend manda al Guardar/Liquidar/Presentar.
+         */
+        calcular: function (v, actividades /*, energia */) {
+            var c14 = actividades;
+            var c17 = c14 + (v[15] || 0) + (v[16] || 0);
+            return { 14: c14, 17: c17 };
+        }
     });
 });

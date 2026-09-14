@@ -141,6 +141,35 @@
 					Para modificarla use la opción <strong>Corregir</strong>.
 				</div>
 
+				<!--
+					INGRESOS DEL BIMESTRE (casillas 9-13). Van ANTES de las
+					actividades, en el mismo orden que el ICA: primero los
+					ingresos, luego las actividades, luego la liquidación. Antes
+					todas las casillas (9-23) salían juntas DESPUÉS de las
+					actividades; el cliente pidió (2026-09-14) que la
+					autorretención se leyera como el ICA. La casilla 13 (ingresos
+					netos gravados) es una sumatoria y se recalcula en vivo.
+					El motor (core/retenciones.js) reparte cada renglón a esta
+					tabla o a la de liquidación según cfg.ingresosHasta.
+				-->
+				<div class="card-box mb-30">
+					<div class="pd-20"><h4 class="h4 mb-0">Ingresos del bimestre</h4></div>
+					<div class="pb-20 px-3">
+						<div class="table-responsive">
+							<table class="table table-bordered table-striped table-sm" id="tablaIngresos">
+								<thead style="background:#e9ecef; font-weight:600;">
+									<tr>
+										<th class="text-center" style="width:55px;">N°</th>
+										<th>Concepto</th>
+										<th style="text-align:right; width:200px;">Valor</th>
+									</tr>
+								</thead>
+								<tbody></tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+
 				<div class="card-box mb-30">
 					<div class="pd-20 d-flex justify-content-between align-items-center">
 						<h4 class="h4 mb-0">Actividades</h4>
