@@ -177,6 +177,12 @@
 					</div>
 				</div>
 
+				<div class="text-right mb-30">
+					<button type="button" id="btnLiquidar" class="btn btn-sm btn-info">
+						<i class="fa fa-calculator"></i> Liquidar
+					</button>
+				</div>
+
 				<div class="card-box mb-30">
 					<div class="pd-20"><h4 class="h4 mb-0">Liquidación privada</h4></div>
 					<div class="pb-20 px-3">
@@ -205,7 +211,6 @@
 
 				<div class="card-box mb-30">
 					<div class="pd-20 text-right">
-						<button type="button" id="btnLiquidar"  class="btn btn-info">Liquidar</button>
 						<button type="button" id="btnGuardar"   class="btn btn-secondary">Guardar</button>
 						<button type="button" id="btnPresentar" class="btn btn-success">Presentar</button>
 					</div>
