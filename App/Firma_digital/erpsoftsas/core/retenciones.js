@@ -203,6 +203,51 @@ var Retenciones = (function () {
         return '<div class="acc-cards">' + html + '</div>';
     }
 
+    /**
+     * Botones de acción de UNA fila, HOMOGÉNEOS con el ICA. El cliente pidió
+     * (2026-09-14) que los tres módulos se vean y se manejen igual: antes el
+     * listado de retención solo traía Ver/Descargar y "faltaba Firmar". Ahora,
+     * según el estado, ofrece lo mismo que icaWebConsultar/Presentar:
+     *
+     *   borrador   -> Editar / Firmar / Descargar / Borrar
+     *   firmada    -> Editar / Descargar / Presentar
+     *   presentada -> Descargar / Corregir
+     *   pagada     -> Descargar
+     *
+     * Los que abren el formulario (Editar/Firmar/Presentar) llevan clase js-*;
+     * cada pantalla decide si NAVEGA a "Presentar" (desde Consultar) o abre el
+     * formulario en la misma página. Editar/Firmar/Presentar reutilizan todo el
+     * flujo del formulario (guardar, firma encadenada, presentar); no se duplica
+     * lógica. Descargar es un enlace directo al PDF.
+     */
+    function accionesRetencion(f, cfg) {
+        var estado = f.estadoClave || 'borrador';
+        var pdf = cfg.pdf
+            ? accBtn({ tipo: 'primary', icono: 'fa-download', texto: 'Descargar', title: 'Descargar', href: cfg.pdf + '?id=' + f.id })
+            : '';
+        var b;
+
+        if (estado === 'presentada' || estado === 'pagada') {
+            b = pdf;
+            if (estado === 'presentada') {
+                b += accBtn({ tipo: 'warning', icono: 'fa-pencil', texto: 'Corregir',
+                              title: 'Corregir', clase: 'js-corregir', id: f.id });
+            }
+        } else if (estado === 'firmada') {
+            b = accBtn({ tipo: 'warning', icono: 'fa-pencil', texto: 'Editar',
+                         title: 'Editar (elimina las firmas)', clase: 'js-editar', id: f.id })
+              + pdf
+              + accBtn({ tipo: 'success', icono: 'fa-paper-plane', texto: 'Presentar',
+                         title: 'Presentar', clase: 'js-presentar', id: f.id });
+        } else { // borrador
+            b = accBtn({ tipo: 'warning',   icono: 'fa-pencil',          texto: 'Editar', title: 'Editar',          clase: 'js-editar', id: f.id })
+              + accBtn({ tipo: 'secondary', icono: 'fa-pencil-square-o', texto: 'Firmar', title: 'Firmar',          clase: 'js-firmar', id: f.id })
+              + pdf
+              + accBtn({ tipo: 'danger',    icono: 'fa-trash',           texto: 'Borrar', title: 'Borrar borrador', clase: 'js-borrar', id: f.id });
+        }
+        return accCards(b);
+    }
+
     /** Los años que se ofrecen: el actual y los dos anteriores.
      *  El anterior hace falta de verdad: en enero se declara diciembre. */
     function aniosOfrecidos() {
@@ -524,28 +569,6 @@ var Retenciones = (function () {
 
             filas.forEach(function (f) {
 
-                /* Botones en tarjeta (icono + texto), iguales que el ICA. */
-                var acciones = accBtn({ tipo: 'info', icono: 'fa-eye', texto: 'Ver',
-                                        title: 'Ver declaración', clase: 'js-ver', id: f.id });
-
-                // Corregir solo sobre una presentada; es la unica via legal de
-                // cambiar algo ya declarado.
-                if (f.estado === 2) {
-                    acciones += accBtn({ tipo: 'warning', icono: 'fa-pencil', texto: 'Corregir',
-                                         title: 'Corregir', clase: 'js-corregir', id: f.id });
-                }
-
-                /*
-                 * El boton de PDF solo aparece si el generador existe. Al
-                 * 2026-09-08 todavia no se ha escrito el de estos dos modulos,
-                 * y un boton que lleva a un 404 es peor que no tenerlo: el
-                 * usuario cree que el sistema fallo.
-                 */
-                if (cfg.pdf) {
-                    acciones += accBtn({ tipo: 'primary', icono: 'fa-download', texto: 'Descargar',
-                                         title: 'Descargar PDF', href: cfg.pdf + '?id=' + f.id });
-                }
-
                 $cuerpo.append(
                     '<tr>'
                   + '<td>' + f.anio + '</td>'
@@ -554,14 +577,34 @@ var Retenciones = (function () {
                   + '<td>' + insignia(f) + '</td>'
                   + '<td>' + (f.corrige ? ('Corrige la ' + escapar(f.corrige)) : '—') + '</td>'
                   + '<td style="text-align:right;">' + pesos(f.total) + '</td>'
-                  + '<td class="text-center">' + accCards(acciones) + '</td>'
+                  + '<td class="text-center">' + accionesRetencion(f, cfg) + '</td>'
                   + '</tr>'
                 );
             });
         }
 
-        $('#tablaDeclaraciones').on('click', '.js-ver', function () {
+        // Editar/Firmar/Presentar abren el formulario de "Presentar Declaración"
+        // (misma pantalla y flujo del ICA); la acción a encadenar viaja en la URL.
+        $('#tablaDeclaraciones').on('click', '.js-editar', function () {
             window.location = cfg.pantallaPresentar + '?id=' + $(this).data('id');
+        });
+        $('#tablaDeclaraciones').on('click', '.js-firmar', function () {
+            window.location = cfg.pantallaPresentar + '?id=' + $(this).data('id') + '&accion=firmar';
+        });
+        $('#tablaDeclaraciones').on('click', '.js-presentar', function () {
+            window.location = cfg.pantallaPresentar + '?id=' + $(this).data('id') + '&accion=presentar';
+        });
+        $('#tablaDeclaraciones').on('click', '.js-borrar', function () {
+            var id = $(this).data('id');
+            Swal.fire({
+                title: '¿Eliminar este borrador?',
+                text: 'Se perderá lo que haya diligenciado.',
+                icon: 'warning', showCancelButton: true,
+                confirmButtonText: 'Sí, eliminar', cancelButtonText: 'Cancelar'
+            }).then(function (res) {
+                if (!res.isConfirmed) { return; }
+                pedir(cfg, 5, { id: id }, function () { refrescar(); });
+            });
         });
 
         $('#tablaDeclaraciones').on('click', '.js-corregir', function () {
@@ -605,11 +648,14 @@ var Retenciones = (function () {
         llenarSelectAnios($('#nuevoAnio'));
         llenarSelectPeriodos($('#nuevoPeriodo'), cfg);
 
-        // Si la pantalla de consulta mando un id, se abre directamente.
-        var idUrl = new URLSearchParams(window.location.search).get('id');
+        // Si la pantalla de consulta mando un id -y, opcionalmente, una acción a
+        // encadenar (firmar/presentar)-, se abre directamente.
+        var params    = new URLSearchParams(window.location.search);
+        var idUrl     = params.get('id');
+        var accionUrl = params.get('accion');
 
         cargarCatalogo(function () {
-            if (idUrl) { abrir(idUrl); } else { listarBorradores(); }
+            if (idUrl) { abrir(idUrl, accionUrl); } else { listarBorradores(); }
         });
 
         /* ---------------- catalogo de actividades ---------------- */
@@ -650,16 +696,42 @@ var Retenciones = (function () {
                       + '<td>' + escapar(f.numero) + '</td>'
                       + '<td>' + insignia(f) + '</td>'
                       + '<td style="text-align:right;">' + pesos(f.total) + '</td>'
-                      + '<td class="text-center">' + accCards(accBtn({
-                            tipo: 'info', icono: 'fa-folder-open', texto: 'Abrir',
-                            title: 'Abrir', clase: 'js-abrir', id: f.id })) + '</td>'
+                      + '<td class="text-center">' + accionesRetencion(f, cfg) + '</td>'
                       + '</tr>'
                     );
                 });
             });
         }
 
-        $('#tablaMias').on('click', '.js-abrir', function () { abrir($(this).data('id')); });
+        // Mismos botones que el ICA, aquí abriendo el formulario en la misma
+        // página (sin navegar). Editar abre; Firmar/Presentar encadenan la acción.
+        $('#tablaMias').on('click', '.js-editar',   function () { abrir($(this).data('id')); });
+        $('#tablaMias').on('click', '.js-firmar',   function () { abrir($(this).data('id'), 'firmar'); });
+        $('#tablaMias').on('click', '.js-presentar', function () { abrir($(this).data('id'), 'presentar'); });
+        $('#tablaMias').on('click', '.js-corregir', function () {
+            var id = $(this).data('id');
+            Swal.fire({
+                title: '¿Corregir esta declaración?',
+                text: 'Se creará una nueva declaración que corrige a la presentada. La original no se modifica.',
+                icon: 'question', showCancelButton: true,
+                confirmButtonText: 'Sí, corregir', cancelButtonText: 'Cancelar'
+            }).then(function (res) {
+                if (!res.isConfirmed) { return; }
+                pedir(cfg, 7, { id: id }, function (r) { abrir(r.datos.id); });
+            });
+        });
+        $('#tablaMias').on('click', '.js-borrar', function () {
+            var id = $(this).data('id');
+            Swal.fire({
+                title: '¿Eliminar este borrador?',
+                text: 'Se perderá lo que haya diligenciado.',
+                icon: 'warning', showCancelButton: true,
+                confirmButtonText: 'Sí, eliminar', cancelButtonText: 'Cancelar'
+            }).then(function (res) {
+                if (!res.isConfirmed) { return; }
+                pedir(cfg, 5, { id: id }, function () { listarBorradores(); });
+            });
+        });
 
         /* ---------------- crear ---------------- */
 
@@ -680,13 +752,25 @@ var Retenciones = (function () {
 
         /* ---------------- abrir y pintar ---------------- */
 
-        function abrir(id) {
+        function abrir(id, accion) {
             pedir(cfg, 3, { id: id }, function (r) {
                 abierta = r.datos;
                 pintarFormulario();
                 $('#panelCrear').hide();
                 $('#panelFormulario').show();
                 $('html, body').animate({ scrollTop: 0 }, 200);
+
+                // Acción encadenada desde el listado (botones Firmar/Presentar,
+                // homogéneos con el ICA), ya con la declaración en pantalla. Se
+                // reutiliza el mismo flujo del formulario: la firma standalone
+                // del declarante, o "Presentar" que encadena las firmas que
+                // falten. Ocurre una sola vez.
+                if (accion === 'firmar') {
+                    FirmaRetencion.abrir(cfg, abierta.declaracion.numero, 'declarante',
+                        function () { abrir(abierta.declaracion.id); });
+                } else if (accion === 'presentar') {
+                    intentarPresentar();
+                }
             });
         }
 
