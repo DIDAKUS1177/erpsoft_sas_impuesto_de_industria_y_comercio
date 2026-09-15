@@ -553,6 +553,13 @@ var Retenciones = (function () {
 
         function pintar(filas) {
 
+            // Esta pantalla es de CONSULTA: igual que el Consultar del ICA, solo
+            // se listan las declaraciones ya PRESENTADAS (o pagadas). Los
+            // borradores y las firmadas se trabajan en "Presentar Declaración".
+            filas = (filas || []).filter(function (f) {
+                return f.estadoClave === 'presentada' || f.estadoClave === 'pagada';
+            });
+
             var $cuerpo = $('#tablaDeclaraciones tbody').empty();
 
             $('#conteoDeclaraciones').text(
@@ -561,9 +568,9 @@ var Retenciones = (function () {
 
             if (!filas.length) {
                 $cuerpo.append(vacio(7,
-                    'Ninguna declaración coincide con el filtro',
-                    'Pruebe con otro año o quite el filtro de período.',
-                    'fa-filter'));
+                    'Aún no hay declaraciones presentadas',
+                    'Cuando presente una declaración aparecerá aquí. Los borradores están en "Presentar Declaración".',
+                    'fa-file-o'));
                 return;
             }
 

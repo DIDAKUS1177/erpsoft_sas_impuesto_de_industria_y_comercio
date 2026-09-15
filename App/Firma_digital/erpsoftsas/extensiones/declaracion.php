@@ -1231,14 +1231,17 @@ $html .= '
 ';
 
 if ($firmaData) {
-    // Sello a 18x18mm: a 65x65 (y despues a 30x30) la fila de firmas
-    // crecia tanto que empujaba el bloque de codigo de barras fuera de
-    // la pagina (ver nota de SetAutoPageBreak mas arriba). Medido con
-    // GetY(): a 30mm el contenido quedaba 4.5mm mas alto que la pagina.
-    $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="16" height="16"><br>';
+    // Sello a 20x20mm (el cliente pidio el 2026-09-15 sellos mas grandes y la
+    // letra mas pequena para compensar; por eso el nombre/fecha bajo a 7px).
+    // ESTE formulario es oficio y va CASI LLENO: medido, con sello 20 el
+    // contenido cierra en ~329.9mm de 330.2 -el codigo de barras del fondo cabe
+    // justo-. No subir mas sin volver a medir: a 65 y a 30 la fila de firmas
+    // empujaba el codigo de barras fuera de la pagina. En retencion, que es
+    // carta y cierra en ~197-231mm, el sello va a 30 (ver pdfret_firmas).
+    $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="20" height="20"><br>';
 
     // Nombre de quien firmo + fecha/hora de presentacion (ver $fechaSello).
-    $html .= '<span style="font-size: 8px;">' . htmlspecialchars($firmaData['fd_NombreUsuario']) . '<br>' . $fechaSello . '</span></div>';
+    $html .= '<span style="font-size: 7px;">' . htmlspecialchars($firmaData['fd_NombreUsuario']) . '<br>' . $fechaSello . '</span></div>';
 } else {
     // Only put enough space for a physical signature without breaking the page layout.
     // Recortado de 3 a 2 <br>: con el bloque de codigo de barras nuevo, cada mm
@@ -1266,8 +1269,8 @@ $html .= '
  * correo del contador/revisor.
  */
 if (!empty($firmaContadorData)) {
-    $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="16" height="16"><br>';
-    $html .= '<span style="font-size: 8px;">'
+    $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="20" height="20"><br>';
+    $html .= '<span style="font-size: 7px;">'
            . htmlspecialchars($firmaContadorData['fd_NombreUsuario'])
            . '<br>' . $fechaSello . '</span></div>';
 } else {
