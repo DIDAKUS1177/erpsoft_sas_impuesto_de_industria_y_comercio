@@ -80,17 +80,10 @@ $esJuridica = (int) ($contribuyente['ind_Persona'] ?? 0) === 2;
 $dv = (isset($contribuyente['ind_DV']) && $contribuyente['ind_DV'] !== null)
       ? (string) (int) $contribuyente['ind_DV'] : '';
 
+/* Encabezado de sección, tal cual el Excel. Va full-width, sin rótulo lateral. */
 $html .= '
-<table border="1" cellpadding="2" width="100%">
-<tr bgcolor="#e1dada">
-    <td width="16%"><b>FORMULARIO ÚNICO</b></td>
-    <td width="18%"><b>VIGENCIA FISCAL</b></td>
-    <td width="10%" align="center">' . (int) $row['aut_Anio'] . '</td>
-    <td width="9%"><b>FECHA</b></td>
-    <td width="20%" align="center">' . htmlspecialchars($fechaDoc) . '</td>
-    <td width="12%"><b>No. FORM.</b></td>
-    <td width="15%" align="center">' . htmlspecialchars((string) $numero) . '</td>
-</tr>
+<table border="1" cellpadding="3" width="100%">
+<tr bgcolor="#cae6e7"><td align="center"><b>INFORMACIÓN BÁSICA DEL DECLARANTE</b></td></tr>
 </table>
 
 <br>
@@ -102,22 +95,33 @@ $ySecA = $pdf->GetY() - DESFASE_GETY_RET;
 /* ===========================================================================
    A. DECLARANTE (del RIT, no se edita aquí)
 
-   Formato completo del cliente: tipo de documento (NIT jurídica / C.C.
-   natural), nombre o razón social, dirección, ciudad y departamento, correo,
-   teléfono, período y tipo de declaración.
+   Igual al formato del Excel del cliente (hoja de AUTORRETEICA): tipo de
+   documento (NIT/C.C./OTRO), nombre o razón social, dirección, ciudad y
+   departamento, correo, teléfono, vigencia fiscal, corrección y fecha, y la
+   rejilla de los seis bimestres con el declarado resaltado.
    =========================================================================== */
+
+// Rejilla de PERÍODOS: los 6 bimestres, resaltado el que se declara.
+$celdasPeriodo = '';
+foreach ($BIMESTRES as $nb => $nombreBim) {
+    $sel = ((int) $row['aut_Periodo'] === $nb);
+    $celdasPeriodo .= '<td width="14%" align="center"' . ($sel ? ' bgcolor="#cfe8cf"' : '') . '>'
+                    . ($sel ? '<b>' : '') . htmlspecialchars($nombreBim) . ($sel ? '</b>' : '')
+                    . '</td>';
+}
 
 $html = '
 <table border="1" cellpadding="2" width="100%">
 <tr>
     <td width="5%" bgcolor="#e1dada"></td>
-    <td width="21%"><b>1. TIPO DE DOCUMENTO</b></td>
-    <td width="11%">NIT [<b>' . $marca($esJuridica) . '</b>]</td>
-    <td width="11%">C.C. [<b>' . $marca(!$esJuridica) . '</b>]</td>
+    <td width="19%"><b>1. TIPO DE DOCUMENTO</b></td>
+    <td width="10%">NIT [<b>' . $marca($esJuridica) . '</b>]</td>
+    <td width="10%">C.C. [<b>' . $marca(!$esJuridica) . '</b>]</td>
+    <td width="11%">OTRO [<b>&#160;</b>]</td>
+    <td width="6%"><b>D.V.</b></td>
+    <td width="6%" align="center">' . htmlspecialchars($dv) . '</td>
     <td width="6%"><b>No.</b></td>
-    <td width="26%">' . htmlspecialchars((string) ($contribuyente['ind_NumeroIdentificacion'] ?? '')) . '</td>
-    <td width="7%"><b>D.V.</b></td>
-    <td width="13%" align="center">' . htmlspecialchars($dv) . '</td>
+    <td width="21%">' . htmlspecialchars((string) ($contribuyente['ind_NumeroIdentificacion'] ?? '')) . '</td>
 </tr>
 </table>
 <table border="1" cellpadding="2" width="100%">
@@ -137,21 +141,27 @@ $html = '
 </tr>
 <tr>
     <td width="5%" bgcolor="#e1dada"></td>
-    <td width="13%"><b>6. CORREO</b></td>
-    <td width="49%">' . htmlspecialchars((string) ($contribuyente['ind_Email'] ?? '')) . '</td>
+    <td width="18%"><b>6. CORREO ELECTRÓNICO</b></td>
+    <td width="44%">' . htmlspecialchars((string) ($contribuyente['ind_Email'] ?? '')) . '</td>
     <td width="13%"><b>7. TELÉFONO</b></td>
     <td width="20%">' . htmlspecialchars((string) ($contribuyente['ind_Telefono'] ?? '')) . '</td>
+</tr>
+<tr>
+    <td width="5%" bgcolor="#e1dada"></td>
+    <td width="20%"><b>8. VIGENCIA FISCAL</b></td>
+    <td width="10%" align="center">' . (int) $row['aut_Anio'] . '</td>
+    <td width="18%"><b>10. CORRECCIÓN</b> [<b>' . $marca($esCorreccion) . '</b>]</td>
+    <td width="6%"><b>N°</b></td>
+    <td width="11%">' . htmlspecialchars((string) ($row['aut_Corrige'] ?? '')) . '</td>
+    <td width="10%"><b>9. FECHA</b></td>
+    <td width="20%" align="center">' . htmlspecialchars($fechaDoc) . '</td>
 </tr>
 </table>
 <table border="1" cellpadding="2" width="100%">
 <tr>
     <td width="5%" bgcolor="#e1dada"></td>
-    <td width="9%"><b>PERÍODO</b></td>
-    <td width="22%" align="center"><b>' . htmlspecialchars($bimestre) . '</b></td>
-    <td width="19%">CON PAGO [<b>' . $marca(!empty($row['aut_Pagado'])) . '</b>]</td>
-    <td width="16%">SIN PAGO [<b>' . $marca(empty($row['aut_Pagado'])) . '</b>]</td>
-    <td width="15%">CORRECCIÓN [<b>' . $marca($esCorreccion) . '</b>]</td>
-    <td width="14%">No. ' . htmlspecialchars((string) ($row['aut_Corrige'] ?? '')) . '</td>
+    <td width="11%" bgcolor="#e1dada"><b>PERÍODO</b></td>
+    ' . $celdasPeriodo . '
 </tr>
 </table>
 
