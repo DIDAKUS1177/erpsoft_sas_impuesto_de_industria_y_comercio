@@ -739,6 +739,24 @@ $referenciaRecaudo = (string)$d['num_form'];
 HEADER
 =========================== */
 
+/*
+ * Escudo APLANADO (sin canal alfa) para el PDF. escudo-<muni>.png es RGB+alfa
+ * (color type 6) y TCPDF exige GD/Imagick para un PNG con alfa: revienta en un
+ * PHP sin GD ("requires the Imagick or GD extension...") y en el PHP-FPM de
+ * Plesk con "Unable to write file". Se prefiere la variante -pdf (aplanada
+ * contra blanco, color type 2), igual que pdfret_rutaEscudo() en los formularios
+ * de retención. Si el municipio define MUNICIPIO_LOGO_PDF, manda esa.
+ */
+$__baseEscudo = dirname(dirname(__DIR__));
+if (defined('MUNICIPIO_LOGO_PDF')) {
+    $rutaEscudoPdf = $__baseEscudo . MUNICIPIO_LOGO_PDF;
+} else {
+    $__varEscudo = preg_replace('/\.png$/i', '-pdf.png', MUNICIPIO_LOGO);
+    $rutaEscudoPdf = ($__varEscudo !== MUNICIPIO_LOGO && file_exists($__baseEscudo . $__varEscudo))
+        ? $__baseEscudo . $__varEscudo
+        : $__baseEscudo . MUNICIPIO_LOGO;
+}
+
 $html='
 
 <style>
@@ -757,7 +775,7 @@ td { vertical-align: top; font-size:6px; }
 <tr>
 
 <td width="10%" rowspan="10" align="center" >
-    <img src="' . dirname(dirname(__DIR__)) . (defined('MUNICIPIO_LOGO_PDF') ? MUNICIPIO_LOGO_PDF : MUNICIPIO_LOGO) . '" width="58">
+    <img src="' . $rutaEscudoPdf . '" width="58">
     <div style="font-size:5px; text-align:center;">NIT 891.801.240-1</div>
 </td>
 

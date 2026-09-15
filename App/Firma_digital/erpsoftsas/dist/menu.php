@@ -63,18 +63,21 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 	 * Retencion/Autorretencion (core/retenciones.js)-, que ya incluyen menu.php.
 	 */
 	.acc-cards {
-		display: inline-flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+		/* nowrap: el cliente pidió que quepan TODOS en una fila. La columna de
+		   acciones se ensancha lo necesario; en pantallas angostas la tabla ya
+		   tiene scroll horizontal (.table-responsive). */
+		display: inline-flex; flex-wrap: nowrap; gap: 4px; justify-content: center;
 		vertical-align: middle;
 	}
 	.acc-card {
 		display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
-		width: 66px; min-height: 54px; padding: 6px 4px; gap: 3px;
-		border: 1px solid transparent; border-radius: 9px;
-		font-size: 11px; font-weight: 600; line-height: 1.12; text-align: center;
+		width: 50px; min-height: 44px; padding: 4px 3px; gap: 2px;
+		border: 1px solid transparent; border-radius: 7px;
+		font-size: 9px; font-weight: 600; line-height: 1.1; text-align: center;
 		cursor: pointer; text-decoration: none; background: none;
 		transition: transform .08s ease, box-shadow .12s ease, filter .12s ease;
 	}
-	.acc-card i { font-size: 17px; line-height: 1; }
+	.acc-card i { font-size: 14px; line-height: 1; }
 	.acc-card .acc-lbl { display: block; white-space: normal; }
 	.acc-card:hover { transform: translateY(-1px); box-shadow: 0 2px 7px rgba(0,0,0,.14); text-decoration: none; filter: brightness(1.03); }
 	.acc-card:focus-visible { outline: 2px solid rgba(0,0,0,.28); outline-offset: 1px; }

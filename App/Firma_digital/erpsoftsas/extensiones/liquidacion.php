@@ -398,6 +398,21 @@ $textoMarcaAgua = $estaPagada ? 'PAGADA' : ($estaPresentada ? 'PRESENTADA' : 'BO
 $nombreFirmanteContadorRevisor = $contador_nombre !== '' ? $contador_nombre : $revisor_nombre;
 $docFirmanteContadorRevisor    = $contador_num_doc !== '' ? $contador_num_doc : $revisor_num_doc;
 
+/*
+ * Escudo APLANADO (sin canal alfa), igual que declaracion.php y los formularios
+ * de retención: un PNG con alfa hace fallar a TCPDF sin GD y en Plesk. Se prefiere
+ * la variante -pdf.
+ */
+$__baseEscudo = dirname(dirname(__DIR__));
+if (defined('MUNICIPIO_LOGO_PDF')) {
+    $rutaEscudoPdf = $__baseEscudo . MUNICIPIO_LOGO_PDF;
+} else {
+    $__varEscudo = preg_replace('/\.png$/i', '-pdf.png', MUNICIPIO_LOGO);
+    $rutaEscudoPdf = ($__varEscudo !== MUNICIPIO_LOGO && file_exists($__baseEscudo . $__varEscudo))
+        ? $__baseEscudo . $__varEscudo
+        : $__baseEscudo . MUNICIPIO_LOGO;
+}
+
 $html = '
 
 <style>
@@ -411,7 +426,7 @@ td { vertical-align: top; font-size:6px; }
 <tr>
 
 <td width="10%" rowspan="10" align="center">
-    <img src="' . dirname(dirname(__DIR__)) . (defined('MUNICIPIO_LOGO_PDF') ? MUNICIPIO_LOGO_PDF : MUNICIPIO_LOGO) . '" width="85">
+    <img src="' . $rutaEscudoPdf . '" width="85">
     <div style="font-size:5px; text-align:center;">NIT ' . $nit_municipio . '</div>
 </td>
 
