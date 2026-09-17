@@ -249,7 +249,7 @@ function pdfret_encabezado($titulo, $subtitulo)
 <style>
     td { vertical-align: top; font-size: 6.5px; }
     .tituloPrincipal { font-size: 11px; font-weight: bold; }
-    .sub { font-size: 5.5px; }
+    .sub { font-size: 8px; }
 </style>
 
 <table border="0" cellpadding="2" width="100%">
@@ -261,8 +261,7 @@ function pdfret_encabezado($titulo, $subtitulo)
     <td class="tituloPrincipal" width="88%" align="center">
         <b>' . htmlspecialchars(mb_strtoupper(MUNICIPIO_NOMBRE, 'UTF-8')) . '</b><br>
         SECRETARÍA DE HACIENDA<br>
-        ' . htmlspecialchars($titulo) . '<br>
-        <span class="sub">' . htmlspecialchars($subtitulo) . '</span>
+        ' . htmlspecialchars($titulo) . ($subtitulo !== '' ? '<br><span class="sub">' . htmlspecialchars($subtitulo) . '</span>' : '') . '
     </td>
 </tr>
 <tr><td height="6"></td></tr>
@@ -278,9 +277,9 @@ function pdfret_encabezado($titulo, $subtitulo)
  * el nombre de quien firmo y la fecha. La firma es electronica y su prueba esta
  * en firmas_declaraciones, con el codigo OTP que se consumio al registrarla.
  *
- * El sello va a 30x30mm y el nombre/fecha a 7px. El cliente pidio (16→24 el
- * 2026-09-14, y 24→30 con letra mas pequena el 2026-09-15) que fuera "un poco
- * mas grande" y que lo compensara la letra. Estos formularios son CARTA y
+ * El sello va a 52px (~13.7mm) y el nombre/fecha a 7px. El cliente pidio agrandarlo
+ * varias veces (16→24 el 2026-09-14; 24→30 el 2026-09-15; 30→52 el 2026-09-17, que
+ * seguia "muy chiquito") y que lo compensara la letra. Estos formularios son CARTA y
  * cierran holgados -medido con ?medir=1 sobre una PRESENTADA: ~197mm (reteica) y
  * ~231mm (autorreteica) de 279.4-, asi que el sello grande cabe de sobra. El ICA
  * NO puede: es oficio casi lleno y su sello se queda en 20 (ver declaracion.php).
@@ -295,9 +294,12 @@ function pdfret_firmas($firmaDeclarante, $firmaContador, $fechaSello, $nombreDec
     <td width="47%"><b>FIRMA DEL DECLARANTE</b><br>';
 
     if ($firmaDeclarante) {
-        $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="30" height="30"><br>'
+        /* Sobre el sello va el REPRESENTANTE LEGAL (para jurídica) / el declarante
+           mismo (natural), no el nombre de la cuenta que firmó por OTP -razón social-
+           (retro cliente 2026-09-17). Es el mismo nombre que la casilla NOMBRE. */
+        $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="52" height="52"><br>'
                . '<span style="font-size:7px;">'
-               . htmlspecialchars($firmaDeclarante['fd_NombreUsuario'])
+               . htmlspecialchars($nombreDeclarante)
                . '<br>' . $fechaSello . '</span></div>';
     } else {
         $html .= '<br><br>';
@@ -310,7 +312,7 @@ function pdfret_firmas($firmaDeclarante, $firmaContador, $fechaSello, $nombreDec
     /* Contador y revisor comparten una sola casilla: el contribuyente tiene uno
        O el otro, no los dos firmando a la vez. Mismo criterio que el ICA. */
     if ($firmaContador) {
-        $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="30" height="30"><br>'
+        $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="52" height="52"><br>'
                . '<span style="font-size:7px;">'
                . htmlspecialchars($firmaContador['fd_NombreUsuario'])
                . '<br>' . $fechaSello . '</span></div>';

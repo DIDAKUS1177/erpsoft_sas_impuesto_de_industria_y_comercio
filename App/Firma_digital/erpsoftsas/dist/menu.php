@@ -759,7 +759,12 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 	}
 
 	.sidebar-menu .submenu a {
-		padding-left: 26px !important;
+		padding-left: 22px !important;
+		/* Los rótulos del submenú nunca se parten en dos líneas: al abrir el
+		   bloque (li.dropdown.show) la caja se angosta un poco y "Presentar
+		   Declaración"/"Consultar Declaraciones" se veían en dos filas. Con
+		   nowrap quedan siempre en una sola línea (retro cliente 2026-09-17). */
+		white-space: nowrap !important;
 	}
 
 	.sidebar-menu .submenu .submenu a {
@@ -905,7 +910,11 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 .sidebar-menu li.dropdown.show {
 	background: var(--erp-oscuro);
 	border-radius: 8px;
-	margin: 2px 10px;
+	/* Antes 2px 10px: el margen lateral de 10px angostaba la caja 20px y hacía
+	   que "Presentar Declaración"/"Consultar Declaraciones" se partieran en dos
+	   líneas al abrir el bloque (retro cliente 2026-09-17). 5px deja la tarjeta
+	   flotante pero con ancho suficiente para una sola línea. */
+	margin: 2px 5px;
 }
 
 .sidebar-menu li.dropdown.show > .dropdown-toggle {

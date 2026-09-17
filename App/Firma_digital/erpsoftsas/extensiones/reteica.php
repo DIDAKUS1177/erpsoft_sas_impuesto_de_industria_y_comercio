@@ -76,9 +76,11 @@ $pdf = pdfret_nuevoPdf();
    ENCABEZADO Y DATOS DEL PERIODO
    =========================================================================== */
 
+/* El subtítulo "…complementario de avisos… mensual" se quita en RETENCIÓN por
+   pedido del cliente (retro 2026-09-17). En autorretención sí se conserva. */
 $html = pdfret_encabezado(
     'DECLARACIÓN DE RETENCIÓN DEL IMPUESTO DE INDUSTRIA Y COMERCIO',
-    'Y SU COMPLEMENTARIO DE AVISOS Y TABLEROS — Declaración mensual'
+    ''
 );
 
 /* Marca de casilla tipo [X] / [ ]. &#160; (espacio duro) para que la celda no
@@ -110,6 +112,10 @@ $html .= '
     <td width="28%">RÉGIMEN ESPECIAL &nbsp;[<b>' . $marca($regimen === 'especial') . '</b>]</td>
     <td width="30%">GRAN CONTRIBUYENTE &nbsp;[<b>' . $marca($regimen === 'gran') . '</b>]</td>
 </tr>
+</table>
+
+<table border="1" cellpadding="3" width="100%">
+<tr bgcolor="#cae6e7"><td align="center"><b>INFORMACIÓN BÁSICA DEL RETENEDOR</b></td></tr>
 </table>
 
 <br>

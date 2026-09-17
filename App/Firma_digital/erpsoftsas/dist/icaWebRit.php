@@ -902,15 +902,16 @@
 
 <script>
 $(document).ready(function () {
-    // El cliente pidio (2026-09-14) que este aviso salga SOLO la primera vez,
-    // no en cada visita. Se marca por contribuyente en el navegador; si ya se
-    // mostro, no vuelve a salir. El try/catch cubre navegacion privada.
+    // El aviso sale SOLO la primera vez por contribuyente (cliente 2026-09-14).
+    // Antes se marcaba en localStorage, pero dist/menu.php hace localStorage.clear()
+    // al cerrar sesion, asi que la marca se borraba y el aviso volvia a salir en
+    // cada nuevo ingreso (cliente 2026-09-17). Se marca ahora en una COOKIE, que
+    // ese clear() no toca -sobrevive al cierre de sesion-.
     var idContribuyente = '';
     try { idContribuyente = localStorage.getItem('id_Contribuyente') || ''; } catch (e) {}
     var claveAviso = 'ritAvisoActualizacion_' + idContribuyente;
 
-    var yaVisto = false;
-    try { yaVisto = !!localStorage.getItem(claveAviso); } catch (e) {}
+    var yaVisto = document.cookie.indexOf(claveAviso + '=1') !== -1;
 
     if (!yaVisto) {
         swal({
@@ -924,7 +925,9 @@ $(document).ready(function () {
             closeOnClickOutside: false,
             closeOnEsc: false
         });
-        try { localStorage.setItem(claveAviso, '1'); } catch (e) {}
+        // Cookie por 5 años, por contribuyente; sobrevive al localStorage.clear()
+        // del cierre de sesión (SameSite=Lax, sin Secure para servir también en http).
+        document.cookie = claveAviso + '=1; path=/; max-age=' + (60 * 60 * 24 * 365 * 5) + '; SameSite=Lax';
     }
 });
 </script>

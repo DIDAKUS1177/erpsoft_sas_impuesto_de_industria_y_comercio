@@ -121,7 +121,7 @@ $html = '
     <td width="6%"><b>D.V.</b></td>
     <td width="6%" align="center">' . htmlspecialchars($dv) . '</td>
     <td width="6%"><b>No.</b></td>
-    <td width="21%">' . htmlspecialchars((string) ($contribuyente['ind_NumeroIdentificacion'] ?? '')) . '</td>
+    <td width="27%">' . htmlspecialchars((string) ($contribuyente['ind_NumeroIdentificacion'] ?? '')) . '</td>
 </tr>
 </table>
 <table border="1" cellpadding="2" width="100%">
