@@ -172,15 +172,10 @@ ob_start();
   <div class="politica">
     <label>
       <input type="checkbox" name="acepto" value="1" id="acepto" required>
-      <span>He leído y acepto la política de tratamiento de datos personales de <?= htmlspecialchars($muni) ?>
-      y autorizo el procesamiento del pago a través de AvalPay (PSE).</span>
+      <span>He leído y acepto la
+      <a href="faq.php" target="_blank" style="color:var(--c);font-weight:600;">política de tratamiento de datos y los términos y condiciones</a>
+      de <?= htmlspecialchars($muni) ?> y autorizo el procesamiento del pago a través de AvalPay (PSE).</span>
     </label>
-    <details>
-      <summary>Ver política de tratamiento de datos</summary>
-      <p>Los datos suministrados se usan únicamente para procesar este pago y llevar su registro.
-      La captura de la información financiera la realiza directamente AvalPay, que cumple el estándar
-      PCI DSS; <?= htmlspecialchars($muni) ?> no almacena datos de su cuenta o tarjeta.</p>
-    </details>
   </div>
   <button type="submit" class="btn" id="btnPagar" disabled>Pagar con PSE</button>
   <a class="btn sec" href="javascript:window.close();">Cancelar</a>
