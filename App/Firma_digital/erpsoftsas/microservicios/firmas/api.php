@@ -734,14 +734,11 @@ class FirmasAPI
             $mail->isHTML(true);
             $mail->Subject = $cfg['otp_subject'] . ' - ICA';
 
-            $selloPath = __DIR__ . '/../../src/images/user/svg/Sello_Firma.png';
-            if (file_exists($selloPath)) {
-                $mail->addEmbeddedImage($selloPath, 'sello_firma', 'Sello_Firma.png');
-                $selloImg = "<img src='cid:sello_firma' alt='Sello' style='max-width:180px;display:block;margin:10px auto 0;'>";
-            } else {
-                $selloImg = '';
-            }
-
+            // Correo LEAN para mejorar la ENTREGA, sobre todo a Hotmail/Outlook,
+            // que filtra con dureza el correo automatico: SIN imagen embebida
+            // (era un adjunto que sube el puntaje de spam en un OTP) y CON
+            // version de texto plano (AltBody), que los filtros esperan en un
+            // correo legitimo. El sello no aporta nada a un codigo de un solo uso.
             $mail->Body = "
                 <div style='font-family:Arial,sans-serif;max-width:480px;margin:auto;'>
                     <h3 style='color:#1a73e8;'>Firma Digital - Industria y Comercio</h3>
@@ -753,10 +750,15 @@ class FirmasAPI
                     <p style='color:#666;'>Este código expira en <strong>10 minutos</strong>.</p>
                     <p style='color:#999;font-size:12px;'>Si no solicitaste este código, ignora este mensaje.</p>
                     <hr>
-                    {$selloImg}
                     <p style='color:#999;font-size:11px;'>{$cfg['from_name']} · Industria y Comercio</p>
                 </div>
             ";
+            $mail->AltBody = "Firma Digital - Industria y Comercio\n\n"
+                . "Hola {$nombre},\n\n"
+                . "Tu codigo de verificacion es: {$codigo}\n"
+                . "Este codigo expira en 10 minutos.\n\n"
+                . "Si no solicitaste este codigo, ignora este mensaje.\n"
+                . "{$cfg['from_name']} - Industria y Comercio";
             $mail->send();
             return true;
         } catch (\Exception $e) {
