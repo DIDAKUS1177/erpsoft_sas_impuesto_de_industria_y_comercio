@@ -1231,6 +1231,17 @@ $html .= '
 ';
 
 if ($firmaData) {
+    // El sello del declarante lleva el REPRESENTANTE LEGAL (juridica) o el
+    // contribuyente (natural), NO el nombre de la cuenta que firmo por OTP
+    // (fd_NombreUsuario = razon social). El fix 02b5ee6 corrigio la casilla
+    // NOMBRE (declarante_nombre) pero el SELLO seguia estampando
+    // fd_NombreUsuario -por eso el cliente veia "sistemas erpsoft" y no el
+    // representante-. Misma logica que declarante_nombre y que la retencion.
+    $declaranteSelloNombre = ($row['ind_Persona'] == 1
+            || trim((string) ($row['ind_Nombre_representante'] ?? '')) === '')
+        ? $nombreCompleto
+        : $row['ind_Nombre_representante'];
+
     // Sello a 20x20mm (el cliente pidio el 2026-09-15 sellos mas grandes y la
     // letra mas pequena para compensar; por eso el nombre/fecha bajo a 7px).
     // ESTE formulario es oficio y va CASI LLENO: medido, con sello 20 el
@@ -1241,7 +1252,7 @@ if ($firmaData) {
     $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="20" height="20"><br>';
 
     // Nombre de quien firmo + fecha/hora de presentacion (ver $fechaSello).
-    $html .= '<span style="font-size: 7px;">' . htmlspecialchars($firmaData['fd_NombreUsuario']) . '<br>' . $fechaSello . '</span></div>';
+    $html .= '<span style="font-size: 7px;">' . htmlspecialchars($declaranteSelloNombre) . '<br>' . $fechaSello . '</span></div>';
 } else {
     // Only put enough space for a physical signature without breaking the page layout.
     // Recortado de 3 a 2 <br>: con el bloque de codigo de barras nuevo, cada mm
