@@ -85,6 +85,38 @@ class PlacetoPay {
             && self::secretKey() !== null;
     }
 
+    /*
+     * MODO CERTIFICACION: el boton solo lo ven los usuarios de prueba.
+     *
+     * Durante la homologacion con el banco hay que "prender" las credenciales
+     * de PRUEBA, y eso haria visible el boton "Pagar PSE" para TODOS los
+     * contribuyentes reales, apuntando al ambiente de pruebas. Para evitarlo,
+     * el parametro PASARELA_USUARIOS_PRUEBA (conf_parametros) lista los IDs de
+     * usuario -separados por coma- que SI pueden ver el boton mientras dura la
+     * certificacion.
+     *
+     *   - vacio  -> produccion: lo ven todos (cuando ya hay credenciales reales).
+     *   - con IDs -> certificacion: solo esos usuarios lo ven.
+     *
+     * Se cambia desde la pantalla de Configuracion, sin desplegar.
+     */
+    public static function botonVisible($idUsuario = null)
+    {
+        if (!self::configurado()) {
+            return false;
+        }
+
+        include_once __DIR__ . '/class.parametros.php';
+        $lista = \erpsoftsas\Parametros::valor('PASARELA_USUARIOS_PRUEBA');
+
+        if ($lista === null) {
+            return true; // sin lista => produccion, visible para todos
+        }
+
+        $ids = array_filter(array_map('trim', explode(',', $lista)), 'strlen');
+        return in_array((string) (int) $idUsuario, $ids, true);
+    }
+
     private static function auth() {
         $seed = date('c');
         $nonceCrudo = random_bytes(16);
@@ -133,7 +165,7 @@ class PlacetoPay {
      * @param string $returnUrl   A donde redirige PlacetoPay cuando el usuario da "volver al comercio".
      * @return array ['requestId' => int, 'processUrl' => string]
      */
-    public static function crearSesion($referencia, $valor, $descripcion, $returnUrl) {
+    public static function crearSesion($referencia, $valor, $descripcion, $returnUrl, $buyer = null, $fields = null) {
         $payload = [
             'auth' => self::auth(),
             'payment' => [
@@ -144,13 +176,26 @@ class PlacetoPay {
                     'total'    => round((float) $valor, 2),
                 ],
             ],
-            'expiration'   => date('c', strtotime('+2 hours')),
+            // La certificacion WC de AvalPay exige que la expiracion este entre
+            // 10 y 30 minutos (Guia de certificacion WC, item 2). Antes eran 2h,
+            // fuera de rango: la sesion habria sido rechazada en la homologacion.
+            'expiration'   => date('c', strtotime('+30 minutes')),
             'returnUrl'    => $returnUrl,
             'ipAddress'    => $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1',
             'userAgent'    => $_SERVER['HTTP_USER_AGENT'] ?? 'ERPSoftSAS-ICA-Paipa',
             'paymentMethod' => 'pse',
             'locale'       => 'es_CO',
         ];
+
+        // buyer (opcional): datos del contribuyente. Si se envia, AvalPay los
+        // usa; si no, los pide en su pantalla. fields: extradata (p. ej. el
+        // periodo), que el banco muestra en el comprobante.
+        if (is_array($buyer) && $buyer) {
+            $payload['buyer'] = $buyer;
+        }
+        if (is_array($fields) && $fields) {
+            $payload['payment']['fields'] = $fields;
+        }
 
         $data = self::post(self::baseUrl() . '/session', $payload);
 
@@ -255,14 +300,27 @@ class PlacetoPay {
      *
      * Devuelve true si la declaracion quedo marcada como pagada.
      */
-    public static function aplicarADeclaracion($con, $idDeclaracion, array $info, $valor)
+    public static function aplicarADeclaracion($con, $idDeclaracion, array $info, $valor, $m = null)
     {
+        // $m es el descriptor del modulo (ICA / RETEICA / AUTORRETEICA). Si no
+        // viene, es ICA -asi las llamadas viejas siguen funcionando igual-.
+        require_once __DIR__ . '/class.pseModulo.php';
+        if ($m === null) { $m = \erpsoftsas\PseModulo::get('ica'); }
+
+        $tabla = $m['tabla'];
+        $pk    = $m['pk'];
+        $cEst  = \erpsoftsas\PseModulo::colEstado($m);
+        $cFec  = \erpsoftsas\PseModulo::colFechaEstado($m);
+        $cMsg  = \erpsoftsas\PseModulo::colMensaje($m);
+
+        // Nombres de tabla/columna salen del mapa fijo de PseModulo, nunca del
+        // usuario: interpolarlos aqui es seguro.
         $con->consultar(
-            "UPDATE ind_declaraciones_ica
-                SET dec_PSE_Estado      = ?,
-                    dec_PSE_FechaEstado = GETDATE(),
-                    dec_PSE_Mensaje     = ?
-              WHERE dec_Id = ?",
+            "UPDATE $tabla
+                SET $cEst = ?,
+                    $cFec = GETDATE(),
+                    $cMsg = ?
+              WHERE $pk = ?",
             [$info['estado'], $info['mensaje'] ?? '', (int) $idDeclaracion]
         );
 
@@ -283,6 +341,6 @@ class PlacetoPay {
             'banco' => $info['banco'],
             'via'   => \erpsoftsas\PagoDeclaracion::VIA_PSE,
             // Sin fechaPago: en PSE el pago acaba de ocurrir.
-        ]);
+        ], $m);
     }
 }

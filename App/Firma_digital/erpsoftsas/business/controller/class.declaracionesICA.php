@@ -2062,7 +2062,9 @@ private function _consultarDeclaracionesListado(){
      * sugeriria que puede variar entre declaraciones.
      */
     include_once SERVER . '/business/class.placetopay.php';
-    $pagoEnLinea = (int) \PlacetoPay::configurado();
+    // botonVisible (no solo configurado): durante la certificacion el boton solo
+    // lo ven los usuarios de prueba (parametro PASARELA_USUARIOS_PRUEBA).
+    $pagoEnLinea = (int) \PlacetoPay::botonVisible($_SESSION['id_usuario'] ?? null);
 
     $data = [];
 

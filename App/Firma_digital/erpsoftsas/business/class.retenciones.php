@@ -611,10 +611,27 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
             'estado'      => $estado,
             'estadoClave' => $clave,
             'pagado'      => $pagado ? 1 : 0,
+            'pago_en_linea' => $this->_pagoEnLinea(),
             'total'       => isset($f[$colTotal]) ? (float) $f[$colTotal] : 0,
             'documento'   => isset($f['documento']) ? $f['documento'] : '',
             'razon'       => $razon,
         ];
+    }
+
+    /**
+     * ¿Se ofrece el boton "Pagar PSE" a este usuario? Igual que en el ICA:
+     * depende de que el convenio de recaudo este configurado y, en modo
+     * certificacion, de que el usuario este en PASARELA_USUARIOS_PRUEBA. Se
+     * resuelve una sola vez por peticion (mismo dato para todas las filas).
+     */
+    private $_pagoEnLineaCache = null;
+    protected function _pagoEnLinea()
+    {
+        if ($this->_pagoEnLineaCache === null) {
+            require_once __DIR__ . '/class.placetopay.php';
+            $this->_pagoEnLineaCache = (int) \PlacetoPay::botonVisible($_SESSION['id_usuario'] ?? null);
+        }
+        return $this->_pagoEnLineaCache;
     }
 
     /** La casilla "TOTAL A PAGAR" de cada formulario: 17 en retencion, 23 en autorretencion. */

@@ -230,6 +230,14 @@ var Retenciones = (function () {
         if (estado === 'presentada' || estado === 'pagada') {
             b = pdf;
             if (estado === 'presentada') {
+                // Pagar PSE: solo en presentadas y si la entidad tiene convenio
+                // (pago_en_linea, igual que en el ICA). Va al RESUMEN (pagar.php),
+                // que muestra monto + logo AvalPay + politica antes de redirigir.
+                if (Number(f.pago_en_linea) === 1) {
+                    b += accBtn({ tipo: 'danger', icono: 'fa-money', texto: 'Pagar PSE', title: 'Pagar por PSE',
+                                  href: '../extensiones/pse/pagar.php?modulo=' + encodeURIComponent(cfg.modulo || '') + '&id=' + f.id,
+                                  target: '_blank' });
+                }
                 b += accBtn({ tipo: 'warning', icono: 'fa-pencil', texto: 'Corregir',
                               title: 'Corregir', clase: 'js-corregir', id: f.id });
             }

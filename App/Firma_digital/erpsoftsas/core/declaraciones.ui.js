@@ -198,8 +198,11 @@ var DeclaracionesUI = (function () {
         // a un mensaje de "no disponible"; se prefiere no ofrecerlo. El
         // servidor lo vuelve a comprobar: esta URL se puede llamar a mano.
         if (clave === 'presentada' && Number(d.pago_en_linea) === 1) {
+            // Va al RESUMEN de pago (pagar.php), no directo a crear la sesion:
+            // la certificacion WC exige mostrar el monto y aceptar la politica
+            // de datos antes de redirigir al banco (items 4 y 12.1).
             botones += accBtn({ tipo: 'danger', icono: 'fa-money', texto: 'Pagar PSE', title: 'Pagar por PSE',
-                                href: '../extensiones/pse/crearSesion.php?dec_Id=' + d.dec_Id, target: '_blank' });
+                                href: '../extensiones/pse/pagar.php?modulo=ica&id=' + d.dec_Id, target: '_blank' });
         }
 
         return envolverAcciones(botones);

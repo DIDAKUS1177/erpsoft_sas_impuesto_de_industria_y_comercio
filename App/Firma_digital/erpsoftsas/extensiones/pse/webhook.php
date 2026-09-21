@@ -1,17 +1,20 @@
 <?php
 
 /**
- * URL de notificacion que se registra ante PlacetoPay. Cuando el estado de
- * una sesion cambia, PlacetoPay hace POST aqui con un JSON que incluye
- * "requestId", "status" y "signature". Se valida la firma primero (ver
- * PlacetoPay::validarFirmaWebhook) y, aunque sea valida, el estado que se
- * guarda SIEMPRE sale de una consulta autenticada aparte (consultarSesion),
- * nunca del contenido del POST -asi la firma filtra ruido/spoofing, pero
- * no es la unica linea de defensa-.
+ * URL de notificacion que se registra ante PlacetoPay. Cuando el estado de una
+ * sesion cambia, PlacetoPay hace POST aqui con requestId, status y signature.
+ * Se valida la firma primero (validarFirmaWebhook) y, aunque sea valida, el
+ * estado que se guarda SIEMPRE sale de una consulta autenticada aparte
+ * (consultarSesion), nunca del contenido del POST.
+ *
+ * El requestId es unico por sesion, pero puede pertenecer a cualquiera de los
+ * tres modulos (ICA, RETEICA, AUTORRETEICA). Como PlacetoPay no dice de cual,
+ * se busca en las tres tablas.
  */
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
 require_once SERVER . '/business/class.placetopay.php';
+require_once SERVER . '/business/class.pseModulo.php';
 
 $configPath = dirname(dirname(dirname(__DIR__))) . '/config.municipio.php';
 if (!file_exists($configPath)) {
@@ -40,21 +43,28 @@ if (!PlacetoPay::validarFirmaWebhook($body)) {
 
 $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
-$row = $con->obnerFila($con->consultar(
-    "SELECT dec_Id, dec_ValorConcepto20, dec_Pagado FROM ind_declaraciones_ica WHERE dec_PSE_RequestId = ?",
-    [$requestId]
-));
+// Buscar el requestId en los tres modulos.
+$m = null; $row = null;
+foreach (\erpsoftsas\PseModulo::claves() as $clave) {
+    $cand = \erpsoftsas\PseModulo::get($clave);
+    $req = \erpsoftsas\PseModulo::colRequestId($cand);
+    $r = $con->obnerFila($con->consultar(
+        "SELECT {$cand['pk']} AS id, {$cand['valor']} AS valor, {$cand['pagado']} AS pagado
+         FROM {$cand['tabla']} WHERE {$req} = ?",
+        [$requestId]
+    ));
+    if ($r) { $m = $cand; $row = $r; break; }
+}
 
 if (!$row) {
-    // No es un error nuestro: puede ser una notificacion de una sesion que
-    // no corresponde a esta integracion. Se responde 200 igual, porque
-    // PlacetoPay reintenta si no recibe 200.
+    // Puede ser una notificacion de una sesion que no es de esta integracion.
+    // Se responde 200 para que PlacetoPay no reintente indefinidamente.
     http_response_code(200);
     echo json_encode(['ok' => true, 'mensaje' => 'requestId no asociado a ninguna declaración']);
     exit;
 }
 
-if ((int) $row['dec_Pagado'] === 1) {
+if ((int) $row['pagado'] === 1) {
     echo json_encode(['ok' => true, 'mensaje' => 'Ya estaba pagada']);
     exit;
 }
@@ -63,15 +73,13 @@ try {
     $respuesta = PlacetoPay::consultarSesion($requestId);
     $info = PlacetoPay::interpretarRespuesta($respuesta);
 
-    // Se guarda SIEMPRE el estado, apruebe o no: un rechazo o un pago en
-    // tramite tambien son informacion, y hasta ahora no dejaban rastro.
-    PlacetoPay::aplicarADeclaracion($con, $row['dec_Id'], $info, $row['dec_ValorConcepto20']);
+    // Se guarda SIEMPRE el estado, apruebe o no.
+    PlacetoPay::aplicarADeclaracion($con, $row['id'], $info, $row['valor'], $m);
 
-    echo json_encode(['ok' => true, 'estado' => $info['estado']]);
+    echo json_encode(['ok' => true, 'modulo' => $m['clave'], 'estado' => $info['estado']]);
 } catch (Exception $e) {
-    // 500: que PlacetoPay reintente el webhook mas tarde (fallo nuestro al
-    // consultar, no un rechazo del pago). Si aun asi nunca se confirma, el
-    // cron de respaldo la recoge en su siguiente corrida.
+    // 500: que PlacetoPay reintente el webhook mas tarde. Si aun asi nunca se
+    // confirma, el cron de respaldo la recoge en su siguiente corrida.
     http_response_code(500);
     echo json_encode(['ok' => false, 'mensaje' => $e->getMessage()]);
 }

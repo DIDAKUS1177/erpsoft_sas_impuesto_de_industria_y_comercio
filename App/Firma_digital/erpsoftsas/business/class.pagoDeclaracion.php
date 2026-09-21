@@ -66,12 +66,23 @@ class PagoDeclaracion
      * @param  int    $idDeclaracion
      * @param  array  $datos          valor, banco, via, y opcionalmente
      *                                fechaPago ('Y-m-d' o 'Y-m-d H:i:s')
+     * @param  array|null $m          descriptor del modulo (PseModulo::get);
+     *                                si es null, ICA -asi el recaudo bancario y
+     *                                cualquier llamada vieja siguen igual-. Los
+     *                                tres modulos tienen el MISMO juego de
+     *                                columnas de pago (migraciones 014 y 032).
      * @return bool   true si esta llamada fue la que la marcó
      */
-    public static function registrar($con, $idDeclaracion, array $datos)
+    public static function registrar($con, $idDeclaracion, array $datos, $m = null)
     {
         $idDeclaracion = (int) $idDeclaracion;
         if ($idDeclaracion <= 0) { return false; }
+
+        require_once __DIR__ . '/class.pseModulo.php';
+        if ($m === null) { $m = \erpsoftsas\PseModulo::get('ica'); }
+        $t  = $m['tabla'];    // nombre de tabla y prefijo salen del mapa fijo
+        $p  = $m['prefijo'];  // de PseModulo, nunca del usuario: seguro interpolarlos
+        $pk = $m['pk'];
 
         $via = in_array($datos['via'] ?? '', [self::VIA_PSE, self::VIA_RECAUDO], true)
             ? $datos['via']
@@ -90,30 +101,30 @@ class PagoDeclaracion
         $anio = (int) date('Y', strtotime($fechaPago));
 
         /*
-         * La guarda de dec_Pagado hace la operación idempotente: la
-         * notificación del banco y el retorno del usuario llegan casi a la vez
-         * y las dos intentan aplicar el mismo pago. Sin ella, la segunda
-         * pisaría la fecha de la primera con una posterior.
+         * La guarda de _Pagado hace la operación idempotente: la notificación
+         * del banco y el retorno del usuario llegan casi a la vez y las dos
+         * intentan aplicar el mismo pago. Sin ella, la segunda pisaría la fecha
+         * de la primera con una posterior.
          */
         $con->consultar(
-            "UPDATE ind_declaraciones_ica
-                SET dec_Pagado        = 1,
-                    dec_FechaPago     = ?,
-                    dec_FechaRealPago = GETDATE(),
-                    dec_ValorPago     = ?,
-                    dec_BancoPago     = ?,
-                    dec_AnioPago      = ?,
-                    dec_RutaPago      = ?
-              WHERE dec_Id = ? AND ISNULL(dec_Pagado, 0) = 0",
+            "UPDATE $t
+                SET {$p}_Pagado        = 1,
+                    {$p}_FechaPago     = ?,
+                    {$p}_FechaRealPago = GETDATE(),
+                    {$p}_ValorPago     = ?,
+                    {$p}_BancoPago     = ?,
+                    {$p}_AnioPago      = ?,
+                    {$p}_RutaPago      = ?
+              WHERE $pk = ? AND ISNULL({$p}_Pagado, 0) = 0",
             [$fechaPago, $datos['valor'] ?? 0, $banco, $anio, $via, $idDeclaracion]
         );
 
         $fila = $con->obnerFila($con->consultar(
-            "SELECT dec_RutaPago FROM ind_declaraciones_ica WHERE dec_Id = ?",
+            "SELECT {$p}_RutaPago AS ruta FROM $t WHERE $pk = ?",
             [$idDeclaracion]
         ));
 
         // Fue esta llamada la que la marcó si la vía guardada es la suya.
-        return isset($fila['dec_RutaPago']) && $fila['dec_RutaPago'] === $via;
+        return isset($fila['ruta']) && $fila['ruta'] === $via;
     }
 }
