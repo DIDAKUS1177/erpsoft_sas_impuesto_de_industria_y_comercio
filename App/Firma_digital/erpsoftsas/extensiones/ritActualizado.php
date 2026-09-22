@@ -1315,12 +1315,16 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 <div align="center">'.
 ($firmaRit
     /* Mismo sello que usan las declaraciones. Sin canal alfa por lo dicho
-       arriba. A 28 unidades son ~10mm, igual que la firma de al lado. */
+       arriba. Se subio de 28 a 72 (~26mm) a pedido del cliente 2026-09-22
+       ("la firma muy pequeña"). Cabe de sobra: el formulario cierra a ~73%
+       de la hoja oficio, queda ~1/4 en blanco -medido con render real-, asi
+       que agrandarlo NO agrega hoja. La firma del funcionario de al lado se
+       queda en su tamano; la fila crece unos mm y sigue holgada. */
     /* Sobre el sello va el REPRESENTANTE LEGAL (juridica) / propietario (natural),
        igual que la casilla NOMBRE de abajo y que el PDF de declaracion. NO el
        nombre de la cuenta que firmo por OTP (rif_NombreUsuario = razon social).
        $d['representante'] ya viene escapado; si viniera vacio, se cae a la cuenta. */
-    ? '<img src="'.MUNICIPIO_SELLO_FIRMA.'" width="28" height="28"><br>'.
+    ? '<img src="'.MUNICIPIO_SELLO_FIRMA.'" width="72" height="72"><br>'.
       '<span style="font-size:6px;">'.(trim((string) $d['representante']) !== '' ? $d['representante'] : $esc($firmaRit['rif_NombreUsuario'])).' &nbsp;·&nbsp; '.$esc($fechaFirmaRit).'</span>'
     /* Sin firma digital queda el espacio para firmar a mano, como toda la vida. */
     : '<br><br><br>').
