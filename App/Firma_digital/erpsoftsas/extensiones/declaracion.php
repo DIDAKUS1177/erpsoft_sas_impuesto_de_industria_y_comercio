@@ -1638,4 +1638,36 @@ if (!empty($actividadesResto)) {
     dibujarMarcaDeAgua($pdf, $textoMarcaAgua, 215.9, 330.2);
 }
 
+/* ===========================================================================
+   SELLO DE FIRMA AGRANDADO Y SOBREPUESTO (pedido cliente 2026-09-22)
+   ---------------------------------------------------------------------------
+   El sello DENTRO de la casilla se queda en 20 (7mm): agrandarlo ahi crece la
+   fila de firmas y, como SetAutoPageBreak esta en false y el codigo de barras
+   va pegado justo debajo (en $yBloque), lo empujaria fuera del papel oficio
+   -que cierra a ~329mm de 330.2-. Por eso, ENCIMA, se dibuja un sello mas grande
+   con Image() en coordenadas absolutas: no ocupa alto en el flujo, asi que puede
+   crecer sin mover nada. El alto se ancla a $yBloque (borde superior del bloque
+   del codigo de barras) y el X a los centros MEDIDOS de cada casilla de firma
+   (DECLARANTE = izquierda, CONTADOR = derecha; ver nota abajo).
+   =========================================================================== */
+$pdf->setPage(1);   // el bloque de firmas esta en la hoja 1 (por si hay hoja 2)
+$selloOverlay = is_file(MUNICIPIO_SELLO_FIRMA) ? MUNICIPIO_SELLO_FIRMA
+                                              : __DIR__ . '/' . MUNICIPIO_SELLO_FIRMA;
+if (is_file($selloOverlay)) {
+    // Centros de las celdas de firma, MEDIDOS sobre el render real (layout fijo).
+    // No coinciden con $xBloque+$mitad/2 porque la tabla de firmas tiene una banda
+    // vertical "F. FIRMAS" a la izquierda. El sello chico (7mm) queda centrado en
+    // DECLARANTE x=53.7mm, CONTADOR x=146.8mm, y=279.2mm; ese y esta 24.7mm por
+    // encima de $yBloque (borde del codigo de barras), asi que se ancla relativo:
+    // si crecen las actividades y el bloque baja, el sello baja con el.
+    $sSize  = 17;                 // mm (antes ~7mm)
+    $sYcen  = $yBloque - 24.7;    // centro vertical del sello (= el del sello chico)
+    if ($firmaData) {             // sello del DECLARANTE (celda izquierda)
+        $pdf->Image($selloOverlay, 53.7 - $sSize / 2, $sYcen - $sSize / 2, $sSize, $sSize);
+    }
+    if (!empty($firmaContadorData)) {   // sello del CONTADOR (celda derecha)
+        $pdf->Image($selloOverlay, 146.8 - $sSize / 2, $sYcen - $sSize / 2, $sSize, $sSize);
+    }
+}
+
 $pdf->Output('ICA_DECLARACION.pdf','I');
