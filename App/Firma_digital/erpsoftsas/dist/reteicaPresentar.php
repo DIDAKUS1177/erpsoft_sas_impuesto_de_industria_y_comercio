@@ -211,8 +211,11 @@
 
 				<div class="card-box mb-30">
 					<div class="pd-20 text-right">
+						<!-- El formulario solo GUARDA, igual que Industria y Comercio
+						     (icaWebPresentar solo tiene "Guardar"). La presentacion se
+						     hace desde el listado: Firmar y luego Presentar por fila.
+						     Se quito el boton "Presentar" de aqui (pedido cliente 2026-09-23). -->
 						<button type="button" id="btnGuardar"   class="btn btn-secondary">Guardar</button>
-						<button type="button" id="btnPresentar" class="btn btn-success">Presentar</button>
 					</div>
 				</div>
 

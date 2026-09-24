@@ -205,6 +205,17 @@ var DeclaracionesUI = (function () {
                                 href: '../extensiones/pse/pagar.php?modulo=ica&id=' + d.dec_Id, target: '_blank' });
         }
 
+        // Recibo de pago para el banco (extensiones/reciboPago.php): el mismo de
+        // retención y autorretención. Solo presentada, sin pagar y con valor; el
+        // total a pagar del ICA (renglón 38) es dec_ValorConcepto20. Vencida,
+        // es la única forma de pagar en ventanilla: la declaración ya no trae
+        // código de barras.
+        if (clave === 'presentada' && Number(d.dec_ValorConcepto20) > 0) {
+            botones += accBtn({ tipo: 'info', icono: 'fa-barcode', texto: 'Recibo de pago',
+                                title: 'Descargar el recibo de pago para el banco',
+                                href: '../extensiones/reciboPago.php?modulo=ICA&id=' + d.dec_Id, target: '_blank' });
+        }
+
         return envolverAcciones(botones);
     }
 
@@ -464,7 +475,12 @@ var FirmaOTP = (function () {
                 // El rol decide a que correo viaja el codigo: al del usuario
                 // (declarante) o al del contador/revisor del contribuyente.
                 rol: _rol,
-                numero_declaracion: $('#otpIdDeclaracion').val()
+                numero_declaracion: $('#otpIdDeclaracion').val(),
+                // Contribuyente activo, para la firma del RIT cuando la Alcaldía
+                // gestiona a otro. En declaraciones el servidor lo ignora (toma
+                // el dueño de la declaración). El propio contribuyente manda el
+                // suyo y el servidor lo valida.
+                id_contribuyente: localStorage.getItem('id_Contribuyente')
             },
             success: function (resp) {
 
@@ -577,8 +593,10 @@ var FirmaOTP = (function () {
             type: 'POST',
             dataType: 'json',
             // funcion 9 = firmar el RIT, funcion 7 = firmar una declaracion.
+            // id_contribuyente: para el RIT que la Alcaldía firma por otro; el
+            // servidor lo valida (rol 1/2 cualquiera, el resto solo el suyo).
             data: (_modo === 'rit')
-                ? { funcion: 9, codigo: codigo }
+                ? { funcion: 9, codigo: codigo, id_contribuyente: localStorage.getItem('id_Contribuyente') }
                 : { funcion: 7, codigo: codigo, id_declaracion: decId, rol: _rol },
             success: function (respFirma) {
 

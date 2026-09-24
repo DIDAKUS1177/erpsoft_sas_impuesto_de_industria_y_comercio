@@ -1816,6 +1816,7 @@ actualizarDeclaracionIca(valor, numeroCampo){
                 establecimientos.ajustarNombresPorTipoPersona();
                 establecimientos.pintarSeleccionMultiple(d.ind_RegimenTributario, d.ind_Responsabilidades);
                 establecimientos.pintarExenciones(d.ind_NoSujetas, d.ind_SinAvisosTableros);
+                establecimientos.pintarNaturaleza(d.ind_EsConsorcio, d.ind_PatrimonioAutonomo);
                 establecimientos.pintarCese(d);
                 establecimientos.listarAnexosRIT();
 
@@ -2103,6 +2104,18 @@ actualizarDeclaracionIca(valor, numeroCampo){
     pintarExenciones(noSujetas, sinAvisos) {
         $('#rit_chk_NoSujetas').prop('checked', String(noSujetas) === '1');
         $('#rit_chk_SinAvisos').prop('checked', String(sinAvisos) === '1');
+    }
+
+    // Consorcio/union temporal y patrimonio autonomo (migracion 033). Mismo
+    // tratamiento que las exenciones: banderas de si/no en campo oculto 0/1.
+    recogerNaturaleza() {
+        $('#rit_ind_EsConsorcio').val($('#rit_chk_Consorcio').is(':checked') ? 1 : 0);
+        $('#rit_ind_PatrimonioAutonomo').val($('#rit_chk_Patrimonio').is(':checked') ? 1 : 0);
+    }
+
+    pintarNaturaleza(esConsorcio, patrimonioAutonomo) {
+        $('#rit_chk_Consorcio').prop('checked', String(esConsorcio) === '1');
+        $('#rit_chk_Patrimonio').prop('checked', String(patrimonioAutonomo) === '1');
     }
 
     recogerSeleccionMultiple() {
@@ -2416,7 +2429,9 @@ actualizarDeclaracionIca(valor, numeroCampo){
             url: '../microservicios/firmas/api.php',
             type: 'POST',
             dataType: 'json',
-            data: { funcion: 10 },
+            // id_contribuyente: para que la Alcaldía vea el estado de firma del
+            // RIT que está gestionando. El servidor lo valida (_ritPermitido).
+            data: { funcion: 10, id_contribuyente: localStorage.getItem('id_Contribuyente') },
             success: function (r) {
                 if (r.ok != 1) { self.modoRIT(false, null); return; }
                 self._firmaRIT = r;
@@ -2721,6 +2736,7 @@ actualizarDeclaracionIca(valor, numeroCampo){
         // con sus codigos separados por coma.
         establecimientos.recogerSeleccionMultiple();
         establecimientos.recogerExenciones();
+        establecimientos.recogerNaturaleza();
 
         var $boton = $('#btnGuardarRIT');
         $boton.prop('disabled', true);

@@ -2,6 +2,7 @@
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
 include_once SERVER . '/business/class.codigoBarrasRecaudo.php';
+include_once SERVER . '/business/class.vencimientoICA.php';
 require_once('./tcpdf/tcpdf.php');
 
 // Cargar configuración del municipio. Ubicación real (Plesk/producción): un
@@ -212,7 +213,9 @@ $nit_municipio      = "891801240";
 $direccion_mpio     = "Carrera 22 No 25-14";
 $ciudad_mpio        = mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8') . " - " . mb_strtoupper(MUNICIPIO_DEPARTAMENTO, 'UTF-8');
 
-$fecha_max_presentacion = "";
+// Fecha límite de pago: la misma regla y el mismo (96) que declaracion.php.
+$fechaLimite        = \erpsoftsas\VencimientoICA::fechaLimite($row['dec_AnioDeclaracion'] ?? 0);
+$fecha_max_presentacion = date('d/m/Y', strtotime($fechaLimite));
 $anio_gravable      = $row['dec_AnioDeclaracion'] ?? date('Y');
 $solo_bogota        = "SI"; // solo para texto, no checkbox real
 
@@ -254,8 +257,10 @@ $tipo_doc_No  = false;
 $numero_documento = $row['ind_NumeroIdentificacion'] ?? '';
 $digito_verif     = $row['ind_DV'] ?? '';
 
-$es_consorcio_un_tv  = false;
-$realiza_act_traves_patrimonio = false;
+// Migracion 033: se capturan en el RIT (ind_contribuyentes) y ya vienen en
+// $row por el c.* del SELECT. Antes estaban fijos en false.
+$es_consorcio_un_tv  = ((int) ($row['ind_EsConsorcio'] ?? 0) === 1);
+$realiza_act_traves_patrimonio = ((int) ($row['ind_PatrimonioAutonomo'] ?? 0) === 1);
 
 $direccion_notificacion = $row['ind_Direccion'] ?? '';
 $municipio_contrib      = $row['ciu_Nombre'] ?? '';
@@ -728,20 +733,8 @@ $altoCodigo = 12.5;  // barras + linea legible debajo
 $contenidoBarras = \erpsoftsas\CodigoBarrasRecaudo::construir(
     $referencia_recaudo,
     $row['dec_ValorConcepto20'] ?? 0,
-    /*
-     * La fecha del segmento (96).
-     *
-     * Primero la "fecha maxima de presentacion" de la propia declaracion, que
-     * es el dato correcto. Hoy nadie la captura -en el formulario esa casilla
-     * sale en blanco, tambien en el ejemplo que mando el banco-, asi que cae
-     * al parametro RECAUDO_DIAS_VIGENCIA de conf_parametros.
-     *
-     * Si el parametro tambien esta vacio, construir() omite el segmento. Ver
-     * la nota de la migracion 009: el 96 no es un identificador estandar de
-     * GS1 y su significado lo tiene que confirmar el banco, asi que se
-     * prefiere no imprimirlo antes que imprimir una fecha equivocada.
-     */
-    $fecha_max_presentacion ?: \erpsoftsas\CodigoBarrasRecaudo::fechaVigencia()
+    // La fecha del segmento (96): la fecha límite, como en declaracion.php.
+    $fechaLimite
 );
 if ($contenidoBarras === null) {
     $contenidoBarras = $referencia_recaudo;
@@ -765,9 +758,12 @@ $altoBarcode  = 8;
 $yBarcode = $yBloque + $altoRotulo + 1.2;
 
 // El codigo escaneable solo se dibuja si la declaracion YA esta presentada
-// (ver el mismo razonamiento en declaracion.php). El marco, los rotulos y
-// el numero de referencia se mantienen siempre.
-if ($estaPresentada) {
+// y no esta vencida sin pagar (ver el mismo razonamiento en declaracion.php).
+// El marco, los rotulos y el numero de referencia se mantienen siempre.
+$estaVencida = $estaPresentada && !$estaPagada
+            && \erpsoftsas\VencimientoICA::vencida($row['dec_AnioDeclaracion'] ?? 0);
+
+if ($estaPresentada && !$estaVencida) {
     $pdf->write1DBarcode(
         $contenidoBarras, 'C128',
         $xBloque + ($mitad - $anchoBarcode) / 2,
@@ -794,10 +790,16 @@ if ($estaPresentada) {
             // La misma fecha que va dentro del codigo (ver nota arriba): el
             // texto legible tiene que decir EXACTAMENTE lo que codifican las
             // barras, o el cajero ve una cosa y el escaner lee otra.
-            $fecha_max_presentacion ?: \erpsoftsas\CodigoBarrasRecaudo::fechaVigencia()
+            $fechaLimite
         ),
         0, 0, 'C'
     );
+} elseif ($estaVencida) {
+    $pdf->SetFont('helvetica', 'B', 6);
+    $pdf->SetXY($xBloque, $yBarcode);
+    $pdf->MultiCell($mitad, 3.5,
+        "DECLARACIÓN VENCIDA EL " . $fecha_max_presentacion . "\n"
+        . "Para pagarla, genere el recibo de pago", 0, 'C');
 } else {
     $pdf->SetFont('helvetica', 'I', 6);
     $pdf->SetXY($xBloque, $yBarcode + ($altoBarcode / 2) - 2);

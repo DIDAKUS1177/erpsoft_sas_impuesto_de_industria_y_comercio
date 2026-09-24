@@ -454,10 +454,11 @@
 
 <!-- Puntos 8 y 11 (reunion 2026-08-18): las actividades economicas salen del
      establecimiento y pasan al RIT, donde el contribuyente las registra. Aqui
-     estaba la tabla con su buscador y su boton de agregar. -->
-</div>
-
-
+     estaba la tabla con su buscador y su boton de agregar.
+     2026-09-23: al quitar esa tabla quedo un </div> huerfano justo aqui que
+     cerraba .modal-content antes de tiempo; el .modal-footer terminaba colgando
+     del .modal-dialog (pointer-events:none de Bootstrap) y por eso NI "Actualizar"
+     NI "Cancelar" recibian clics. Se elimino ese </div> sobrante. -->
 </div>
 
 <div class="modal-footer">

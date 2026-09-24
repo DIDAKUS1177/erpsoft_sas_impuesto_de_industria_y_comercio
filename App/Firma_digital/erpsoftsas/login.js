@@ -330,7 +330,15 @@ class Login {
 
                     localStorage.setItem('Tipo_Usuario', postL.tipo_usuario);
                     localStorage.setItem('id_Usuario', postL.datos_usuario.usu_Id);
-                    localStorage.setItem('id_Contribuyente', postL.datos_usuario.usu_idContibuyente);
+                    // El administrador (rol 1) no es un contribuyente: entra SIN
+                    // contribuyente activo y elige uno en Contribuyentes > Gestionar.
+                    // Si su documento coincidía con alguien del padrón, quedaba
+                    // "gestionando" a ese sin haberlo elegido. Tampoco sobreviven al
+                    // login el nombre y documento de una gestión anterior.
+                    localStorage.removeItem('contribActivoNombre');
+                    localStorage.removeItem('contribActivoDoc');
+                    localStorage.setItem('id_Contribuyente',
+                        postL.datos_usuario.usu_Rol == 1 ? '' : postL.datos_usuario.usu_idContibuyente);
                     localStorage.setItem('id_Rol', postL.datos_usuario.usu_Rol);
                     localStorage.setItem('documento', postL.datos_usuario.usu_NumeroDocumento);
                     localStorage.setItem('NomUsu',postL.datos_usuario.usu_Nombres + ' ' + postL.datos_usuario.usu_Apellidos);

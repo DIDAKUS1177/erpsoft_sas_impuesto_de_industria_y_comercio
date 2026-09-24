@@ -1077,11 +1077,20 @@ est_NoResolucion: $("#est_NoResolucion").val(),
      * getDependencia: Método para consultar conceptos
      */
     getEstablecimientos() {
-        
-        
+
+        // Contribuyente activo: el administrador que gestiona a otro solo debe
+        // ver los establecimientos de ESE contribuyente (sin filtro el servidor
+        // le devuelve los de todos). Para el contribuyente normal el servidor
+        // fija el suyo y este dato no cambia nada.
+        var filtro = { funcion: 3 };
+        var idc = localStorage.getItem('id_Contribuyente');
+        if (idc && idc !== 'null' && ('' + idc).trim() !== '') {
+            filtro.est_IdContribuyente = idc;
+        }
+
         $.ajax({
             url: '../business/controller/class.establecimientos.php',
-            data: { funcion: 3 },
+            data: filtro,
             dataType: "json",
             type: "POST",
             success: function(arr) {

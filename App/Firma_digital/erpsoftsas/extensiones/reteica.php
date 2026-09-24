@@ -89,38 +89,10 @@ $marca    = function ($activo) { return $activo ? 'X' : '&#160;'; };
 $fechaDoc = $fechaSello ? substr($fechaSello, 0, 10) : date('d/m/Y');
 $regimen  = $perfil['regimen'];
 
-/* Vigencia fiscal / fecha / No. de formulario, y el RÉGIMEN. El régimen sale del
-   RIT (ver pdfret_regimenContribuyente): hoy casi siempre COMÚN, porque el RIT no
-   lo captura estructurado; cuando se capture, se marcará solo. */
-$html .= '
-<table border="1" cellpadding="2" width="100%">
-<tr bgcolor="#e1dada">
-    <td width="14%"><b>FORMULARIO ÚNICO</b></td>
-    <td width="18%"><b>VIGENCIA FISCAL</b></td>
-    <td width="12%" align="center">' . (int) $row['ret_Anio'] . '</td>
-    <td width="9%"><b>FECHA</b></td>
-    <td width="20%" align="center">' . htmlspecialchars($fechaDoc) . '</td>
-    <td width="12%"><b>No. FORM.</b></td>
-    <td width="15%" align="center">' . htmlspecialchars((string) $numero) . '</td>
-</tr>
-</table>
-
-<table border="1" cellpadding="2" width="100%">
-<tr>
-    <td width="16%" bgcolor="#e1dada"><b>RÉGIMEN</b></td>
-    <td width="26%">RÉGIMEN COMÚN &nbsp;[<b>' . $marca($regimen === 'comun') . '</b>]</td>
-    <td width="28%">RÉGIMEN ESPECIAL &nbsp;[<b>' . $marca($regimen === 'especial') . '</b>]</td>
-    <td width="30%">GRAN CONTRIBUYENTE &nbsp;[<b>' . $marca($regimen === 'gran') . '</b>]</td>
-</tr>
-</table>
-
-<table border="1" cellpadding="3" width="100%">
-<tr bgcolor="#cae6e7"><td align="center"><b>INFORMACIÓN BÁSICA DEL RETENEDOR</b></td></tr>
-</table>
-
-<br>
-';
-
+/* El encabezado (escudo + títulos) se pinta solo, y $ySecA se toma ANTES de las
+   filas del retenedor: así la banda vertical "A. RETENEDOR" cubre TODO -formulario
+   único, régimen, información básica y datos-, no solo las últimas filas (pedido
+   cliente 2026-09-23: "la información de arriba va en el segmento A"). */
 $pdf->writeHTML($html, true, false, true, false, '');
 $ySecA = $pdf->GetY() - DESFASE_GETY_RET;
 
@@ -134,46 +106,67 @@ $ySecA = $pdf->GetY() - DESFASE_GETY_RET;
 
    Todo sale del RIT y no se edita aquí: si algo está mal se corrige en el RIT y
    se reimprime. Tener dos sitios donde editar el mismo dato es como se acaba con
-   dos versiones distintas del mismo contribuyente.
+   dos versiones distintas del mismo contribuyente. El régimen también sale del
+   RIT (ver pdfret_regimenContribuyente).
+
+   Es UNA sola tabla y la banda gris es UNA celda con rowspan, igual que la
+   sección A del ICA (declaracion.php). Antes cada fila traía su propio pedazo de
+   banda, con bordes, y las líneas horizontales cruzaban el rótulo
+   "A. RETENEDOR" (retro cliente 2026-09-24). Cada fila suma 95% + la banda; si
+   se agrega o quita una fila, el rowspan cambia con ella.
    =========================================================================== */
 
 $dv = (isset($contribuyente['ind_DV']) && $contribuyente['ind_DV'] !== null)
       ? (string) (int) $contribuyente['ind_DV'] : '';
 
 $html = '
+<style> td { font-size: 6.5px; } </style>
+
 <table border="1" cellpadding="2" width="100%">
+<tr bgcolor="#e1dada">
+    <td width="5%" rowspan="10" bgcolor="#e1dada"></td>
+    <td width="20%"><b>FORMULARIO ÚNICO</b></td>
+    <td width="15%"><b>VIGENCIA FISCAL</b></td>
+    <td width="15%" align="center">' . (int) $row['ret_Anio'] . '</td>
+    <td width="10%"><b>FECHA</b></td>
+    <td width="15%" align="center">' . htmlspecialchars($fechaDoc) . '</td>
+    <td width="10%"><b>No. FORM.</b></td>
+    <td width="10%" align="center">' . htmlspecialchars((string) $numero) . '</td>
+</tr>
 <tr>
-    <td width="5%" bgcolor="#e1dada"></td>
+    <td width="20%" bgcolor="#e1dada"><b>RÉGIMEN</b></td>
+    <td width="25%">RÉGIMEN COMÚN &nbsp;[<b>' . $marca($regimen === 'comun') . '</b>]</td>
+    <td width="25%">RÉGIMEN ESPECIAL &nbsp;[<b>' . $marca($regimen === 'especial') . '</b>]</td>
+    <td width="25%">GRAN CONTRIBUYENTE &nbsp;[<b>' . $marca($regimen === 'gran') . '</b>]</td>
+</tr>
+<tr bgcolor="#cae6e7">
+    <td width="95%" align="center"><b>INFORMACIÓN BÁSICA DEL RETENEDOR</b></td>
+</tr>
+<tr>
     <td width="10%"><b>1. AÑO</b></td>
-    <td width="13%" align="center">' . (int) $row['ret_Anio'] . '</td>
-    <td width="8%"><b>2. NIT</b></td>
+    <td width="15%" align="center">' . (int) $row['ret_Anio'] . '</td>
+    <td width="10%"><b>2. NIT</b></td>
     <td width="20%">' . htmlspecialchars((string) ($contribuyente['ind_NumeroIdentificacion'] ?? '')) . '</td>
     <td width="7%"><b>D.V.</b></td>
-    <td width="6%" align="center">' . htmlspecialchars($dv) . '</td>
-    <td width="11%"><b>3. CORREO</b></td>
-    <td width="20%">' . htmlspecialchars((string) ($contribuyente['ind_Email'] ?? '')) . '</td>
+    <td width="8%" align="center">' . htmlspecialchars($dv) . '</td>
+    <td width="10%"><b>3. CORREO</b></td>
+    <td width="15%">' . htmlspecialchars((string) ($contribuyente['ind_Email'] ?? '')) . '</td>
 </tr>
-</table>
-<table border="1" cellpadding="2" width="100%">
 <tr>
-    <td width="5%" bgcolor="#e1dada"></td>
     <td width="35%"><b>4. APELLIDOS Y NOMBRES O RAZÓN SOCIAL</b></td>
     <td width="60%">' . htmlspecialchars(pdfret_nombreContribuyente($contribuyente)) . '</td>
 </tr>
 <tr>
-    <td width="5%" bgcolor="#e1dada"></td>
     <td width="35%"><b>5. RAZÓN COMERCIAL / NOMBRE DEL ESTABLECIMIENTO</b></td>
     <td width="60%">' . htmlspecialchars($perfil['establecimiento']) . '</td>
 </tr>
 <tr>
-    <td width="5%" bgcolor="#e1dada"></td>
     <td width="35%"><b>6. ACTIVIDAD ECONÓMICA PRINCIPAL</b></td>
     <td width="45%">' . htmlspecialchars($perfil['act_principal']['nombre']) . '</td>
     <td width="8%"><b>CÓDIGO</b></td>
     <td width="7%" align="center">' . htmlspecialchars($perfil['act_principal']['codigo']) . '</td>
 </tr>
 <tr>
-    <td width="5%" bgcolor="#e1dada"></td>
     <td width="26%"><b>ACTIVIDAD SECUNDARIA</b></td>
     <td width="34%">' . htmlspecialchars($perfil['act_secundaria']['nombre']) . '</td>
     <td width="7%"><b>CÓD.</b></td>
@@ -182,16 +175,12 @@ $html = '
     <td width="7%" align="center">' . (int) $perfil['num_establec'] . '</td>
 </tr>
 <tr>
-    <td width="5%" bgcolor="#e1dada"></td>
     <td width="14%"><b>7. DIRECCIÓN</b></td>
     <td width="42%">' . htmlspecialchars((string) ($contribuyente['ind_Direccion'] ?? '')) . '</td>
     <td width="15%"><b>8. TELÉFONO</b></td>
     <td width="24%">' . htmlspecialchars((string) ($contribuyente['ind_Telefono'] ?? '')) . '</td>
 </tr>
-</table>
-<table border="1" cellpadding="2" width="100%">
 <tr>
-    <td width="5%" bgcolor="#e1dada"></td>
     <td width="9%"><b>PERÍODO</b></td>
     <td width="16%" align="center"><b>' . htmlspecialchars($mes) . '</b></td>
     <td width="22%">CON PAGO &nbsp;[<b>' . $marca(!empty($row['ret_Pagado'])) . '</b>]</td>
@@ -212,10 +201,13 @@ pdfret_textoVertical($pdf, 'A. RETENEDOR', 10, $ySecA, $ySecB);
    B. RETENCIONES PRACTICADAS
    =========================================================================== */
 
+/* Filas bajo la banda: encabezado + actividades + TOTAL. Sin actividades hay UNA
+   fila de mensaje, y hay que contarla: con count() a secas la banda quedaba una
+   fila corta, el TOTAL se corría a la izquierda y "B. RETENCIONES" se salía. */
 $html = '
 <table border="1" cellpadding="2" width="100%">
 <tr bgcolor="#e1dada">
-    <td width="5%" rowspan="' . (count($actividades) + 2) . '" bgcolor="#e1dada"></td>
+    <td width="5%" rowspan="' . (max(1, count($actividades)) + 2) . '" bgcolor="#e1dada"></td>
     <td width="10%" align="center"><b>CÓDIGO</b></td>
     <td width="45%"><b>ACTIVIDAD</b></td>
     <td width="10%" align="center"><b>11. TARIFA<br>(x mil)</b></td>
@@ -335,8 +327,7 @@ pdfret_textoVertical($pdf, 'C. LIQUIDACIÓN', 10, $ySecC, $ySecD);
    cliente 2026-09-14). pdfret_firmanteDeclarante decide segun ind_Persona. */
 $firmante = pdfret_firmanteDeclarante($contribuyente);
 
-$pdf->writeHTML(
-    pdfret_firmas(
+$htmlFirmas = pdfret_firmas(
         $firmas['declarante'],
         $firmas['contador'],
         $fechaSello,
@@ -356,9 +347,14 @@ $pdf->writeHTML(
                        ? (string) ($contribuyente['ind_TarjetaProfRevisor'] ?? '')
                        : (string) ($contribuyente['ind_TarjetaProfContador'] ?? ''),
         ]
-    ),
-    true, false, true, false, ''
-);
+    );
+
+/* Firmas y código de barras van juntos: si no caben en lo que queda de esta
+   hoja pasan a la siguiente, y la banda "D. FIRMAS" arranca arriba de ella. */
+if (pdfret_saltoSiNoCabe($pdf, $htmlFirmas)) {
+    $ySecD = $pdf->GetY();
+}
+$pdf->writeHTML($htmlFirmas, true, false, true, false, '');
 
 /* El rotulo cubre solo la tabla de firmas. El bloque de codigo de barras que
    va debajo no tiene columna gris donde apoyarlo, y el texto rotado terminaba
@@ -378,7 +374,8 @@ pdfret_marcaDeAgua($pdf, $marcaAgua);
 if (!empty($_GET['medir'])) {
     header('Content-type: text/plain');
     echo 'cierra en ' . round($yFin, 2) . 'mm de ' . RET_ALTO_PAGINA . 'mm'
-       . ' (holgura ' . round(RET_ALTO_PAGINA - $yFin, 2) . 'mm)';
+       . ' (holgura ' . round(RET_ALTO_PAGINA - $yFin, 2) . 'mm) - hojas: '
+       . $pdf->getNumPages();
     exit;
 }
 

@@ -138,17 +138,20 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 <!-- ========== HEADER PRINCIPAL ========== -->
 <div class="header">
 	<div class="header-left" style="display: flex; align-items: center;">
-		<!-- Botón para ocultar/mostrar menú ahora es el escudo y texto -->
-		<div id="btnMenu" style="display: flex; align-items: center; gap: 0.75rem; margin-left: 1rem; cursor: pointer; padding: 5px; border-radius: 6px; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='transparent'" title="Mostrar u ocultar el menú lateral">
+		<!-- El escudo es el botón del menú en TODOS los anchos: en escritorio lo
+		     oculta/muestra y en ventanas angostas (< 1200 px) lo abre flotando. Hubo
+		     un ☰ aparte para las angostas y el cliente pidió quitarlo (2026-09-24:
+		     "se ve tan amateur"). -->
+		<div id="btnMenu" role="button" tabindex="0" aria-label="Mostrar u ocultar el menú" style="display: flex; align-items: center; gap: 0.75rem; margin-left: 1rem; cursor: pointer; padding: 5px; border-radius: 6px; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='transparent'" title="Mostrar u ocultar el menú lateral">
 			<img src="<?php echo MUNICIPIO_LOGO; ?>" alt="Escudo" style="width: 55px; height: 55px; border-radius: 4px; object-fit: contain;">
-			<div>
-				<div style="font-size: 14px; font-weight: 700; color: #FFFFFF; line-height: 1.2;"><?php echo MUNICIPIO_NOMBRE; ?></div>
+			<div class="marca-texto">
+				<div class="marca-nombre" style="font-size: 14px; font-weight: 700; color: #FFFFFF; line-height: 1.2;"><?php echo MUNICIPIO_NOMBRE; ?></div>
 				<div style="font-size: 11px; color: rgba(255,255,255,.85);">Industria y Comercio</div>
 			</div>
 		</div>
-		
+
 		<!-- Título dinámico de la página actual -->
-		<div style="width: 1px; height: 25px; background: rgba(255,255,255,0.3); margin: 0 20px;"></div>
+		<div class="header-separador" style="width: 1px; height: 25px; background: rgba(255,255,255,0.3); margin: 0 20px;"></div>
 		<div id="headerPageTitle" style="color: #FFFFFF; font-size: 15px; font-weight: 600; letter-spacing: 0.5px;"></div>
 	</div>
 	<div class="header-right">
@@ -237,6 +240,39 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 					</a>
 				</li>
 
+				<!-- MENÚ DEL ADMINISTRADOR (retro cliente 2026-09-24: "tiene muchas cosas
+				     repetidas"). Arriba la puerta de entrada de la Alcaldía -Contribuyentes-;
+				     debajo, el bloque del contribuyente que se gestiona (RIT … Autorretención),
+				     que ContribActivo le muestra al rol 1 solo mientras gestiona a alguien; al
+				     final, lo que no depende de un contribuyente. Para el contribuyente (rol 4)
+				     el orden visible NO cambia: sus cinco módulos siguen en el mismo orden y lo
+				     demás no lo ve (no tiene esos permisos). -->
+
+				<!-- CONTRIBUYENTES: antes en Administración ICA > Datos Básicos > Contribuyentes. -->
+				<li class="dropdown menu_1639" id="MContribuyentes">
+					<a id="ICA_Contribuyentes" onclick="menu.validarIngreso(1639,4)" class="dropdown-toggle no-arrow" style="cursor:pointer;" title="Buscar un contribuyente y gestionarlo">
+						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+						<span class="mtext">Contribuyentes</span>
+					</a>
+				</li>
+
+				<!-- ESTABLECIMIENTOS (todos los del municipio): directorio de la Alcaldía
+				     (retro cliente 2026-09-24). No reemplaza al "Establecimientos" del
+				     bloque del contribuyente gestionado, que es donde se editan. -->
+				<li class="dropdown menu_1639" id="MEstablecimientosTodos">
+					<a id="ICA_EstablecimientosTodos" onclick="menu.validarIngreso(1639,13)" class="dropdown-toggle no-arrow" style="cursor:pointer;" title="Todos los establecimientos del municipio">
+						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><line x1="9" y1="9" x2="9" y2="9.01"/><line x1="9" y1="13" x2="9" y2="13.01"/><line x1="9" y1="17" x2="9" y2="17.01"/><line x1="15" y1="9" x2="15" y2="9.01"/><line x1="15" y1="13" x2="15" y2="13.01"/><line x1="15" y1="17" x2="15" y2="17.01"/></svg></span>
+						<span class="mtext">Establecimientos</span>
+					</a>
+				</li>
+
+				<!-- Rótulo "Gestionando a X" del bloque del contribuyente. Sin clase menu_:
+				     solo lo muestra ContribActivo (rol 1, con alguien elegido). -->
+				<li class="menu-gestionando" id="MGestionando" style="display: none;">
+					<span class="menu-gestionando-titulo">Gestionando a</span>
+					<span class="menu-gestionando-nombre"></span>
+				</li>
+
 				<!-- RIT: el cliente pidio sacarlo de "Industria y Comercio" porque el
 				     Registro de Informacion Tributaria aplica a TODOS los modulos, no
 				     solo a ICA. Va de primero, justo despues de Inicio. -->
@@ -290,95 +326,6 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><line x1="9" y1="9" x2="9" y2="9.01"/><line x1="9" y1="13" x2="9" y2="13.01"/><line x1="9" y1="17" x2="9" y2="17.01"/><line x1="15" y1="9" x2="15" y2="9.01"/><line x1="15" y1="13" x2="15" y2="13.01"/><line x1="15" y1="17" x2="15" y2="17.01"/></svg></span>
 						<span class="mtext">Establecimientos</span>
 					</a>
-				</li>
-
-				
-
-				<!-- CONSULTAS EXTERNAS -->
-				<li class="dropdown" id="MConsultasExternas">
-					<a href="javascript:;" class="dropdown-toggle">
-						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
-						<span class="mtext">Impuesto Predial</span>
-					</a>
-
-					<ul class="submenu" id="SubConsultasExternas">
-						<li class="menu_1035">
-							<a  id="ConsultasPazYSalvo" onclick="menu.validarIngreso(1035,100)">
-								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></i> Consultas Paz y Salvo
-							</a>
-						</li>
-					</ul>
-				</li>
-
-				<!-- ICA ALCALDÍA → ADMINISTRACIÓN ICA -->
-				<li class="dropdown" id="MICAAlcaldia">
-					<a href="javascript:;" class="dropdown-toggle">
-						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></span>
-						<span class="mtext">Administración ICA</span>
-					</a>
-
-					<ul class="submenu" id="SubICAAlcaldia">
-
-						<!-- Recaudo por codigo de barras. Va bajo Administracion ICA porque
-						     es potestad exclusiva de la Alcaldia: marca declaraciones como
-						     pagadas. El controlador ademas exige rol 1 o 2, no se confia
-						     solo en que el item no se vea. -->
-						<li class="menu_1639">
-							<a id="ICA_Recaudo" onclick="menu.validarIngreso(1639,11)" style="cursor:pointer;">
-								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="6" y2="16"/><line x1="9" y1="8" x2="9" y2="16"/><line x1="13" y1="8" x2="13" y2="16"/><line x1="18" y1="8" x2="18" y2="16"/></svg></i> Recaudo ICA
-							</a>
-						</li>
-
-						<!-- Configuracion del municipio: el EAN de recaudo y las cuentas de
-						     los bancos. Va aqui, bajo Administracion ICA, por el mismo motivo
-						     que Recaudo: el EAN gobierna el codigo de barras con el que el
-						     banco cobra a TODO el municipio. El controlador exige rol 1 o 2;
-						     no se confia en que el item no se vea. -->
-						<li class="menu_1645">
-							<a id="ICA_Configuracion" onclick="menu.validarIngreso(1645,12)" style="cursor:pointer;">
-								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></i> Configuración
-							</a>
-						</li>
-
-						<!-- DATOS BASICOS -->
-						<li class="dropdown" id="MICA_DatosBasicos">
-							<a href="javascript:;" class="dropdown-toggle">
-								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></i> Datos Básicos
-							</a>
-
-							<ul class="submenu" id="SubICA_DatosBasicos">
-								<li class="menu_1639">
-									<a id="ICA_Contribuyentes" onclick="menu.validarIngreso(1639,4)">
-										<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></i> Contribuyentes
-									</a>
-								</li>
-
-								<li class="menu_1639">
-									<a id="ICA_Actividades" onclick="menu.validarIngreso(1639,3)">
-										<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></i> Actividades Comercio
-									</a>
-								</li>
-
-								<li class="menu_1639">
-									<a id="ICA_Conceptos" onclick="menu.validarIngreso(1639,6)">
-										<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></i> Conceptos
-									</a>
-								</li>
-
-								<li class="menu_1639">
-									<a id="ICA_GrupoTarifario" onclick="menu.validarIngreso(1639,5)">
-										<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></i> Grupo Tarifario
-									</a>
-								</li>
-
-							</ul>
-						</li>
-
-						<!-- El submenu "Procesos > Establecimientos" que vivia aqui se retiro:
-						     desde la reunion del 2026-08-18 Establecimientos es submodulo de
-						     Industria y Comercio, y tenerlo en los dos sitios con el mismo
-						     permiso (1640) solo duplicaba la entrada en el menu. -->
-					</ul>
 				</li>
 
 				<!-- ICA WEB → INDUSTRIA Y COMERCIO -->
@@ -458,11 +405,76 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 					</ul>
 				</li>
 
-				<!-- CONFIGURACION -->
+				<!-- RECAUDO ICA: potestad exclusiva de la Alcaldía (marca declaraciones como
+				     pagadas; el controlador exige rol 1 o 2). Antes dentro de Administración ICA. -->
+				<li class="dropdown menu_1639" id="MRecaudo">
+					<a id="ICA_Recaudo" onclick="menu.validarIngreso(1639,11)" class="dropdown-toggle no-arrow" style="cursor:pointer;" title="Recaudo por código de barras">
+						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="6" y2="16"/><line x1="9" y1="8" x2="9" y2="16"/><line x1="13" y1="8" x2="13" y2="16"/><line x1="18" y1="8" x2="18" y2="16"/></svg></span>
+						<span class="mtext">Recaudo ICA</span>
+					</a>
+				</li>
+
+				<!-- PARÁMETROS ICA: antes "Administración ICA", con un tercer nivel "Datos
+				     Básicos". Se aplana y se renombra para no tener dos "Configuración".
+				     "Municipio y bancos" es configuracion.php: EAN de recaudo y cuentas de los
+				     bancos (gobierna el código de barras de todo el municipio; el controlador
+				     exige rol 1 o 2, no se confía en que el ítem no se vea). -->
+				<li class="dropdown" id="MICAAlcaldia">
+					<a href="javascript:;" class="dropdown-toggle">
+						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></span>
+						<span class="mtext">Parámetros ICA</span>
+					</a>
+
+					<ul class="submenu" id="SubICAAlcaldia">
+
+						<li class="menu_1645">
+							<a id="ICA_Configuracion" onclick="menu.validarIngreso(1645,12)" style="cursor:pointer;">
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></i> Municipio y bancos
+							</a>
+						</li>
+
+						<li class="menu_1639">
+							<a id="ICA_Actividades" onclick="menu.validarIngreso(1639,3)">
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></i> Actividades
+							</a>
+						</li>
+
+						<li class="menu_1639">
+							<a id="ICA_Conceptos" onclick="menu.validarIngreso(1639,6)">
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></i> Conceptos
+							</a>
+						</li>
+
+						<li class="menu_1639">
+							<a id="ICA_GrupoTarifario" onclick="menu.validarIngreso(1639,5)">
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></i> Grupos tarifarios
+							</a>
+						</li>
+
+					</ul>
+				</li>
+
+				<!-- CONSULTAS EXTERNAS -->
+				<li class="dropdown" id="MConsultasExternas">
+					<a href="javascript:;" class="dropdown-toggle">
+						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+						<span class="mtext">Impuesto Predial</span>
+					</a>
+
+					<ul class="submenu" id="SubConsultasExternas">
+						<li class="menu_1035">
+							<a  id="ConsultasPazYSalvo" onclick="menu.validarIngreso(1035,100)">
+								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></i> Consultas Paz y Salvo
+							</a>
+						</li>
+					</ul>
+				</li>
+
+				<!-- USUARIOS Y ROLES (antes "Configuración", que chocaba con la de ICA) -->
 				<li class="dropdown" id="MConfig">
 					<a href="javascript:;" class="dropdown-toggle">
-						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
-						<span class="mtext">Configuración</span>
+						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg></span>
+						<span class="mtext">Usuarios y roles</span>
 					</a>
 
 					<ul class="submenu" id="SubConfig">
@@ -547,6 +559,265 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 		localStorage.clear();
 		window.location = '../index.php';
     });
+
+    /* ============================================================
+       CONTRIBUYENTE ACTIVO Y PESTAÑAS
+       El administrador no tiene contribuyente propio: elige uno en la pantalla
+       de Contribuyentes ("Gestionar") y a partir de ahí opera como ese
+       contribuyente. La elección vive en localStorage.id_Contribuyente, de donde
+       ya leen el RIT, establecimientos y las 3 declaraciones. Aquí se pinta la
+       barra "Gestionando a X", el bloque de ese contribuyente en el menú lateral
+       (sus módulos solo aparecen mientras se gestiona a alguien) y se evita
+       entrar a un módulo sin haber elegido a nadie. Se inyecta con .text()/text
+       nodes, nunca como HTML.
+
+       localStorage es UNO para todas las pestañas del navegador (la sesión PHP
+       también: es la misma cookie, así que guardarlo allá no cambiaría nada).
+       Si en otra pestaña se elige otro contribuyente -o se entra con otra
+       cuenta, que le pasa igual a un contador con varios clientes-, esta
+       seguiría mostrando los datos del anterior pero guardando sobre el nuevo.
+       Por eso cada pestaña recuerda con quién abrió y, si eso cambia por
+       fuera, se detiene y pregunta con cuál seguir. Aplica a todos los roles.
+       ============================================================ */
+    var ContribActivo = (function () {
+
+        var MODULOS = ['icawebrit.php', 'establecimientos.php', 'icawebpresentar.php',
+                       'icawebconsultar.php', 'reteicapresentar.php', 'reteicaconsultar.php',
+                       'autoretencionpresentar.php', 'autoretencionconsultar.php'];
+        var pagina   = (location.pathname.split('/').pop() || '').toLowerCase();
+        var enModulo = MODULOS.indexOf(pagina) !== -1;
+        var esAdmin  = localStorage.getItem('id_Rol') == 1;   // solo el administrador gestiona a otros
+
+        // localStorage guarda texto: null, 'null', 'undefined' y '' son "ninguno".
+        function leer(llave) {
+            var v = localStorage.getItem(llave);
+            v = (v == null) ? '' : ('' + v).trim();
+            return (v === 'null' || v === 'undefined') ? '' : v;
+        }
+
+        function actual() {
+            return {
+                id: leer('id_Contribuyente'), usuario: leer('id_Usuario'),
+                nombre: leer('contribActivoNombre'), doc: leer('contribActivoDoc')
+            };
+        }
+
+        var deEstaPestana = actual();   // con quién abrió ESTA pestaña
+        var detenida = false;
+
+        // Los módulos del contribuyente en el menú lateral. Para el administrador
+        // no aparecen sin nadie elegido -no hay sobre quién trabajar- y con
+        // alguien van un paso adentro, bajo su nombre (#MGestionando).
+        var MENU_DEL_CONTRIBUYENTE = '#MRIT, #MEstablecimientos, #MICAWeb, #MReteICA, #MAutoretencion';
+
+        function pintarMenu() {
+            if (!esAdmin) { return; }
+            var c = actual();
+            $('#MGestionando .menu-gestionando-nombre').text(c.nombre || 'Contribuyente');
+            $('#MGestionando').attr('title', c.nombre || '').toggle(!!c.id);
+            $(MENU_DEL_CONTRIBUYENTE).toggle(!!c.id).toggleClass('en-gestion', !!c.id);
+        }
+
+        function pintarBarra() {
+            pintarMenu();
+            $('#barraContribActivo').remove();
+
+            var c = actual();
+            if (!esAdmin || !c.id) { return; }
+
+            var $bar = $('<div id="barraContribActivo"></div>').css({
+                background: '#fff8e1', 'border-bottom': '1px solid #f0d98c',
+                padding: '8px 16px', display: 'flex', 'align-items': 'center',
+                'justify-content': 'space-between', 'flex-wrap': 'wrap', gap: '8px',
+                'font-size': '13px'
+            });
+
+            var $izq = $('<span style="color:#7a5b00;"></span>')
+                .append('<i class="fa fa-user-circle-o" style="margin-right:6px;"></i>')
+                .append(document.createTextNode('Gestionando a: '))
+                .append($('<b></b>').text(c.nombre || 'Contribuyente'));
+            if (c.doc) { $izq.append(document.createTextNode('  ·  ' + c.doc)); }
+
+            var $der = $('<span></span>');
+            $('<a href="contribuyentes.php">Cambiar</a>')
+                .css({ color: '#1fa49d', 'font-weight': 600, 'margin-right': '16px' }).appendTo($der);
+            $('<a href="#">Salir</a>')
+                .css({ color: '#b03535', 'font-weight': 600 }).appendTo($der)
+                .on('click', function (e) { e.preventDefault(); salir(); });
+
+            $bar.append($izq).append($der);
+            $('.main-container').prepend($bar);
+        }
+
+        /** Deja a c = {id, doc, nombre} como contribuyente activo de esta pestaña. */
+        function fijar(c) {
+            // El id va de ÚLTIMO: las otras pestañas reaccionan a él, y para
+            // entonces el nombre y el documento ya son los del nuevo.
+            localStorage.setItem('contribActivoNombre', c.nombre || '');
+            localStorage.setItem('contribActivoDoc', c.doc || '');
+            localStorage.setItem('id_Contribuyente', c.id);
+            deEstaPestana = actual();
+            pintarBarra();
+        }
+
+        function salir() {
+            localStorage.removeItem('contribActivoNombre');
+            localStorage.removeItem('contribActivoDoc');
+            localStorage.setItem('id_Contribuyente', '');
+            window.location = 'contribuyentes.php';
+        }
+
+        /* ---------- guardia entre pestañas ---------- */
+
+        function revisar() {
+            if (detenida) { return; }
+
+            var ahora = actual();
+            if (ahora.id === deEstaPestana.id && ahora.usuario === deEstaPestana.usuario) { return; }
+
+            var otraCuenta = ahora.usuario !== deEstaPestana.usuario;
+
+            // Fuera de los módulos (o si la pestaña no tenía a nadie) no hay
+            // datos de un contribuyente en pantalla: si solo cambió el
+            // contribuyente, basta con actualizar la barra.
+            if (!otraCuenta && (!enModulo || !deEstaPestana.id)) {
+                deEstaPestana = ahora;
+                pintarBarra();
+                return;
+            }
+
+            detener(ahora, otraCuenta);
+        }
+
+        function detener(ahora, otraCuenta) {
+            detenida = true;
+
+            var antes = deEstaPestana;
+            var suNombre = antes.nombre || 'el contribuyente de esta pestaña';
+
+            // Se recarga SIN los parámetros de la dirección: un ?id= de una
+            // declaración del anterior no debe volver a abrirse bajo el nuevo.
+            function recargarLimpia() { location.replace(location.pathname); }
+
+            if (otraCuenta) {
+                mostrarAviso('La sesión cambió en otra pestaña',
+                    ['En otra pestaña se cerró la sesión o se entró con otra cuenta. ',
+                     'Esta pestaña se detuvo para no guardar información a nombre de otra persona.'],
+                    [{ texto: 'Recargar esta pestaña', accion: recargarLimpia }]);
+                return;
+            }
+
+            var segunda = ahora.id
+                ? { texto: 'Cambiar a ' + (ahora.nombre || 'el otro contribuyente'),
+                    accion: recargarLimpia }
+                : { texto: 'Ir a Contribuyentes',
+                    accion: function () { location.href = 'contribuyentes.php'; } };
+
+            mostrarAviso(ahora.id ? 'Cambiaste de contribuyente en otra pestaña'
+                                  : 'Saliste de este contribuyente en otra pestaña',
+                ahora.id
+                    ? ['Esta pestaña tiene datos de ', { b: suNombre },
+                       ', pero en otra pasaste a gestionar a ', { b: ahora.nombre || 'otro contribuyente' },
+                       '. Elige con cuál seguir para no guardar nada en el equivocado.']
+                    : ['Esta pestaña tiene datos de ', { b: suNombre },
+                       ', pero en otra ya no lo estás gestionando. Elige cómo seguir.'],
+                [{ texto: 'Seguir con ' + suNombre,
+                   // Lo vuelve a dejar activo: ahora es la OTRA pestaña la que queda detenida.
+                   accion: function () { fijar(antes); reanudar(); } },
+                 segunda]);
+        }
+
+        var aviso = null, apagados = [];
+
+        /** Aviso que tapa y bloquea la página (inert) hasta que se elija qué hacer. */
+        function mostrarAviso(titulo, partes, botones) {
+            aviso = document.createElement('div');
+            aviso.setAttribute('role', 'alertdialog');
+            aviso.setAttribute('aria-modal', 'true');
+            aviso.setAttribute('aria-labelledby', 'avisoPestanaTitulo');
+            aviso.style.cssText = 'position:fixed;top:0;right:0;bottom:0;left:0;z-index:2147483000;'
+                + 'background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px;';
+
+            var caja = document.createElement('div');
+            caja.style.cssText = 'background:#fff;color:#1f2937;border-radius:10px;max-width:440px;width:100%;'
+                + 'padding:24px;box-shadow:0 12px 32px rgba(0,0,0,.25);font-size:14px;line-height:1.5;';
+
+            var h = document.createElement('h5');
+            h.id = 'avisoPestanaTitulo';
+            h.textContent = titulo;
+            h.style.cssText = 'margin:0 0 10px;font-size:17px;font-weight:600;color:#1f2937;';
+
+            var p = document.createElement('p');
+            p.style.cssText = 'margin:0 0 18px;';
+            partes.forEach(function (x) {
+                if (typeof x === 'string') { p.appendChild(document.createTextNode(x)); return; }
+                var b = document.createElement('b');
+                b.textContent = x.b;
+                p.appendChild(b);
+            });
+
+            var fila = document.createElement('div');
+            fila.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
+            botones.forEach(function (d, i) {
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = d.texto;
+                btn.className = i === 0 ? 'btn' : 'btn btn-outline-secondary';
+                btn.style.cssText = 'white-space:normal;text-align:center;'
+                    + (i === 0 ? 'background:var(--erp-primario);border-color:var(--erp-primario);color:#fff;' : '');
+                btn.addEventListener('click', d.accion);
+                fila.appendChild(btn);
+            });
+
+            caja.appendChild(h);
+            caja.appendChild(p);
+            caja.appendChild(fila);
+            aviso.appendChild(caja);
+
+            // Todo lo demás queda inerte: ni clic ni teclado (Tab) llegan a un
+            // botón "Guardar" de atrás, aunque haya un modal de la página abierto.
+            apagados = [];
+            Array.prototype.forEach.call(document.body.children, function (el) {
+                if (!el.inert) { el.inert = true; apagados.push(el); }
+            });
+            document.body.appendChild(aviso);
+            fila.firstChild.focus();
+        }
+
+        function reanudar() {
+            apagados.forEach(function (el) { el.inert = false; });
+            apagados = [];
+            if (aviso) { aviso.remove(); aviso = null; }
+            detenida = false;
+        }
+
+        // 'storage' llega cuando OTRA pestaña escribe (key null = localStorage.clear(),
+        // que es el cierre de sesión). Al volver a la pestaña se revisa otra vez
+        // por si se perdió el evento (p. ej. página restaurada con "Atrás").
+        window.addEventListener('storage', function (e) {
+            if (e.key === null || e.key === 'id_Contribuyente' || e.key === 'id_Usuario') { revisar(); }
+        });
+        window.addEventListener('focus', revisar);
+        window.addEventListener('pageshow', revisar);
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'visible') { revisar(); }
+        });
+
+        /* ---------- al cargar ---------- */
+
+        // El administrador sin contribuyente elegido no entra a un módulo: se
+        // redirige de UNA, antes de que carguen los scripts de la pantalla, para
+        // no encimar el aviso con los popups propios del módulo. El mensaje lo
+        // muestra Contribuyentes al llegar (bandera en sessionStorage).
+        if (esAdmin && enModulo && !deEstaPestana.id) {
+            try { sessionStorage.setItem('avisoElegirContrib', '1'); } catch (e) {}
+            window.location.replace('contribuyentes.php');
+        } else {
+            $(document).ready(pintarBarra);
+        }
+
+        return { fijar: fijar, salir: salir };
+    })();
 
     /**
      * MenuUsuario: cambio de contraseña propio (punto 1 solicitado por el
@@ -710,7 +981,17 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
         }
 
         $('#btnMenu').on('click', function (e) {
-            if (!esEscritorio()) { return; }
+            // Ventana angosta: el menú flota sobre el contenido con el velo de
+            // la plantilla. Se corta la propagación porque la plantilla cierra
+            // el menú con cualquier clic fuera de él o de un .menu-icon, y el
+            // escudo no es ninguno de los dos: lo cerraría en el mismo clic.
+            if (!esEscritorio()) {
+                e.stopPropagation();
+                var abrir = !$('.left-side-bar').hasClass('open');
+                $('.left-side-bar').toggleClass('open', abrir);
+                $('.mobile-menu-overlay').toggleClass('show', abrir);
+                return;
+            }
 
             // El tema base tiene su propio handler sobre .menu-icon que activa
             // .open y el velo .mobile-menu-overlay, pensados para móvil. En
@@ -724,6 +1005,21 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
             var oculto = !$cuerpo.hasClass('menu-oculto');
             $cuerpo.toggleClass('menu-oculto', oculto);
             localStorage.setItem('menuOculto', oculto ? '1' : '0');
+        });
+
+        // En pantalla táctil la plantilla también cierra con touchstart, que
+        // llega antes del clic: con el menú abierto, tocar el escudo lo cerraba
+        // y el clic lo volvía a abrir.
+        $('#btnMenu').on('touchstart', function (e) {
+            e.stopPropagation();
+        });
+
+        // El escudo es un <div>: Enter o espacio lo activan como a un botón.
+        $('#btnMenu').on('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                $(this).trigger('click');
+            }
         });
 
         // Ocultar menú automáticamente al hacer clic fuera (en el main-container)
@@ -962,6 +1258,62 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 	margin-bottom: 2px;
 }
 
+/* Bloque "Gestionando a" del administrador (lo pinta ContribActivo, al pie de
+   este archivo): el rótulo con el nombre y, un paso adentro, los módulos de ESE
+   contribuyente. Sin nadie elegido no aparece nada de esto. */
+#accordion-menu > li.menu-gestionando {
+	margin: 12px 10px 4px;
+	padding: 8px 14px;
+	border-radius: 8px;
+	background: rgba(0, 0, 0, .16);
+	color: #FFFFFF;
+	line-height: 1.3;
+}
+
+.menu-gestionando-titulo {
+	display: block;
+	font-size: 10.5px;
+	font-weight: 600;
+	letter-spacing: .08em;
+	text-transform: uppercase;
+	color: rgba(255, 255, 255, .75);
+}
+
+.menu-gestionando-nombre {
+	display: block;
+	font-size: 14px;
+	font-weight: 700;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+#accordion-menu > li.en-gestion > .dropdown-toggle {
+	margin-left: 22px;
+}
+
+#accordion-menu > li.en-gestion.dropdown.show {
+	margin-left: 17px;
+}
+
+#accordion-menu > li.en-gestion.dropdown.show > .dropdown-toggle {
+	margin-left: 0;
+}
+
+/* Aire al cerrar el bloque, antes de lo que es de la Alcaldía. */
+#accordion-menu > li.en-gestion + li:not(.en-gestion) {
+	margin-top: 12px;
+}
+
+/* Con el menú encogido solo quedan íconos: sin rótulo ni sangría. */
+body.sidebar-shrink #accordion-menu > li.menu-gestionando {
+	display: none !important;
+}
+
+body.sidebar-shrink #accordion-menu > li.en-gestion > .dropdown-toggle {
+	margin-left: 10px;
+}
+
 /* La flecha del desplegable indica si un item se puede abrir y si ya
    esta abierto (chevron abajo/arriba). Antes quedaba casi invisible al
    45% de opacidad, que era precisamente lo que hacia dificil notar que
@@ -1057,6 +1409,67 @@ body.sidebar-shrink #btnMenuSidebar {
 	}
 }
 
+/* ---------- Ventanas angostas: encabezado compacto ----------
+   Por debajo de 1200 px el menú flota (plantilla: .left-side-bar.open) y lo
+   abre el mismo escudo (#btnMenu) que en escritorio lo oculta y lo muestra. */
+#btnMenu:focus-visible {
+	outline: 2px solid rgba(255, 255, 255, .75);
+	outline-offset: 2px;
+}
+
+@media (max-width: 1199.98px) {
+	/* "Alcaldía de Paipa" se partía en tres renglones. */
+	#btnMenu .marca-nombre {
+		white-space: nowrap;
+	}
+}
+
+@media (max-width: 1024.98px) {
+	/* La plantilla deja al bloque izquierdo solo el 25 % del ancho por debajo
+	   de 1025 px (el resto era para su buscador, que aquí no existe): escudo,
+	   nombre y título de la pantalla no cabían y se montaban unos sobre otros.
+	   El izquierdo toma lo que sobra; el derecho, solo lo que ocupa el usuario. */
+	.header-left {
+		width: auto;
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+
+	.header-right {
+		width: auto;
+		flex: 0 0 auto;
+	}
+
+	#btnMenu,
+	.header-left .header-separador {
+		flex: none;
+	}
+
+	#headerPageTitle {
+		min-width: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+}
+
+@media (max-width: 767.98px) {
+	/* En un teléfono no cabe todo: quedan el escudo y el título de la pantalla. */
+	#btnMenu .marca-texto,
+	.header-left .header-separador {
+		display: none !important;
+	}
+
+	#btnMenu img {
+		width: 40px !important;
+		height: 40px !important;
+	}
+
+	#headerPageTitle {
+		margin-left: 8px;
+	}
+}
+
 /* ---------- Mejoras visuales en Tablas (Botones más grandes y fondo) ---------- */
 .card-box {
 	background-color: #ffffff;
@@ -1127,6 +1540,10 @@ table.dataTable tbody tr:hover {
 .chip-estado.est-firmada    { color: var(--erp-primario-hover); border-color: var(--erp-primario); background: var(--erp-primario-suave); }
 .chip-estado.est-presentada { color: #1B6E45; border-color: #1B6E45; background: #ECFDF3; }
 .chip-estado.est-pagada     { color: #14532D; border-color: #14532D; background: #DCFCE7; }
+
+/* Estado de un establecimiento (dist/establecimientosTodos.php). */
+.chip-estado.est-activo     { color: #1B6E45; border-color: #1B6E45; background: #ECFDF3; }
+.chip-estado.est-cerrado    { color: #6B7280; border-color: #D1D5DB; background: #F9FAFB; }
 
 /* =========================================================
    BARRA DE PROGRESO DEL TRAMITE

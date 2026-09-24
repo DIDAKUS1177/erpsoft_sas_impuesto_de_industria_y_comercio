@@ -397,9 +397,6 @@ class GrupoTarifa {
         $("#MICAAlcaldia").addClass("active show");
         $("#SubICAAlcaldia").css("display", "block");
 
-        $("#MICA_DatosBasicos").addClass("active show");
-        $("#SubICA_DatosBasicos").css("display", "block");
-
         $("#ICA_GrupoTarifario").addClass("active");
     }
 }

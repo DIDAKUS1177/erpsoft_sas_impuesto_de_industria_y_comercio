@@ -163,7 +163,7 @@
 	<script src="../vendors/scripts/layout-settings.js"></script>
 	<script src="../src/plugins/sweetalert2/sweetalert2.all.js"></script>
 	<script src="../src/plugins/sweetalert2/sweet-alert.init.js"></script>
-	<script src="../core/menu.js"></script>
+	<!-- menu.js ya lo carga menu.php (cargarlo otra vez fallaba en la consola). -->
 	<script src="../core/recaudo.js"></script>
 </body>
 </html>

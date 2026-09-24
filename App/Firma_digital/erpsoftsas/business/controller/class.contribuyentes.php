@@ -444,52 +444,81 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
     }
 
 
+    /**
+     * Búsqueda en el padrón para la pantalla de Contribuyentes (solo Alcaldía:
+     * _verificarAcceso le niega la función 5 a los demás roles).
+     *
+     * La pantalla antes descargaba el padrón COMPLETO (función 3) y lo filtraba
+     * en el navegador; ahora pide como máximo 20 filas. Sin texto devuelve los
+     * registrados más recientemente. Con texto, cada palabra tiene que aparecer
+     * en el documento o en alguno de los nombres, sin distinguir tildes ni
+     * mayúsculas: "juan perez" encuentra a "Juan Carlos Pérez".
+     *
+     * Devuelve { filas, hayMas }; "hayMas" avisa que quedaron resultados por
+     * fuera de las 20 y que conviene afinar la búsqueda. Cero resultados es una
+     * búsqueda exitosa (ok = 1): ok = 0 queda solo para errores de verdad.
+     */
     protected function _buscarContribuyentes(){
 
         // $_POST['buscar'] iba interpolado directo en el LIKE, sin parametrizar
         // (a diferencia de _consultarRIT/_guardarRIT, que si usan '?'). Un
         // valor como "x%' OR ind_Id=30 --" devolvia filas de OTRO contribuyente:
         // inyeccion SQL clasica, confirmada con extraccion real de datos.
-        $buscar = (string) ($_POST['buscar'] ?? '');
+        $limite   = 20;
+        $palabras = preg_split('/\s+/', trim((string) ($_POST['buscar'] ?? '')), -1, PREG_SPLIT_NO_EMPTY);
+        $palabras = array_slice($palabras, 0, 5);
 
-        $sql = "
-            SELECT TOP 20
-                ind_Id,
-                ind_NumeroIdentificacion,
-                ind_PrimerNombre,
-                ind_PrimerApellido
-            FROM ind_contribuyentes
-            WHERE
-                ind_NumeroIdentificacion LIKE ?
-                OR ind_PrimerNombre LIKE ?
-                OR ind_PrimerApellido LIKE ?
-            ORDER BY ind_PrimerNombre
-        ";
-        $comodin = '%' . $buscar . '%';
+        $condiciones = [];
+        $parametros  = [];
+
+        foreach ($palabras as $palabra) {
+            // El documento se guarda como número: "1.052.400.237" o un NIT con
+            // su dígito de verificación ("900123456-7") se buscan sin puntos ni DV.
+            if (preg_match('/^\d[\d.,]*(-\d)?$/', $palabra)) {
+                $palabra = str_replace(['.', ','], '', preg_replace('/-\d$/', '', $palabra));
+            }
+
+            // %, _ y [ que escriba la persona se buscan como texto, no como comodines.
+            $comodin = '%' . strtr($palabra, ['[' => '[[]', '%' => '[%]', '_' => '[_]']) . '%';
+
+            // Latin1_General_CI_AI y no la de la base (Modern_Spanish_CI_AS): esa
+            // distingue tildes, y aun en su versión AI trata la ñ como otra letra,
+            // así que "avendano" no encontraba a "Avendaño".
+
+            $condiciones[] = "(CAST(ind_NumeroIdentificacion AS varchar(20)) LIKE ?
+                               OR ind_PrimerNombre    COLLATE Latin1_General_CI_AI LIKE ?
+                               OR ind_SegundoNombre   COLLATE Latin1_General_CI_AI LIKE ?
+                               OR ind_PrimerApellido  COLLATE Latin1_General_CI_AI LIKE ?
+                               OR ind_SegundoApellido COLLATE Latin1_General_CI_AI LIKE ?)";
+            array_push($parametros, $comodin, $comodin, $comodin, $comodin, $comodin);
+        }
+
+        $filtro = $condiciones ? 'WHERE ' . implode(' AND ', $condiciones) : '';
+        $orden  = $condiciones ? 'ind_PrimerNombre, ind_PrimerApellido' : 'ind_Id DESC';
+
+        // Se pide una fila de más solo para saber si quedaron resultados afuera.
+        $sql = "SELECT TOP " . ($limite + 1) . "
+                       ind_Id, ind_NumeroIdentificacion, ind_PrimerNombre,
+                       ind_PrimerApellido, ind_Direccion, ind_Estado
+                  FROM ind_contribuyentes
+                  $filtro
+                 ORDER BY $orden";
 
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        $id  = $con->consultar($sql, $parametros);
 
-        $id = $con->consultar($sql, [$comodin, $comodin, $comodin]);
-
-        $datos = [];
-
-        while($fila = $con->obnerFila($id)){
-            $datos[] = $fila;
+        $filas = [];
+        while ($fila = $con->obnerFila($id)) {
+            $filas[] = $fila;
         }
 
-        if(count($datos) > 0){
+        $this->_ok = 1;
+        $this->_mensaje = $filas ? 'Contribuyentes encontrados' : 'Sin resultados';
 
-            $this->_ok = 1;
-            $this->_mensaje = "Contribuyentes encontrados";
-            return $datos;
-
-        }else{
-
-            $this->_ok = 0;
-            $this->_mensaje = "Sin resultados";
-            return [];
-        }
-
+        return [
+            'filas'  => array_slice($filas, 0, $limite),
+            'hayMas' => count($filas) > $limite,
+        ];
     }
 
     /* ======================================================================
@@ -598,6 +627,9 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             'ind_RegimenTributario', 'ind_Responsabilidades',
             // Las dos exenciones, subidas del establecimiento por la 016.
             'ind_NoSujetas', 'ind_SinAvisosTableros',
+            // Consorcio/union temporal y patrimonio autonomo (migracion 033).
+            // Banderas de si/no que el formulario impreso ya pedia.
+            'ind_EsConsorcio', 'ind_PatrimonioAutonomo',
         ];
     }
 
@@ -932,8 +964,21 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         $esAdmin    = self::_esAdministrador();
         $ignorados  = [];
 
+        /* Columnas de la migración 033. El formulario las manda SIEMPRE; si el
+           código llega a una base donde la migración aún no corrió, grabarlas
+           tumbaría el guardado ENTERO del RIT para todos. Se omiten hasta que
+           existan, y el resto del RIT se guarda normal. */
+        $faltaMig033 = [];
+        foreach (['ind_EsConsorcio', 'ind_PatrimonioAutonomo'] as $col) {
+            $hay = $con->obnerFila($con->consultar(
+                "SELECT COL_LENGTH('dbo.ind_contribuyentes', ?) AS l", [$col]
+            ));
+            if (empty($hay['l'])) { $faltaMig033[] = $col; }
+        }
+
         foreach (self::_camposRIT() as $campo) {
             if (!array_key_exists($campo, $_POST)) { continue; }
+            if (in_array($campo, $faltaMig033, true)) { continue; }
 
             // Puntos 14 y 15: los datos de contador y revisor solo los graba
             // el administrador. Si llegan de otro rol se descartan en silencio
@@ -974,7 +1019,7 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             // tributario, y una lista de <input type=checkbox> se manipula
             // desde la consola del navegador.
             // Las dos exenciones son BIT: llega '0' o '1' desde el campo oculto.
-            if (in_array($campo, ['ind_NoSujetas', 'ind_SinAvisosTableros'], true)) {
+            if (in_array($campo, ['ind_NoSujetas', 'ind_SinAvisosTableros', 'ind_EsConsorcio', 'ind_PatrimonioAutonomo'], true)) {
                 $valor = ($valor === '1') ? 1 : 0;
             }
 

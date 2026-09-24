@@ -58,6 +58,19 @@
 					<h4 class="h4">Listado de Contribuyentes</h4>
 					<button type="button" class="btn btn-outline-success" onclick="contribuyentes.crearContribuyentes()"><span class="ti-plus"></span> Crear Contribuyentes</button>
 				</div>
+				<!-- Se busca en el servidor (máximo 20 resultados): la pantalla ya no
+				     descarga el padrón completo para filtrarlo aquí. -->
+				<div class="pd-20 pt-0">
+					<label for="buscarContribuyente" class="sr-only">Buscar contribuyente</label>
+					<div class="input-group mb-0" style="max-width: 560px;">
+						<div class="input-group-prepend">
+							<span class="input-group-text"><i class="fa fa-search"></i></span>
+						</div>
+						<input type="search" id="buscarContribuyente" class="form-control"
+						       placeholder="Documento, nombre o razón social" autocomplete="off" autofocus>
+					</div>
+					<small id="estadoBusqueda" class="form-text text-muted" aria-live="polite"></small>
+				</div>
 				<div class="pb-20">
 				<table id="contribuyentesRegistrados" class="data-table table stripe hover nowrap">
 						<thead>
@@ -66,7 +79,7 @@
                 <th>Nombre</th>
 								<th>Apellido</th>
 								<th>Dirección</th>
-								<th>Acciones</th>
+								<th class="datatable-nosort">Acciones</th>
 							</tr>
 						</thead>
 						<tbody id="bodyContribuyentesRegistrados">

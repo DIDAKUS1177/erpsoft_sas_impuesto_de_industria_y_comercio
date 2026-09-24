@@ -42,6 +42,9 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
                 case 21:
                     $respuesta = $_obj->_guardarCese();
                     break;
+                case 22: // Buscar entre TODOS los establecimientos (solo Alcaldía)
+                    $respuesta = $_obj->_buscarEstablecimientos();
+                    break;
                 default:
                     throw new \erpsoftsas\EstablecimientosException("Función no válida", 0);
             }
@@ -318,7 +321,89 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
         return $return;
     }
 
-    
+    /**
+     * Búsqueda entre TODOS los establecimientos del municipio, para el ítem
+     * "Establecimientos" del administrador (dist/establecimientosTodos.php).
+     * Solo Alcaldía (roles 1 y 2): un contribuyente no tiene por qué ver los
+     * locales de los demás.
+     *
+     * Mismo criterio que la búsqueda de contribuyentes (class.contribuyentes.php,
+     * función 5): como máximo 20 filas y, sin texto, los registrados más
+     * recientemente. Con texto, cada palabra debe aparecer en el nombre, la
+     * dirección o el código del establecimiento, o en el documento o nombre de
+     * su dueño, sin distinguir tildes ni mayúsculas. Devuelve { filas, hayMas }.
+     */
+    protected function _buscarEstablecimientos()
+    {
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
+        if (empty($_SESSION['id_usuario']) || !in_array($rol, [1, 2], true)) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No tiene permiso para ver todos los establecimientos.';
+            return [];
+        }
+
+        $limite   = 20;
+        $palabras = preg_split('/\s+/', trim((string) ($_POST['buscar'] ?? '')), -1, PREG_SPLIT_NO_EMPTY);
+        $palabras = array_slice($palabras, 0, 5);
+
+        $condiciones = [];
+        $parametros  = [];
+
+        foreach ($palabras as $palabra) {
+            // Documento con puntos o NIT con dígito de verificación: el número se
+            // guarda sin puntos ni DV.
+            if (preg_match('/^\d[\d.,]*(-\d)?$/', $palabra)) {
+                $palabra = str_replace(['.', ','], '', preg_replace('/-\d$/', '', $palabra));
+            }
+
+            // %, _ y [ que escriba la persona se buscan como texto, no como comodines.
+            $comodin = '%' . strtr($palabra, ['[' => '[[]', '%' => '[%]', '_' => '[_]']) . '%';
+
+            // Latin1_General_CI_AI por lo mismo que en la de contribuyentes: la
+            // intercalación de la base distingue tildes y trata la ñ como otra letra.
+            $condiciones[] = "(e.est_Nombre           COLLATE Latin1_General_CI_AI LIKE ?
+                               OR e.est_Direccion     COLLATE Latin1_General_CI_AI LIKE ?
+                               OR CAST(e.est_Codigo AS varchar(20)) LIKE ?
+                               OR CAST(c.ind_NumeroIdentificacion AS varchar(20)) LIKE ?
+                               OR c.ind_PrimerNombre    COLLATE Latin1_General_CI_AI LIKE ?
+                               OR c.ind_SegundoNombre   COLLATE Latin1_General_CI_AI LIKE ?
+                               OR c.ind_PrimerApellido  COLLATE Latin1_General_CI_AI LIKE ?
+                               OR c.ind_SegundoApellido COLLATE Latin1_General_CI_AI LIKE ?)";
+            array_push($parametros, ...array_fill(0, 8, $comodin));
+        }
+
+        $filtro = $condiciones ? 'WHERE ' . implode(' AND ', $condiciones) : '';
+        $orden  = $condiciones ? 'e.est_Nombre' : 'e.est_Id DESC';
+
+        $con  = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        // Se pide una fila de más solo para saber si quedaron resultados afuera.
+        $stmt = $con->consultar(
+            "SELECT TOP " . ($limite + 1) . "
+                    e.est_Id, e.est_Codigo, e.est_Nombre, e.est_Direccion, e.est_Activo,
+                    e.est_IdContribuyente, c.ind_NumeroIdentificacion,
+                    c.ind_PrimerNombre, c.ind_PrimerApellido
+               FROM ind_establecimientos e
+               LEFT JOIN ind_contribuyentes c ON c.ind_Id = e.est_IdContribuyente
+               $filtro
+              ORDER BY $orden",
+            $parametros
+        );
+
+        $filas = [];
+        while ($f = $con->obnerFila($stmt)) {
+            $filas[] = $f;
+        }
+
+        $this->_ok = 1;
+        $this->_mensaje = $filas ? 'Establecimientos encontrados' : 'Sin resultados';
+
+        return [
+            'filas'  => array_slice($filas, 0, $limite),
+            'hayMas' => count($filas) > $limite,
+        ];
+    }
+
     /**
      * Contribuyente al que esta atado el usuario de la sesion, o null si no
      * hay sesion / no se puede resolver.
@@ -336,10 +421,13 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
         if (empty($_SESSION['id_usuario'])) { return null; }
 
         $fila = $con->obnerFila($con->consultar(
-            "SELECT c.ind_Id
+            // TOP 1 + ORDER BY: con documentos repetidos en el padrón debe salir
+            // el mismo contribuyente que toman el login (DAO_Usuario) y el resto.
+            "SELECT TOP 1 c.ind_Id
                FROM ind_contribuyentes c
                INNER JOIN conf_usuarios u ON u.usu_NumeroDocumento = c.ind_NumeroIdentificacion
-              WHERE u.usu_Id = ?",
+              WHERE u.usu_Id = ?
+              ORDER BY c.ind_Id",
             [(int) $_SESSION['id_usuario']]
         ));
 
@@ -663,6 +751,12 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
                 return [];
             }
             $_POST['est_IdContribuyente'] = $propio;
+        }
+
+        // El administrador filtra por el contribuyente que gestiona. El DAO
+        // concatena en el WHERE: el id del cliente va como entero (CLAUDE.md).
+        if (isset($_POST['est_IdContribuyente'])) {
+            $_POST['est_IdContribuyente'] = (int) $_POST['est_IdContribuyente'];
         }
 
         $_obj = new \erpsoftsas\DAO_Establecimientos();

@@ -7,7 +7,7 @@
 <head>
 	<!-- Basic Page Info -->
 	<meta charset="utf-8">
-	<title>Establecimientos |ERPSOFTSAS </title>
+	<title>RIT | ERPSOFTSAS</title>
 
 	<meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta http-equiv="Expires" content="0">
@@ -529,6 +529,22 @@
 							<input type="checkbox" class="rit-regimen" value="NO_RESP_IVA"> No responsable de IVA</label></div>
 					</div>
 					<input type="hidden" name="ind_RegimenTributario" id="rit_ind_RegimenTributario">
+
+					<!-- Consorcio/union temporal y patrimonio autonomo. Pedidas por el
+					     cliente (2026-09-22): el formulario impreso de la declaracion ya
+					     traia estas dos casillas pero no habia donde capturarlas, salian
+					     siempre en blanco. Son banderas de si/no de la persona (columna
+					     propia BIT, migracion 033), igual que "No sujetas"/"Sin Avisos"
+					     de mas abajo; por eso su campo oculto viaja 0/1 y no dentro de la
+					     lista de responsabilidades. -->
+					<div class="row mb-3" id="ritNaturalezaContribuyente">
+						<div class="col-md-6 form-group"><label class="mb-0">
+							<input type="checkbox" id="rit_chk_Consorcio"> ¿Es consorcio o unión temporal?</label></div>
+						<div class="col-md-6 form-group"><label class="mb-0">
+							<input type="checkbox" id="rit_chk_Patrimonio"> ¿Realiza actividades a través de patrimonio autónomo?</label></div>
+					</div>
+					<input type="hidden" name="ind_EsConsorcio" id="rit_ind_EsConsorcio" value="0">
+					<input type="hidden" name="ind_PatrimonioAutonomo" id="rit_ind_PatrimonioAutonomo" value="0">
 
 					<h5 class="mb-3" style="font-weight:600;">Responsabilidades</h5>
 					<p class="text-muted" style="font-size:12px;margin-top:-8px;">Puede marcar más de una.</p>

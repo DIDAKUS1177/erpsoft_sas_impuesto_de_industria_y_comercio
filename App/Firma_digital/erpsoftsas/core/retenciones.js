@@ -90,6 +90,16 @@ var Retenciones = (function () {
 
         var envio = $.extend({ funcion: funcion }, datos || {});
 
+        // Contribuyente activo (administrador gestionando a otro). Lo lee el
+        // servidor solo para roles de Alcaldía; al contribuyente normal se lo
+        // ignora y usa el suyo, así que enviarlo siempre es seguro. El resto de
+        // pantallas (RIT, ICA, establecimientos) ya trabajan con esta misma
+        // llave de localStorage; retención/autorretención no la mandaban.
+        var _idc = localStorage.getItem('id_Contribuyente');
+        if (_idc && _idc !== 'null' && ('' + _idc).trim() !== '') {
+            envio.idContribuyente = _idc;
+        }
+
         $('#loading').show();
 
         $.ajax({
@@ -236,6 +246,14 @@ var Retenciones = (function () {
                 if (Number(f.pago_en_linea) === 1) {
                     b += accBtn({ tipo: 'danger', icono: 'fa-money', texto: 'Pagar PSE', title: 'Pagar por PSE',
                                   href: '../extensiones/pse/pagar.php?modulo=' + encodeURIComponent(cfg.modulo || '') + '&id=' + f.id,
+                                  target: '_blank' });
+                }
+                // Recibo de pago para el banco: el mismo en los tres módulos
+                // (extensiones/reciboPago.php), solo si hay valor.
+                if (Number(f.total) > 0) {
+                    b += accBtn({ tipo: 'info', icono: 'fa-barcode', texto: 'Recibo de pago',
+                                  title: 'Descargar el recibo de pago para el banco',
+                                  href: '../extensiones/reciboPago.php?modulo=' + encodeURIComponent(cfg.modulo || '') + '&id=' + f.id,
                                   target: '_blank' });
                 }
                 b += accBtn({ tipo: 'warning', icono: 'fa-pencil', texto: 'Corregir',
@@ -696,14 +714,22 @@ var Retenciones = (function () {
         function listarBorradores() {
             pedir(cfg, 2, {}, function (r) {
                 var $c = $('#tablaMias tbody').empty();
-                if (!r.datos.length) {
+                // Esta pantalla es "Presentar Declaración": solo se trabajan los
+                // borradores y las firmadas. Las presentadas/pagadas se ven en
+                // "Consultar Declaraciones" (mismo split que el ICA). Sin este
+                // filtro la misma declaracion presentada salia en las dos
+                // pantallas a la vez (pedido cliente 2026-09-23).
+                var filas = (r.datos || []).filter(function (f) {
+                    return f.estadoClave !== 'presentada' && f.estadoClave !== 'pagada';
+                });
+                if (!filas.length) {
                     $c.append(vacio(6,
-                        'Todavía no ha creado ninguna declaración',
+                        'No tiene declaraciones en edición',
                         'Elija el año y el período arriba y pulse "Crear declaración".',
                         'fa-file-o'));
                     return;
                 }
-                r.datos.forEach(function (f) {
+                filas.forEach(function (f) {
                     $c.append(
                         '<tr>'
                       + '<td>' + f.anio + '</td>'
@@ -823,7 +849,7 @@ var Retenciones = (function () {
             }
 
             $('#btnAgregarActividad').toggle(editable && cfg.actividadesEditables);
-            $('#btnGuardar, #btnLiquidar, #btnPresentar').toggle(editable);
+            $('#btnGuardar, #btnLiquidar').toggle(editable);
             $('#avisoCerrada').toggle(!editable);
         }
 
@@ -1059,11 +1085,13 @@ var Retenciones = (function () {
          * Intenta presentar. Si el backend contesta que falta una firma, abre
          * el modal para esa firma y vuelve a intentarlo al terminar.
          *
-         * ES UN SOLO BOTÓN de principio a fin: la persona pulsa "Presentar" y
-         * el sistema le va pidiendo lo que haga falta -su firma y, si el
-         * contribuyente tiene contador registrado, la de él-. Es el mismo
+         * ES UN SOLO BOTÓN de principio a fin: la persona pulsa "Presentar" en
+         * el listado y el sistema le va pidiendo lo que haga falta -su firma y,
+         * si el contribuyente tiene contador registrado, la de él-. Es el mismo
          * comportamiento que el cliente pidió para el ICA; obligar a buscar un
-         * botón "Firmar" aparte es donde la gente se queda atascada.
+         * botón "Firmar" aparte es donde la gente se queda atascada. El
+         * formulario solo guarda: por pedido del cliente ya no tiene botón
+         * "Presentar" propio.
          *
          * El reintento NO es un bucle infinito: cada vuelta ocurre solo después
          * de una firma registrada de verdad, y solo hay dos firmas posibles.
@@ -1095,23 +1123,6 @@ var Retenciones = (function () {
                 }
             );
         }
-
-        $('#btnPresentar').on('click', function () {
-            Swal.fire({
-                title: '¿Presentar la declaración?',
-                text: 'Se le pedirá firmar con un código que enviaremos a su correo. '
-                    + 'Una vez presentada no podrá editarla; solo corregirla.',
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonText: 'Sí, presentar',
-                cancelButtonText: 'Cancelar'
-            }).then(function (res) {
-                if (!res.isConfirmed) { return; }
-                // Se guarda primero: lo que se presenta tiene que ser lo que
-                // el usuario tiene en pantalla, no lo que se guardo hace rato.
-                guardar(intentarPresentar);
-            });
-        });
 
         $('#btnDescartar').on('click', function () {
             Swal.fire({

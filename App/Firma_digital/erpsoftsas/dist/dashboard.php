@@ -138,8 +138,8 @@
 	<script src="../src/plugins/datatables/js/dataTables.responsive.min.js"></script>
 	<script src="../src/plugins/datatables/js/responsive.bootstrap4.min.js"></script>
 	<script src="../vendors/scripts/dashboard.js"></script>
-	<script src="../core/Permisos.js?v=<?php echo time(); ?>"></script>
-	<script src="../core/menu.js?v=<?php echo time(); ?>"></script>
+	<!-- Permisos.js y menu.js ya los carga menu.php: cargarlos otra vez solo dejaba
+	     "Identifier ... has already been declared" en la consola. -->
 	
 	<script src="../core/datosVisuales.js?v=<?php echo time(); ?>"></script>
 
@@ -159,6 +159,15 @@
 	(function () {
 		'use strict';
 
+		/* Lo que el menú lateral no muestra -por permisos del rol o, para el
+		   administrador, los módulos del contribuyente mientras no gestione a
+		   nadie- tampoco se ofrece aquí. Antes se tomaban TODOS los <li>, visibles
+		   o no. Se mira el estilo calculado: el display de un <li> no se hereda,
+		   así que un ítem de un submenú cerrado cuenta si el rol lo tiene. */
+		function seVe(el) {
+			return window.getComputedStyle(el).display !== 'none';
+		}
+
 		function construirAccesosRapidos() {
 			var contenedor = document.getElementById('accesosRapidosModulos');
 			if (!contenedor) { return; }
@@ -166,6 +175,8 @@
 			var modulos = document.querySelectorAll('#accordion-menu > li.dropdown');
 
 			modulos.forEach(function (li) {
+				if (!seVe(li)) { return; }
+
 				var etiqueta = li.querySelector('.mtext');
 				var icono    = li.querySelector('.micon');
 				if (!etiqueta) { return; }
@@ -175,14 +186,20 @@
 				// "Inicio" es esta misma pantalla: no es un acceso rapido.
 				if (nombre === '' || nombre.toLowerCase() === 'inicio') { return; }
 
-				var enlaces = li.querySelectorAll('.submenu a');
+				var enlaces = Array.prototype.filter.call(li.querySelectorAll('.submenu li'), seVe)
+					.map(function (item) { return item.querySelector('a'); })
+					.filter(Boolean);
 
-				// Un modulo sin submodulos visibles no tiene a donde llevar.
-				if (!enlaces.length) { return; }
+				// Un módulo de primer nivel sin submenú (Contribuyentes, RIT,
+				// Recaudo…) lleva directo: la tarjeta pulsa su mismo enlace.
+				var directo = enlaces.length ? null : li.querySelector('a.no-arrow[onclick]');
+				if (!enlaces.length && !directo) { return; }
 
-				var subtitulo = enlaces.length === 1
-					? '1 opción disponible'
-					: enlaces.length + ' opciones disponibles';
+				var subtitulo = directo
+					? (directo.getAttribute('title') || 'Abrir')
+					: (enlaces.length === 1
+						? '1 opción disponible'
+						: enlaces.length + ' opciones disponibles');
 
 				var col = document.createElement('div');
 				col.className = 'col-xl-4 col-lg-4 col-md-6 mb-20';
@@ -196,8 +213,12 @@
 				cabecera.style.cssText = 'cursor:pointer;';
 				cabecera.setAttribute('role', 'button');
 				cabecera.setAttribute('tabindex', '0');
-				cabecera.setAttribute('aria-expanded', 'false');
-				cabecera.setAttribute('aria-label', 'Ver opciones de ' + nombre);
+				if (directo) {
+					cabecera.setAttribute('aria-label', 'Abrir ' + nombre);
+				} else {
+					cabecera.setAttribute('aria-expanded', 'false');
+					cabecera.setAttribute('aria-label', 'Ver opciones de ' + nombre);
+				}
 
 				cabecera.innerHTML =
 						'<div class="progress-data" style="width:70px;">' +
@@ -229,6 +250,25 @@
 					copia.setAttribute('width', '26');
 					copia.setAttribute('height', '26');
 					cabecera.querySelector('.acceso-icono').appendChild(copia);
+				}
+
+				if (directo) {
+					// Nada que desplegar: la flecha apunta a la derecha y la tarjeta
+					// pulsa el mismo enlace del menú (menu.validarIngreso ya valida
+					// permisos y navega).
+					cabecera.querySelector('.acceso-flecha').style.transform = 'rotate(-90deg)';
+					var abrir = function () { directo.click(); };
+					cabecera.addEventListener('click', abrir);
+					cabecera.addEventListener('keydown', function (e) {
+						if (e.key === 'Enter' || e.key === ' ') {
+							e.preventDefault();
+							abrir();
+						}
+					});
+					tarjeta.appendChild(cabecera);
+					col.appendChild(tarjeta);
+					contenedor.appendChild(col);
+					return;
 				}
 
 				/*
@@ -296,11 +336,11 @@
 			});
 		}
 
-		if (document.readyState === 'loading') {
-			document.addEventListener('DOMContentLoaded', construirAccesosRapidos);
-		} else {
-			construirAccesosRapidos();
-		}
+		/* Con $(…) y no en DOMContentLoaded: el menú se filtra en los
+		   $(document).ready de menu.js y de ContribActivo (dist/menu.php), y en
+		   jQuery 3 esos corren DESPUÉS de DOMContentLoaded. Registrado aquí, al
+		   final de la página, corre detrás de ellos y lee el menú ya filtrado. */
+		$(construirAccesosRapidos);
 	})();
 	</script>
 

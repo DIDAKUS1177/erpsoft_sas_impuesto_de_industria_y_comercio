@@ -42,6 +42,25 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
     private $_ok = 0;
     private $_mensaje = '';
 
+    /*
+     * CONTRASEÑA DE EDICIÓN (pedido del dueño, 2026-09-24: "para editar esto,
+     * que es más denso, pon una contraseña").
+     *
+     * Ver no la pide; GUARDAR sí, y se exige aquí en run(), en el servidor: un
+     * campo habilitado a mano en el navegador no sirve de nada. Al acertarla, la
+     * edición queda abierta MINUTOS_DESBLOQUEO minutos para ESTA sesión. Tras
+     * INTENTOS_MAXIMOS fallos seguidos hay que esperar MINUTOS_ESPERA.
+     *
+     * Solo se guarda el hash; la contraseña la tiene el dueño y no se escribe en
+     * el código ni en la documentación del repositorio. Para cambiarla, un
+     * municipio define MUNICIPIO_CLAVE_PARAMETROS_HASH en su config.municipio.php
+     * con el resultado de password_hash('la-nueva', PASSWORD_DEFAULT).
+     */
+    const CLAVE_EDICION_HASH = '$2y$10$rql2bsvA95XkgAD65GMaZedzfyKcmDLTSRskoZyRdYD08.MRHZo92';
+    const MINUTOS_DESBLOQUEO = 15;
+    const INTENTOS_MAXIMOS   = 5;
+    const MINUTOS_ESPERA     = 5;
+
     public static function run()
     {
         $_obj = new self();
@@ -55,6 +74,18 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
                 'ok' => 0,
                 'mensaje' => 'Solo la Alcaldía puede ver o cambiar la configuración.',
                 'datos' => []
+            ]);
+            return;
+        }
+
+        // Las dos funciones que GUARDAN (2 parámetros, 4 cuentas de bancos)
+        // exigen además la edición desbloqueada con la contraseña.
+        if (in_array((int) $_obj->_funcion, [2, 4], true) && !self::_edicionDesbloqueada()) {
+            header('Content-type: application/json');
+            echo json_encode([
+                'ok' => 0,
+                'mensaje' => 'Para guardar cambios, desbloquee la edición con la contraseña.',
+                'datos' => ['requiereClave' => true]
             ]);
             return;
         }
@@ -73,6 +104,19 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
                     break;
                 case 4:
                     $respuesta = $_obj->_guardarCuentasBanco();
+                    break;
+                case 5:
+                    $respuesta = $_obj->_desbloquearEdicion();
+                    break;
+                case 6:
+                    $_obj->_ok = 1;
+                    $respuesta = self::_estadoEdicion();
+                    break;
+                case 7:
+                    unset($_SESSION['config_desbloqueo_hasta']);
+                    $_obj->_ok = 1;
+                    $_obj->_mensaje = 'Edición bloqueada.';
+                    $respuesta = self::_estadoEdicion();
                     break;
                 default:
                     $_obj->_mensaje = 'Función no válida';
@@ -107,6 +151,68 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
 
         $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
         return in_array($rol, [1, 2], true);
+    }
+
+    /* ==================== CONTRASEÑA DE EDICIÓN ==================== */
+
+    private static function _hashClave()
+    {
+        return defined('MUNICIPIO_CLAVE_PARAMETROS_HASH')
+            ? MUNICIPIO_CLAVE_PARAMETROS_HASH
+            : self::CLAVE_EDICION_HASH;
+    }
+
+    private static function _edicionDesbloqueada()
+    {
+        return !empty($_SESSION['config_desbloqueo_hasta'])
+            && (int) $_SESSION['config_desbloqueo_hasta'] > time();
+    }
+
+    /** Lo que la pantalla necesita para pintar el candado. */
+    private static function _estadoEdicion()
+    {
+        $abierta = self::_edicionDesbloqueada();
+        return [
+            'desbloqueada' => $abierta,
+            'segundos'     => $abierta ? (int) $_SESSION['config_desbloqueo_hasta'] - time() : 0,
+        ];
+    }
+
+    private function _desbloquearEdicion()
+    {
+        $ahora = time();
+
+        if (!empty($_SESSION['config_espera_hasta']) && (int) $_SESSION['config_espera_hasta'] > $ahora) {
+            $minutos = (int) ceil(((int) $_SESSION['config_espera_hasta'] - $ahora) / 60);
+            $this->_mensaje = 'Demasiados intentos fallidos. Intente de nuevo en '
+                            . $minutos . ($minutos === 1 ? ' minuto.' : ' minutos.');
+            return self::_estadoEdicion();
+        }
+
+        $clave = (string) ($_POST['clave'] ?? '');
+        if ($clave !== '' && password_verify($clave, self::_hashClave())) {
+            unset($_SESSION['config_intentos'], $_SESSION['config_espera_hasta']);
+            $_SESSION['config_desbloqueo_hasta'] = $ahora + self::MINUTOS_DESBLOQUEO * 60;
+            $this->_ok = 1;
+            $this->_mensaje = 'Edición desbloqueada por ' . self::MINUTOS_DESBLOQUEO . ' minutos.';
+            return self::_estadoEdicion();
+        }
+
+        $intentos = (int) ($_SESSION['config_intentos'] ?? 0) + 1;
+        if ($intentos >= self::INTENTOS_MAXIMOS) {
+            $_SESSION['config_intentos'] = 0;
+            $_SESSION['config_espera_hasta'] = $ahora + self::MINUTOS_ESPERA * 60;
+            $this->_mensaje = 'Contraseña incorrecta. Por seguridad, espere '
+                            . self::MINUTOS_ESPERA . ' minutos para volver a intentarlo.';
+        } else {
+            $_SESSION['config_intentos'] = $intentos;
+            $restan = self::INTENTOS_MAXIMOS - $intentos;
+            $this->_mensaje = 'Contraseña incorrecta. '
+                            . ($restan === 1 ? 'Queda 1 intento.' : 'Quedan ' . $restan . ' intentos.');
+        }
+        error_log('[configuracion] contraseña de edición incorrecta; usuario ' . (int) ($_SESSION['id_usuario'] ?? 0));
+
+        return self::_estadoEdicion();
     }
 
     private function _consultarParametros()

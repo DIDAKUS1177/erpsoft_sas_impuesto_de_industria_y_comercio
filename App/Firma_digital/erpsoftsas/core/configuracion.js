@@ -10,6 +10,98 @@ class Configuracion {
 
     constructor() {
         this._bancos = [];
+        this._desbloqueada = false;   // lo decide el servidor (función 6)
+        this._relojCandado = null;
+    }
+
+    /* ==================== CANDADO DE EDICIÓN ==================== */
+
+    /** Pregunta al servidor si la edición está abierta para esta sesión. */
+    consultarCandado() {
+        const self = this;
+        $.post('../business/controller/class.configuracion.php', { funcion: 6 }, function (resp) {
+            if (resp && resp.ok == 1) { self.aplicarCandado(resp.datos); }
+        }, 'json');
+    }
+
+    /** Pinta el candado y habilita o no las tablas según lo que dijo el servidor. */
+    aplicarCandado(estado) {
+        const self = this;
+        const abierta = !!(estado && estado.desbloqueada);
+        this._desbloqueada = abierta;
+        clearTimeout(this._relojCandado);
+
+        if (abierta) {
+            const hora = new Date(Date.now() + estado.segundos * 1000)
+                .toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+            $('#candadoTitulo').html('<i class="fa fa-unlock"></i> Edición desbloqueada');
+            // "12:56 p. m." ya trae su punto: no se le agrega otro.
+            $('#candadoTexto').text('Puede guardar cambios. Se vuelve a bloquear sola a las '
+                + hora + (hora.slice(-1) === '.' ? '' : '.'));
+            $('#btnCandado').text('Bloquear ahora').removeClass('btn-primary').addClass('btn-outline-secondary');
+            // Al vencer, la pantalla se bloquea a la par con el servidor.
+            this._relojCandado = setTimeout(function () {
+                self.aplicarCandado({ desbloqueada: false });
+            }, estado.segundos * 1000);
+        } else {
+            $('#candadoTitulo').html('<i class="fa fa-lock"></i> Edición protegida');
+            $('#candadoTexto').text('Puede consultar estos datos. Para cambiarlos se pide la contraseña de edición.');
+            $('#btnCandado').text('Desbloquear edición').removeClass('btn-outline-secondary').addClass('btn-primary');
+        }
+        this.bloquearTablas();
+    }
+
+    /** Campos y botones Guardar de las dos tablas, según el candado. */
+    bloquearTablas() {
+        $('#tbodyParametros, #tbodyBancos').find('input, button').prop('disabled', !this._desbloqueada);
+    }
+
+    abrirClave(mensaje) {
+        $('#claveEdicion').val('');
+        $('#claveError').text(mensaje || '');
+        $('#modal-Clave').modal('show');
+    }
+
+    desbloquear() {
+        const self = this;
+        $('#btnDesbloquear').prop('disabled', true);
+        $.ajax({
+            url: '../business/controller/class.configuracion.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { funcion: 5, clave: $('#claveEdicion').val() },
+            success: function (resp) {
+                $('#btnDesbloquear').prop('disabled', false);
+                if (resp.ok == 1) {
+                    $('#modal-Clave').modal('hide');
+                    self.aplicarCandado(resp.datos);
+                    return;
+                }
+                $('#claveError').text(resp.mensaje || 'No se pudo desbloquear.');
+                $('#claveEdicion').val('').trigger('focus');
+            },
+            error: function () {
+                $('#btnDesbloquear').prop('disabled', false);
+                $('#claveError').text('No se pudo verificar. Revise la conexión e intente de nuevo.');
+            }
+        });
+    }
+
+    bloquear() {
+        const self = this;
+        $.post('../business/controller/class.configuracion.php', { funcion: 7 }, function (resp) {
+            self.aplicarCandado(resp && resp.datos ? resp.datos : { desbloqueada: false });
+        }, 'json');
+    }
+
+    /** Si al guardar el servidor dice que la edición ya se cerró, se pide la clave. */
+    respuestaPideClave(resp) {
+        if (resp && resp.datos && resp.datos.requiereClave) {
+            this.aplicarCandado({ desbloqueada: false });
+            this.abrirClave('La edición se volvió a bloquear. Escriba la contraseña para guardar.');
+            return true;
+        }
+        return false;
     }
 
     /** Escapa lo que venga de la base antes de meterlo al HTML. */
@@ -86,6 +178,7 @@ class Configuracion {
 
                 $('#tbodyParametros').html(filas ||
                     '<tr><td colspan="5" class="text-center text-muted py-3">No hay parámetros.</td></tr>');
+                self.bloquearTablas();
             },
             error: function (xhr) {
                 console.log('Error al cargar parámetros:', xhr.responseText);
@@ -105,6 +198,7 @@ class Configuracion {
             dataType: 'json',
             data: { funcion: 2, par_Id: idParametro, par_Valor: valor },
             success: function (resp) {
+                if (self.respuestaPideClave(resp)) { return; }
                 swal({
                     type: resp.ok == 1 ? 'success' : 'error',
                     title: resp.ok == 1 ? 'Guardado' : 'No se pudo guardar',
@@ -188,6 +282,7 @@ class Configuracion {
             '<tr><td colspan="6" class="text-center text-muted py-3">' +
             (soloConCuenta ? 'Ningún banco tiene cuentas configuradas todavía.' : 'No hay bancos.') +
             '</td></tr>');
+        self.bloquearTablas();
     }
 
     guardarCuentas(idBanco) {
@@ -204,6 +299,7 @@ class Configuracion {
                 ban_CuentaRecaudadora: $('#rec_' + idBanco).val()
             },
             success: function (resp) {
+                if (self.respuestaPideClave(resp)) { return; }
                 swal({
                     type: resp.ok == 1 ? 'success' : 'error',
                     title: resp.ok == 1 ? 'Guardado' : 'No se pudo guardar',
@@ -223,6 +319,16 @@ class Configuracion {
 const configuracion = new Configuracion();
 
 $(function () {
+    configuracion.consultarCandado();
     configuracion.cargarParametros();
     configuracion.cargarBancos();
+
+    $('#btnCandado').on('click', function () {
+        if (configuracion._desbloqueada) { configuracion.bloquear(); } else { configuracion.abrirClave(); }
+    });
+    $('#formClave').on('submit', function (e) {
+        e.preventDefault();
+        configuracion.desbloquear();
+    });
+    $('#modal-Clave').on('shown.bs.modal', function () { $('#claveEdicion').trigger('focus'); });
 });

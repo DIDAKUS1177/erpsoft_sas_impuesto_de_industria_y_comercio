@@ -42,7 +42,12 @@ class DAO_Usuario extends \erpsoftsas\DAOGeneral {
         'usu_FechaCreacion' => array('tipodato' => 'varchar'),
         'usu_FechaActualizacion' => array('tipodato' => 'varchar'),
         'usu_NombreRol' => array('tipodato' => 'integer','sql' => '(select rol.rol_Nombre from conf_rol as rol where rol.rol_Id = conf_usuarios.usu_Rol)'),
-        'usu_idContibuyente' => array('tipodato' => 'integer','sql' => '(select conn.ind_Id from ind_contribuyentes as conn where conn.ind_NumeroIdentificacion = conf_usuarios.usu_NumeroDocumento)')
+        // TOP 1 + ORDER BY: el padrón admite documentos repetidos y, sin esto, la
+        // subconsulta devolvía dos filas y SQL Server abortaba TODA la consulta
+        // (error 512): la pantalla Usuarios daba 500 y el usuario con documento
+        // repetido no podía ni iniciar sesión. Mismo criterio (el ind_Id menor)
+        // que _contribuyenteDeLaSesion y class.contribuyentes.php::_verificarAcceso.
+        'usu_idContibuyente' => array('tipodato' => 'integer','sql' => '(select top 1 conn.ind_Id from ind_contribuyentes as conn where conn.ind_NumeroIdentificacion = conf_usuarios.usu_NumeroDocumento order by conn.ind_Id)')
     );   
     
     public function __construct() {

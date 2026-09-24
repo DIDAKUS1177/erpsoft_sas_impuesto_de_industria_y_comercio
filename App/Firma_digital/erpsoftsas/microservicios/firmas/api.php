@@ -92,84 +92,83 @@ class FirmasAPI
 
         $conSql = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
-        if ($rol === 'declarante' || $rol === 'rit') {
-            // El declarante -y quien firma el RIT- es el usuario del sistema:
-            // el codigo va a su correo.
-            $stmt = $conSql->consultar(
-                "SELECT usu_Nombres AS usu_Nombre, usu_Correo
-                 FROM conf_usuarios WHERE usu_Id = ? AND usu_Estado = 1",
-                [$idUsuario]
-            );
-            $usuario = $conSql->obnerFila($stmt);
+        // Solo un usuario ACTIVO pide códigos (la versión anterior lo exigía con
+        // usu_Estado = 1; se conserva al sacar el correo de la declaración).
+        $activo = $conSql->obnerFila($conSql->consultar(
+            "SELECT usu_Id FROM conf_usuarios WHERE usu_Id = ? AND usu_Estado = 1",
+            [$idUsuario]
+        ));
+        if (!$activo) {
+            header('Content-type: application/json');
+            echo json_encode(['ok' => 0, 'mensaje' => 'Usuario no encontrado o inactivo.']);
+            return;
+        }
 
-            if (!$usuario) {
+        if ($rol === 'rit') {
+            // Firma del RIT. El contribuyente lo decide _ritPermitido: los roles
+            // de Alcaldía (1 y 2) pueden firmar el de cualquiera indicando
+            // id_contribuyente; el resto, solo el suyo. El código va al correo
+            // del REPRESENTANTE de ESE contribuyente, nunca al del funcionario
+            // que lo gestiona.
+            $permiso = $this->_ritPermitido($conSql);
+            if (!$permiso['ok']) {
                 header('Content-type: application/json');
-                echo json_encode(['ok' => 0, 'mensaje' => 'Usuario no encontrado (ID: ' . $idUsuario . ')']);
+                echo json_encode(['ok' => 0, 'mensaje' => $permiso['mensaje']]);
                 return;
             }
+            $dest   = $this->_correoRepresentante($conSql, $permiso['id'], $idUsuario);
+            $email  = $dest['email'];
+            $nombre = $dest['nombre'];
 
-            $email  = $usuario['usu_Correo'];
-            $nombre = $usuario['usu_Nombre'];
-
-            /*
-             * El codigo va al correo del REPRESENTANTE LEGAL.
-             *
-             * Instruccion del cliente el 2026-08-26: "al correo del
-             * representante legal, las firmas a este correo". Quien firma el
-             * RIT o la declaracion es la persona que representa legalmente al
-             * contribuyente, y ese es su correo; el de la cuenta puede ser el
-             * de un asistente que solo diligencia.
-             *
-             * Se cae al correo de la cuenta cuando el representante no tiene
-             * uno registrado -contribuyentes viejos, o persona natural que se
-             * representa a si misma-, porque quedarse sin poder firmar seria
-             * peor que mandarlo al correo con el que entro.
-             */
-            $rep = $conSql->obnerFila($conSql->consultar(
-                "SELECT c.ind_Email_representante, c.ind_Nombre_representante
-                   FROM ind_contribuyentes c
-                   INNER JOIN conf_usuarios u
-                           ON u.usu_NumeroDocumento = c.ind_NumeroIdentificacion
-                  WHERE u.usu_Id = ?",
-                [$idUsuario]
-            ));
-
-            $correoRep = trim((string) ($rep['ind_Email_representante'] ?? ''));
-            if ($correoRep !== '') {
-                $email  = $correoRep;
-                $nombre = trim((string) ($rep['ind_Nombre_representante'] ?? '')) ?: $nombre;
-            }
-
-            /*
-             * Sin correo no hay a donde mandar el codigo, y hasta el
-             * 2026-08-25 eso NO se comprobaba: se seguia adelante con el
-             * correo en nulo, el envio reventaba con un fatal de PHP, y la
-             * respuesta salia como un 500 con el cuerpo vacio -en una decima
-             * de segundo-. La ventana "Generando codigo" se quedaba girando
-             * para siempre porque nunca recibia nada que entender.
-             *
-             * Es lo que reporto el cliente como "al guardar y firmar se queda
-             * ahi cargando", y le pasa a cualquier contribuyente recien
-             * inscrito, que es justo cuando toca firmar el RIT por primera vez.
-             *
-             * Con la regla del 2026-08-26 el destinatario es el correo del
-             * REPRESENTANTE LEGAL (arriba), y solo si no hay se usa el de la
-             * cuenta. Llegar aqui significa que faltan los dos.
-             */
             if (trim((string) $email) === '') {
                 header('Content-type: application/json');
-                echo json_encode([
-                    'ok' => 0,
-                    'mensaje' => 'No hay a dónde enviar el código: no está registrado el correo '
-                               . 'del representante legal ni el de su usuario. Regístrelo en el '
-                               . 'RIT, o comuníquese con la Alcaldía.'
-                ]);
+                echo json_encode(['ok' => 0, 'mensaje' => 'No hay a dónde enviar el código: registre el '
+                    . 'correo del representante legal en el RIT.']);
+                return;
+            }
+        } elseif ($rol === 'declarante') {
+            // El código va al REPRESENTANTE del contribuyente DUEÑO de la
+            // declaración que se firma (regla del cliente 2026-08-26), NO al del
+            // usuario logueado. Así llega a quien registró el contribuyente lo
+            // mismo cuando el propio contribuyente firma su declaración que
+            // cuando la Alcaldía la presenta por él en ventanilla; nunca al
+            // correo del funcionario. Antes salía del usuario de la sesión, y un
+            // administrador gestionando a otro recibía el código en SU correo.
+            $d = $this->_datosDeclarante($conSql);
+            if (!$d['ok']) {
+                header('Content-type: application/json');
+                echo json_encode(['ok' => 0, 'mensaje' => $d['mensaje']]);
+                return;
+            }
+            if (!$this->_puedeFirmar($conSql, $d['id'])) {
+                header('Content-type: application/json');
+                echo json_encode(['ok' => 0, 'mensaje' => 'No puede firmar la declaración de otro contribuyente.']);
+                return;
+            }
+            $dest   = $this->_correoRepresentante($conSql, $d['id'], $idUsuario);
+            $email  = $dest['email'];
+            $nombre = $dest['nombre'];
+
+            if (trim((string) $email) === '') {
+                header('Content-type: application/json');
+                echo json_encode(['ok' => 0, 'mensaje' => 'No hay a dónde enviar el código: no está '
+                    . 'registrado el correo del representante legal del contribuyente. Regístrelo en el RIT.']);
                 return;
             }
         } else {
             // Contador o revisor fiscal: NO es usuario del sistema. Sus datos
             // viven en el contribuyente dueño de la declaración y el codigo
             // viaja a SU correo, porque es esa persona la que firma.
+            // Misma regla de propiedad que el declarante: solo el dueño de la
+            // declaración o la Alcaldía pueden pedir este código.
+            $d = $this->_datosDeclarante($conSql);
+            if (!$d['ok'] || !$this->_puedeFirmar($conSql, $d['id'])) {
+                header('Content-type: application/json');
+                echo json_encode(['ok' => 0, 'mensaje' => $d['ok']
+                    ? 'No puede firmar la declaración de otro contribuyente.'
+                    : $d['mensaje']]);
+                return;
+            }
             $destino = $this->_destinatarioContador($conSql);
 
             if (!$destino['ok']) {
@@ -368,6 +367,105 @@ class FirmasAPI
             'nombre' => $nombre !== '' ? $nombre : 'Contador / Revisor Fiscal',
             'email'  => $email
         ];
+    }
+
+    /**
+     * El contribuyente DUEÑO de la declaración que se firma, con sus datos, a
+     * partir del número/id que manda la pantalla. Mismo criterio por módulo que
+     * _destinatarioContador: el dueño de la declaración manda, no quién esté
+     * logueado. Devuelve ['ok', 'id', 'fila'] o ['ok'=>false, 'mensaje'].
+     */
+    private function _datosDeclarante($conSql)
+    {
+        $ident = preg_replace(
+            '/[^A-Za-z0-9\-]/', '',
+            $_POST['numero_declaracion'] ?? $_POST['id_declaracion'] ?? ''
+        );
+        if ($ident === '') {
+            return ['ok' => false, 'mensaje' => 'Número de declaración inválido'];
+        }
+
+        $modulo = $this->_moduloFirma();
+        if ($modulo === 'RETEICA') {
+            $sql = "SELECT c.ind_Id FROM ind_reteica d
+                     INNER JOIN ind_contribuyentes c ON c.ind_Id = d.ret_IdContribuyente
+                     WHERE d.ret_NumeroDeclaracion = ?";
+        } elseif ($modulo === 'AUTORRETEICA') {
+            $sql = "SELECT c.ind_Id FROM ind_autorreteica d
+                     INNER JOIN ind_contribuyentes c ON c.ind_Id = d.aut_IdContribuyente
+                     WHERE d.aut_NumeroDeclaracion = ?";
+        } else {
+            $sql = "SELECT c.ind_Id FROM ind_declaraciones_ica d
+                     INNER JOIN ind_contribuyentes c ON c.ind_Id = d.dec_IdContribuyente
+                     WHERE d.dec_Id = ?";
+        }
+
+        $fila = $conSql->obnerFila($conSql->consultar($sql, [$ident]));
+        if (!$fila) {
+            return ['ok' => false, 'mensaje' => 'No se encontró la declaración'];
+        }
+        return ['ok' => true, 'id' => (int) $fila['ind_Id']];
+    }
+
+    /**
+     * ¿Puede esta sesión firmar por este contribuyente? Los roles de Alcaldía
+     * (1 y 2) sí -inscriben y presentan en ventanilla-; el resto solo por el
+     * suyo. Así un contribuyente no puede firmar la declaración de otro aunque
+     * arme el POST a mano.
+     */
+    private function _puedeFirmar($conSql, $idContribuyente)
+    {
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
+        if (in_array($rol, [1, 2], true)) { return true; }
+
+        $propio = $this->_contribuyenteDeLaSesion($conSql);
+        return $propio && (int) $propio === (int) $idContribuyente;
+    }
+
+    /**
+     * Correo y nombre a donde va el código del DECLARANTE / RIT: el del
+     * REPRESENTANTE LEGAL del contribuyente (regla del cliente 2026-08-26).
+     *
+     * Si el representante no tiene correo se cae, EN ESTE ORDEN:
+     *   1. al de la CUENTA, pero solo si quien firma es el propio contribuyente
+     *      (persona natural que se representa a sí misma). Nunca el de un
+     *      funcionario que gestiona a otro: ese es justo el error a evitar.
+     *   2. al correo general del contribuyente (ind_Email).
+     */
+    private function _correoRepresentante($conSql, $idContribuyente, $idUsuario)
+    {
+        $c = $conSql->obnerFila($conSql->consultar(
+            "SELECT ind_Email_representante, ind_Nombre_representante, ind_Email,
+                    ind_PrimerNombre, ind_SegundoNombre, ind_PrimerApellido, ind_SegundoApellido
+               FROM ind_contribuyentes WHERE ind_Id = ?",
+            [(int) $idContribuyente]
+        ));
+        if (!$c) { return ['email' => '', 'nombre' => '']; }
+
+        $nombreContrib = trim(preg_replace('/\s+/', ' ',
+            ($c['ind_PrimerNombre'] ?? '') . ' ' . ($c['ind_SegundoNombre'] ?? '') . ' ' .
+            ($c['ind_PrimerApellido'] ?? '') . ' ' . ($c['ind_SegundoApellido'] ?? '')));
+
+        $emailRep  = trim((string) ($c['ind_Email_representante'] ?? ''));
+        $nombreRep = trim((string) ($c['ind_Nombre_representante'] ?? ''));
+        if ($emailRep !== '') {
+            return ['email' => $emailRep, 'nombre' => $nombreRep !== '' ? $nombreRep : $nombreContrib];
+        }
+
+        $propio = $this->_contribuyenteDeLaSesion($conSql);
+        if ($propio && (int) $propio === (int) $idContribuyente) {
+            $u = $conSql->obnerFila($conSql->consultar(
+                "SELECT usu_Nombres, usu_Correo FROM conf_usuarios WHERE usu_Id = ?",
+                [(int) $idUsuario]
+            ));
+            $emailCuenta = trim((string) ($u['usu_Correo'] ?? ''));
+            if ($emailCuenta !== '') {
+                return ['email' => $emailCuenta, 'nombre' => $nombreContrib !== '' ? $nombreContrib : trim((string) ($u['usu_Nombres'] ?? ''))];
+            }
+        }
+
+        return ['email' => trim((string) ($c['ind_Email'] ?? '')), 'nombre' => $nombreContrib];
     }
 
     /** "contador@dominio.com" -> "co***@dominio.com" */
@@ -598,14 +696,31 @@ class FirmasAPI
         // De quién queda el sello: el declarante es el usuario del sistema;
         // el contador/revisor no lo es, sus datos vienen del contribuyente.
         if ($rol === 'declarante') {
-            $stmt = $conSql->consultar(
-                "SELECT usu_Nombres AS usu_Nombre, usu_Correo FROM conf_usuarios WHERE usu_Id = ?",
-                [$idUsuario]
-            );
-            $usuario = $conSql->obnerFila($stmt);
-            $nombre  = $usuario['usu_Nombre'] ?? '';
-            $email   = $usuario['usu_Correo'] ?? '';
+            // El sello del declarante muestra al REPRESENTANTE del contribuyente
+            // dueño de la declaración, no al usuario que operó (que puede ser un
+            // funcionario firmando en ventanilla). fd_IdUsuario abajo sí queda
+            // como el usuario real de la sesión: traza de quién firmó.
+            $d = $this->_datosDeclarante($conSql);
+            if (!$d['ok']) {
+                echo json_encode(['ok' => 0, 'mensaje' => $d['mensaje']]);
+                return;
+            }
+            if (!$this->_puedeFirmar($conSql, $d['id'])) {
+                echo json_encode(['ok' => 0, 'mensaje' => 'No puede firmar la declaración de otro contribuyente.']);
+                return;
+            }
+            $dest   = $this->_correoRepresentante($conSql, $d['id'], $idUsuario);
+            $nombre = $dest['nombre'];
+            $email  = $dest['email'];
         } else {
+            // Misma regla de propiedad que el declarante (ver funcion 1).
+            $d = $this->_datosDeclarante($conSql);
+            if (!$d['ok'] || !$this->_puedeFirmar($conSql, $d['id'])) {
+                echo json_encode(['ok' => 0, 'mensaje' => $d['ok']
+                    ? 'No puede firmar la declaración de otro contribuyente.'
+                    : $d['mensaje']]);
+                return;
+            }
             $destino = $this->_destinatarioContador($conSql);
 
             if (!$destino['ok']) {
@@ -853,10 +968,14 @@ class FirmasAPI
         if (empty($_SESSION['id_usuario'])) { return null; }
 
         $fila = $conSql->obnerFila($conSql->consultar(
-            "SELECT c.ind_Id
+            // TOP 1 + ORDER BY: con documentos repetidos en el padrón el
+            // resultado debe ser siempre el mismo (igual criterio que
+            // class.contribuyentes.php::_verificarAcceso).
+            "SELECT TOP 1 c.ind_Id
                FROM ind_contribuyentes c
                INNER JOIN conf_usuarios u ON u.usu_NumeroDocumento = c.ind_NumeroIdentificacion
-              WHERE u.usu_Id = ?",
+              WHERE u.usu_Id = ?
+              ORDER BY c.ind_Id",
             [(int) $_SESSION['id_usuario']]
         ));
 
@@ -888,10 +1007,10 @@ class FirmasAPI
         if (!$propio) {
             return ['ok' => false, 'mensaje' => 'Su usuario no está asociado a un contribuyente.'];
         }
-        if ($pedido && $pedido !== $propio) {
-            return ['ok' => false, 'mensaje' => 'No puede firmar el RIT de otro contribuyente.'];
-        }
-
+        // Fuera de la Alcaldía el id que llega del navegador no decide nada: se
+        // firma SIEMPRE el propio. (Antes se rechazaba si no coincidía, y como
+        // la pantalla ahora manda el id de localStorage, un padrón con
+        // documentos repetidos podía dejar al dueño sin poder firmar.)
         return ['ok' => true, 'id' => $propio, 'usuario' => (int) $_SESSION['id_usuario']];
     }
 

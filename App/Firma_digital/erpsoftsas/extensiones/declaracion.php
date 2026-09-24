@@ -5,6 +5,7 @@ require_once('tcpdf/tcpdf_barcodes_1d.php');
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
 include_once SERVER . '/business/class.codigoBarrasRecaudo.php';
+include_once SERVER . '/business/class.vencimientoICA.php';
 
 // Cargar configuración del municipio. Ubicación real (Plesk/producción): un
 // nivel arriba de /erpsoftsas; fallback dentro de /erpsoftsas solo para
@@ -485,6 +486,12 @@ foreach($actividades as $act){
 DATOS
 =========================== */
 
+// Fecha límite de pago (Municipio y bancos; 30/04 por defecto). La imprime la
+// casilla FECHA MÁXIMA PRESENT., que antes salía en blanco, y es la fecha del
+// segmento (96) del código de barras. Pasada, la declaración está vencida y se
+// paga con el recibo de pago (ver el bloque del código de barras).
+$fechaLimite = \erpsoftsas\VencimientoICA::fechaLimite($row['dec_AnioDeclaracion'] ?? 0);
+
 $d = [
     // Encabezado entidad / periodo
     'entidad'     => mb_strtoupper(MUNICIPIO_NOMBRE, 'UTF-8'),
@@ -506,7 +513,7 @@ $d = [
     // liquidacion.php -que si lee dec_AnioDeclaracion- mostraba 2026. Dos
     // documentos de la misma declaracion con años distintos.
     'anio'        => (string) ($row['dec_AnioDeclaracion'] ?? date('Y')),
-    'fecha_max'   => '',
+    'fecha_max'   => date('d/m/Y', strtotime($fechaLimite)),
     'num_form' => $row['dec_NumeroDeclaracion'],
 
     // Datos contribuyente
@@ -564,8 +571,11 @@ $d = [
     'es_decl_inicial'   => true,
     'es_solo_pago'      => false,
     'es_correccion'     => false,
-    'es_consorcio'      => false,
-    'patrimonio_autonomo' => false,
+    // Migracion 033: se capturan en el RIT (ind_contribuyentes) y ya vienen en
+    // $row por el c.* del SELECT. Antes estaban fijos en false y la casilla
+    // salia siempre en blanco.
+    'es_consorcio'      => ((int) ($row['ind_EsConsorcio'] ?? 0) === 1),
+    'patrimonio_autonomo' => ((int) ($row['ind_PatrimonioAutonomo'] ?? 0) === 1),
 
     // Base gravable (renglones 8–16)
     /*
@@ -1242,14 +1252,18 @@ if ($firmaData) {
         ? $nombreCompleto
         : $row['ind_Nombre_representante'];
 
-    // Sello a 20x20mm (el cliente pidio el 2026-09-15 sellos mas grandes y la
+    // Hueco de 20x20 (el cliente pidio el 2026-09-15 sellos mas grandes y la
     // letra mas pequena para compensar; por eso el nombre/fecha bajo a 7px).
-    // ESTE formulario es oficio y va CASI LLENO: medido, con sello 20 el
-    // contenido cierra en ~329.9mm de 330.2 -el codigo de barras del fondo cabe
-    // justo-. No subir mas sin volver a medir: a 65 y a 30 la fila de firmas
-    // empujaba el codigo de barras fuera de la pagina. En retencion, que es
-    // carta y cierra en ~197-231mm, el sello va a 30 (ver pdfret_firmas).
-    $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="20" height="20"><br>';
+    // ESTE formulario es oficio y va CASI LLENO: medido, con 20 el contenido
+    // cierra en ~329.9mm de 330.2 -el codigo de barras del fondo cabe justo-.
+    // No subir mas sin volver a medir: a 65 y a 30 la fila de firmas empujaba
+    // el codigo de barras fuera de la pagina. En retencion, que es carta y
+    // cierra en ~197-231mm, el sello va a 30 (ver pdfret_firmas).
+    //
+    // Aqui iba el sello chico; el que se ve es el grande de DE FONDO que se
+    // dibuja al final (ver "SELLO DE FIRMA DE FONDO"). Encima de el se veia un
+    // segundo sello en miniatura, asi que se deja solo su alto, en blanco.
+    $html .= '<div align="center"><img src="Sello_Firma_espacio.png" width="20" height="20"><br>';
 
     // Nombre de quien firmo + fecha/hora de presentacion (ver $fechaSello).
     $html .= '<span style="font-size: 7px;">' . htmlspecialchars($declaranteSelloNombre) . '<br>' . $fechaSello . '</span></div>';
@@ -1280,7 +1294,8 @@ $html .= '
  * correo del contador/revisor.
  */
 if (!empty($firmaContadorData)) {
-    $html .= '<div align="center"><img src="' . MUNICIPIO_SELLO_FIRMA . '" width="20" height="20"><br>';
+    // Solo el alto del sello: el visible es el de fondo (ver el del declarante).
+    $html .= '<div align="center"><img src="Sello_Firma_espacio.png" width="20" height="20"><br>';
     $html .= '<span style="font-size: 7px;">'
            . htmlspecialchars($firmaContadorData['fd_NombreUsuario'])
            . '<br>' . $fechaSello . '</span></div>';
@@ -1383,19 +1398,13 @@ $contenidoBarras = \erpsoftsas\CodigoBarrasRecaudo::construir(
     $referenciaRecaudo,
     $row['dec_ValorConcepto20'] ?? 0,
     /*
-     * La fecha del segmento (96).
-     *
-     * Primero la "fecha maxima de presentacion" de la propia declaracion, que
-     * es el dato correcto. Hoy nadie la captura -en el formulario esa casilla
-     * sale en blanco, tambien en el ejemplo que mando el banco-, asi que cae
-     * al parametro RECAUDO_DIAS_VIGENCIA de conf_parametros.
-     *
-     * Si el parametro tambien esta vacio, construir() omite el segmento. Ver
-     * la nota de la migracion 009: el 96 no es un identificador estandar de
-     * GS1 y su significado lo tiene que confirmar el banco, asi que se
-     * prefiere no imprimirlo antes que imprimir una fecha equivocada.
+     * La fecha del segmento (96): la fecha límite de pago, la misma que imprime
+     * la casilla FECHA MÁXIMA PRESENT. Antes esa casilla salía en blanco y la
+     * fecha caía al parámetro RECAUDO_DIAS_VIGENCIA (vacío = sin segmento).
+     * Con la fecha límite, una declaración impresa a tiempo no se puede cobrar
+     * en ventanilla después del vencimiento sin los intereses del recibo.
      */
-    $d['fecha_max'] ?: \erpsoftsas\CodigoBarrasRecaudo::fechaVigencia()
+    $fechaLimite
 );
 $esRecaudoReal = ($contenidoBarras !== null);
 if (!$esRecaudoReal) {
@@ -1441,7 +1450,14 @@ $yBarcode = $yBloque + $altoRotulo + 1.2;
 // actividades antes de presentarse-. El marco, los rotulos y el numero de
 // referencia (arriba) se mantienen siempre: sirven de vista previa aunque
 // no se pueda pagar todavia.
-if ($estaPresentada) {
+//
+// Tampoco si esta VENCIDA y sin pagar (cliente, 2026-09-24): pasada la fecha
+// limite ya no se paga con la declaracion sino con el recibo de pago, que
+// lleva los intereses de mora. La pagada conserva su codigo: es comprobante.
+$estaVencida = $estaPresentada && !$estaPagada
+            && \erpsoftsas\VencimientoICA::vencida($row['dec_AnioDeclaracion'] ?? 0);
+
+if ($estaPresentada && !$estaVencida) {
     $pdf->write1DBarcode(
         $contenidoBarras, 'C128',
         $xBloque + ($mitad - $anchoBarcode) / 2,
@@ -1468,10 +1484,16 @@ if ($estaPresentada) {
             // La misma fecha que va dentro del codigo (ver nota arriba): el
             // texto legible tiene que decir EXACTAMENTE lo que codifican las
             // barras, o el cajero ve una cosa y el escaner lee otra.
-            $d['fecha_max'] ?: \erpsoftsas\CodigoBarrasRecaudo::fechaVigencia()
+            $fechaLimite
         ),
         0, 0, 'C'
     );
+} elseif ($estaVencida) {
+    $pdf->SetFont('helvetica', 'B', 7);
+    $pdf->SetXY($xBloque, $yBarcode + ($altoBarcode / 2) - 4);
+    $pdf->MultiCell($mitad, 4,
+        "DECLARACIÓN VENCIDA EL " . $d['fecha_max'] . "\n"
+        . "Para pagarla, genere el recibo de pago", 0, 'C');
 } else {
     $pdf->SetFont('helvetica', 'I', 6);
     $pdf->SetXY($xBloque, $yBarcode + ($altoBarcode / 2) - 2);
@@ -1639,16 +1661,23 @@ if (!empty($actividadesResto)) {
 }
 
 /* ===========================================================================
-   SELLO DE FIRMA AGRANDADO Y SOBREPUESTO (pedido cliente 2026-09-22)
+   SELLO DE FIRMA DE FONDO (grande: cliente 2026-09-22; de fondo: 2026-09-24)
    ---------------------------------------------------------------------------
-   El sello DENTRO de la casilla se queda en 20 (7mm): agrandarlo ahi crece la
-   fila de firmas y, como SetAutoPageBreak esta en false y el codigo de barras
-   va pegado justo debajo (en $yBloque), lo empujaria fuera del papel oficio
-   -que cierra a ~329mm de 330.2-. Por eso, ENCIMA, se dibuja un sello mas grande
-   con Image() en coordenadas absolutas: no ocupa alto en el flujo, asi que puede
-   crecer sin mover nada. El alto se ancla a $yBloque (borde superior del bloque
-   del codigo de barras) y el X a los centros MEDIDOS de cada casilla de firma
-   (DECLARANTE = izquierda, CONTADOR = derecha; ver nota abajo).
+   En la casilla solo queda el hueco de 20 (7mm): agrandarlo ahi crece la fila
+   de firmas y, como SetAutoPageBreak esta en false y el codigo de barras va
+   pegado justo debajo (en $yBloque), lo empujaria fuera del papel oficio -que
+   cierra a ~329mm de 330.2-. Por eso el sello grande se dibuja con Image() en
+   coordenadas absolutas: no ocupa alto en el flujo, asi que puede crecer sin
+   mover nada. El alto se ancla a $yBloque (borde superior del bloque del codigo
+   de barras) y el X a los centros MEDIDOS de cada casilla de firma (DECLARANTE
+   = izquierda, CONTADOR = derecha; ver nota abajo).
+
+   DE FONDO, NO ENCIMA. El PNG no puede tener canal alfa (trampa 4 de CLAUDE.md:
+   en Plesk revienta con "Unable to write file"), asi que su fondo es blanco
+   opaco y, dibujado normal, tapaba el titulo de la casilla, el nombre y la
+   fecha. Con el modo de mezcla Multiply el blanco no pinta nada y lo oscuro
+   gana: el texto queda encima del sello, como la tinta de un sello real. La
+   opacidad lo deja de fondo, sin competir con la letra.
    =========================================================================== */
 $pdf->setPage(1);   // el bloque de firmas esta en la hoja 1 (por si hay hoja 2)
 $selloOverlay = is_file(MUNICIPIO_SELLO_FIRMA) ? MUNICIPIO_SELLO_FIRMA
@@ -1661,13 +1690,17 @@ if (is_file($selloOverlay)) {
     // encima de $yBloque (borde del codigo de barras), asi que se ancla relativo:
     // si crecen las actividades y el bloque baja, el sello baja con el.
     $sSize  = 17;                 // mm (antes ~7mm)
-    $sYcen  = $yBloque - 24.7;    // centro vertical del sello (= el del sello chico)
+    // Centro 1.5mm por debajo del hueco (24.7 sobre $yBloque): asi el sello
+    // no pisa el titulo de la casilla y queda entre el y el borde de abajo.
+    $sYcen  = $yBloque - 23.2;
+    $pdf->SetAlpha(0.6, 'Multiply');
     if ($firmaData) {             // sello del DECLARANTE (celda izquierda)
         $pdf->Image($selloOverlay, 53.7 - $sSize / 2, $sYcen - $sSize / 2, $sSize, $sSize);
     }
     if (!empty($firmaContadorData)) {   // sello del CONTADOR (celda derecha)
         $pdf->Image($selloOverlay, 146.8 - $sSize / 2, $sYcen - $sSize / 2, $sSize, $sSize);
     }
+    $pdf->SetAlpha(1, 'Normal');
 }
 
 $pdf->Output('ICA_DECLARACION.pdf','I');

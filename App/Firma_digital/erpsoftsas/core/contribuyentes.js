@@ -5,7 +5,10 @@ var idRol = localStorage.getItem('id_Rol');
 
 class Contribuyentes {
 
-    constructor() {}
+    constructor() {
+        this._turno = 0;      // número de la última búsqueda pedida
+        this._espera = null;  // pausa mientras la persona sigue escribiendo
+    }
 
     /**
      * crearUsuario: Método para abrir modal de creación de Contribuyentes.
@@ -73,40 +76,55 @@ class Contribuyentes {
         $("#contribuyentesRegistrados").DataTable().destroy();
         $("#bodyContribuyentesRegistrados").empty();
         for (let dep of arrFilter) {
-            if (dep.ind_Estado == 1) {
-                var icono = "dw dw-checked";
-                var clase = "btn-success";
-                var titulo = "Inactivar Contribuyente";
-            } else {
-                var icono = "dw dw-ban";
-                var clase = "btn-danger";
-                var titulo = "Activar Contribuyente";
-            }
+            // El botón dice la ACCIÓN que hace, no el estado actual: antes un
+            // chulo verde en un contribuyente activo era el botón de inactivarlo.
+            var estado = dep.ind_Estado == 1
+                ? { tipo: 'danger',  icono: 'fa-ban',   texto: 'Inactivar', titulo: 'Inactivar contribuyente' }
+                : { tipo: 'success', icono: 'fa-check', texto: 'Activar',   titulo: 'Activar contribuyente' };
 
+            // Nombre para mostrar: en persona juridica el apellido va vacio y la
+            // razon social esta en ind_PrimerNombre, asi que el trim lo resuelve.
+            var nombre = ((dep.ind_PrimerNombre || '') + ' ' + (dep.ind_PrimerApellido || '')).trim();
+
+                // esc(): un nombre con "&" o "<" se veía cortado o roto, y un
+                // apellido vacío (NULL) salía escrito como "null".
                 $('#bodyContribuyentesRegistrados').append(
                     '<tr>' +
                     '<td>' +
-                    dep.ind_NumeroIdentificacion + 
+                    contribuyentes.esc(dep.ind_NumeroIdentificacion) +
                     '</td>' +
                     '<td>' +
-                    dep.ind_PrimerNombre + 
+                    contribuyentes.esc(dep.ind_PrimerNombre) +
                     '</td>' +
                     '<td>' +
-                    dep.ind_PrimerApellido +
+                    contribuyentes.esc(dep.ind_PrimerApellido) +
                     '</td>' +
                     '<td>' +
-                    dep.ind_Direccion +
+                    contribuyentes.esc(dep.ind_Direccion) +
                     '</td>' +
                     
-                    '<td align="center">' +
-                    '<button type="button" class="btn btn-social-icon btn-warning " data-toggle="tooltip" title="Editar Contribuyentes" style="margin-right:5px" onclick="javascript:contribuyentes.getContribuyentesById(' + dep.ind_Id + ')">' +
-                    '<i class="dw dw-edit2"></i>' +
+                    // Acciones como tarjetas (icono + nombre), las mismas de los
+                    // listados de ICA y retención (.acc-card en dist/menu.php). El
+                    // "Gestionar" con btn-sm quedaba recortado: menu.php vuelve todo
+                    // .btn-sm de una tabla un cuadrado de 32px.
+                    '<td align="center"><div class="acc-cards">' +
+                    // Acción principal: gestionar (trabajar como este contribuyente).
+                    // Datos por data-* para no romper el JS con nombres que traigan comillas.
+                    '<button type="button" class="acc-card acc-primary js-gestionar" title="Trabajar como este contribuyente" ' +
+                        'data-id="' + dep.ind_Id + '" ' +
+                        'data-doc="' + contribuyentes.esc(dep.ind_NumeroIdentificacion) + '" ' +
+                        'data-nombre="' + contribuyentes.esc(nombre) + '">' +
+                    '<i class="fa fa-briefcase"></i><span class="acc-lbl">Gestionar</span>' +
                     '</button>' +
 
-                    '<button type="button" class="btn btn-social-icon ' + clase + ' " data-toggle="tooltip" title="' + titulo + '"  onclick="javascript:contribuyentes.cambiarEstado(' + dep.ind_Id + ',' + dep.ind_Estado + ')">' +
-                    '<i class="' + icono + '"></i>' +
+                    '<button type="button" class="acc-card acc-warning" title="Editar datos básicos" onclick="contribuyentes.getContribuyentesById(' + dep.ind_Id + ')">' +
+                    '<i class="fa fa-pencil"></i><span class="acc-lbl">Editar</span>' +
                     '</button>' +
-                    '</td>' +
+
+                    '<button type="button" class="acc-card acc-' + estado.tipo + '" title="' + estado.titulo + '" onclick="contribuyentes.cambiarEstado(' + dep.ind_Id + ',' + dep.ind_Estado + ')">' +
+                    '<i class="fa ' + estado.icono + '"></i><span class="acc-lbl">' + estado.texto + '</span>' +
+                    '</button>' +
+                    '</div></td>' +
                     '</tr>'
                 );
             
@@ -119,23 +137,26 @@ class Contribuyentes {
      * propiedad DataTable() a la tabla de Dependencia
      */
     init_table() {
+        // Sin buscador, paginación ni contador propios de DataTables: la búsqueda
+        // la hace el servidor (ver buscar()) y nunca llegan más de 20 filas.
+        // order [] respeta el orden en que las manda el servidor.
         $('.data-table').DataTable({
             scrollCollapse: true,
             autoWidth: false,
             responsive: true,
+            searching: false,
+            paging: false,
+            info: false,
+            order: [],
             columnDefs: [
                 { targets: "datatable-nosort", orderable: false,},
                 { "width": "10%", "targets": 0 },
                 { "width": "20%", "targets": 1 },
                 { "width": "20%", "targets": 2 }
             ],
-            "lengthMenu": [
-                [5, 10, 25, 50, -1],
-                [5, 10, 25, 50, "All"]
-            ],
             "language": {
                 'decimal': '',
-                'emptyTable': 'Contribuyentes registrados',
+                'emptyTable': 'Sin resultados',
                 "info": 'Mostrando _START_ a _END_ de _TOTAL_ Entradas',
                 'infoEmpty': 'Mostrando 0 to 0 of 0 Entradas',
                 'infoFiltered': '(Filtrado de _MAX_ total entradas)',
@@ -163,29 +184,64 @@ class Contribuyentes {
     }
 
     /**
-     * getDependencia: Método para consultar Contribuyentes
+     * buscar: consulta el padrón en el servidor (función 5, máximo 20 filas).
+     * Antes se descargaba el padrón completo (función 3) y DataTables lo
+     * filtraba aquí. Sin texto trae los registrados más recientemente.
+     * @param texto opcional: si llega, se escribe en el buscador y se busca eso.
      */
-    getContribuyentes() {
-        
+    buscar(texto) {
+
+        if (typeof texto === 'string') { $('#buscarContribuyente').val(texto); }
+
+        var consulta = ($('#buscarContribuyente').val() || '').trim();
+        var turno = ++contribuyentes._turno;
+
+        $('#estadoBusqueda').text('Buscando…');
+
         $.ajax({
             url: '../business/controller/class.contribuyentes.php',
-            data: { funcion: 3 },
+            data: { funcion: 5, buscar: consulta },
             dataType: "json",
             type: "POST",
             success: function(arr) {
-                console.log('arr ', arr);
-                if (arr.ok == 1) {
-                    $("#bodyContribuyentesRegistrados").empty();
-                    contribuyentes.draw_table_documents(arr.datos);
-                } else {
-                    $("#contribuyentesRegistrados").DataTable().destroy();
-                    contribuyentes.init_table();
+                // Si la persona siguió escribiendo, esta respuesta ya no vale.
+                if (turno !== contribuyentes._turno) { return; }
+
+                if (arr.ok != 1 || !arr.datos || !arr.datos.filas) {
+                    contribuyentes.draw_table_documents([]);
+                    $('#estadoBusqueda').text(arr.mensaje || 'No se pudo buscar. Intenta de nuevo.');
+                    return;
                 }
+
+                contribuyentes.draw_table_documents(arr.datos.filas);
+                $('#estadoBusqueda').text(
+                    contribuyentes.textoEstado(consulta, arr.datos.filas.length, arr.datos.hayMas)
+                );
             },
             error: function(XMLHttpRequest, textStatus, errorThrown) {
+                if (turno !== contribuyentes._turno) { return; }
                 console.log('Este es el error', XMLHttpRequest, textStatus, errorThrown);
+                $('#estadoBusqueda').text('No se pudo buscar. Revisa la conexión e intenta de nuevo.');
             }
         });
+    }
+
+    /** Texto bajo el buscador: cuántos resultados hay y si conviene afinar. */
+    textoEstado(consulta, cantidad, hayMas) {
+        if (!consulta) {
+            if (hayMas) {
+                return 'Estos son los 20 registrados más recientemente. Escribe para buscar entre todos.';
+            }
+            if (!cantidad) { return 'Aún no hay contribuyentes registrados.'; }
+            return cantidad === 1 ? '1 contribuyente registrado.' : cantidad + ' contribuyentes registrados.';
+        }
+        if (!cantidad) {
+            return 'Ningún contribuyente coincide con «' + consulta + '».';
+        }
+        if (hayMas) {
+            return 'Se muestran los primeros 20 resultados para «' + consulta + '». Escribe más datos para afinar.';
+        }
+        return (cantidad === 1 ? '1 resultado' : cantidad + ' resultados') + ' para «' + consulta + '».';
     }
 
     /**
@@ -308,7 +364,9 @@ class Contribuyentes {
                 if (arr.ok == 1) {
                     $("#formCrearContribuyentes").trigger("reset");
                     $("#modal-Contribuyentes").modal('hide');
-                    contribuyentes.getContribuyentes();
+                    // Se busca el recién creado para que quede a la vista, listo
+                    // para "Gestionar".
+                    contribuyentes.buscar(String(ind_NumeroIdentificacion || ''));
                     swal({
                         type: 'success',
                         title: 'Contribuyentes creada',
@@ -379,7 +437,7 @@ class Contribuyentes {
                             $('#loading').hide();
                             $('#wrapper').removeClass('body-load');
                             if (arr.ok == 1) {
-                                contribuyentes.getContribuyentes();
+                                contribuyentes.buscar();
                                 swal({
                                     type: 'success',
                                     title: 'Contribuyente actualizado',
@@ -457,7 +515,7 @@ class Contribuyentes {
                 if (arr.ok == 1) {
                     $("#formCrearContribuyentes").trigger("reset");
                     $("#modal-Contribuyentes").modal('hide');
-                    contribuyentes.getContribuyentes();
+                    contribuyentes.buscar();
                     swal({
                         type: 'success',
                         title: 'Contribuyente actualizado',
@@ -513,13 +571,8 @@ class Contribuyentes {
         $("#accordion-menu li").removeClass("active show");
         $("#accordion-menu .submenu").css("display", "none");
 
-        $("#MICAAlcaldia").addClass("active show");
-        $("#SubICAAlcaldia").css("display", "block");
-
-        $("#MICA_DatosBasicos").addClass("active show");
-        $("#SubICA_DatosBasicos").css("display", "block");
-
-        $("#ICA_Contribuyentes").addClass("active");
+        // Contribuyentes es de primer nivel: la puerta de entrada del administrador.
+        $("#MContribuyentes").addClass("active");
     }
 
     aplicarModoPersona(tipoPersona) {
@@ -616,11 +669,55 @@ class Contribuyentes {
         });
     }
 
+    /** Escapa texto para meterlo en un atributo HTML sin romper el marcado. */
+    esc(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    /**
+     * gestionar: deja al contribuyente elegido como "activo" -de donde ya leen
+     * el RIT, establecimientos y las 3 declaraciones- y abre su RIT. Es la
+     * puerta de entrada del administrador: a partir de aquí opera como ese
+     * contribuyente, y el menú lateral muestra sus módulos bajo su nombre (antes
+     * había además una ventana con los mismos cinco módulos: sobraba). El
+     * ContribActivo de dist/menu.php también avisa a las otras pestañas abiertas,
+     * que quedan con datos del anterior.
+     */
+    gestionar(id, doc, nombre) {
+        ContribActivo.fijar({ id: String(id), doc: String(doc || ''), nombre: nombre || '' });
+        window.location = 'icaWebRit.php';
+    }
+
 }
 
 const contribuyentes = new Contribuyentes();
 
-contribuyentes.getContribuyentes();
+// El nombre puede traer comillas: se pasa por data-* y se lee aquí, no por onclick.
+$(document).on('click', '.js-gestionar', function () {
+    contribuyentes.gestionar(
+        $(this).data('id'),
+        $(this).data('doc'),
+        $(this).data('nombre')
+    );
+});
+
+// Busca mientras se escribe, con una pausa corta para no pedir por cada tecla;
+// Enter busca de una. La "x" del campo (type="search") también dispara 'input'.
+$(document).on('input', '#buscarContribuyente', function () {
+    clearTimeout(contribuyentes._espera);
+    contribuyentes._espera = setTimeout(function () { contribuyentes.buscar(); }, 300);
+});
+$(document).on('keydown', '#buscarContribuyente', function (e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        clearTimeout(contribuyentes._espera);
+        contribuyentes.buscar();
+    }
+});
+
+contribuyentes.buscar();
 contribuyentes.UsuarioActivo();
 //contribuyentes.getResponsables();
 
@@ -680,4 +777,17 @@ $(document).ready(function () {
     });
 
     contribuyentes.cargarCiudades();
+
+    // Si el administrador intentó entrar a un módulo sin contribuyente activo,
+    // menu.php lo trajo aquí con esta bandera. Se avisa y se limpia.
+    try {
+        if (sessionStorage.getItem('avisoElegirContrib')) {
+            sessionStorage.removeItem('avisoElegirContrib');
+            swal({
+                type: 'info',
+                title: 'Elige un contribuyente',
+                text: 'Busca y pulsa "Gestionar" en el contribuyente con el que vas a trabajar.'
+            });
+        }
+    } catch (e) {}
 });

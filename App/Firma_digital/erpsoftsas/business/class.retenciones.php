@@ -120,10 +120,13 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
         if (empty($_SESSION['id_usuario'])) { return null; }
 
         $fila = $con->obnerFila($con->consultar(
-            "SELECT c.ind_Id
+            // TOP 1 + ORDER BY: con documentos repetidos en el padrón debe salir
+            // el mismo contribuyente que toman el login (DAO_Usuario) y el resto.
+            "SELECT TOP 1 c.ind_Id
                FROM ind_contribuyentes c
                INNER JOIN conf_usuarios u ON u.usu_NumeroDocumento = c.ind_NumeroIdentificacion
-              WHERE u.usu_Id = ?",
+              WHERE u.usu_Id = ?
+              ORDER BY c.ind_Id",
             [(int) $_SESSION['id_usuario']]
         ));
 

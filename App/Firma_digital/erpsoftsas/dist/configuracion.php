@@ -52,6 +52,42 @@
 
 		<div class="main-container">
 
+			<!-- ===================== CANDADO DE EDICIÓN ===================== -->
+			<!-- Ver no pide nada; guardar exige la contraseña de edición, y quien la
+			     exige es el servidor (class.configuracion.php). Esto solo la pide y
+			     muestra si la edición está abierta. -->
+			<div class="card-box mb-30" id="cajaCandado">
+				<div class="pd-20 d-flex flex-wrap align-items-center justify-content-between" style="gap: 12px;">
+					<div>
+						<div class="h5 mb-1" id="candadoTitulo"><i class="fa fa-lock"></i> Edición protegida</div>
+						<div class="text-muted" id="candadoTexto" style="font-size: 13px;">
+							Puede consultar estos datos. Para cambiarlos se pide la contraseña de edición.
+						</div>
+					</div>
+					<button type="button" class="btn btn-primary" id="btnCandado">Desbloquear edición</button>
+				</div>
+			</div>
+
+			<div class="modal fade" id="modal-Clave" tabindex="-1" role="dialog" aria-labelledby="tituloClave" aria-hidden="true">
+				<div class="modal-dialog modal-dialog-centered" role="document" style="max-width: 420px;">
+					<form class="modal-content" id="formClave" autocomplete="off">
+						<div class="modal-header">
+							<h5 class="modal-title" id="tituloClave">Desbloquear edición</h5>
+							<button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button>
+						</div>
+						<div class="modal-body">
+							<label for="claveEdicion">Contraseña de edición</label>
+							<input type="password" class="form-control" id="claveEdicion" autocomplete="off" required>
+							<small class="form-text text-danger" id="claveError" aria-live="polite"></small>
+						</div>
+						<div class="modal-footer">
+							<button type="button" class="btn btn-link" data-dismiss="modal">Cancelar</button>
+							<button type="submit" class="btn btn-primary" id="btnDesbloquear">Desbloquear</button>
+						</div>
+					</form>
+				</div>
+			</div>
+
 			<!-- ===================== PARÁMETROS ===================== -->
 			<!-- Estos valores vivían solo en la base desde la migración 009 y no
 			     había pantalla para cambiarlos: la única vía era entrar con SQL.

@@ -366,10 +366,10 @@ Pendiente antes de anunciarlo como funcional:
   el parámetro `RECAUDO_DIAS_VIGENCIA`: vacío omite el segmento (así se
   entrega), `0` imprime la fecha de hoy, `N` imprime hoy + N días. Cuando el
   banco responda es cambiar una fila, sin desplegar.
-- La casilla «fecha máxima de presentación» del formulario **nunca se captura**
-  (`'fecha_max' => ''` en `declaracion.php`). También sale vacía en el
-  formulario de referencia del banco. El parámetro de arriba es el puente
-  mientras eso siga así.
+- Desde 2026-09-24 la casilla «fecha máxima de presentación» del ICA sale llena
+  con la fecha límite (`ICA_FECHA_LIMITE`, ver "Vencimiento del ICA"), y esa es
+  la fecha del (96) en la DECLARACIÓN. `RECAUDO_DIAS_VIGENCIA` sigue mandando en
+  el recibo de pago de una vencida y en los de retención y autorretención.
 - Falta la certificación del banco: imprimir un PDF de prueba y confirmar
   que el escáner de ventanilla lo lee.
 
@@ -404,6 +404,9 @@ costaron encontrar:
    imprime sobre celda blanca, se ve idéntico). **Los sellos de los demás
    municipios tienen que venir SIN canal alfa**; comprobar con el byte 25 del
    PNG (color type: 2 = RGB sin alfa, 6 = RGB+alfa).
+   Para que un PNG aplanado quede DEBAJO del texto sin alfa: dibujarlo con
+   `$pdf->SetAlpha(x, 'Multiply')` y volver a `SetAlpha(1, 'Normal')`. El blanco
+   no pinta y lo oscuro gana (así va el sello de fondo de `declaracion.php`).
 
 Para verificar cambios de layout, no basta con mirar el PDF: conviene
 imprimir las coordenadas (`$pdf->GetY()`, alto de página) y comprobar que el
@@ -856,6 +859,189 @@ cambiar nada. Se anota para que nadie lo vuelva a abrir.
 Y lo técnico:
 
 - Probar el flujo desde el NAVEGADOR. El backend está verificado de punta a
-  punta, pero el modal en pantalla no se ha visto funcionando: el navegador
-  interno de la herramienta tiene bloqueado `localhost:8081`.
+  punta, pero el modal en pantalla no se ha visto funcionando. (Al 2026-09-23 el
+  navegador interno SÍ llega a `localhost:8081` con la entrada `erpsoftsas-local`
+  de `.claude/launch.json`; lo que falta es una sesión, que no se inicia
+  escribiendo contraseñas en el navegador.)
 - Cargar el catálogo de actividades de 2026 (hoy solo hay 2025).
+
+## El administrador gestiona contribuyentes: "contribuyente activo" (2026-09-23)
+
+El rol 1 **no es un contribuyente más**: no tiene RIT propio. Su entrada es
+`dist/contribuyentes.php` → botón **Gestionar** → abre directo el RIT del elegido
+(el lanzador con los 5 módulos se retiró el 2026-09-24: repetía el menú). El
+elegido queda en `localStorage.id_Contribuyente` (+ `contribActivoNombre` /
+`contribActivoDoc`), que es la misma llave de donde ya leían todas las pantallas
+del contribuyente: **no se duplicó ninguna pantalla**.
+
+- `dist/menu.php`: barra "Gestionando a: X · Cambiar · Salir" (solo rol 1) y
+  guardia: sin contribuyente activo, las 8 pantallas de módulo redirigen a
+  Contribuyentes **antes** de cargar sus scripts (con swal se encimaba con los
+  popups propios del RIT). El aviso lo muestra Contribuyentes vía sessionStorage.
+- **Menú del administrador (2026-09-24, aprobado por Diego):** Inicio ·
+  **Contribuyentes** · [bloque "Gestionando a X": RIT · Establecimientos · Industria
+  y Comercio · Retención · Autorretención] · Recaudo ICA · **Parámetros ICA**
+  (Municipio y bancos, Actividades, Conceptos, Grupos tarifarios) · Impuesto Predial
+  · **Usuarios y roles**. Es el orden ESTÁTICO del HTML; `ContribActivo.pintarMenu()`
+  muestra el bloque (`#MGestionando` + `.en-gestion`) solo con alguien elegido, y
+  `menu.js` ya no oculta `#MRIT`. Para el rol 4 el orden visible no cambió (solo
+  tiene 1640/1641/1643/1644); rol 3 solo 1035; rol 2 no tiene permisos. Los ids de
+  siempre se conservan (`#MICAAlcaldia` es Parámetros ICA, `#MConfig` es Usuarios y
+  roles); desapareció el nivel "Datos Básicos".
+- `dist/dashboard.php` (Accesos rápidos) lee el menú YA filtrado: corre en `$(…)`
+  (jQuery 3: después de los ready de menu.js/ContribActivo), descarta lo oculto y
+  arma tarjeta directa para los ítems sin submenú (Contribuyentes, RIT, Recaudo…).
+  Antes tomaba todos los `<li>` y al rol 4 le ofrecía tarjetas de la Alcaldía.
+- `core/retenciones.js` (`pedir`) y `core/establecimientos.js`
+  (`getEstablecimientos`) mandan el contribuyente activo. **Ojo**: el servidor
+  deja a los roles 1/2 filtrar por el id que llegue y SIN id les devuelve TODO;
+  cualquier listado nuevo del contribuyente debe mandar el activo o el admin verá
+  el padrón entero bajo la barra de un solo contribuyente (bug real encontrado en
+  establecimientos en la revisión).
+
+### Firma cuando la Alcaldía presenta por otro
+
+El OTP del **declarante** ya no sale del usuario de la sesión sino del **dueño de
+la declaración** (`_datosDeclarante`, mismo criterio por módulo que
+`_destinatarioContador`), y va al `ind_Email_representante` de ese contribuyente
+(`_correoRepresentante`). Nunca al correo del funcionario. El respaldo "correo de
+la cuenta" solo aplica si quien firma ES el propio contribuyente.
+
+`_puedeFirmar` exige que la declaración sea del contribuyente de la sesión salvo
+roles 1/2, en funciones 1 y 7 y para **declarante y contador** (antes el contador
+no tenía chequeo: cualquiera podía hacer llegar códigos al contador de otro).
+`fd_NombreUsuario` del declarante guarda al representante; `fd_IdUsuario` sigue
+siendo el usuario real (traza de quién operó). RIT: `_ritPermitido` ya resolvía
+roles 1/2; fuera de ellos ahora usa SIEMPRE el propio (antes rechazaba si el id
+del navegador no coincidía, y con documentos repetidos bloqueaba al dueño).
+
+Probado sin enviar correos con reflexión sobre los helpers privados (api.php solo
+corre en POST, se puede incluir desde CLI).
+
+### Pestañas: cada una recuerda con quién abrió (`ContribActivo`, menu.php)
+
+localStorage es uno para todas las pestañas del navegador. Si en otra pestaña se
+elige otro contribuyente, la vieja seguía mostrando datos del anterior y guardando
+sobre el nuevo (varias pantallas leen el id en cada petición). **No se movió a
+`$_SESSION`**, como se había anotado: la sesión PHP es la misma cookie para todas
+las pestañas, así que tenía el mismo problema; y la mayoría de las pantallas de
+`dist/` ni siquiera abren sesión antes de pintar (menu.php va dentro del body y
+PHP ≥ 7.2 no deja arrancarla con la salida ya enviada).
+
+Lo que se hizo: `ContribActivo` guarda al cargar con qué contribuyente **y usuario**
+abrió la pestaña y revisa en `storage`, `focus`, `pageshow` y `visibilitychange`:
+
+- Cambió el contribuyente (mismo usuario) en una pantalla de módulo → aviso que
+  bloquea la página (`inert` a todo lo demás): **Seguir con X** (lo reactiva y la
+  que queda detenida es la otra pestaña) o **Cambiar a Y** / **Ir a Contribuyentes**.
+  Fuera de los módulos solo se repinta la barra.
+- Cambió el usuario (otra cuenta o `localStorage.clear()` del cierre de sesión) →
+  solo **Recargar**. Aplica a **todos los roles**: también protege al contador que
+  abre dos clientes en pestañas del mismo navegador.
+- Recargar/cambiar usa `location.replace(location.pathname)`: un `?id=` de una
+  declaración del anterior no se reabre bajo el nuevo.
+- `contribuyentes.js` ya no escribe localStorage directo: usa
+  `ContribActivo.fijar({id, doc, nombre})`, que escribe el id de ÚLTIMO (las otras
+  pestañas reaccionan a él y para entonces nombre/doc ya son los nuevos).
+
+### Contribuyentes busca en el servidor (función 5)
+
+La pantalla ya no descarga el padrón (función 3): buscador propio → función 5,
+máximo 20 filas (`TOP 21` para saber si hay más → `{filas, hayMas}`; cero
+resultados es `ok = 1`). Sin texto trae los 20 más recientes. Cada palabra debe
+aparecer en el documento o en algún nombre; `1.052.400.237` y `NIT-DV` se buscan
+sin puntos ni DV; `%`, `_` y `[` son literales. Compara con
+`COLLATE Latin1_General_CI_AI`: `Modern_Spanish` (la de la base) distingue tildes
+y hasta en AI trata la ñ como otra letra ("avendano" no hallaba "Avendaño").
+DataTables quedó sin buscador/paginación propios. Probado contra la BD local.
+Las acciones de cada fila son `.acc-card` (Gestionar / Editar / Activar-Inactivar,
+con el nombre de la ACCIÓN), las mismas tarjetas de ICA y retención. No usar
+`btn-sm` con texto en una tabla: `dist/menu.php` vuelve todo `.data-table .btn-sm`
+un cuadrado de 32px y el texto sale recortado (así se veía "Gestionar").
+
+### Retro 2026-09-24 (pruebas del dueño en local)
+
+- **El admin entra sin contribuyente activo.** `login.js` guardaba
+  `usu_idContibuyente` también para el rol 1, y el documento del usuario
+  `administrador` (21321) coincide con el contribuyente 2: quedaba "Gestionando a:
+  Contribuyente" sin haber elegido a nadie. Rol 1 → `''`, y el login borra el
+  nombre/doc de una gestión anterior.
+- **Usuarios daba 500** (y el usuario con documento repetido no podía iniciar
+  sesión): la subconsulta `usu_idContibuyente` de `DAO_Usuario` devolvía 2 filas
+  con el documento 1052400234 duplicado en el padrón (error 512). Va con `TOP 1 …
+  ORDER BY ind_Id`, mismo criterio que `_contribuyenteDeLaSesion`. Roles no fallaba.
+- **PDF de retención/autorretención:** la sección A es UNA tabla con la banda en
+  una celda `rowspan` (patrón de `declaracion.php`); con una tabla por fila las
+  líneas cruzaban el rótulo. El `rowspan` de la tabla de actividades cuenta la fila
+  "sin actividades" (`max(1, count)`): sin eso el TOTAL se corría y el rótulo se
+  salía. Encabezado: todas las líneas a 11 como el ICA (antes 11/8).
+
+### Segunda ronda 2026-09-24
+
+- **Establecimientos (todos)** para la Alcaldía, bajo Contribuyentes
+  (`dist/establecimientosTodos.php` + `core/establecimientosTodos.js`, permiso 1639,
+  `menu.validarIngreso(1639,13)`). Es un DIRECTORIO: busca en el servidor
+  (`class.establecimientos.php` función 22, TOP 20, mismo criterio que la búsqueda
+  de contribuyentes) y "Gestionar" deja activo al dueño y abre sus establecimientos.
+  No se edita ahí a propósito: el formulario toma el dueño del contribuyente activo.
+  No reemplaza al "Establecimientos" del bloque del contribuyente gestionado.
+- **Contraseña de edición de "Municipio y bancos"** (la definió el dueño; no se
+  escribe en el repositorio). La exige `class.configuracion.php::run()` para las funciones que guardan
+  (2 y 4); 5 desbloquea (15 min en la sesión), 6 consulta, 7 bloquea; 5 intentos
+  fallidos → 5 min de espera. Solo el hash en `CLAVE_EDICION_HASH`; un municipio lo
+  cambia con `MUNICIPIO_CLAVE_PARAMETROS_HASH` en su config.
+- **Recibo de pago** (`extensiones/reciboPago.php?modulo=ICA|RETEICA|
+  AUTORRETEICA&id=`; nació como "desprendible", el cliente lo nombró así): uno para
+  los tres; conceptos de lo guardado (ICA: mismo mapeo que `declaracion.php`, total
+  en `dec_ValorConcepto20`; retención 14–17 y autorretención 15–23 del catálogo).
+  Solo presentada, sin pagar y con valor. El total de la declaración sale como
+  SUBTOTAL, debajo "INTERESES DE MORA AL <pague antes de>" y TOTAL A PAGAR (lo que
+  lleva el código de barras). Los intereses van en $0: el cálculo lo dejó
+  PENDIENTE el cliente. Sin establecimiento (pedido del cliente); NIT sí.
+  Papelería municipal NO va. LIQUIDADOR: si lo imprime un funcionario (rol 1/2) va
+  su nombre (`conf_usuarios`); si lo genera el contribuyente, ninguno. Tarjeta
+  "Recibo de pago" (50 px, parte en dos renglones como las demás).
+- **Vencimiento del ICA** (audio + respuestas del cliente, 2026-09-24): hasta la
+  fecha límite se paga con la PROPIA declaración (su código de barras) o por PSE;
+  vencida, la declaración sale SIN código de barras (leyenda "DECLARACIÓN VENCIDA EL
+  … Para pagarla, genere el recibo de pago") y se paga con el recibo. La fecha es
+  `ICA_FECHA_LIMITE` (DD/MM, migración **034**, 30/04), editable en Municipio y
+  bancos detrás de su contraseña; la regla vive en `business/class.vencimientoICA.php`.
+  **Cae en el MISMO año de `dec_AnioDeclaracion`**, no en el siguiente: ese año lo
+  pone `_agregarDeclaracion` con `date('Y')` (el cliente quitó el selector de año
+  gravable). La casilla FECHA MÁXIMA PRESENT. ya no sale en blanco y el (96) de la
+  declaración es esa fecha. Recibo del ICA: sin vencer, vale hasta la fecha
+  límite; vencido (y retención/autorretención, sin fecha aún), "Días de vigencia
+  del recibo" (vacío = el mismo día). Una pagada conserva su código (comprobante).
+  `liquidacion.php` (sin enlace en la interfaz, pero abre por URL) sigue la misma
+  regla, para que no quede una puerta a un código pagable de una vencida.
+- **Sello de la declaración ICA DE FONDO** ("se ve horrible", cliente): el sello
+  grande (17 mm, dibujado encima de la fila de firmas) tapaba con su fondo blanco
+  el título de la casilla, el nombre y la fecha. Ahora va con `Multiply` al 60 %,
+  1,5 mm más abajo para no pisar el título, y el sello chico de la casilla se
+  cambió por `Sello_Firma_espacio.png` (8×8 blanco, sin alfa), que conserva el alto
+  de la fila sin que aparezca un segundo sello en miniatura dentro del grande.
+- **Menú en ventanas < 1200 px**: lo abre el ESCUDO (`#btnMenu`), el mismo botón
+  que en escritorio lo oculta. El ☰ que hubo se quitó ("se ve tan amateur", cliente
+  2026-09-24). El handler corta la propagación del clic y del `touchstart`: la
+  plantilla cierra el menú con cualquier toque fuera de él o de un `.menu-icon`, y
+  el escudo no es ninguno. Bajo 1025 px la plantilla dejaba el bloque izquierdo del
+  encabezado en 25 % y el título se montaba sobre el nombre: ahora es flexible.
+- `_contribuyenteDeLaSesion` de retenciones, declaraciones ICA y establecimientos
+  también con `TOP 1 … ORDER BY c.ind_Id` (el mismo contribuyente que el login).
+- Inicio y Recaudo ya no cargan dos veces `menu.js`/`Permisos.js`; el título de la
+  pestaña del RIT decía "Establecimientos".
+
+### Pendientes
+
+- Migración **033** (consorcio/patrimonio): `_guardarRIT` omite esas dos columnas
+  si no existen, para que desplegar sin correrla no tumbe el guardado del RIT;
+  igual hay que aplicarla para que se graben.
+- Migración **034** (fecha límite del ICA): sin ella el código usa el 30/04, pero
+  el parámetro no aparece en Municipio y bancos.
+- Intereses de mora (cliente: "dejemos pendiente el cálculo"): falta la fórmula,
+  las tasas y la base. Cuando llegue, va en `$intereses` de `reciboPago.php` y PSE
+  tiene que cobrar total + intereses después de la fecha límite (hoy cobra el
+  total). Faltan también las fechas de vencimiento de retención y autorretención.
+  Y pasar el recibo por el escáner del banco antes de anunciarlo (misma
+  certificación pendiente del GS1-128).

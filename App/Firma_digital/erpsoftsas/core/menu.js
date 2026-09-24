@@ -55,6 +55,11 @@ class Menu {
                     // los bancos, que hasta ahora solo se cambiaban con SQL.
                     window.location = 'configuracion.php';
                     break;
+                case 13:
+                    // Todos los establecimientos del municipio (directorio de
+                    // la Alcaldía; se editan gestionando a su contribuyente).
+                    window.location = 'establecimientosTodos.php';
+                    break;
                 
                 case 100:
                     window.location = 'consultasPazySalvoPredial.php';
@@ -134,7 +139,11 @@ class Menu {
         }
 
         if(id_Rol == 1){
-            // Mostrar todo el menú para el rol administrador
+            // Mostrar todo el menú para el rol administrador. Los módulos del
+            // contribuyente (RIT, Establecimientos y las 3 declaraciones) los
+            // decide después ContribActivo (dist/menu.php): el administrador no
+            // tiene RIT propio, así que solo aparecen -bajo el nombre de quien
+            // gestiona- cuando eligió a alguien en Contribuyentes.
             $("#accordion-menu > li").show();
             $(".submenu li").show();
             return;

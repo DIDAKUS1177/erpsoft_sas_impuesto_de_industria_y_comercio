@@ -410,9 +410,6 @@ class Conceptos {
         $("#MICAAlcaldia").addClass("active show");
         $("#SubICAAlcaldia").css("display", "block");
 
-        $("#MICA_DatosBasicos").addClass("active show");
-        $("#SubICA_DatosBasicos").css("display", "block");
-
         $("#ICA_Conceptos").addClass("active");
     }
 }

@@ -80,15 +80,11 @@ $esJuridica = (int) ($contribuyente['ind_Persona'] ?? 0) === 2;
 $dv = (isset($contribuyente['ind_DV']) && $contribuyente['ind_DV'] !== null)
       ? (string) (int) $contribuyente['ind_DV'] : '';
 
-/* Encabezado de sección, tal cual el Excel. Va full-width, sin rótulo lateral. */
-$html .= '
-<table border="1" cellpadding="3" width="100%">
-<tr bgcolor="#cae6e7"><td align="center"><b>INFORMACIÓN BÁSICA DEL DECLARANTE</b></td></tr>
-</table>
-
-<br>
-';
-
+/* El encabezado (escudo + títulos) se pinta solo y $ySecA se toma ANTES de
+   "INFORMACIÓN BÁSICA DEL DECLARANTE": esa franja y los datos son una misma
+   sección, van bajo la banda "A. DECLARANTE" y en la MISMA llamada a writeHTML,
+   para que no quede aire entre ellas. Igual que en retención (retro cliente
+   2026-09-23: "lo de arriba y lo de A es parte de una misma"). */
 $pdf->writeHTML($html, true, false, true, false, '');
 $ySecA = $pdf->GetY() - DESFASE_GETY_RET;
 
@@ -110,10 +106,18 @@ foreach ($BIMESTRES as $nb => $nombreBim) {
                     . '</td>';
 }
 
+/* UNA sola tabla con la banda gris en UNA celda (rowspan), igual que la sección A
+   del ICA y de retención: con una tabla por fila, las líneas horizontales
+   cruzaban el rótulo "A. DECLARANTE" (retro cliente 2026-09-24). Cada fila suma
+   95% + la banda; si se agrega o quita una fila, el rowspan cambia con ella. */
 $html = '
+<style> td { font-size: 6.5px; } </style>
 <table border="1" cellpadding="2" width="100%">
+<tr bgcolor="#cae6e7">
+    <td width="5%" rowspan="7" bgcolor="#e1dada"></td>
+    <td width="95%" align="center"><b>INFORMACIÓN BÁSICA DEL DECLARANTE</b></td>
+</tr>
 <tr>
-    <td width="5%" bgcolor="#e1dada"></td>
     <td width="19%"><b>1. TIPO DE DOCUMENTO</b></td>
     <td width="10%">NIT [<b>' . $marca($esJuridica) . '</b>]</td>
     <td width="10%">C.C. [<b>' . $marca(!$esJuridica) . '</b>]</td>
@@ -123,15 +127,11 @@ $html = '
     <td width="6%"><b>No.</b></td>
     <td width="27%">' . htmlspecialchars((string) ($contribuyente['ind_NumeroIdentificacion'] ?? '')) . '</td>
 </tr>
-</table>
-<table border="1" cellpadding="2" width="100%">
 <tr>
-    <td width="5%" bgcolor="#e1dada"></td>
     <td width="35%"><b>2. NOMBRE O RAZÓN SOCIAL</b></td>
     <td width="60%">' . htmlspecialchars(pdfret_nombreContribuyente($contribuyente)) . '</td>
 </tr>
 <tr>
-    <td width="5%" bgcolor="#e1dada"></td>
     <td width="13%"><b>3. DIRECCIÓN</b></td>
     <td width="37%">' . htmlspecialchars((string) ($contribuyente['ind_Direccion'] ?? '')) . '</td>
     <td width="10%"><b>4. CIUDAD</b></td>
@@ -140,14 +140,12 @@ $html = '
     <td width="8%">' . htmlspecialchars($ubic['departamento']) . '</td>
 </tr>
 <tr>
-    <td width="5%" bgcolor="#e1dada"></td>
     <td width="18%"><b>6. CORREO ELECTRÓNICO</b></td>
     <td width="44%">' . htmlspecialchars((string) ($contribuyente['ind_Email'] ?? '')) . '</td>
     <td width="13%"><b>7. TELÉFONO</b></td>
     <td width="20%">' . htmlspecialchars((string) ($contribuyente['ind_Telefono'] ?? '')) . '</td>
 </tr>
 <tr>
-    <td width="5%" bgcolor="#e1dada"></td>
     <td width="20%"><b>8. VIGENCIA FISCAL</b></td>
     <td width="10%" align="center">' . (int) $row['aut_Anio'] . '</td>
     <td width="18%"><b>10. CORRECCIÓN</b> [<b>' . $marca($esCorreccion) . '</b>]</td>
@@ -156,10 +154,7 @@ $html = '
     <td width="10%"><b>9. FECHA</b></td>
     <td width="20%" align="center">' . htmlspecialchars($fechaDoc) . '</td>
 </tr>
-</table>
-<table border="1" cellpadding="2" width="100%">
 <tr>
-    <td width="5%" bgcolor="#e1dada"></td>
     <td width="11%" bgcolor="#e1dada"><b>PERÍODO</b></td>
     ' . $celdasPeriodo . '
 </tr>
@@ -248,10 +243,13 @@ pdfret_textoVertical($pdf, 'B. INGRESOS', 10, $ySecB, $ySecC);
    ingresos gravados de cada una.
    =========================================================================== */
 
+/* Filas bajo la banda: encabezado + actividades + energía + TOTAL. Sin
+   actividades hay UNA fila de mensaje que también cuenta (con count() a secas la
+   banda quedaba corta y "C. ACTIVIDADES" se salía de su franja). */
 $html = '
 <table border="1" cellpadding="2" width="100%">
 <tr bgcolor="#e1dada">
-    <td width="5%" rowspan="' . (count($actividades) + 3) . '" bgcolor="#e1dada"></td>
+    <td width="5%" rowspan="' . (max(1, count($actividades)) + 3) . '" bgcolor="#e1dada"></td>
     <td width="10%" align="center"><b>CÓDIGO</b></td>
     <td width="45%"><b>ACTIVIDAD</b></td>
     <td width="10%" align="center"><b>TARIFA<br>(x mil)</b></td>
@@ -352,8 +350,7 @@ pdfret_textoVertical($pdf, 'D. LIQUIDACIÓN', 10, $ySecD, $ySecE);
    cliente 2026-09-14). Igual que en reteica.php. */
 $firmante = pdfret_firmanteDeclarante($contribuyente);
 
-$pdf->writeHTML(
-    pdfret_firmas(
+$htmlFirmas = pdfret_firmas(
         $firmas['declarante'],
         $firmas['contador'],
         $fechaSello,
@@ -370,9 +367,16 @@ $pdf->writeHTML(
                        ? (string) ($contribuyente['ind_TarjetaProfRevisor'] ?? '')
                        : (string) ($contribuyente['ind_TarjetaProfContador'] ?? ''),
         ]
-    ),
-    true, false, true, false, ''
-);
+    );
+
+/* Firmas y código de barras van juntos: si no caben en lo que queda de esta
+   hoja pasan a la siguiente, y la banda "E. FIRMAS" arranca arriba de ella.
+   Aquí es donde más se nota: las actividades salen del RIT y un contribuyente
+   con varias llenaba la hoja (ver pdfret_saltoSiNoCabe). */
+if (pdfret_saltoSiNoCabe($pdf, $htmlFirmas)) {
+    $ySecE = $pdf->GetY();
+}
+$pdf->writeHTML($htmlFirmas, true, false, true, false, '');
 
 /* Ver la nota equivalente en reteica.php: el rotulo cubre solo la tabla de
    firmas, no el bloque de codigo de barras. */
@@ -388,7 +392,8 @@ pdfret_marcaDeAgua($pdf, $marcaAgua);
 if (!empty($_GET['medir'])) {
     header('Content-type: text/plain');
     echo 'cierra en ' . round($yFin, 2) . 'mm de ' . RET_ALTO_PAGINA . 'mm'
-       . ' (holgura ' . round(RET_ALTO_PAGINA - $yFin, 2) . 'mm)';
+       . ' (holgura ' . round(RET_ALTO_PAGINA - $yFin, 2) . 'mm) - hojas: '
+       . $pdf->getNumPages();
     exit;
 }
 

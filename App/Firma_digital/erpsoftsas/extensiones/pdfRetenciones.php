@@ -66,6 +66,10 @@ if (!defined('MUNICIPIO_LOGO'))         define('MUNICIPIO_LOGO', '/erpsoftsas/ve
  * municipio lo define en su config.municipio.php, como el nombre y el escudo.
  */
 if (!defined('MUNICIPIO_NIT'))          define('MUNICIPIO_NIT', '891.801.240-1');
+/* Para la línea "MUNICIPIO DE X - DEPTO" del encabezado. El config de cada
+   municipio ya la define (la usan declaracion.php y el RIT); esto solo evita un
+   fatal si alguna instalación no la trae. */
+if (!defined('MUNICIPIO_CIUDAD'))       define('MUNICIPIO_CIUDAD', 'Paipa');
 
 /* Ver la trampa 2 de la cabecera. Es el mismo valor que usa declaracion.php. */
 const DESFASE_GETY_RET = 3;
@@ -136,16 +140,28 @@ function pdfret_marcaDeAgua($pdf, $texto)
     $pdf->SetFont('helvetica', 'B', 60);
     $ancho = $pdf->GetStringWidth($texto);
 
-    $pdf->StartTransform();
-    $pdf->SetAlpha(0.15);
-    $pdf->SetTextColor(150, 150, 150);
-    $pdf->Rotate(45, $cx, $cy);
-    /* Text() con un solo punto de anclaje. Con Cell() el rectangulo queda mal
-       ubicado tras la rotacion: solo se pinta una esquina. */
-    $pdf->Text($cx - ($ancho / 2), $cy, $texto);
-    $pdf->StopTransform();
-    $pdf->SetAlpha(1);
-    $pdf->SetTextColor(0, 0, 0);
+    /* En TODAS las hojas: desde que firmas y código de barras pueden pasar a una
+       segunda hoja (ver pdfret_saltoSiNoCabe), pintarla solo en la actual dejaba
+       la primera sin "BORRADOR" -justo la que tiene las cifras-. */
+    $ultima = $pdf->getPage();
+    for ($p = 1; $p <= $pdf->getNumPages(); $p++) {
+        $pdf->setPage($p);
+        /* SetFont OTRA VEZ por hoja: TCPDF escribe el tamaño ("Tf") solo en el
+           flujo de la hoja donde está el cursor. Sin esto, en la hoja 1 quedaba
+           la letra de 6.5px de las tablas y la marca salía diminuta. */
+        $pdf->SetFont('helvetica', 'B', 60);
+        $pdf->StartTransform();
+        $pdf->SetAlpha(0.15);
+        $pdf->SetTextColor(150, 150, 150);
+        $pdf->Rotate(45, $cx, $cy);
+        /* Text() con un solo punto de anclaje. Con Cell() el rectangulo queda mal
+           ubicado tras la rotacion: solo se pinta una esquina. */
+        $pdf->Text($cx - ($ancho / 2), $cy, $texto);
+        $pdf->StopTransform();
+        $pdf->SetAlpha(1);
+        $pdf->SetTextColor(0, 0, 0);
+    }
+    $pdf->setPage($ultima);
     $pdf->SetFont($familia, $estilo, $tamano);
 }
 
@@ -245,11 +261,37 @@ function pdfret_nuevoPdf()
 /** Los estilos y el encabezado con escudo, comunes a los dos formularios. */
 function pdfret_encabezado($titulo, $subtitulo)
 {
+    /* La dependencia y "MUNICIPIO DE X - DEPTO" vienen del formulario oficial en
+       papel y faltaban aquí (retro cliente 2026-09-23: "le falta texto de lo que
+       decía el formato original"). Mismas constantes y mismos valores por
+       defecto que ya usa el RIT (ritActualizado.php), para que otro municipio
+       ponga los suyos en su config sin tocar este archivo. */
+    $secretaria  = defined('MUNICIPIO_SECRETARIA') ? MUNICIPIO_SECRETARIA : 'SECRETARÍA DE HACIENDA';
+    $dependencia = defined('MUNICIPIO_DEPENDENCIA_TRIBUTARIA')
+        ? MUNICIPIO_DEPENDENCIA_TRIBUTARIA
+        : 'DIRECCIÓN DE IMPUESTOS, RENTAS Y JURISDICCIÓN COACTIVA';
+    $municipio   = 'MUNICIPIO DE ' . mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8')
+                 . ' - ' . mb_strtoupper(MUNICIPIO_DEPARTAMENTO, 'UTF-8');
+
+    /* TODAS las líneas del mismo tamaño (11, negrita), como el encabezado del ICA
+       (declaracion.php). Antes el título iba a 11 y las demás a 8, y el cliente
+       lo notó al compararlos (retro 2026-09-24: "el título debería ser igual, el
+       tamaño de letra"). A 11 "SECRETARÍA - DIRECCIÓN…" ya no cabe en un renglón
+       y TCPDF dejaba "COACTIVA" sola abajo: por eso van en dos líneas. */
+    $lineas = [
+        mb_strtoupper(MUNICIPIO_NOMBRE, 'UTF-8'),
+        $secretaria,
+        $dependencia,
+        $titulo,
+        $subtitulo,
+        $municipio,
+    ];
+    $lineas = array_map('htmlspecialchars', array_filter($lineas, 'strlen'));
+
     return '
 <style>
     td { vertical-align: top; font-size: 6.5px; }
     .tituloPrincipal { font-size: 11px; font-weight: bold; }
-    .sub { font-size: 8px; }
 </style>
 
 <table border="0" cellpadding="2" width="100%">
@@ -258,11 +300,7 @@ function pdfret_encabezado($titulo, $subtitulo)
         <img src="' . pdfret_rutaEscudo() . '" width="52">
         <div style="font-size:5px; text-align:center;">NIT ' . htmlspecialchars(MUNICIPIO_NIT) . '</div>
     </td>
-    <td class="tituloPrincipal" width="88%" align="center">
-        <b>' . htmlspecialchars(mb_strtoupper(MUNICIPIO_NOMBRE, 'UTF-8')) . '</b><br>
-        SECRETARÍA DE HACIENDA<br>
-        ' . htmlspecialchars($titulo) . ($subtitulo !== '' ? '<br><span class="sub">' . htmlspecialchars($subtitulo) . '</span>' : '') . '
-    </td>
+    <td class="tituloPrincipal" width="88%" align="center">' . implode('<br>', $lineas) . '</td>
 </tr>
 <tr><td height="6"></td></tr>
 </table>
@@ -337,6 +375,44 @@ function pdfret_firmas($firmaDeclarante, $firmaContador, $fechaSello, $nombreDec
 ';
 
     return $html;
+}
+
+
+/* Lo que el bloque de código de barras baja por debajo del GetY() con que
+   arranca: rótulo (4.5) + código (21.0) - el desfase con que empieza (ver
+   pdfret_bloqueBarras). */
+const RET_ALTO_BARRAS = 22.5;
+
+/**
+ * Pasa firmas + código de barras a una hoja nueva si no caben en la actual.
+ * Devuelve true si saltó de hoja.
+ *
+ * SetAutoPageBreak está en false (trampa 1), así que sin esto lo que no cabe se
+ * dibuja por debajo del borde y NO se ve: un contribuyente con varias
+ * actividades se quedaba sin firmas ni código de barras en el papel. Medido el
+ * 2026-09-23: una autorretención con las 6 actividades del RIT más cargado de
+ * la base cerraba en 300.7mm de 279.4. Firmas y código van siempre JUNTOS:
+ * separarlos dejaría un código de barras huérfano en otra hoja.
+ *
+ * El alto de las firmas se MIDE -se pintan dentro de una transacción de TCPDF y
+ * se deshacen- en vez de suponerlo: el sello ya cambió de tamaño cinco veces.
+ */
+function pdfret_saltoSiNoCabe($pdf, $htmlFirmas)
+{
+    $y0 = $pdf->GetY();
+
+    $pdf->startTransaction();
+    $pdf->writeHTML($htmlFirmas, true, false, true, false, '');
+    $altoFirmas = $pdf->GetY() - $y0;
+    $pdf->rollbackTransaction(true);
+
+    // 5mm de margen inferior: la impresora no llega al borde exacto del papel.
+    if ($y0 + $altoFirmas + RET_ALTO_BARRAS <= RET_ALTO_PAGINA - 5) {
+        return false;
+    }
+
+    $pdf->AddPage();
+    return true;
 }
 
 
