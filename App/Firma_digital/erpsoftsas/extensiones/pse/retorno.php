@@ -36,7 +36,8 @@ $col = [
     'req' => \erpsoftsas\PseModulo::colRequestId($m),
 ];
 $row = $con->obnerFila($con->consultar(
-    "SELECT {$col['numero']} AS numero, {$col['req']} AS pse_req, {$col['valor']} AS valor, {$col['pagado']} AS pagado
+    "SELECT {$col['numero']} AS numero, {$col['req']} AS pse_req, {$col['valor']} AS valor, {$col['pagado']} AS pagado,
+            {$m['prefijo']}_ValorPago AS valor_pagado
      FROM {$m['tabla']} WHERE {$m['pk']} = ?",
     [$id]
 ));
@@ -54,10 +55,14 @@ if (!$row || empty($row['pse_req'])) {
     $aprobado = true;
     $estado   = 'APPROVED';
     $mensaje  = 'Esta declaración ya estaba registrada como pagada.';
+    // Lo que entró, que en una ICA vencida incluye los intereses de mora.
+    if ((float) ($row['valor_pagado'] ?? 0) > 0) { $valor = (float) $row['valor_pagado']; }
 } else {
     try {
         $respuesta = PlacetoPay::consultarSesion($row['pse_req']);
         $info = PlacetoPay::interpretarRespuesta($respuesta);
+        // Lo que cobró el banco: en una ICA vencida, el total más los intereses de mora.
+        if (!empty($info['valor'])) { $valor = (float) $info['valor']; }
 
         // Se guarda el estado venga como venga; solo se marca pagada si el
         // banco la aprobo. El descriptor $m dice a que tabla/columnas escribir.
@@ -89,7 +94,13 @@ $mapaEstado = [
 ];
 $estadoTxt = $mapaEstado[$estado] ?? ($estado !== '' ? $estado : '—');
 $valorFmt  = $valor > 0 ? '$ ' . number_format($valor, 0, ',', '.') . ' COP' : '—';
-$fechaTxt  = $fechaIso !== '' ? date('Y-m-d H:i', strtotime($fechaIso)) : date('Y-m-d H:i');
+// En hora de Colombia, como el comprobante del banco (con el servidor en UTC salía 5 horas adelantada).
+$zonaCo    = new DateTimeZone('America/Bogota');
+try {
+    $fechaTxt = ($fechaIso !== '' ? new DateTime($fechaIso) : new DateTime('now'))->setTimezone($zonaCo)->format('Y-m-d H:i');
+} catch (Exception $e) {
+    $fechaTxt = (new DateTime('now', $zonaCo))->format('Y-m-d H:i');
+}
 $claseEstado = $aprobado ? 'ok' : ($estado === 'PENDING' ? 'pendiente' : 'error');
 
 ?><!DOCTYPE html>

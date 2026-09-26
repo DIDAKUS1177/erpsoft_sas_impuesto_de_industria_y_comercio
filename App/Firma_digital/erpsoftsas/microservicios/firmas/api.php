@@ -116,6 +116,13 @@ class FirmasAPI
                 echo json_encode(['ok' => 0, 'mensaje' => $permiso['mensaje']]);
                 return;
             }
+            // Un RIT que no se puede firmar no recibe código: se dice qué falta.
+            $faltan = $this->_faltantesRit($conSql, $permiso['id']);
+            if ($faltan !== null) {
+                header('Content-type: application/json');
+                echo json_encode(['ok' => 0, 'mensaje' => $faltan]);
+                return;
+            }
             $dest   = $this->_correoRepresentante($conSql, $permiso['id'], $idUsuario);
             $email  = $dest['email'];
             $nombre = $dest['nombre'];
@@ -1015,6 +1022,21 @@ class FirmasAPI
     }
 
     /**
+     * Mensaje de por qué el RIT guardado no se puede firmar, o null si está
+     * completo. La regla es RitFirma::faltantes(), la misma del guardado.
+     */
+    private function _faltantesRit($conSql, $idContribuyente)
+    {
+        include_once SERVER . '/business/class.ritFirma.php';
+        $faltan = \erpsoftsas\RitFirma::faltantes($conSql, $idContribuyente);
+        if (!$faltan) { return null; }
+
+        return 'No se puede firmar el RIT. Falta: ' . implode('; ', $faltan)
+             . '. Complételo (los documentos van en la sección "Documentos"), '
+             . 'guárdelo y vuelva a firmar.';
+    }
+
+    /**
      * funcion 9 - Firma el RIT.
      * Requiere el codigo OTP; lo valida y lo consume en esta misma llamada.
      */
@@ -1033,24 +1055,15 @@ class FirmasAPI
         $idUsuario       = $permiso['usuario'];
 
         /*
-         * Sin los soportes obligatorios no se firma.
-         *
-         * Pedido por el cliente el 2026-08-26. Se comprueba ANTES de consumir
-         * el OTP: si se hiciera despues, el codigo quedaria gastado y el
-         * contribuyente tendria que pedir otro para el mismo intento.
-         *
-         * Subirlos sigue siendo un aviso y no un bloqueo mientras se
-         * diligencia; lo que queda cerrado es dar el RIT por firmado.
+         * Incompleto no se firma: ni sin los soportes obligatorios (cliente,
+         * 2026-08-26) ni sin los campos obligatorios (2026-09-25). Es la misma
+         * regla que impide guardarlo, aplicada a lo que está en la base, que es
+         * lo que se firma: un RIT guardado a medias antes de esa regla tampoco
+         * pasa. Se comprueba ANTES de consumir el OTP, para no gastar el código.
          */
-        include_once SERVER . '/business/class.ritFirma.php';
-        $faltan = \erpsoftsas\RitFirma::documentosFaltantes($conSql, $idContribuyente);
-        if ($faltan) {
-            echo json_encode([
-                'ok'      => 0,
-                'mensaje' => 'No se puede firmar el RIT: faltan documentos obligatorios ('
-                             . implode(', ', $faltan) . '). Cárguelos en la sección '
-                             . '"Documentos" y vuelva a intentarlo.',
-            ]);
+        $faltan = $this->_faltantesRit($conSql, $idContribuyente);
+        if ($faltan !== null) {
+            echo json_encode(['ok' => 0, 'mensaje' => $faltan]);
             return;
         }
 

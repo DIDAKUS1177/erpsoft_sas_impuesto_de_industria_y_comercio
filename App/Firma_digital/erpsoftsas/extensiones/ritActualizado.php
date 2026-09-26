@@ -279,19 +279,20 @@ $ritYaFormalizado = (bool) $previo;
  * han cesado nada -visto en la base local, establecimiento 43-. La misma
  * defensa ya existe en class.contribuyentes.php al leer el cese.
  */
+/*
+ * Solo el cese de la PERSONA (migracion 019). Aqui se caia tambien al de
+ * cualquiera de sus locales "para bases sin la 019", pero esta misma consulta
+ * ya nombra ind_FechaCese, asi que sin la 019 falla igual. Y desde el
+ * 2026-09-25 cerrar un local (funcion 23 de class.establecimientos.php)
+ * siempre escribe est_Fecha_cierre: el RIT de quien cerraba UNO de sus locales
+ * salia marcado "Cese de actividades" como si hubiera cesado del todo.
+ */
 $filaCese = $con->obnerFila($con->consultar(
     "SELECT TOP 1 c.ind_Id
        FROM ind_contribuyentes c
       WHERE c.ind_Id = ?
-        AND (
-              -- el cese de la persona (migracion 019)
-              c.ind_FechaCese IS NOT NULL
-              -- o, en una base sin migrar, el que quedo en alguno de sus locales
-              OR EXISTS (SELECT 1 FROM ind_establecimientos e
-                          WHERE e.est_IdContribuyente = c.ind_Id
-                            AND e.est_Fecha_cierre IS NOT NULL
-                            AND CONVERT(DATE, e.est_Fecha_cierre) <> '1900-01-01')
-            )",
+        AND c.ind_FechaCese IS NOT NULL
+        AND c.ind_FechaCese <> '1900-01-01'",
     [$idContribuyente]
 ));
 $hayCese = (bool) $filaCese;
@@ -686,23 +687,21 @@ $d = [
  * El cese que imprime el formulario es el del CONTRIBUYENTE (migracion 019):
  * lo que se declara aqui es que la persona dejo de ejercer actividades en el
  * municipio. Cerrar un local suelto y seguir con los otros es otro hecho, y
- * vive en el estado del registro del establecimiento.
- *
- * Se cae al del establecimiento para las bases que todavia no tengan la 019,
- * igual que hacen 'matricula' y las dos fechas de arriba.
+ * vive en el estado del registro del establecimiento. Ya no se cae a los datos
+ * del local (ver $hayCese): imprimian el cierre de UN local como cese de todo.
  */
-'fecha_cese' => _fecha($row['ind_FechaCese'] ?? null, $row['est_Fecha_cierre'] ?? null),
+'fecha_cese' => _fecha($row['ind_FechaCese'] ?? null),
 
 // El codigo de la causal (1 Fusion, 2 Escision, 3 Liquidacion, 4 Otro). Las
 // cuatro casillas del formulario se imprimian SIEMPRE vacias: el valor se leia
 // pero no se usaba para marcar ninguna.
-'causal' => trim((string) ($row['ind_CausalCese'] ?: ($row['est_Causal'] ?? ''))),
+'causal' => trim((string) ($row['ind_CausalCese'] ?? '')),
 
 'resolucion_cese' => $esc($row['est_Resolucion_cierre']),
 
 // Punto 12: la observacion del cese se captura desde hace dias pero no se
 // imprimia en ninguna parte.
-'observacion_cese' => $esc((string) ($row['ind_ObservacionCese'] ?: ($row['est_Observacion_cierre'] ?? ''))),
+'observacion_cese' => $esc((string) ($row['ind_ObservacionCese'] ?? '')),
 
 ];
 

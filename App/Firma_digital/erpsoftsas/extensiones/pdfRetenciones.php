@@ -786,17 +786,22 @@ function pdfret_perfilContribuyente($con, $idContribuyente, $anio)
     $idContribuyente = (int) $idContribuyente;
     $anio            = (int) $anio;
 
-    // Nombre del establecimiento y cuantos hay (activos).
+    // Nombre del establecimiento y cuantos hay: los activos y los cerrados
+    // durante el año declarado o despues (funcionaron ese año; mismo criterio
+    // que extensiones/declaracion.php). Asi cerrar un local no cambia lo que
+    // imprime una declaracion ya presentada.
+    $vigentes = "est_IdContribuyente = ?
+                 AND (est_Activo = 1 OR (est_Activo = 0 AND est_Fecha_cierre >= ?))";
+    $params   = [$idContribuyente, sprintf('%04d-01-01', $anio)];
     $est = $con->obnerFila($con->consultar(
         "SELECT TOP 1 est_Nombre FROM ind_establecimientos
-          WHERE est_IdContribuyente = ? AND est_Activo = 1
-          ORDER BY est_Id",
-        [$idContribuyente]
+          WHERE $vigentes
+          ORDER BY est_Activo DESC, est_Id",
+        $params
     ));
     $conteo = $con->obnerFila($con->consultar(
-        "SELECT COUNT(*) AS n FROM ind_establecimientos
-          WHERE est_IdContribuyente = ? AND est_Activo = 1",
-        [$idContribuyente]
+        "SELECT COUNT(*) AS n FROM ind_establecimientos WHERE $vigentes",
+        $params
     ));
 
     /* Actividades del RIT, la mas reciente que no pase del año declarado (mismo

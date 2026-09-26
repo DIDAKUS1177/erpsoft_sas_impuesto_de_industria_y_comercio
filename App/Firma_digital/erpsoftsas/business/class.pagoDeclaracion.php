@@ -96,7 +96,12 @@ class PagoDeclaracion
          * ventanilla, que puede ser de días atrás.
          */
         $fechaPago = trim((string) ($datos['fechaPago'] ?? ''));
-        if ($fechaPago === '') { $fechaPago = date('Y-m-d H:i:s'); }
+        if ($fechaPago === '') {
+            // La hora de Colombia: con el servidor en UTC, un PSE pagado el día
+            // límite después de las 7 p. m. quedaba del día siguiente (y el 31/12,
+            // del año siguiente).
+            $fechaPago = (new \DateTime('now', new \DateTimeZone('America/Bogota')))->format('Y-m-d H:i:s');
+        }
 
         $anio = (int) date('Y', strtotime($fechaPago));
 

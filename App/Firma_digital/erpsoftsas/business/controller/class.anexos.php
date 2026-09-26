@@ -332,6 +332,11 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
             return [];
         }
 
+        if (self::_establecimientoCerrado($dueno, $con)) {
+            $this->_mensaje = 'El establecimiento está cerrado: sus archivos no se pueden cambiar.';
+            return [];
+        }
+
         if (!isset($_FILES['anexos'])) {
             $this->_mensaje = 'No llegó ningún archivo';
             return [];
@@ -511,6 +516,22 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
     }
 
     /**
+     * Un establecimiento cerrado conserva sus archivos tal como quedaron: el
+     * soporte del cierre es la prueba (revisión del cliente 2026-09-25). Solo
+     * vuelven a poder cambiarse si el administrador lo reabre. Cerrado es todo
+     * lo que no está activo (est_Activo <> 1), como en class.establecimientos.php.
+     */
+    private static function _establecimientoCerrado(array $dueno, $con)
+    {
+        if (($dueno['tipo'] ?? '') !== 'establecimiento') { return false; }
+
+        $fila = $con->obnerFila($con->consultar(
+            "SELECT est_Activo FROM ind_establecimientos WHERE est_Id = ?", [(int) $dueno['id']]
+        ));
+        return $fila && (int) $fila['est_Activo'] !== 1;
+    }
+
+    /**
      * Punto 18: borrado LOGICO. El archivo sigue en disco y la fila se puede
      * recuperar. La queja del cliente era justamente que los archivos
      * desaparecian; borrarlos de verdad seria repetir el problema.
@@ -541,6 +562,11 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
         $duenoReal = self::_duenoDeLaFila($anexo);
         if (!$duenoReal || !self::_puedeOperar($duenoReal, $con)) {
             $this->_mensaje = 'No tiene permiso para quitar este anexo';
+            return [];
+        }
+
+        if (self::_establecimientoCerrado($duenoReal, $con)) {
+            $this->_mensaje = 'El establecimiento está cerrado: sus archivos no se pueden cambiar.';
             return [];
         }
 

@@ -1779,6 +1779,10 @@ actualizarDeclaracionIca(valor, numeroCampo){
                 var d = resp.datos;
                 establecimientos._rit = d;
 
+                // Lo que se marcó en rojo al intentar guardar ya no aplica:
+                // los campos vuelven a lo guardado (.val() no dispara "input").
+                $('#formRIT .is-invalid').removeClass('is-invalid');
+
                 $('#rit_ind_Id').val(d.ind_Id);
 
                 // Los de solo lectura se pintan como texto.
@@ -1908,7 +1912,7 @@ actualizarDeclaracionIca(valor, numeroCampo){
         return {
             rut:    'RUT',
             camara: 'Cámara de comercio o acta de constitución',
-            cedula: 'Documento de identificación del representante legal'
+            cedula: 'Documento de identificación del representante legal o propietario'
         };
     }
 
@@ -2070,9 +2074,9 @@ actualizarDeclaracionIca(valor, numeroCampo){
     /**
      * Dice cuales de los obligatorios faltan.
      *
-     * Es un aviso, no un bloqueo: el RIT se diligencia en varias sesiones y
-     * negar el guardado por un documento pendiente dejaria al contribuyente
-     * sin poder guardar ni lo que ya tiene escrito.
+     * Aqui es solo el aviso amarillo; desde la revision del 2026-09-25 guardar
+     * tambien los exige (antes solo firmar): lo comprueba el servidor en
+     * RitFirma::faltantes y la pantalla lo muestra en avisarFaltantesRIT.
      */
     avisarDocumentosFaltantes(lista) {
         const $aviso = $('#ritAvisoDocumentos');
@@ -2142,7 +2146,7 @@ actualizarDeclaracionIca(valor, numeroCampo){
 
         dependientes.forEach(function (id) {
             const $c = $('#' + id);
-            if (esJuridica) { $c.val(''); }
+            if (esJuridica) { $c.val('').removeClass('is-invalid'); }
             $c.prop('readonly', esJuridica)
               .toggleClass('campo-bloqueado', esJuridica)
               .attr('title', esJuridica ? 'No aplica para persona jurídica' : '');
@@ -2722,12 +2726,92 @@ actualizarDeclaracionIca(valor, numeroCampo){
         return null;
     }
 
+    /**
+     * Campos obligatorios del RIT (revisión del cliente 2026-09-25). Marca en
+     * rojo los que faltan y devuelve sus nombres, todos de una vez. El servidor
+     * los vuelve a exigir junto con los documentos (RitFirma::faltantes); aquí
+     * solo se evita un viaje para enterarse. Tiene que pedir lo mismo que él:
+     * el departamento no viaja (solo filtra la lista de municipios), así que
+     * no se exige aparte; si el catálogo no carga, queda el municipio guardado.
+     */
+    validarObligatoriosRIT() {
+        var natural = String($('#rit_ind_Persona').val()) !== '2';
+        var campos = [
+            ['rit_ind_Persona',                'Tipo de persona'],
+            ['rit_ind_PrimerNombre',           'Primer nombre o razón social'],
+            ['rit_ind_PrimerApellido',         'Primer apellido', natural],
+            ['rit_ind_Direccion',              'Dirección de notificación'],
+            ['rit_ind_IdCiudad',               'Departamento y municipio de residencia'],
+            // 'digitos': un teléfono sin dígitos ("N/A") no cuenta.
+            ['rit_ind_Telefono',               'Teléfono', true, 'digitos'],
+            ['rit_ind_Email',                  'Correo electrónico de notificación'],
+            ['rit_ind_Fecha_inicio',           'Fecha de inicio de actividades en el municipio'],
+            ['rit_ind_Cedula_representante',   'Cédula del representante legal o propietario'],
+            ['rit_ind_Nombre_representante',   'Nombre del representante legal o propietario'],
+            ['rit_ind_Email_representante',    'Correo del representante legal o propietario'],
+            ['rit_ind_Telefono_representante', 'Celular del representante legal o propietario', true, 'digitos']
+        ];
+
+        var faltan = [];
+        $('#formRIT .is-invalid').removeClass('is-invalid');
+
+        campos.forEach(function (c) {
+            if (c.length > 2 && !c[2]) { return; }
+            var $c = $('#' + c[0]);
+            if (!$c.length) { return; }
+            var valor = String($c.val() || '').trim();
+            if (c[3] === 'digitos') { valor = valor.replace(/\D/g, ''); }
+            if (valor === '') {
+                $c.addClass('is-invalid');
+                faltan.push(c[1]);
+            }
+        });
+
+        // Régimen e IVA: uno de cada grupo, como exige el servidor.
+        var regimen = $('.rit-regimen:checked').map(function () { return this.value; }).get();
+        Establecimientos.GRUPOS_REGIMEN.forEach(function (g) {
+            var n = regimen.filter(function (r) { return g.opciones.indexOf(r) !== -1; }).length;
+            if (n === 0) { faltan.push(g.rotulo); }
+            if (n > 1)   { faltan.push('Una sola opción en ' + g.rotulo.toLowerCase()); }
+        });
+
+        return faltan;
+    }
+
+    /** Las casillas de "Régimen tributario" que se excluyen entre sí. */
+    static get GRUPOS_REGIMEN() {
+        return [
+            { rotulo: 'Régimen tributario (ordinario, simple o especial)', opciones: ['ORDINARIO', 'SIMPLE', 'ESPECIAL'] },
+            { rotulo: 'Responsable o no responsable de IVA',               opciones: ['RESP_IVA', 'NO_RESP_IVA'] }
+        ];
+    }
+
+    avisarFaltantesRIT(faltan) {
+        swal({
+            type: 'warning',
+            title: 'Faltan datos obligatorios',
+            html: 'Para guardar el RIT complete:' +
+                  '<ul style="text-align:left; margin:10px 0 0 18px; list-style:disc;">' +
+                  faltan.map(function (f) {
+                      var t = String(f);
+                      return '<li>' + $('<div>').text(t.charAt(0).toUpperCase() + t.slice(1)).html() + '</li>';
+                  }).join('') +
+                  '</ul>'
+        });
+    }
+
     guardarRIT() {
 
         var errorCiiu = this.validarCodigosCiiu();
         if (errorCiiu) {
             swal({ type: 'warning', title: 'Revise los códigos del RUT', text: errorCiiu });
             $('#rit_ind_Rut').focus();
+            return;
+        }
+
+        var faltan = this.validarObligatoriosRIT();
+        if (faltan.length) {
+            this.avisarFaltantesRIT(faltan);
             return;
         }
 
@@ -2750,6 +2834,12 @@ actualizarDeclaracionIca(valor, numeroCampo){
                 $boton.prop('disabled', false);
 
                 if (resp.ok != 1) {
+                    // Lo que falta (campos y documentos) viene en lista: se muestra igual que el aviso local.
+                    if (resp.datos && Array.isArray(resp.datos.faltan) && resp.datos.faltan.length) {
+                        establecimientos.avisarFaltantesRIT(resp.datos.faltan);
+                        establecimientos.listarAnexosRIT();
+                        return;
+                    }
                     swal({ type: 'error', title: 'No se pudo guardar', text: resp.mensaje || 'Intenta de nuevo.' });
                     return;
                 }
@@ -2806,6 +2896,24 @@ $(document).on('click', '#btnActualizarRIT', function () {
 
 $(document).on('click', '#btnGuardarCeseRIT', function () {
     establecimientos.guardarCeseRIT();
+});
+
+// Un campo marcado como faltante deja de estarlo en cuanto se escribe en él.
+$(document).on('input change', '#formRIT .is-invalid', function () {
+    $(this).removeClass('is-invalid');
+});
+
+// Régimen e IVA: marcar una opción desmarca las otras de su grupo (una
+// persona no es ordinaria y simple a la vez, ni responsable y no responsable).
+$(document).on('change', '.rit-regimen', function () {
+    if (!this.checked) { return; }
+    var marcada = this;
+    Establecimientos.GRUPOS_REGIMEN.forEach(function (g) {
+        if (g.opciones.indexOf(marcada.value) === -1) { return; }
+        $('.rit-regimen').each(function () {
+            if (this !== marcada && g.opciones.indexOf(this.value) !== -1) { this.checked = false; }
+        });
+    });
 });
 
 

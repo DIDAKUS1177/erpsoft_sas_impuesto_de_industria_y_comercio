@@ -25,15 +25,23 @@
  *     referencia, NO va. El establecimiento tampoco; el NIT sí.
  *   - LIQUIDADOR: si lo imprime un funcionario de la Alcaldía (roles 1 y 2) va
  *     su nombre; si lo genera el propio contribuyente, no va ninguno.
- *   - INTERESES DE MORA: van como subtotal aparte, calculados con las fechas.
- *     El cálculo QUEDA PENDIENTE (lo definen ellos): hoy salen en $0.
+ *   - INTERESES DE MORA: línea aparte bajo el SUBTOTAL, sumada al total y al
+ *     código de barras. A MANO por ahora (Javier, 2026-09-25): los escribe quien
+ *     genera el recibo (?intereses=; sin él, se le pide el valor). Una ICA
+ *     vencida sale CON intereses también si la saca el contribuyente (cliente,
+ *     2026-09-25). Ver el bloque de los intereses.
  *   - ICA: hasta la fecha límite (class.vencimientoICA.php) el recibo vale
- *     hasta ese día; vencida, vale lo que diga "Días de vigencia del recibo".
+ *     hasta ese día y no lleva intereses; vencida, vale lo que diga "Días de
+ *     vigencia del recibo".
  * ============================================================================
  */
 
 require_once __DIR__ . '/pdfRetenciones.php';
 include_once SERVER . '/business/class.vencimientoICA.php';
+
+// "Hoy" es el de Colombia (emisión y "pague antes de"): con el servidor en UTC,
+// desde las 7 p. m. el recibo salía con la fecha de mañana.
+date_default_timezone_set('America/Bogota');
 
 /** Mensaje en texto y fin: el enlace abre en otra pestaña. */
 function recibo_salir($mensaje, $codigo = 200)
@@ -51,6 +59,134 @@ function recibo_h($s)
 function recibo_pesos($v)
 {
     return '$' . number_format((float) $v, 0, ',', '.');
+}
+
+/**
+ * Paso previo cuando el recibo lleva intereses de mora: una casilla para
+ * escribirlos a mano (la Alcaldía, o el contribuyente con una ICA vencida; ver
+ * el bloque de los intereses). "Generar recibo" vuelve a este mismo archivo con
+ * ?intereses= y ahí sale el PDF. Termina la petición.
+ */
+function recibo_pedirIntereses(array $d)
+{
+    $color = defined('MUNICIPIO_COLOR') ? MUNICIPIO_COLOR : '#1fa49d';
+
+    $filas = [
+        ['Impuesto', $d['impuesto']],
+        ['N° declaración', $d['numero']],
+        ['Período', $d['periodo']],
+        ['Contribuyente', $d['nombre'] . ($d['doc'] !== '' ? ' · ' . $d['doc'] : '')],
+    ];
+    if ($d['limite'] !== '') {
+        $filas[] = ['Fecha límite', $d['limite'] . ' (vencida)'];
+    }
+    $filas[] = ['Valor de la declaración', recibo_pesos($d['subtotal'])];
+    $filas[] = ['Pague antes de', $d['vence']];
+
+    $htmlFilas = '';
+    foreach ($filas as [$k, $v]) {
+        $htmlFilas .= '<div class="fila"><span class="k">' . recibo_h($k) . '</span><span class="v">'
+                    . recibo_h($v) . '</span></div>';
+    }
+
+    header('Content-Type: text/html; charset=utf-8');
+    ?><!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recibo de pago <?= recibo_h($d['numero']) ?></title>
+<style>
+  :root { --c: <?= recibo_h($color) ?>; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f6f8; color: #333;
+         margin: 0; padding: 24px 16px; display: flex; justify-content: center; }
+  .tarjeta { background: #fff; max-width: 520px; width: 100%; border-radius: 10px;
+             box-shadow: 0 4px 20px rgba(0,0,0,.08); overflow: hidden; }
+  .cab { background: var(--c); color: #fff; padding: 16px 24px; }
+  .cab b { display: block; font-size: 18px; }
+  .cab span { font-size: 13px; opacity: .9; }
+  .cuerpo { padding: 20px 24px 24px; }
+  .fila { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0;
+          border-bottom: 1px solid #eee; font-size: 14px; }
+  .fila .k { color: #666; }
+  .fila .v { font-weight: 600; text-align: right; }
+  .nota { font-size: 13px; background: #eef4f5; border: 1px solid #cfe0e2; color: #33555a;
+          border-radius: 6px; padding: 10px 12px; margin-top: 14px; }
+  label { display: block; font-weight: 600; margin: 18px 0 6px; }
+  input { width: 100%; font-size: 20px; padding: 10px 12px; border: 1px solid #c8d0d6;
+          border-radius: 6px; text-align: right; font-variant-numeric: tabular-nums; }
+  input:focus { outline: 2px solid var(--c); outline-offset: 1px; border-color: var(--c); }
+  .nota.error { background: #fdecec; border-color: #f3c2c2; color: #8a1f1f; }
+  .ayuda { font-size: 12px; color: #777; margin-top: 6px; }
+  .total { display: flex; justify-content: space-between; font-size: 17px; font-weight: 700;
+           margin: 16px 0; font-variant-numeric: tabular-nums; }
+  .btn { display: block; width: 100%; border: 0; padding: 13px; font-size: 16px; font-weight: 600;
+         color: #fff; background: var(--c); border-radius: 6px; cursor: pointer; }
+  .btn.sec { background: #6c757d; margin-top: 10px; text-align: center; text-decoration: none; }
+</style>
+</head>
+<body>
+  <div class="tarjeta">
+    <div class="cab"><b>Recibo de pago</b><span><?= recibo_h($d['municipio']) ?></span></div>
+    <div class="cuerpo">
+      <?= $htmlFilas ?>
+      <?php if ($d['declarados'] > 0): ?>
+      <div class="nota">La declaración ya trae <?= recibo_h(recibo_pesos($d['declarados'])) ?> de
+        intereses de mora en su formulario, incluidos en el valor de arriba. Escriba solo lo que falte.</div>
+      <?php endif; ?>
+      <form method="get" action="reciboPago.php" id="formIntereses">
+        <input type="hidden" name="modulo" value="<?= recibo_h($d['modulo']) ?>">
+        <input type="hidden" name="id" value="<?= (int) $d['id'] ?>">
+        <?php if (!empty($d['error'])): ?>
+        <div class="nota error" role="alert"><?= recibo_h($d['error']) ?></div>
+        <?php endif; ?>
+        <label for="intereses">Intereses de mora al <?= recibo_h($d['vence']) ?></label>
+        <?php if (!empty($d['exige'])): ?>
+        <input id="intereses" name="intereses" value="" placeholder="Escriba el valor" inputmode="numeric" autocomplete="off" autofocus required>
+        <div class="ayuda">La declaración venció el <?= recibo_h($d['limite']) ?>: el recibo lleva los
+          intereses de mora de <?= (int) $d['dias'] ?> día<?= (int) $d['dias'] === 1 ? '' : 's' ?>, del día siguiente a la
+          fecha límite al <?= recibo_h($d['vence']) ?>. En pesos, sin decimales. Si no sabe cuánto son,
+          comuníquese con la Alcaldía.</div>
+        <?php else: ?>
+        <input id="intereses" name="intereses" value="0" inputmode="numeric" autocomplete="off" autofocus required>
+        <div class="ayuda">En pesos, sin decimales. Déjelo en 0 si no aplica.<?php if ((int) $d['dias'] > 0): ?>
+          Días de mora al <?= recibo_h($d['vence']) ?>: <?= (int) $d['dias'] ?>.<?php endif; ?></div>
+        <?php endif; ?>
+        <div class="total"><span>Total del recibo</span><span id="total"><?= recibo_h(recibo_pesos($d['subtotal'])) ?></span></div>
+        <button type="submit" class="btn">Generar recibo</button>
+        <a class="btn sec" href="#" onclick="window.close(); setTimeout(function () { history.back(); }, 200); return false;">Cancelar</a>
+      </form>
+    </div>
+  </div>
+<script>
+  // Pesos enteros con puntos de miles mientras se escribe; el servidor quita los
+  // puntos. Lo que vaya después de la coma (centavos) se ve pero no se cobra: el
+  // servidor lo descarta (VencimientoICA::leerIntereses).
+  var subtotal = <?= (int) round($d['subtotal']) ?>;
+  var campo = document.getElementById('intereses');
+  var total = document.getElementById('total');
+  function pesos(n) { return '$' + String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+  campo.addEventListener('input', function () {
+    var partes = campo.value.split(',');
+    var digitos = partes[0].replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 10);
+    var centavos = partes.length > 1 ? ',' + partes.slice(1).join('').replace(/\D/g, '').slice(0, 2) : '';
+    campo.value = (digitos === '' ? '' : pesos(digitos).slice(1)) + centavos;
+    total.textContent = pesos(subtotal + Number(digitos || 0));
+  });
+  // Lo pegado con punto decimal ("1234.56") pasa a coma, que es como se descarta.
+  campo.addEventListener('paste', function (e) {
+    var t = String((e.clipboardData || window.clipboardData).getData('text') || '').trim();
+    e.preventDefault();
+    if (t.indexOf(',') === -1 && (t.match(/\./g) || []).length === 1 && /\.\d{1,2}$/.test(t)) { t = t.replace('.', ','); }
+    campo.value = t;
+    campo.dispatchEvent(new Event('input'));
+  });
+  campo.addEventListener('focus', function () { campo.select(); });
+</script>
+</body>
+</html><?php
+    exit;
 }
 
 $MODULOS = [
@@ -172,7 +308,8 @@ if ($subtotal <= 0) {
    aún no tienen fecha límite-, sale de "Días de vigencia del recibo"
    (Municipio y bancos); sin configurar, vale el mismo día, como el formato de
    referencia. */
-if ($modulo === 'ICA' && !\erpsoftsas\VencimientoICA::vencida($anio)) {
+$icaAlDia = ($modulo === 'ICA' && !\erpsoftsas\VencimientoICA::vencida($anio));
+if ($icaAlDia) {
     $venceIso = \erpsoftsas\VencimientoICA::fechaLimite($anio);
 } else {
     $venceIso = \erpsoftsas\CodigoBarrasRecaudo::fechaVigencia() ?: date('Y-m-d');
@@ -180,28 +317,7 @@ if ($modulo === 'ICA' && !\erpsoftsas\VencimientoICA::vencida($anio)) {
 $vence   = date('d/m/Y', strtotime($venceIso));
 $emision = date('d/m/Y');
 
-/* Intereses de mora hasta el "pague antes de", calculados con las fechas.
-   PENDIENTE: la fórmula, las tasas y la base las define la Alcaldía (cliente,
-   2026-09-24: "dejemos pendiente el cálculo"). Mientras tanto van en $0, y la
-   línea ya queda en su sitio para que el total la sume. */
-$intereses = 0.0;
-$total     = $subtotal + $intereses;
-
-$contenidoBarras = \erpsoftsas\CodigoBarrasRecaudo::construir($numero, $total, $venceIso);
-
-// El funcionario que imprime el recibo; vacío si lo genera el contribuyente.
-$liquidador = '';
-if (in_array((int) ($_SESSION['id_Rol'] ?? 0), [1, 2], true)) {
-    $u = $con->obnerFila($con->consultar(
-        "SELECT usu_Nombres, usu_Apellidos FROM conf_usuarios WHERE usu_Id = ?",
-        [(int) ($_SESSION['id_usuario'] ?? 0)]
-    ));
-    $liquidador = mb_strtoupper(trim(preg_replace('/\s+/', ' ',
-        ($u['usu_Nombres'] ?? '') . ' ' . ($u['usu_Apellidos'] ?? ''))), 'UTF-8');
-}
-$lineaLegible    = $contenidoBarras !== null
-    ? \erpsoftsas\CodigoBarrasRecaudo::textoLegible($numero, $total, $venceIso)
-    : '';
+$esAlcaldia = in_array((int) ($_SESSION['id_Rol'] ?? 0), [1, 2], true);
 
 $municipio  = 'MUNICIPIO DE ' . mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8');
 $ubicacion  = mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8') . ' - ' . mb_strtoupper(MUNICIPIO_DEPARTAMENTO, 'UTF-8');
@@ -212,6 +328,86 @@ $dirAlcaldia = defined('MUNICIPIO_DIRECCION') ? trim((string) MUNICIPIO_DIRECCIO
 $doc       = (string) ($contribuyente['ind_NumeroIdentificacion'] ?? '');
 $nombre    = pdfret_nombreContribuyente($contribuyente);
 $direccion = (string) ($contribuyente['ind_Direccion'] ?? '');
+
+/* Intereses de mora hasta el "pague antes de": A MANO por ahora (Javier,
+   2026-09-25: "que se deje de manera manual de momento"; no hay tabla de tasas
+   ni fórmula). Sin ?intereses=, este mismo archivo pide el valor antes de
+   armar el PDF (recibo_pedirIntereses):
+     - ICA VENCIDA: a todos. El contribuyente también saca el recibo, pero le
+       sale CON intereses (cliente, 2026-09-25): tiene que escribirlos, salvo
+       que la declaración ya traiga los suyos (renglón 37). La Alcaldía los
+       escribe si aplican (puede dejarlos en 0).
+     - Retención y autorretención, sin fecha límite todavía: solo la Alcaldía,
+       si aplican. El contribuyente saca su recibo directo.
+     - ICA que todavía no vence: nadie; no lleva intereses.
+   La regla es la misma de PSE (extensiones/pse/pagar.php y crearSesion.php). */
+$intereses = 0.0;
+$textoIntereses = trim((string) ($_GET['intereses'] ?? ''));
+
+$icaVencida = ($modulo === 'ICA' && !$icaAlDia);
+$declarados = (float) ($row[$p . 'ValorConcepto' . ['ICA' => 16, 'RETEICA' => 16, 'AUTORRETEICA' => 21][$modulo]] ?? 0);
+$exige      = !$esAlcaldia && $icaVencida && \erpsoftsas\VencimientoICA::exigeIntereses($anio, $declarados);
+
+$formulario = null;   // la casilla de los intereses, cuando la hay
+if ($icaVencida || ($esAlcaldia && !$icaAlDia)) {
+    $formulario = [
+        'impuesto'   => $m['impuesto'],
+        'numero'     => $numero,
+        'periodo'    => $periodo,
+        'nombre'     => $nombre,
+        'doc'        => $doc,
+        'subtotal'   => $subtotal,
+        'declarados' => $declarados,
+        'limite'     => $modulo === 'ICA'
+            ? date('d/m/Y', strtotime(\erpsoftsas\VencimientoICA::fechaLimite($anio))) : '',
+        'dias'       => $icaVencida ? \erpsoftsas\VencimientoICA::diasDeMora($anio, $venceIso) : 0,
+        'exige'      => $exige,
+        'vence'      => $vence,
+        'modulo'     => $modulo,
+        'id'         => (int) $row[$p . 'Id'],
+        'municipio'  => $municipio,
+    ];
+}
+
+if ($textoIntereses !== '') {
+    $leidos = \erpsoftsas\VencimientoICA::leerIntereses($textoIntereses);
+    if ($leidos === null) {
+        $error = 'Intereses de mora no válidos: escriba el valor en pesos, sin decimales.';
+        if ($formulario !== null) {
+            recibo_pedirIntereses($formulario + ['error' => $error]);
+        }
+        recibo_salir($error, 400);
+    }
+    $intereses = (float) $leidos;
+    if ($intereses > 0 && $icaAlDia) {
+        recibo_salir('Esta declaración vence el ' . $vence . ': hasta ese día no lleva intereses de mora.', 400);
+    }
+    if ($intereses > 0 && $formulario === null) {
+        recibo_salir('Los intereses de mora de este recibo los liquida la Alcaldía.', 403);
+    }
+    if ($intereses <= 0 && $exige) {
+        recibo_pedirIntereses($formulario + ['error' => 'La declaración está vencida: escriba los intereses de mora.']);
+    }
+} elseif ($formulario !== null) {
+    recibo_pedirIntereses($formulario);
+}
+$total = $subtotal + $intereses;
+
+$contenidoBarras = \erpsoftsas\CodigoBarrasRecaudo::construir($numero, $total, $venceIso);
+
+// El funcionario que imprime el recibo; vacío si lo genera el contribuyente.
+$liquidador = '';
+if ($esAlcaldia) {
+    $u = $con->obnerFila($con->consultar(
+        "SELECT usu_Nombres, usu_Apellidos FROM conf_usuarios WHERE usu_Id = ?",
+        [(int) ($_SESSION['id_usuario'] ?? 0)]
+    ));
+    $liquidador = mb_strtoupper(trim(preg_replace('/\s+/', ' ',
+        ($u['usu_Nombres'] ?? '') . ' ' . ($u['usu_Apellidos'] ?? ''))), 'UTF-8');
+}
+$lineaLegible    = $contenidoBarras !== null
+    ? \erpsoftsas\CodigoBarrasRecaudo::textoLegible($numero, $total, $venceIso)
+    : '';
 
 $GRIS  = '#dfe3ea';   // cabeceras, como el formato de referencia
 $SUAVE = '#f3f5f8';   // columna de valores

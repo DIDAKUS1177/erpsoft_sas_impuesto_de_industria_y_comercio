@@ -1193,8 +1193,12 @@ private function _insertarActividadesDeclaracionIca(){
 
     }catch(\Exception $e){
 
+        // Aquí solo llegan errores de la base (p. ej. una cifra que no cabe en
+        // la columna): su texto es un volcado de sqlsrv_errors() que no le sirve
+        // al usuario. Va al log; la pantalla recibe un aviso que se entiende.
+        error_log('[declaracionesICA] no se pudo guardar la declaración: ' . $e->getMessage());
         $this->_ok = 0;
-        $this->_mensaje = $e->getMessage();
+        $this->_mensaje = 'No se pudo guardar la declaración. Revise que las cifras estén bien escritas e intente de nuevo; si persiste, avise a soporte.';
 
         return [];
     }
@@ -1256,7 +1260,7 @@ private function _liquidarSinGuardar()
         $fila = self::_filaDeLaDeclaracion($con, $idDeclaracion);
         $idFila = $fila === null ? null : $fila['id'];
         if ($idFila === null) {
-            throw new \Exception('No se encontró la declaración ' . $idDeclaracion);
+            throw new \erpsoftsas\DeclaracionesICAException('No se encontró la declaración ' . $idDeclaracion);
         }
 
         /*
@@ -1281,10 +1285,19 @@ private function _liquidarSinGuardar()
 
         return $datos ?: [];
 
-    } catch (\Exception $e) {
+    } catch (\erpsoftsas\DeclaracionesICAException $e) {
 
         $this->_ok = 0;
         $this->_mensaje = $e->getMessage();
+        return [];
+
+    } catch (\Exception $e) {
+
+        // Error de la base: al log; la pantalla recibe un aviso que se entiende
+        // (como en las funciones 6 y 7).
+        error_log('[declaracionesICA] no se pudo liquidar: ' . $e->getMessage());
+        $this->_ok = 0;
+        $this->_mensaje = 'No se pudo calcular la liquidación. Revise que las cifras estén bien escritas e intente de nuevo; si persiste, avise a soporte.';
         return [];
 
     } finally {
@@ -1296,28 +1309,21 @@ private function _liquidarSinGuardar()
 }
 
 
+/*
+ * Sin try/catch A PROPÓSITO. Atrapaba el error del procedimiento, ponía _ok = 0
+ * y volvía; quien la llama (funciones 6, 7 y 14) seguía y lo pisaba con ok = 1:
+ * una fórmula mala en Conceptos o un desbordamiento dentro del SP terminaban en
+ * "Declaración guardada" con los renglones sin recalcular, y sin rastro en el
+ * log. Los tres la llaman dentro de su propio try, que registra y avisa.
+ */
 private function _ejecutarSpLiquidacion($anio,$mes,$numero, $campoSeleccionado){
 
     $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
-    try{
+    $sql = "EXEC sp_calculo_comercio ?, ?, ?, ?";
+    $con->consultar($sql, [$anio, $mes, $numero,$campoSeleccionado]);
 
-        $sql = "EXEC sp_calculo_comercio ?, ?, ?, ?";
-        $con->consultar($sql, [$anio, $mes, $numero,$campoSeleccionado]);
-
-        $this->_ok = 1;
-        $this->_mensaje = "SP ejecutado correctamente";
-
-        return [];
-
-    }catch(\Exception $e){
-
-        $this->_ok = 0;
-        $this->_mensaje = $e->getMessage();
-
-        return [];
-    }
-
+    return [];
 }
 
 
@@ -1561,8 +1567,12 @@ private function _actualizarDeclaracionIca(){
 
     }catch(\Exception $e){
 
+        // Aquí solo llegan errores de la base (p. ej. una cifra que no cabe en
+        // la columna): su texto es un volcado de sqlsrv_errors() que no le sirve
+        // al usuario. Va al log; la pantalla recibe un aviso que se entiende.
+        error_log('[declaracionesICA] no se pudo recalcular un renglón: ' . $e->getMessage());
         $this->_ok = 0;
-        $this->_mensaje = $e->getMessage();
+        $this->_mensaje = 'No se pudo recalcular. Revise que la cifra esté bien escrita e intente de nuevo; si persiste, avise a soporte.';
 
         return [];
     }

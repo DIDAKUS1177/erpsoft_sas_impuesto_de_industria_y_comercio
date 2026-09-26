@@ -103,7 +103,7 @@
                                         <th>Estado</th>
                                         <th>Fecha Pago</th>
                                         <th>Banco</th>
-                                        <th>Valor Pago</th>
+                                        <th>Valor a pagar</th>
                                         <th class="text-center" style="width:280px;">Acciones</th>
                                     </tr>
                                 </thead>
@@ -499,7 +499,7 @@ Acción
 <div class="form-check">
 <input type="checkbox" id="est_Autorizacion" name="est_Autorizacion" data-toggle="switch"> 
 <label style="margin-left:8px;">
-Autorizo que la Administración Tributaria me notifique los actos administrativos en materia de impuestos al correo electrónico registrado en esta plataforma, y acepto que dichas notificaciones se entenderán válidamente surtidas conforme al artículo 565 y siguientes del Estatuto Tributario y las normas que los modifiquen, adicionen o sustituyan
+Autorizo que las notificaciones de los actos administrativos relacionados con mis obligaciones tributarias sean remitidas al correo electrónico registrado en este Registro de Información Tributaria (RIT), de conformidad con los artículos 566 y 566-1 del Estatuto Tributario Nacional, en concordancia con el artículo 7 del Decreto 009 de 2017.
 </label>
 </div>
 

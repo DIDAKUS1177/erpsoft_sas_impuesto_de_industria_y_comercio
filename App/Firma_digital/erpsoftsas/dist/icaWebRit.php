@@ -184,7 +184,7 @@
 							       title="La identidad tributaria no se cambia desde aquí">
 						</div>
 						<div class="col-md-5 form-group">
-							<label>Tipo de persona</label>
+							<label>Tipo de persona <span class="text-danger">*</span></label>
 							<select class="form-control" name="ind_Persona" id="rit_ind_Persona"
 							        onchange="establecimientos.ajustarNombresPorTipoPersona()">
 								<option value="1">Natural</option>
@@ -198,7 +198,7 @@
 							<!-- Una persona juridica no tiene "primer nombre": en esta misma
 							     casilla va su razon social. Es la misma columna
 							     (ind_PrimerNombre); solo cambia el rotulo. -->
-							<label>Primer nombre o razón social</label>
+							<label>Primer nombre o razón social <span class="text-danger">*</span></label>
 							<input type="text" class="form-control" name="ind_PrimerNombre" id="rit_ind_PrimerNombre" maxlength="100">
 						</div>
 						<div class="col-md-3 form-group">
@@ -206,7 +206,7 @@
 							<input type="text" class="form-control" name="ind_SegundoNombre" id="rit_ind_SegundoNombre" maxlength="100">
 						</div>
 						<div class="col-md-3 form-group">
-							<label>Primer apellido</label>
+							<label>Primer apellido <span class="text-danger">*</span> <small class="text-muted">(persona natural)</small></label>
 							<input type="text" class="form-control" name="ind_PrimerApellido" id="rit_ind_PrimerApellido" maxlength="100">
 						</div>
 						<div class="col-md-3 form-group">
@@ -223,7 +223,7 @@
 						     adelante piden separar la de residencia de la de notificacion, eso
 						     si serian dos columnas distintas. -->
 						<div class="col-md-4 form-group">
-							<label>Dirección de notificación</label>
+							<label>Dirección de notificación <span class="text-danger">*</span></label>
 							<input type="text" class="form-control" name="ind_Direccion" id="rit_ind_Direccion" maxlength="200">
 						</div>
 						<!--
@@ -236,11 +236,11 @@
 						     columna: sale de conf_ciudades.ciu_Departamento y solo acota la lista.
 						-->
 						<div class="col-md-4 form-group">
-							<label>Departamento de residencia</label>
+							<label>Departamento de residencia <span class="text-danger">*</span></label>
 							<select class="form-control" id="rit_DepartamentoResidencia"></select>
 						</div>
 						<div class="col-md-4 form-group">
-							<label>Municipio de residencia</label>
+							<label>Municipio de residencia <span class="text-danger">*</span></label>
 							<select class="form-control" name="ind_IdCiudad" id="rit_ind_IdCiudad"></select>
 						</div>
 						</div>
@@ -253,11 +253,11 @@
 						-->
 						<div class="row">
 						<div class="col-md-6 form-group">
-							<label>Teléfono</label>
+							<label>Teléfono <span class="text-danger">*</span></label>
 							<input type="text" class="form-control" name="ind_Telefono" id="rit_ind_Telefono">
 						</div>
 						<div class="col-md-6 form-group">
-							<label>Correo electrónico de notificación</label>
+							<label>Correo electrónico de notificación <span class="text-danger">*</span></label>
 							<input type="email" class="form-control" name="ind_Email" id="rit_ind_Email" maxlength="500">
 						</div>
 					</div>
@@ -279,7 +279,7 @@
 						<!-- El municipio sale del config, no en duro: es la misma pantalla
 						     para cualquier alcaldia que use el sistema. -->
 						<div class="col-md-3 form-group">
-							<label>Fecha de inicio de actividades en el Municipio de <?php echo htmlspecialchars(defined('MUNICIPIO_CIUDAD') ? MUNICIPIO_CIUDAD : ''); ?></label>
+							<label>Fecha de inicio de actividades en el Municipio de <?php echo htmlspecialchars(defined('MUNICIPIO_CIUDAD') ? MUNICIPIO_CIUDAD : ''); ?> <span class="text-danger">*</span></label>
 							<input type="date" class="form-control" name="ind_Fecha_inicio" id="rit_ind_Fecha_inicio">
 						</div>
 					</div>
@@ -363,15 +363,15 @@
 					<h5 class="mb-3" style="font-weight:600;">Representante Legal o propietario</h5>
 					<div class="row">
 						<div class="col-md-3 form-group">
-							<label>Cédula</label>
+							<label>Cédula <span class="text-danger">*</span></label>
 							<input type="text" class="form-control" name="ind_Cedula_representante" id="rit_ind_Cedula_representante" maxlength="20">
 						</div>
 						<div class="col-md-5 form-group">
-							<label>Nombre</label>
+							<label>Nombre <span class="text-danger">*</span></label>
 							<input type="text" class="form-control" name="ind_Nombre_representante" id="rit_ind_Nombre_representante" maxlength="100">
 						</div>
 						<div class="col-md-2 form-group">
-							<label>Correo</label>
+							<label>Correo <span class="text-danger">*</span></label>
 							<input type="email" class="form-control" name="ind_Email_representante" id="rit_ind_Email_representante" maxlength="150">
 						</div>
 						<!-- Telefono propio del representante (migracion 025). No existia, y
@@ -379,12 +379,18 @@
 						     contribuyente: en una persona juridica son dos personas y sus
 						     telefonos no tienen por que coincidir. Lo reporto el cliente. -->
 						<div class="col-md-2 form-group">
-							<label>Celular</label>
+							<label>Celular <span class="text-danger">*</span></label>
 							<input type="text" class="form-control" name="ind_Telefono_representante"
 							       id="rit_ind_Telefono_representante" maxlength="30"
 							       placeholder="Ej. 3125666656">
 						</div>
 					</div>
+					<!-- Revisión del cliente 2026-09-25: el código de firma va al representante legal o
+					     propietario (no al correo de notificación); se dice aquí para que no se confundan. -->
+					<p class="text-muted" style="font-size:12px;margin-top:-6px;">
+						<i class="fa fa-info-circle"></i> El código para firmar el RIT y las declaraciones llega
+						al correo del representante legal o propietario.
+					</p>
 
 					<hr>
 					<!-- Puntos 14 y 15: esto lo registra solo el administrador;
@@ -459,12 +465,11 @@
 					     esta blindada con .htaccess y el borrado es logico. La migracion
 					     017 le añadio poder colgar del contribuyente.
 
-					     "Obligatorio" no bloquea el GUARDADO -el RIT se diligencia en
-					     varias sesiones y negarlo dejaria al contribuyente sin poder
-					     conservar lo escrito-, pero desde el 2026-08-26 SI bloquea la
-					     FIRMA, que es el acto que cierra el registro. Lo comprueba la
-					     funcion 9 de microservicios/firmas/api.php, asi que no depende
-					     de esta pantalla.
+					     "Obligatorio" bloquea la FIRMA desde el 2026-08-26 y tambien el
+					     GUARDADO desde la revision del 2026-09-25: el RIT no se guarda
+					     ni se firma sin los tres. Lo comprueba el servidor con
+					     RitFirma::faltantes (al guardar, y en microservicios/firmas/api.php
+					     al pedir el codigo y al firmar), asi que no depende de esta pantalla.
 
 					     ESTE BLOQUE SE PERDIO el 2026-08-26 y se restauro el 31: al
 					     mover las casillas de "Condicion frente al impuesto" a
@@ -514,8 +519,8 @@
 					     cada uno (migración 014); el servidor filtra contra su catálogo
 					     en _normalizarSeleccionMultiple, así que marcar algo raro desde
 					     la consola no sirve de nada. -->
-					<h5 class="mb-3" style="font-weight:600;">Régimen tributario</h5>
-					<p class="text-muted" style="font-size:12px;margin-top:-8px;">Puede marcar más de una.</p>
+					<h5 class="mb-3" style="font-weight:600;">Régimen tributario <span class="text-danger">*</span></h5>
+					<p class="text-muted" style="font-size:12px;margin-top:-8px;">Marque un régimen y si es o no responsable de IVA.</p>
 					<div class="row mb-3" id="ritRegimenTributario">
 						<div class="col-md-3 form-group"><label class="mb-0">
 							<input type="checkbox" class="rit-regimen" value="ORDINARIO"> Régimen ordinario</label></div>
@@ -662,15 +667,17 @@
 					     _guardarRIT() en el servidor, porque un required se quita desde la
 					     consola del navegador.
 					-->
-					<h5 class="mb-3" style="font-weight:600;">Autorización de notificación</h5>
+					<!-- Titulo y texto dados por el cliente (2026-09-25). -->
+					<h5 class="mb-3" style="font-weight:600;">Notificación electrónica</h5>
 					<div class="form-check mb-2">
 						<input type="checkbox" class="form-check-input" value="1"
 						       name="ind_Autorizacion" id="rit_ind_Autorizacion" required>
 						<label class="form-check-label" for="rit_ind_Autorizacion" style="margin-left:4px;">
-							Autorizo que la Secretaría de Hacienda del municipio de
-							<?php echo defined('MUNICIPIO_NOMBRE') ? str_replace('Alcaldía de ', '', MUNICIPIO_NOMBRE) : 'Paipa'; ?>
-							notifique los actos administrativos en materia de impuestos al correo
-							electrónico registrado en esta plataforma.
+							Autorizo que las notificaciones de los actos administrativos relacionados
+							con mis obligaciones tributarias sean remitidas al correo electrónico
+							registrado en este Registro de Información Tributaria (RIT), de conformidad
+							con los artículos 566 y 566-1 del Estatuto Tributario Nacional, en
+							concordancia con el artículo 7 del Decreto 009 de 2017.
 						</label>
 					</div>
 					<small class="text-muted">Debe autorizarla para poder guardar los cambios.</small>

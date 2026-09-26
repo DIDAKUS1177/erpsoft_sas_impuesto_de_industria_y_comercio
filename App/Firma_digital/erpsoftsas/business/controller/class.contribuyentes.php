@@ -886,6 +886,62 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         return $fila;
     }
 
+    /*
+     * Lo que le falta al RIT (campos y documentos) vive en RitFirma::faltantes(),
+     * porque la firma aplica la misma regla. Dos respuestas del cliente se
+     * ajustaron al sentido común: el primer apellido se exige solo a la persona
+     * natural (una jurídica no tiene), y el DV solo existe con NIT; si falta, se
+     * calcula (_completarDV). Contador y revisor fiscal quedan opcionales: son
+     * "para quien la ley le obliga", y eso el sistema no lo sabe.
+     */
+
+    /** Dígito de verificación de un NIT: el algoritmo de la DIAN, el mismo de core/contribuyentes.js. */
+    private static function _digitoVerificacion($nit)
+    {
+        $pesos   = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71];
+        $digitos = strrev(preg_replace('/\D/', '', (string) $nit));
+        $suma    = 0;
+        for ($i = 0, $n = min(strlen($digitos), 15); $i < $n; $i++) {
+            $suma += (int) $digitos[$i] * $pesos[$i];
+        }
+        $resto = $suma % 11;
+        return $resto > 1 ? 11 - $resto : $resto;
+    }
+
+    /**
+     * El DV es obligatorio (cliente, 2026-09-25), pero en el RIT no se edita y
+     * muchos NIT viejos lo tienen mal. Como sale del propio NIT, se calcula en
+     * vez de trabar el guardado: si falta o no coincide, se corrige. "Falta" no
+     * se puede mirar solo como vacío: la columna no admite NULL y los que nunca
+     * lo tuvieron guardan 0, que a su vez es un DV válido para algunos NIT.
+     * Solo con NIT (tipo 5): con cédula el sistema no usa DV.
+     */
+    private static function _completarDV($con, $idContribuyente)
+    {
+        try {
+            $f = $con->obnerFila($con->consultar(
+                "SELECT ind_IdTipoDocumento, ind_NumeroIdentificacion, ind_DV
+                   FROM ind_contribuyentes WHERE ind_Id = ?",
+                [(int) $idContribuyente]
+            ));
+            if (!$f || (int) $f['ind_IdTipoDocumento'] !== 5) { return; }
+
+            $nit = preg_replace('/\D/', '', (string) $f['ind_NumeroIdentificacion']);
+            if ($nit === '') { return; }
+
+            $dv = self::_digitoVerificacion($nit);
+            $guardado = trim((string) $f['ind_DV']);
+            if ($guardado !== '' && (int) $guardado === $dv) { return; }
+
+            $con->consultar(
+                "UPDATE ind_contribuyentes SET ind_DV = ? WHERE ind_Id = ?",
+                [$dv, (int) $idContribuyente]
+            );
+        } catch (\Throwable $e) {
+            error_log('[contribuyentes] no se pudo completar el DV: ' . $e->getMessage());
+        }
+    }
+
     protected function _guardarRIT()
     {
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
@@ -955,6 +1011,23 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             $this->_ok = 0;
             $this->_mensaje = 'El contribuyente no existe';
             return [];
+        }
+
+        /*
+         * Campos y documentos obligatorios (revisión del cliente 2026-09-25).
+         *
+         * El RIT ya no se guarda incompleto: ni el contribuyente ni la Alcaldía
+         * en ventanilla, en inscripción igual que en actualización. Antes se
+         * guardaba a medias y los documentos solo se exigían al firmar; el
+         * cliente confirmó que quien tenga el RIT sin documentos los suba antes
+         * de guardar cualquier cambio.
+         */
+        include_once SERVER . '/business/class.ritFirma.php';
+        $faltan = \erpsoftsas\RitFirma::faltantes($con, $idContribuyente, $_POST);
+        if ($faltan) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Para guardar el RIT falta: ' . implode('; ', $faltan) . '.';
+            return ['faltan' => $faltan];
         }
 
         $sets    = [];
@@ -1144,6 +1217,8 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
               WHERE ind_Id = ?",
             $valores
         );
+
+        self::_completarDV($con, $idContribuyente);
 
         /*
          * Y se sincroniza con la cuenta de acceso, para que sean el mismo.

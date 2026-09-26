@@ -191,9 +191,11 @@ $nombreCompleto = trim(
     $row['ind_SegundoApellido']
 );
 
-$tipoDocumento = 'CC';
-if ($row['ind_IdTipoDocumento'] == 2) $tipoDocumento = 'NIT';
-if ($row['ind_IdTipoDocumento'] == 3) $tipoDocumento = 'CE';
+// Catálogo del sistema: 1 C.C., 3 C.E., 4 pasaporte, 5 NIT (el 2 no existe).
+// Con el 2 como NIT, toda empresa salía marcada C.C.; ritActualizado.php
+// ya se había corregido por lo mismo. El pasaporte no tiene casilla en este
+// formulario: no se marca ninguna (antes salía como C.C.).
+$tipoDocumento = [1 => 'CC', 3 => 'CE', 5 => 'NIT'][(int) $row['ind_IdTipoDocumento']] ?? '';
 
 $totalImpuestoActividades = 0;
 foreach ($actividades as $act) {
@@ -271,11 +273,12 @@ $correo_contrib     = $row['ind_Email'] ?? '';
 
 // Mismo criterio que extensiones/declaracion.php: cuenta todos los
 // establecimientos activos del contribuyente (aun no se captura cual esta
-// en Paipa, ver la nota alla).
+// en Paipa, ver la nota alla), mas los cerrados durante el año declarado o despues.
 $no_establecimientos = (string) ($con->obnerFila($con->consultar(
     "SELECT COUNT(*) AS n FROM ind_establecimientos
-     WHERE est_IdContribuyente = ? AND est_Activo = 1",
-    [$row['dec_IdContribuyente']]
+     WHERE est_IdContribuyente = ?
+       AND (est_Activo = 1 OR (est_Activo = 0 AND est_Fecha_cierre >= ?))",
+    [$row['dec_IdContribuyente'], sprintf('%04d-01-01', (int) $row['dec_AnioDeclaracion'])]
 ))['n'] ?? 1);
 
 $clasificacion       = "";
@@ -525,7 +528,7 @@ IMPUESTO DE INDUSTRIA Y COMERCIO
 <td width="4%">XT</td><td width="3%" align="center">' . ($tipo_doc_XT ? 'X' : '') . '</td>
 <td width="4%">TI</td><td width="3%" align="center">' . ($tipo_doc_TI ? 'X' : '') . '</td>
 <td width="4%">CE</td><td width="3%" align="center">' . ($tipo_doc_CE ? 'X' : '') . '</td>
-<td width="16%">No. ' . htmlspecialchars($numero_documento) . '  DV ' . htmlspecialchars($digito_verif) . '</td>
+<td width="16%">No. ' . htmlspecialchars($numero_documento) . ($tipoDocumento === 'NIT' ? '  DV ' . htmlspecialchars($digito_verif) : '') . '</td>
 <td width="17%">¿Consorcio o unión temporal?</td><td width="3%" align="center">' . ($es_consorcio_un_tv ? 'X' : '') . '</td>
 <td width="18%">¿Patrimonio autónomo?</td><td width="3%" align="center">' . ($realiza_act_traves_patrimonio ? 'X' : '') . '</td>
 </tr>

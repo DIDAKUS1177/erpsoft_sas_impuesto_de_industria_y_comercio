@@ -9,6 +9,7 @@
  * es ICA (compatibilidad).
  *
  * POST/GET: id (o dec_Id), modulo, acepto
+ * POST: intereses (ICA vencida: intereses de mora escritos en el resumen)
  */
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
@@ -38,6 +39,14 @@ $modulo = $_POST['modulo'] ?? $_GET['modulo'] ?? 'ica';
 $m      = \erpsoftsas\PseModulo::get($modulo);
 $modulo = $m['clave'];
 $id     = (int) ($_POST['id'] ?? $_GET['id'] ?? $_POST['dec_Id'] ?? $_GET['dec_Id'] ?? 0);
+
+// Solo quien ve el botón, y sobre sus propias declaraciones (la Alcaldía, sobre
+// cualquiera): ver PseModulo::motivoParaNoPagar.
+$motivo = \erpsoftsas\PseModulo::motivoParaNoPagar($con, $m, $id);
+if ($motivo !== null) {
+    http_response_code(403);
+    die(htmlspecialchars($motivo));
+}
 
 /*
  * La certificacion WC exige un resumen con aceptacion de la politica de datos
@@ -99,6 +108,42 @@ if ($valor <= 0) {
     die('El valor a pagar de esta declaración es $0, no aplica pago PSE.');
 }
 
+/*
+ * Intereses de mora: una ICA VENCIDA se paga con ellos, escritos a mano en el
+ * resumen (pagar.php), con la regla del recibo de pago (Javier y el cliente,
+ * 2026-09-25; business/class.vencimientoICA.php). Se cobra el total MAS los
+ * intereses, y lo que se registra como pagado es lo que confirme el banco
+ * (PlacetoPay::interpretarRespuesta). Lo que no es una ICA vencida no los lleva.
+ */
+include_once SERVER . '/business/class.vencimientoICA.php';
+$intereses  = 0;
+$vencidaIca = false;
+$exige      = false;
+if ($modulo === 'ica') {
+    $ica = $con->obnerFila($con->consultar(
+        "SELECT dec_AnioDeclaracion, dec_ValorConcepto16 FROM ind_declaraciones_ica WHERE dec_Id = ?", [$id]
+    ));
+    $anioIca    = (int) ($ica['dec_AnioDeclaracion'] ?? 0);
+    $vencidaIca = $ica && \erpsoftsas\VencimientoICA::vencida($anioIca);
+    $exige      = $vencidaIca && \erpsoftsas\VencimientoICA::exigeIntereses($anioIca, $ica['dec_ValorConcepto16'] ?? 0);
+}
+$textoIntereses = trim((string) ($_POST['intereses'] ?? ''));
+if ($textoIntereses !== '') {
+    $leidos = \erpsoftsas\VencimientoICA::leerIntereses($textoIntereses);
+    if ($leidos === null) {
+        die('Intereses de mora no válidos: escriba el valor en pesos, sin decimales.');
+    }
+    $intereses = $leidos;
+}
+if ($intereses > 0 && !$vencidaIca) {
+    die('Esta declaración no lleva intereses de mora en el pago en línea.');
+}
+if ($exige && $intereses <= 0) {
+    header('Location: pagar.php?modulo=' . urlencode($modulo) . '&id=' . $id);
+    exit;
+}
+$valor += $intereses;
+
 // URL de retorno: esquema+host actuales para que funcione igual en local,
 // pruebas y produccion. Lleva el modulo para volver a la tabla correcta.
 $esquema = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
@@ -113,12 +158,17 @@ $fields = [
     ['keyword' => 'Concepto', 'value' => $m['etiqueta'], 'displayOn' => 'both'],
     ['keyword' => 'Periodo',  'value' => $anio, 'displayOn' => 'both'],
 ];
+if ($intereses > 0) {
+    $fields[] = ['keyword' => 'Intereses de mora',
+                 'value' => '$ ' . number_format($intereses, 0, ',', '.'), 'displayOn' => 'both'];
+}
 
 try {
     $sesion = PlacetoPay::crearSesion(
         $referencia,
         $valor,
-        'Pago ' . $m['etiqueta'] . ' - Formulario No. ' . $referencia,
+        'Pago ' . $m['etiqueta'] . ' - Formulario No. ' . $referencia
+            . ($intereses > 0 ? ' (incluye intereses de mora)' : ''),
         $returnUrl,
         null,       // buyer: opcional; AvalPay pide los datos del titular en su pantalla
         $fields

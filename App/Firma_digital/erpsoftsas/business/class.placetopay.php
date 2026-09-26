@@ -274,11 +274,26 @@ class PlacetoPay {
             'autorizacion'  => $transaccion['authorization'] ?? '',
             'fecha'         => $respuesta['status']['date'] ?? date('c'),
 
+            // Lo que cobro el banco. Desde el 2026-09-25 no siempre es el total
+            // de la declaracion: una ICA vencida se paga con los intereses de
+            // mora escritos en el resumen (crearSesion.php). null si no viene.
+            'valor'         => self::_valorCobrado($respuesta, $transaccion),
+
             // El texto con que el banco explica un rechazo. Sin esto, un pago
             // rechazado solo se puede explicar entrando al panel de PlacetoPay.
             'mensaje'       => substr((string) ($transaccion['status']['message']
                                              ?? $respuesta['status']['message'] ?? ''), 0, 300),
         ];
+    }
+
+    /** El valor que cobro el banco: el de la transaccion, o el de la solicitud. */
+    private static function _valorCobrado(array $respuesta, array $transaccion)
+    {
+        $v = $transaccion['amount']['to']['total']
+          ?? $transaccion['amount']['from']['total']
+          ?? $respuesta['request']['payment']['amount']['total']
+          ?? null;
+        return is_numeric($v) ? (float) $v : null;
     }
 
 
@@ -335,6 +350,12 @@ class PlacetoPay {
          * datos distintos segun por donde entrara la plata.
          */
         require_once __DIR__ . '/class.pagoDeclaracion.php';
+
+        // Lo que entro de verdad (con los intereses de mora, si los hubo); el
+        // total de la declaracion solo si el banco no lo informa.
+        if (isset($info['valor']) && (float) $info['valor'] > 0) {
+            $valor = (float) $info['valor'];
+        }
 
         return \erpsoftsas\PagoDeclaracion::registrar($con, $idDeclaracion, [
             'valor' => $valor,

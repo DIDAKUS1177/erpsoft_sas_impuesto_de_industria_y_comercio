@@ -78,6 +78,13 @@ function pantalla($titulo, $html, $color, $muni) {
   .aviso.pend { background: #fff6e5; border: 1px solid #f0d38a; color: #7a5b00; }
   .aviso.info { background: #eef4f5; border: 1px solid #cfe0e2; color: #33555a; }
   .ref { font-family: monospace; font-weight: 700; }
+  .mora { padding: 10px 0; border-bottom: 1px solid #eee; }
+  .mora label { display: block; font-weight: 600; margin-bottom: 6px; }
+  .mora input { width: 100%; font-size: 18px; padding: 10px 12px; border: 1px solid #c8d0d6;
+                border-radius: 6px; text-align: right; box-sizing: border-box; }
+  .mora small { display: block; color: #666; margin-top: 6px; font-size: 12px; line-height: 1.4; }
+  .aviso-mora { font-size: 13px; color: #7a5b00; background: #fff6e5; border: 1px solid #f0d38a;
+                border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
 </style>
 </head>
 <body>
@@ -97,6 +104,14 @@ if (!PlacetoPay::configurado()) {
         '<div class="aviso info">El pago en línea todavía no está disponible. '
       . 'Puede pagar en el banco con el código de barras impreso en su declaración.</div>',
         $color, $muni);
+}
+
+// Solo quien ve el botón, y sobre sus propias declaraciones (la Alcaldía, sobre
+// cualquiera): ver PseModulo::motivoParaNoPagar.
+$motivo = \erpsoftsas\PseModulo::motivoParaNoPagar($con, $m, $id);
+if ($motivo !== null) {
+    http_response_code(403);
+    pantalla('Pago no disponible', '<div class="aviso info">' . htmlspecialchars($motivo) . '</div>', $color, $muni);
 }
 
 $col = [
@@ -139,13 +154,38 @@ if ($valor <= 0) {
         $color, $muni);
 }
 
+/*
+ * ICA VENCIDA: se paga CON intereses de mora, escritos a mano (Javier y el
+ * cliente, 2026-09-25), con la misma regla del recibo de pago
+ * (business/class.vencimientoICA.php): obligatorios, salvo que la declaracion
+ * ya traiga los suyos en el renglon 37. crearSesion.php los vuelve a validar y
+ * cobra el total mas los intereses. Retencion y autorretencion aun no tienen
+ * fecha limite: no llevan la casilla.
+ */
+$mora = null;
+if ($modulo === 'ica') {
+    include_once SERVER . '/business/class.vencimientoICA.php';
+    $ica = $con->obnerFila($con->consultar(
+        "SELECT dec_AnioDeclaracion, dec_ValorConcepto16 FROM ind_declaraciones_ica WHERE dec_Id = ?", [$id]
+    ));
+    $anioIca = (int) ($ica['dec_AnioDeclaracion'] ?? 0);
+    if ($ica && \erpsoftsas\VencimientoICA::vencida($anioIca)) {
+        $mora = [
+            'limite' => date('d/m/Y', strtotime(\erpsoftsas\VencimientoICA::fechaLimite($anioIca))),
+            'dias'   => \erpsoftsas\VencimientoICA::diasDeMora($anioIca, \erpsoftsas\VencimientoICA::hoy()),
+            'exige'  => \erpsoftsas\VencimientoICA::exigeIntereses($anioIca, $ica['dec_ValorConcepto16'] ?? 0),
+        ];
+    }
+}
+
 // item 4.3: si ya hay una sesion y el ultimo estado conocido es PENDIENTE, no
 // se crea otra: se informa. "Verificar estado" fuerza una consulta (retorno.php).
 if (!empty($row['pse_req']) && strtoupper((string) $row['pse_est']) === 'PENDING') {
     $retorno = 'retorno.php?modulo=' . urlencode($modulo) . '&id=' . $id;
     pantalla('Pago en proceso',
         '<div class="aviso pend">Su pago con referencia <span class="ref">' . htmlspecialchars($referencia)
-      . '</span> por <b>' . $valorFmt . '</b> está en estado <b>PENDIENTE</b>: aún no recibimos '
+      . '</span>' . ($mora === null ? ' por <b>' . $valorFmt . '</b>' : '')
+      . ' está en estado <b>PENDIENTE</b>: aún no recibimos '
       . 'la confirmación de su entidad financiera. Espere unos minutos y vuelva a consultar; '
       . 'si el dinero fue debitado, el pago se confirmará automáticamente. Si tiene dudas, '
       . 'comuníquese con ' . htmlspecialchars($muni) . ' indicando su referencia.</div>'
@@ -159,7 +199,21 @@ ob_start();
 <div class="fila"><span class="k">Concepto</span><span class="v"><?= htmlspecialchars($m['etiqueta']) ?></span></div>
 <div class="fila"><span class="k">Referencia</span><span class="v ref"><?= htmlspecialchars($referencia) ?></span></div>
 <div class="fila"><span class="k">Entidad</span><span class="v"><?= htmlspecialchars($muni) ?></span></div>
-<div class="fila"><span class="k">Total a pagar</span><span class="v total"><?= $valorFmt ?></span></div>
+<?php if ($mora): ?>
+<div class="fila"><span class="k">Valor de la declaración</span><span class="v"><?= $valorFmt ?></span></div>
+<?php endif; ?>
+<?php if ($mora): ?>
+  <div class="mora">
+    <label for="intereses">Intereses de mora a hoy</label>
+    <input id="intereses" name="intereses" form="formPago" inputmode="numeric" autocomplete="off"
+           value="<?= $mora['exige'] ? '' : '0' ?>" placeholder="Escriba el valor"<?= $mora['exige'] ? ' required' : '' ?>>
+    <small>La declaración venció el <?= htmlspecialchars($mora['limite']) ?>: se paga con los intereses de mora
+      de <?= (int) $mora['dias'] ?> día<?= (int) $mora['dias'] === 1 ? '' : 's' ?>. En pesos, sin decimales.<?php if (!$mora['exige']): ?>
+      La declaración ya trae intereses; escriba solo lo que falte (o 0).<?php else: ?> Si no sabe cuánto son,
+      comuníquese con <?= htmlspecialchars($muni) ?>.<?php endif; ?></small>
+  </div>
+<?php endif; ?>
+<div class="fila"><span class="k">Total a pagar</span><span class="v total" id="totalPse"><?= $valorFmt ?></span></div>
 
 <div class="aval">
   <img src="<?= htmlspecialchars($logoAvalPay) ?>" alt="AvalPay" onerror="this.style.display='none'">
@@ -177,8 +231,9 @@ ob_start();
       de <?= htmlspecialchars($muni) ?> y autorizo el procesamiento del pago a través de AvalPay (PSE).</span>
     </label>
   </div>
+  <div class="aviso-mora" id="avisoMora" hidden>Escriba los intereses de mora para continuar.</div>
   <button type="submit" class="btn" id="btnPagar" disabled>Pagar con PSE</button>
-  <a class="btn sec" href="javascript:window.close();">Cancelar</a>
+  <a class="btn sec" href="#" onclick="window.close(); setTimeout(function () { history.back(); }, 200); return false;">Cancelar</a>
 </form>
 
 <script>
@@ -187,7 +242,47 @@ ob_start();
   var chk = document.getElementById('acepto');
   var btn = document.getElementById('btnPagar');
   var frm = document.getElementById('formPago');
-  chk.addEventListener('change', function () { btn.disabled = !chk.checked; });
+  // Intereses de mora (ICA vencida): mismos pesos enteros que el recibo de pago.
+  var mora = document.getElementById('intereses');
+  var aviso = document.getElementById('avisoMora');
+  var exige = <?= ($mora && $mora['exige']) ? 'true' : 'false' ?>;
+  var valorDeclaracion = <?= (int) round($valor) ?>;
+  function pesos(n) { return '$ ' + String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+  // Pesos enteros: lo que vaya después de la coma (centavos) se ve pero no se cobra.
+  function digitosMora() { return mora ? mora.value.split(',')[0].replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 10) : ''; }
+  function faltaMora() { return exige && !(Number(digitosMora() || 0) > 0); }
+  function listo() { return chk.checked && !faltaMora(); }
+  function refrescar() {
+    btn.disabled = !listo();
+    aviso.hidden = !(chk.checked && faltaMora());
+  }
+  if (mora) {
+    mora.addEventListener('input', function () {
+      var partes = mora.value.split(',');
+      var d = digitosMora();
+      var centavos = partes.length > 1 ? ',' + partes.slice(1).join('').replace(/\D/g, '').slice(0, 2) : '';
+      mora.value = (d === '' ? '' : pesos(d).slice(2)) + centavos;
+      document.getElementById('totalPse').textContent = pesos(valorDeclaracion + Number(d || 0));
+      refrescar();
+    });
+    // Lo pegado con punto decimal ("1234.56") pasa a coma, que es como se descarta.
+    mora.addEventListener('paste', function (e) {
+      var t = String((e.clipboardData || window.clipboardData).getData('text') || '').trim();
+      e.preventDefault();
+      if (t.indexOf(',') === -1 && (t.match(/\./g) || []).length === 1 && /\.\d{1,2}$/.test(t)) { t = t.replace('.', ','); }
+      mora.value = t;
+      mora.dispatchEvent(new Event('input'));
+    });
+  }
+  chk.addEventListener('change', function () {
+    refrescar();
+    if (chk.checked && faltaMora()) { mora.focus(); }
+  });
+  // Al volver con "Atrás" desde el banco, el navegador restaura la página con el
+  // botón en "Redirigiendo…": se deja como corresponde.
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) { btn.textContent = 'Pagar con PSE'; refrescar(); }
+  });
   frm.addEventListener('submit', function () {
     btn.disabled = true;
     btn.textContent = 'Redirigiendo al banco…';

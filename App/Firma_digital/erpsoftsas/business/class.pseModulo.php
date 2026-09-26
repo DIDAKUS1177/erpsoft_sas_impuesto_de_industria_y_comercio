@@ -82,6 +82,47 @@ class PseModulo
         return array_keys(self::mapa());
     }
 
+    /**
+     * ¿Puede la sesión pagar por PSE esta declaración? Devuelve el motivo si
+     * no, o null.
+     *
+     * El botón solo se pinta a quien puede, pero pagar.php y crearSesion.php se
+     * abren con la URL: sin esto, en certificación cualquiera con el enlace
+     * creaba sesiones del ambiente de PRUEBAS sobre declaraciones reales, y el
+     * banco de pruebas las aprobaba y las dejaba "pagadas" sin plata. Mismo
+     * criterio que los PDF (pdfret_filaAutorizada): la Alcaldía, cualquiera; el
+     * contribuyente, solo las suyas. Y el mismo del botón (botonVisible).
+     */
+    public static function motivoParaNoPagar($con, array $m, $id)
+    {
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+
+        $usuario = (int) ($_SESSION['id_usuario'] ?? 0);
+        if ($usuario <= 0) {
+            return 'Inicie sesión para pagar en línea.';
+        }
+        require_once __DIR__ . '/class.placetopay.php';
+        if (!\PlacetoPay::botonVisible($usuario)) {
+            return 'El pago en línea todavía no está disponible. Puede pagar en el banco con el recibo de pago.';
+        }
+        if (in_array((int) ($_SESSION['id_Rol'] ?? 0), [1, 2], true)) {
+            return null;
+        }
+
+        // Tabla y columnas salen del mapa fijo de arriba, nunca del usuario.
+        $fila = $con->obnerFila($con->consultar(
+            "SELECT 1 AS x FROM {$m['tabla']}
+              WHERE {$m['pk']} = ?
+                AND {$m['prefijo']}_IdContribuyente IN (
+                    SELECT c.ind_Id FROM ind_contribuyentes c
+                    INNER JOIN conf_usuarios u ON u.usu_NumeroDocumento = c.ind_NumeroIdentificacion
+                     WHERE u.usu_Id = ?)",
+            [(int) $id, $usuario]
+        ));
+        // "No encontrada" y no "no es suya": no se confirma que exista.
+        return $fila ? null : 'Declaración no encontrada.';
+    }
+
     /* --- Nombres de las columnas PSE, derivados del prefijo en un solo sitio --- */
     public static function colRequestId($m)   { return $m['prefijo'] . '_PSE_RequestId'; }
     public static function colEstado($m)      { return $m['prefijo'] . '_PSE_Estado'; }

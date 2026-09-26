@@ -763,10 +763,36 @@ var EditarDeclaracion = (function () {
                 var d = resp.datos.declaracion;
                 var actividades = resp.datos.actividades;
 
-                $('#numDeclaracion').val(d.dec_Id);
+                /*
+                 * En blanco ANTES de rellenar, no despues.
+                 *
+                 * Se limpiaba despues de poner el numero, el año y el periodo
+                 * -y limpiar borra justo esos tres-, asi que la declaracion se
+                 * abria sin saber cual era: "Guardar" y cada renglon que se
+                 * recalculaba viajaban sin id, el servidor respondia "Id de
+                 * declaración requerido" y la pantalla decia "No se pudieron
+                 * guardar las actividades" (revision del cliente 2026-09-25:
+                 * "guardo, cierro, vuelvo a editar y me sale error"). Pasaba
+                 * tambien con las correcciones, que se abren por aqui.
+                 */
+                limpiarFormularioDeclaracion();
+
+                // El NUMERO, como al crear (ver icaWebPresentar.js): es lo que
+                // ve el contribuyente, y el servidor busca primero por numero,
+                // que es unico. Con el id, una declaracion vieja cuyo numero
+                // coincidiera con este id se tomaria por esta.
+                $('#numDeclaracion').val(d.dec_NumeroDeclaracion || d.dec_Id);
                 $('#anioDeclaracion').val(d.dec_AnioDeclaracion);
                 $('#periodoDeclaracion').val(d.dec_MesDeclaracion);
                 $('#opcionUso').val(d.dec_OpcionUso);
+
+                // Fecha y hora: limpiar las borra y aquí no las volvía a poner
+                // nadie. sqlsrv las manda como objeto ({date: 'AAAA-MM-DD hh:mm:ss…'}).
+                var crudo = function (v) { return (v && typeof v === 'object') ? String(v.date || '') : String(v || ''); };
+                var fecha = crudo(d.dec_FechaDeclaracion).substring(0, 10);
+                var hora  = crudo(d.dec_HoraDeclaracion).match(/\d{2}:\d{2}(:\d{2})?/);
+                $('#fechaDeclaracion').val(/^\d{4}-\d{2}-\d{2}$/.test(fecha) && fecha !== '1900-01-01' ? fecha : '');
+                $('#horaDeclaracion').val(hora ? hora[0] : '');
 
                 // Los totales se repueblan desde las columnas dec_* (mismo
                 // mapeo, a la inversa, que usa el guardado en
@@ -785,10 +811,6 @@ var EditarDeclaracion = (function () {
                 // siempre hicieron bien este parseFloat + formatearCOP.
                 // BD -> input: la conversion canonica vive en core/numeros.js.
                 var aCOP = function (v) { return NumerosCOP.deBaseDeDatosAInput(v); };
-
-                // En blanco antes de rellenar: si no, lo que esta declaracion no
-                // traiga se queda con el valor de la que se vio antes.
-                limpiarFormularioDeclaracion();
 
                 $('[data-campo="ingresos_total_pais"]').val(aCOP(d.dec_TotalIngresos));
                 $('[data-campo="menos_fuera_municipio"]').val(aCOP(d.dec_IngresosFueraMunicipio));
@@ -836,6 +858,19 @@ var EditarDeclaracion = (function () {
                 v('descuento_pronto_pago',            d.dec_ValorConcepto15);
                 v('interes_mora',                     d.dec_ValorConcepto16);
                 v('total_a_pagar',                    d.dec_ValorConcepto20);
+
+                /*
+                 * Renglones 18 y 19: generación de energía (capacidad instalada)
+                 * e impuesto de la Ley 56 de 1981. Limpiar los deja en 0 y Guardar
+                 * -y cada renglón que se recalcula- los manda, así que se pintaban
+                 * en 0 y el servidor los grababa en 0: sp_calculo_comercio suma
+                 * dec_ValorImpuesto al renglón 20 y la declaración de una
+                 * generadora bajaba sin aviso. La capacidad va en kW y puede
+                 * traer decimales: no se redondea a entero como los pesos.
+                 */
+                v('valor_impuesto', d.dec_ValorImpuesto);
+                $('[data-campo="capacidad_instalada"]').val(
+                    NumerosCOP.formatear(NumerosCOP.deBaseDeDatos(d.dec_CapacidadInstalada)));
 
                 /*
                  * Y la sancion queda coherente con su opcion: si hay importe
@@ -1040,21 +1075,17 @@ var LiquidacionEnPantalla = {
             data: datos,
             success: function (arr) {
                 if (arr.ok != 1 || !arr.datos) {
-                    swal('No se pudo liquidar', arr.mensaje || 'Intente de nuevo.', 'error');
+                    swal({ type: 'error', title: 'No se pudo liquidar', text: arr.mensaje || 'Intente de nuevo.' });
                     return;
                 }
 
                 self.pintar(arr.datos);
 
-                // El texto decia 'use "Guardar y liquidar"', y ese boton ya no
-                // existe: se renombro a "Guardar" cuando el cliente pidio
-                // separar las dos acciones. Mandaba al contribuyente a buscar
-                // algo que no esta en la pantalla.
+                // Texto del cliente (revisión 2026-09-25).
                 swal({
                     type: 'info',
                     title: 'Liquidación calculada',
-                    text: 'Estas son las cifras que quedarían. Todavía no se ha guardado nada: '
-                        + 'pulse "Guardar" para conservarlas.'
+                    text: 'Estas son las cifras calculadas. Para conservarlas, pulse "Guardar".'
                 });
             },
             // Sin error() la pantalla se queda muda si el backend no devuelve

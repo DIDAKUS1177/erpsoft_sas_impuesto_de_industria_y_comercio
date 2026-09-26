@@ -414,11 +414,16 @@ $fechaSello = erp_formatearFechaSello($row['dec_FechaPresentacion'] ?? null);
  * que se capture ese dato se cuentan TODOS los establecimientos activos
  * del contribuyente, que es un numero seguro (nunca sub-cuenta) aunque
  * pueda quedar por encima del que exige el formulario.
+ *
+ * Un local cerrado durante el año declarado, o despues, funciono ese año y
+ * cuenta (cliente, 2026-09-25: el año del cierre se declara igual). Sin esto,
+ * reimprimir una declaracion ya presentada cambiaba la cifra al cerrar un local.
  */
 $numEstablecimientosContribuyente = $con->obnerFila($con->consultar(
     "SELECT COUNT(*) AS n FROM ind_establecimientos
-     WHERE est_IdContribuyente = ? AND est_Activo = 1",
-    [$row['dec_IdContribuyente']]
+     WHERE est_IdContribuyente = ?
+       AND (est_Activo = 1 OR (est_Activo = 0 AND est_Fecha_cierre >= ?))",
+    [$row['dec_IdContribuyente'], sprintf('%04d-01-01', (int) $row['dec_AnioDeclaracion'])]
 ))['n'] ?? 1;
 
 if ($fechaSello === '' && $firmaData) {
@@ -470,9 +475,11 @@ $nombreCompleto = trim(
     $row['ind_SegundoApellido']
 );
 
-$tipoDocumento = 'CC';
-if($row['ind_IdTipoDocumento'] == 2) $tipoDocumento = 'NIT';
-if($row['ind_IdTipoDocumento'] == 3) $tipoDocumento = 'CE';
+// Catálogo del sistema: 1 C.C., 3 C.E., 4 pasaporte, 5 NIT (el 2 no existe).
+// Con el 2 como NIT, toda empresa salía marcada C.C.; ritActualizado.php
+// ya se había corregido por lo mismo. El pasaporte no tiene casilla en este
+// formulario: no se marca ninguna (antes salía como C.C.).
+$tipoDocumento = [1 => 'CC', 3 => 'CE', 5 => 'NIT'][(int) $row['ind_IdTipoDocumento']] ?? '';
 
 
 $totalImpuestoActividades = 0;
@@ -877,7 +884,7 @@ $html = '
 <td width="3%" align="center">'.($d['tipo_documento'] === 'NIT' ? 'X' : '').'</td>
 <td width="5%">C.E.</td>
 <td width="3%" align="center">'.($d['tipo_documento'] === 'CE' ? 'X' : '').'</td>
-<td width="14%">N° '.$d['nit'].' - '.$d['dv'].'</td>
+<td width="14%">N° '.$d['nit'].($d['tipo_documento'] === 'NIT' ? ' - '.$d['dv'] : '').'</td>
 <td width="20%">¿ES CONSORCIO O UNIÓN TEMPORAL?</td>
 <td width="3%" align="center">'.($d['es_consorcio'] ? 'X' : '').'</td>
 <td width="23%">¿REALIZA ACTIVIDADES A TRAVÉS DE PATRIMONIO AUTÓNOMO?</td>

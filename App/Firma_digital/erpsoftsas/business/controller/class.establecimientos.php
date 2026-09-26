@@ -45,6 +45,12 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
                 case 22: // Buscar entre TODOS los establecimientos (solo Alcaldía)
                     $respuesta = $_obj->_buscarEstablecimientos();
                     break;
+                case 23: // Cerrar (solo Alcaldía, con soporte y fecha de cese)
+                    $respuesta = $_obj->_cerrarEstablecimiento();
+                    break;
+                case 24: // Reabrir uno cerrado por error (solo el administrador)
+                    $respuesta = $_obj->_reabrirEstablecimiento();
+                    break;
                 default:
                     throw new \erpsoftsas\EstablecimientosException("Función no válida", 0);
             }
@@ -72,6 +78,19 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
 
     protected function _agregarEstablecimientos()
     {
+        // Crear nunca toca uno existente: con est_Id el DAO hace UPDATE de ese
+        // local, fuera de quién sea el dueño y aunque esté cerrado.
+        unset($_POST['est_Id']);
+
+        // Un establecimiento nace abierto: se cierra después, con soporte, por
+        // la función 23. Antes de repartir código, para no gastar un consecutivo.
+        $errorOpcion = self::_errorOpcionDeUso('Un establecimiento nuevo no puede registrarse como cerrado.');
+        if ($errorOpcion !== null) {
+            $this->_ok = 0;
+            $this->_mensaje = $errorOpcion;
+            return [];
+        }
+
         $errorCodigo = self::_validarCodigo();
         if ($errorCodigo !== null) {
             $this->_ok = 0;
@@ -104,6 +123,12 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
             }
             $_POST['est_IdContribuyente'] = $propio;
         }
+
+        // Lo fija el servidor, no lo que mande el navegador. Tampoco puede quedar
+        // sin valor: el DAO omite lo nulo y la columna trae DEFAULT -1, que todo
+        // el sistema lee como NO activo (declaración, liquidación y retenciones
+        // filtran est_Activo = 1).
+        $_POST['est_Activo'] = 1;
 
         self::_filtrarCese();
 
@@ -197,6 +222,15 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
 
     protected function _editarEstablecimientos()
     {
+        // Entero desde aquí: los permisos lo miran como número, pero el DAO arma
+        // el WHERE con el texto tal cual llegó.
+        $_POST['est_Id'] = (int) ($_POST['est_Id'] ?? 0);
+        if ($_POST['est_Id'] <= 0) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No se indicó el establecimiento.';
+            return [];
+        }
+
         $errorCodigo = self::_validarCodigo();
         if ($errorCodigo !== null) {
             $this->_ok = 0;
@@ -221,6 +255,30 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
         if (!in_array($rol, [1, 2], true)) {
             unset($_POST['est_IdContribuyente']);
         }
+
+        /*
+         * Cerrar y reabrir tienen su propia puerta (funciones 23 y 24), con sus
+         * reglas: soporte y fecha para cerrar, administrador y justificación
+         * para reabrir (cliente, 2026-09-25). Por aquí ni se cierra, ni se
+         * reactiva uno cerrado, ni se toca uno cerrado.
+         */
+        $estado = $con->obnerFila($con->consultar(
+            "SELECT est_Activo FROM ind_establecimientos WHERE est_Id = ?",
+            [(int) ($_POST['est_Id'] ?? 0)]
+        ));
+        if ($estado && self::_estaCerrado($estado)) {
+            $this->_ok = 0;
+            $this->_mensaje = 'El establecimiento está cerrado y no se puede modificar. '
+                            . 'Si se cerró por error, el administrador puede reabrirlo.';
+            return [];
+        }
+        $errorOpcion = self::_errorOpcionDeUso('Para cerrar el establecimiento use el botón "Cerrar establecimiento".');
+        if ($errorOpcion !== null) {
+            $this->_ok = 0;
+            $this->_mensaje = $errorOpcion;
+            return [];
+        }
+        unset($_POST['est_Activo']);
 
         self::_filtrarCese();
         self::_fechasVaciasANulo();
@@ -464,18 +522,6 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
     }
 
     /**
-     * Punto 14: el cese lo registra UNICAMENTE el administrador. Si los campos
-     * llegan desde otro rol se descartan en silencio -no se falla- para que el
-     * contribuyente pueda seguir guardando el resto de su establecimiento.
-     * Comprobado que hacia falta: antes un contribuyente podia fijarse su
-     * propia fecha de cierre mandando el POST a mano.
-     *
-     * De paso se valida est_Causal, que en la base es varchar(1): cualquier
-     * texto mas largo hacia fallar el guardado con un 500 de cuerpo vacio, que
-     * en pantalla se ve como el generico "error de conexion".
-     */
-
-    /**
      * funcion 21 - Cese de actividades del CONTRIBUYENTE.
      *
      * Subio del establecimiento a la persona con la migracion 019. Lo que se
@@ -693,19 +739,43 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
         }
     }
 
+    /**
+     * est_Opcion_uso: 1 inscripción, 2 actualización, 3 cierre. El cierre tiene
+     * su propia puerta (función 23): por crear y editar solo pasan 1 y 2. Se
+     * recorta porque SQL Server guarda "3 " como '3' en el varchar(1) sin avisar.
+     * Devuelve el mensaje de error, o null.
+     */
+    private static function _errorOpcionDeUso($mensajeCierre)
+    {
+        if (!array_key_exists('est_Opcion_uso', $_POST)) { return null; }
+
+        $opcion = trim((string) $_POST['est_Opcion_uso']);
+        $_POST['est_Opcion_uso'] = $opcion;
+        if ($opcion === '3') { return $mensajeCierre; }
+        if (!in_array($opcion, ['', '1', '2'], true)) { return 'Opción de uso no válida.'; }
+        return null;
+    }
+
+    /**
+     * Cerrado es todo lo que no está activo (est_Activo <> 1): el 0 del cierre
+     * y el -1 que la columna pone por defecto. Es como lo leen la pantalla, la
+     * declaración, la liquidación y las retenciones, que filtran est_Activo = 1.
+     */
+    private static function _estaCerrado(array $fila)
+    {
+        return (int) ($fila['est_Activo'] ?? 1) !== 1;
+    }
+
+    /**
+     * Los datos del cierre ya no entran por crear ni por editar, ni siquiera del
+     * administrador: los escriben solo _cerrarEstablecimiento y
+     * _reabrirEstablecimiento, que exigen soporte, fecha y justificación. Se
+     * descartan en silencio para que el resto del formulario se guarde.
+     */
     private static function _filtrarCese()
     {
-        if (!self::_esAdministrador()) {
-            foreach (self::_camposCese() as $campo) {
-                unset($_POST[$campo]);
-            }
-            return;
-        }
-
-        if (isset($_POST['est_Causal'])) {
-            $causal = trim((string) $_POST['est_Causal']);
-            // 1 Fusion, 2 Escision, 3 Liquidacion, 4 Otro.
-            $_POST['est_Causal'] = in_array($causal, ['1', '2', '3', '4'], true) ? $causal : '';
+        foreach (self::_camposCese() as $campo) {
+            unset($_POST[$campo]);
         }
     }
 
@@ -875,28 +945,268 @@ $sql = "
         }
     }
 
+    /**
+     * funcion 4 - "Retirar", que ya no existe.
+     *
+     * Ponía est_Activo = 0 sin soporte ni fecha y cualquiera lo deshacía con
+     * "Reactivar". El cliente pidió quitarlo (2026-09-25): un establecimiento
+     * solo se cierra por "Cierre de establecimiento" (función 23). Se contesta
+     * con el camino correcto por si queda alguna pantalla vieja en caché.
+     */
     protected function _inactivarEstablecimientos()
     {
+        $this->_ok = 0;
+        $this->_mensaje = 'Para cerrar un establecimiento use "Estado del registro: Cierre de establecimiento", '
+                        . 'con el soporte y la fecha de cese.';
+        return [];
+    }
+
+    private static function _rolDeLaSesion()
+    {
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+        return isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
+    }
+
+    /**
+     * Deja constancia en ind_establecimiento_novedades (migración 035).
+     * consultar() lanza excepción si falla, y run() solo atrapa las propias:
+     * sin el try, una tabla que falta tumbaría la respuesta con un 500 mudo.
+     */
+    private static function _registrarNovedad($con, $idEstablecimiento, $tipo, $fechaCese, $observacion)
+    {
+        try {
+            return (bool) $con->consultar(
+                "INSERT INTO ind_establecimiento_novedades
+                     (nov_IdEstablecimiento, nov_Tipo, nov_FechaCese, nov_Observacion, nov_IdUsuario)
+                 VALUES (?, ?, ?, NULLIF(?, ''), ?)",
+                [(int) $idEstablecimiento, $tipo, $fechaCese, (string) $observacion, (int) ($_SESSION['id_usuario'] ?? 0)]
+            );
+        } catch (\Throwable $e) {
+            error_log('[establecimientos] no se pudo registrar la novedad: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * funcion 23 - Cierre de establecimiento (revisión del cliente 2026-09-25).
+     *
+     * Solo la Alcaldía (roles 1 y 2). Exige la fecha de cese -hoy o anterior,
+     * nunca futura- y al menos un soporte cargado como constancia de cierre
+     * (cámara de comercio o acta de liquidación: "con uno de los dos basta").
+     * Cerrado queda inactivo, con est_Opcion_uso = 3, y ya no se edita ni se
+     * reactiva: solo el administrador lo reabre (función 24).
+     *
+     * Cerrar un local no toca la declaración: las actividades son del
+     * contribuyente (migraciones 005 y 007), así que el año del cierre se
+     * declara igual, por el tiempo que funcionó.
+     */
+    protected function _cerrarEstablecimiento()
+    {
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
-        if (!self::_puedeSobreEstablecimiento($_POST['est_Id'] ?? 0, $con)) {
+
+        $rol = self::_rolDeLaSesion();   // abre la sesión antes de leerla
+        if (empty($_SESSION['id_usuario']) || !in_array($rol, [1, 2], true)) {
             $this->_ok = 0;
-            $this->_mensaje = 'No tiene permiso para retirar este establecimiento';
+            $this->_mensaje = 'Solo la Alcaldía puede cerrar un establecimiento.';
             return [];
         }
 
-        $_obj = new \erpsoftsas\DAO_Establecimientos();
-        $_obj->set_est_Id($_POST['est_Id'] ?? null);
-        $_obj->set_est_Activo(0);
-
-        if (!$_obj->guardar()) {
+        $id = (int) ($_POST['est_Id'] ?? 0);
+        $fila = $con->obnerFila($con->consultar(
+            "SELECT est_Id, est_Activo, est_Fecha_inicio FROM ind_establecimientos WHERE est_Id = ?", [$id]
+        ));
+        if (!$fila) {
             $this->_ok = 0;
-            $this->_mensaje = $_obj->getMysqlError();
-        } else {
-            $id = $_obj->get_est_Id();
-            $this->_ok = 1;
-            $this->_mensaje = "Establecimiento ID $id inactivado correctamente";
+            $this->_mensaje = 'El establecimiento no existe.';
+            return [];
         }
-        return $_obj->getArray();
+        if (self::_estaCerrado($fila)) {
+            $this->_ok = 0;
+            $this->_mensaje = 'El establecimiento ya está cerrado.';
+            return [];
+        }
+
+        $fecha = trim((string) ($_POST['est_Fecha_cierre'] ?? ''));
+        $f = \DateTime::createFromFormat('!Y-m-d', $fecha);
+        if ($fecha === '' || !$f || $f->format('Y-m-d') !== $fecha) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Indique la fecha de cese de actividades.';
+            return [];
+        }
+        date_default_timezone_set('America/Bogota');   // "hoy" es el de Colombia, no el del servidor
+        if ($fecha > date('Y-m-d')) {
+            $this->_ok = 0;
+            $this->_mensaje = 'La fecha de cese de actividades no puede ser posterior a hoy.';
+            return [];
+        }
+        // Hacia atrás también hay tope: la columna es DATETIME (desde 1753) y
+        // 1900-01-01 es el "vacío" de esta base. Un año de dos cifras llegaba
+        // como 0025-05-01 y el UPDATE reventaba sin mensaje.
+        $inicio = self::_fechaIso($fila['est_Fecha_inicio'] ?? null);
+        if ($fecha < '1900-01-02' || ($inicio !== '' && $fecha < $inicio)) {
+            $this->_ok = 0;
+            $this->_mensaje = $inicio !== ''
+                ? 'La fecha de cese no puede ser anterior al inicio de actividades del establecimiento ('
+                  . date('d/m/Y', strtotime($inicio)) . ').'
+                : 'Revise la fecha de cese de actividades.';
+            return [];
+        }
+
+        $soporte = $con->obnerFila($con->consultar(
+            "SELECT COUNT(*) AS n FROM ind_establecimiento_anexos
+              WHERE anx_IdEstablecimiento = ? AND anx_Tipo = 'cese' AND anx_Activo = 1",
+            [$id]
+        ));
+        if ((int) ($soporte['n'] ?? 0) === 0) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Cargue el soporte del cierre: cámara de comercio o acta de liquidación.';
+            return [];
+        }
+
+        // La columna es varchar(255): lo que sobre se corta en vez de tumbar el cierre.
+        $observacion = mb_substr(trim((string) ($_POST['est_Observacion_cierre'] ?? '')), 0, 255);
+
+        // Solo cuenta quien de verdad lo pasó de abierto a cerrado: si dos
+        // personas cierran a la vez (o se reintenta), la segunda afecta 0 filas
+        // y no deja una novedad de un cierre que no hizo.
+        try {
+            $cambio = $con->obnerFila($con->consultar(
+                "SET NOCOUNT ON;
+                 UPDATE ind_establecimientos
+                    SET est_Activo = 0, est_Opcion_uso = 3, est_Fecha_cierre = ?,
+                        est_Observacion_cierre = NULLIF(?, '')
+                  WHERE est_Id = ? AND est_Activo = 1;
+                 SELECT @@ROWCOUNT AS n;",
+                [$fecha, $observacion, $id]
+            ));
+        } catch (\Throwable $e) {
+            // Sin esto un error de la base era un 500 vacío ("Error de conexión").
+            error_log("[establecimientos] no se pudo cerrar est_Id=$id: " . $e->getMessage());
+            $this->_ok = 0;
+            $this->_mensaje = 'No se pudo cerrar el establecimiento. Intente de nuevo.';
+            return [];
+        }
+        if ((int) ($cambio['n'] ?? 0) !== 1) {
+            $this->_ok = 0;
+            $this->_mensaje = 'El establecimiento ya estaba cerrado: no se registró otro cierre.';
+            return [];
+        }
+
+        // La historia no debe impedir el cierre: sin la migración 035 queda en el log.
+        if (!self::_registrarNovedad($con, $id, 'CIERRE', $fecha, $observacion)) {
+            error_log("[establecimientos] cierre de est_Id=$id sin novedad registrada (¿falta la migración 035?)");
+        }
+
+        $this->_ok = 1;
+        $this->_mensaje = 'Establecimiento cerrado.';
+        return ['est_Id' => $id];
+    }
+
+    /**
+     * funcion 24 - Reabrir un establecimiento cerrado por error.
+     *
+     * Solo el administrador (rol 1: "el director de impuestos, que va a tener
+     * todos los permisos") y con la justificación escrita, que queda en
+     * ind_establecimiento_novedades. Sin esa tabla no se reabre: la condición
+     * era dejar constancia. Reabrir y anotar van en una transacción: o las dos
+     * cosas, o ninguna.
+     */
+    protected function _reabrirEstablecimiento()
+    {
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+
+        $rol = self::_rolDeLaSesion();   // abre la sesión antes de leerla
+        if (empty($_SESSION['id_usuario']) || $rol !== 1) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Solo el administrador puede reabrir un establecimiento cerrado.';
+            return [];
+        }
+
+        $justificacion = trim((string) ($_POST['justificacion'] ?? ''));
+        if (mb_strlen($justificacion) < 10) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Escriba por qué se reabre el establecimiento (mínimo 10 caracteres).';
+            return [];
+        }
+        if (mb_strlen($justificacion) > 1000) {   // nov_Observacion es NVARCHAR(1000)
+            $this->_ok = 0;
+            $this->_mensaje = 'La justificación no puede pasar de 1.000 caracteres.';
+            return [];
+        }
+
+        $id = (int) ($_POST['est_Id'] ?? 0);
+        $fila = $con->obnerFila($con->consultar(
+            "SELECT est_Id, est_Activo, est_Fecha_cierre FROM ind_establecimientos WHERE est_Id = ?", [$id]
+        ));
+        if (!$fila) {
+            $this->_ok = 0;
+            $this->_mensaje = 'El establecimiento no existe.';
+            return [];
+        }
+        if (!self::_estaCerrado($fila)) {
+            $this->_ok = 0;
+            $this->_mensaje = 'El establecimiento no está cerrado.';
+            return [];
+        }
+
+        if (!$con->obnerFila($con->consultar(
+            "SELECT 1 AS x WHERE OBJECT_ID('dbo.ind_establecimiento_novedades', 'U') IS NOT NULL", []
+        ))) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No se puede reabrir: falta aplicar la migración 035 (novedades de establecimiento).';
+            return [];
+        }
+
+        $fechaCese = self::_fechaIso($fila['est_Fecha_cierre'] ?? null) ?: null;
+
+        try {
+            $con->begin();
+
+            // est_Activo <> 1 en el WHERE: dos reaperturas a la vez dejan una sola.
+            $cambio = $con->obnerFila($con->consultar(
+                "SET NOCOUNT ON;
+                 UPDATE ind_establecimientos
+                    SET est_Activo = 1, est_Opcion_uso = 2, est_Fecha_cierre = NULL, est_Observacion_cierre = NULL
+                  WHERE est_Id = ? AND est_Activo <> 1;
+                 SELECT @@ROWCOUNT AS n;",
+                [$id]
+            ));
+            if ((int) ($cambio['n'] ?? 0) !== 1) {
+                $con->rollback();
+                $this->_ok = 0;
+                $this->_mensaje = 'El establecimiento ya estaba abierto: no se registró otra reapertura.';
+                return [];
+            }
+            if (!self::_registrarNovedad($con, $id, 'REAPERTURA', $fechaCese, $justificacion)) {
+                $con->rollback();
+                $this->_ok = 0;
+                $this->_mensaje = 'No se pudo registrar la justificación. No se reabrió.';
+                return [];
+            }
+
+            $con->commit();
+        } catch (\Throwable $e) {
+            try { $con->rollback(); } catch (\Throwable $e2) { /* ya revertida */ }
+            error_log("[establecimientos] no se pudo reabrir est_Id=$id: " . $e->getMessage());
+            $this->_ok = 0;
+            $this->_mensaje = 'No se pudo reabrir el establecimiento. Intente de nuevo.';
+            return [];
+        }
+
+        $this->_ok = 1;
+        $this->_mensaje = 'Establecimiento reabierto.';
+        return ['est_Id' => $id];
+    }
+
+    /** Una fecha de la base como AAAA-MM-DD; '' si no hay (o es el 1900-01-01 de "vacío"). */
+    private static function _fechaIso($valor)
+    {
+        if ($valor instanceof \DateTimeInterface) {
+            $texto = $valor->format('Y-m-d');
+        } else {
+            $texto = substr(trim((string) $valor), 0, 10);
+        }
+        return ($texto === '' || $texto === '1900-01-01') ? '' : $texto;
     }
 
 

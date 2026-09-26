@@ -44,25 +44,23 @@ class RitFirma
      */
     const DOCUMENTOS_OBLIGATORIOS = [
         'rut'    => 'RUT',
-        'camara' => 'Camara de comercio o acta de constitucion',
-        'cedula' => 'Documento de identificacion del representante legal',
+        'camara' => 'Cámara de comercio o acta de constitución',
+        'cedula' => 'Documento de identificación del representante legal o propietario',
     ];
 
     /**
      * Cuales de los documentos obligatorios le faltan al contribuyente.
      *
-     * SUBIRLOS ES UN AVISO; FIRMAR ES UN BLOQUEO.
+     * BLOQUEAN GUARDAR Y FIRMAR.
      *
-     * Guardar el RIT con documentos pendientes se permite -se diligencia en
-     * varias sesiones, y negar el guardado dejaria al contribuyente sin poder
-     * conservar ni lo que ya escribio-. Firmar es otra cosa: la firma es el
-     * acto que cierra el registro, y el cliente pidio el 2026-08-26 que sin los
-     * soportes no se pueda dar por cerrado.
+     * El 2026-08-26 el cliente pidio que sin los soportes no se pudiera
+     * firmar, y guardar se permitia para diligenciar en varias sesiones. En la
+     * revision del 2026-09-25 lo cerro del todo: el RIT no se guarda incompleto.
+     * Guardar y firmar lo comprueban con faltantes(), que usa esta lista.
      *
-     * Va aqui, junto al hash, y no en el controlador de anexos, porque es una
-     * regla de la FIRMA: quien decide si el RIT se puede firmar es esta clase.
-     * El navegador tambien lo comprueba, para avisar antes de gastar un OTP,
-     * pero esa comprobacion se salta desde la consola y esta no.
+     * Va aqui, junto al hash, porque es tambien una regla de la FIRMA. El
+     * navegador lo comprueba para avisar antes de gastar un OTP, pero esa
+     * comprobacion se salta desde la consola y esta no.
      *
      * @return array<string,string> tipo => etiqueta, vacio si no falta ninguno
      */
@@ -89,6 +87,98 @@ class RitFirma
         foreach (self::DOCUMENTOS_OBLIGATORIOS as $tipo => $etiqueta) {
             if (!isset($cargados[$tipo])) { $faltan[$tipo] = $etiqueta; }
         }
+        return $faltan;
+    }
+
+    /**
+     * Lo que le falta al RIT, campos y documentos (revisión del cliente
+     * 2026-09-25), en frases para mostrarle al usuario.
+     *
+     * Una sola regla para GUARDAR y para FIRMAR. Al guardar, $datos es lo que
+     * llega del formulario (los nombres del POST son los de las columnas); sin
+     * $datos se mira lo que ya está en la base, que es lo que se firma: así un
+     * RIT guardado a medias antes de esta regla no se puede firmar incompleto.
+     *
+     * @return string[] vacío si está completo
+     */
+    public static function faltantes($con, $idContribuyente, ?array $datos = null)
+    {
+        $idContribuyente = (int) $idContribuyente;
+        $campos = [
+            'ind_Persona'                => 'tipo de persona',
+            'ind_PrimerNombre'           => 'primer nombre o razón social',
+            'ind_PrimerApellido'         => 'primer apellido',
+            'ind_Direccion'              => 'dirección de notificación',
+            'ind_IdCiudad'               => 'departamento y municipio de residencia',
+            'ind_Telefono'               => 'teléfono',
+            'ind_Email'                  => 'correo electrónico de notificación',
+            'ind_Fecha_inicio'           => 'fecha de inicio de actividades en el municipio',
+            'ind_Cedula_representante'   => 'cédula del representante legal o propietario',
+            'ind_Nombre_representante'   => 'nombre del representante legal o propietario',
+            'ind_Email_representante'    => 'correo del representante legal o propietario',
+            'ind_Telefono_representante' => 'celular del representante legal o propietario',
+        ];
+
+        // La identidad sale siempre de la base: el RIT no la edita.
+        $columnas = ['ind_IdTipoDocumento', 'ind_NumeroIdentificacion'];
+        if ($datos === null) {
+            $columnas = array_merge($columnas, array_keys($campos), ['ind_RegimenTributario']);
+        }
+        $fila = $con->obnerFila($con->consultar(
+            "SELECT " . implode(', ', $columnas) . " FROM ind_contribuyentes WHERE ind_Id = ?",
+            [$idContribuyente]
+        )) ?: [];
+        if ($datos === null) { $datos = $fila; }
+
+        // Lo que viene de la base puede ser DateTime, número o NULL; una fecha
+        // 1900-01-01 es un vacío que SQL Server guardó como fecha.
+        $v = function ($campo) use ($datos) {
+            $x = $datos[$campo] ?? '';
+            if ($x instanceof \DateTimeInterface) { $x = $x->format('Y-m-d'); }
+            $x = trim((string) $x);
+            return strncmp($x, '1900-01-01', 10) === 0 ? '' : $x;
+        };
+
+        $faltan = [];
+        // La columna del número no admite NULL: "sin número" queda como 0.
+        if (empty($fila['ind_IdTipoDocumento']) || (int) ($fila['ind_NumeroIdentificacion'] ?? 0) <= 0) {
+            $faltan[] = 'tipo y número de documento (los corrige la Alcaldía en Contribuyentes)';
+        }
+
+        if ($v('ind_Persona') === '2') {
+            unset($campos['ind_PrimerApellido']);   // persona jurídica
+        }
+        foreach ($campos as $campo => $rotulo) {
+            $valor = $v($campo);
+            // Un teléfono sin un solo dígito ("N/A") no es un teléfono: el de
+            // notificación se guarda solo con sus dígitos y quedaría en NULL.
+            if (in_array($campo, ['ind_Telefono', 'ind_Telefono_representante'], true)) {
+                $valor = preg_replace('/\D/', '', $valor);
+            }
+            // En la base estas dos son enteros: 0 es "sin escoger", como el vacío
+            // del formulario. Y el tipo de persona solo es natural (1) o jurídica (2).
+            if ($campo === 'ind_IdCiudad' && $valor === '0') { $valor = ''; }
+            if ($campo === 'ind_Persona' && !in_array($valor, ['1', '2'], true)) { $valor = ''; }
+            if ($valor === '') { $faltan[] = $rotulo; }
+        }
+
+        // Régimen e IVA viajan juntos, separados por coma; de cada grupo, uno.
+        $marcadas = array_map('trim', explode(',', $v('ind_RegimenTributario')));
+        $grupos = [
+            'régimen tributario (ordinario, simple o especial)' => ['ORDINARIO', 'SIMPLE', 'ESPECIAL'],
+            'responsable o no responsable de IVA'               => ['RESP_IVA', 'NO_RESP_IVA'],
+        ];
+        foreach ($grupos as $rotulo => $opciones) {
+            $n = count(array_intersect($opciones, $marcadas));
+            if ($n === 0) { $faltan[] = $rotulo; }
+            if ($n > 1)   { $faltan[] = 'una sola opción en ' . $rotulo; }
+        }
+
+        foreach (self::documentosFaltantes($con, $idContribuyente) as $tipo => $etiqueta) {
+            $faltan[] = 'el documento "' . $etiqueta . '"'
+                      . ($tipo === 'camara' ? ' (si no tiene cámara de comercio, comuníquese con la Alcaldía)' : '');
+        }
+
         return $faltan;
     }
 

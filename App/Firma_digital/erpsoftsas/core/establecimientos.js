@@ -116,6 +116,9 @@ class Establecimientos {
             });
         } else {
             $("#formCrearEstablecimientos").trigger("reset");
+            // Uno nuevo nace abierto: formulario normal y sin la opción de cierre.
+            establecimientos.bloquearSiEstaCerrado(null);
+            establecimientos.ajustarOpcionCierre(true);
             // Se vacia a proposito: al crear, el codigo lo reparte el servidor.
             $("#est_Codigo").val('');
             // El nuevo local cuelga del contribuyente en sesion. Para la
@@ -317,66 +320,167 @@ class Establecimientos {
      * de ActividadesComercio 
      * @param type $arrFilter: Listado de objetos ActividadesComercio
      */
+    /* =====================================================================
+       CIERRE DE ESTABLECIMIENTOS (revisión del cliente 2026-09-25)
+       ---------------------------------------------------------------------
+       Solo la Alcaldía cierra, y solo desde "Estado del registro: Cierre de
+       establecimiento", con la fecha de cese (hoy o anterior) y un soporte
+       (cámara de comercio o acta de liquidación). Cerrado queda inactivo y
+       no se reactiva; si fue un error, lo reabre solo el administrador con
+       una justificación. Todo esto lo vuelve a exigir el servidor (funciones
+       23 y 24 de class.establecimientos.php): aquí solo se evita ofrecer lo
+       que va a rebotar.
+       ===================================================================== */
+
+    /** Roles 1 y 2. Solo para la pantalla: quien decide es el servidor. */
+    esAlcaldia() {
+        return ['1', '2'].indexOf(String(idRol)) !== -1;
+    }
+
+    /** "Cierre de establecimiento" solo para la Alcaldía, y nunca al crear. */
+    ajustarOpcionCierre(esNuevo) {
+        var ofrecer = !esNuevo && this.esAlcaldia();
+        $('#est_OpcionUso option[value="3"]').prop('disabled', !ofrecer).toggle(ofrecer);
+    }
+
     /**
-     * Retira un establecimiento: baja LOGICA, no borrado.
-     *
-     * El establecimiento nunca se elimina de la base porque de el cuelgan
-     * declaraciones y anexos de años anteriores; borrarlo dejaria huerfano el
-     * historico tributario. La funcion 4 del controlador pone est_Activo = 0.
+     * Un cerrado se abre solo para consultarlo: campos deshabilitados, sin
+     * "Actualizar" y sin carga de archivos. Con d = null (crear) o un
+     * establecimiento abierto, el formulario vuelve a su estado normal.
      */
-    retirarEstablecimiento(id) {
+    bloquearSiEstaCerrado(d) {
+        var cerrado = !!d && Number(d.est_Activo) !== 1;
+        establecimientos._cerrado = cerrado;
+
+        $('#formCrearEstablecimientos').find('input, select, textarea')
+            .not('[type=hidden]').prop('disabled', cerrado);
+        $('#anexoArchivo').closest('.row').toggle(!cerrado);
+        $('#bloqueBotonCerrar').hide();
+
+        if (!cerrado) {
+            $('#avisoEstablecimientoCerrado').hide().empty();
+            return;
+        }
+
+        var fecha = establecimientos.fechaParaInput(d.est_Fecha_cierre);
+        var nota  = String(d.est_Observacion_cierre || '').trim();
+        $('#cierreFechaCese').val(fecha);
+        $('#avisoEstablecimientoCerrado').html(
+            '<b>Establecimiento cerrado' + (fecha ? ' el ' + fecha.split('-').reverse().join('/') : '') + '.</b> ' +
+            (nota ? 'Observación del cierre: ' + establecimientos.escapeHtml(nota) + '. ' : '') +
+            'Se muestra solo para consulta. ' +
+            (String(idRol) === '1'
+                ? 'Si se cerró por error, puede reabrirlo desde la lista con "Reabrir".'
+                : 'Si se cerró por error, solo el administrador puede reabrirlo.')
+        ).show();
+    }
+
+    /** "Cerrar establecimiento" aparece con "Cierre" elegido y al menos un soporte cargado. */
+    mostrarBotonCerrar(haySoporte) {
+        var esCierre = String($('#est_OpcionUso').val()) === '3';
+        $('#bloqueBotonCerrar').toggle(esCierre && !!haySoporte && !establecimientos._cerrado && this.esAlcaldia());
+    }
+
+    cerrarEstablecimiento() {
+        var id = $('#est_Id').val();
+        var fecha = $('#cierreFechaCese').val();
+
+        var hoy = new Date();
+        var hoyIso = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' +
+                     String(hoy.getDate()).padStart(2, '0');
+
+        if (!fecha) {
+            swal({ type: 'warning', title: 'Falta la fecha de cese',
+                   text: 'Indique la fecha de cese de actividades.' });
+            $('#cierreFechaCese').focus();
+            return;
+        }
+        if (fecha > hoyIso) {
+            swal({ type: 'warning', title: 'Fecha no válida',
+                   text: 'La fecha de cese de actividades no puede ser posterior a hoy.' });
+            return;
+        }
+
         swal({
-            title: '¿Retirar este establecimiento?',
-            text: 'Dejará de contarse como activo y no entrará en nuevas ' +
-                  'declaraciones. Sus declaraciones y archivos anteriores se conservan.',
+            title: '¿Cerrar el establecimiento?',
+            text: 'Quedará inactivo y no se podrá volver a activar. Si fuera un error, ' +
+                  'solo el administrador podría reabrirlo.',
             type: 'warning',
             showCancelButton: true,
-            confirmButtonText: 'Sí, retirar',
+            confirmButtonText: 'Sí, cerrar',
             cancelButtonText: 'Cancelar'
-        }).then(function (res) {
-            if (!res.value) { return; }
-            establecimientos._cambiarEstadoEstablecimiento(id, 4, 'Establecimiento retirado');
-        });
-    }
+        }).then(function (r) {
+            if (!r.value) { return; }
 
-    /** Vuelve a poner activo un establecimiento retirado. */
-    reactivarEstablecimiento(id) {
-        swal({
-            title: '¿Reactivar el establecimiento?',
-            text: 'Volverá a contarse como activo y a entrar en las declaraciones.',
-            type: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'Sí, reactivar',
-            cancelButtonText: 'Cancelar'
-        }).then(function (res) {
-            if (!res.value) { return; }
-            // No hay funcion propia para reactivar: se usa la de editar
-            // mandando solo est_Activo, que es lo unico que cambia.
-            establecimientos._cambiarEstadoEstablecimiento(id, 2, 'Establecimiento reactivado', 1);
-        });
-    }
+            // Un solo envío aunque se pulse dos veces.
+            var $boton = $('#btnCerrarEstablecimiento').prop('disabled', true);
 
-    _cambiarEstadoEstablecimiento(id, funcion, mensajeOk, activo) {
-        var datos = { funcion: funcion, est_Id: id };
-        if (activo !== undefined) { datos.est_Activo = activo; }
-
-        $.ajax({
-            url: '../business/controller/class.establecimientos.php',
-            type: 'POST',
-            dataType: 'json',
-            data: datos,
-            success: function (resp) {
-                if (resp.ok != 1) {
-                    swal({ type: 'error', title: 'No se pudo', text: resp.mensaje || '' });
-                    return;
+            $.ajax({
+                url: '../business/controller/class.establecimientos.php',
+                type: 'POST',
+                dataType: 'json',
+                complete: function () { $boton.prop('disabled', false); },
+                data: {
+                    funcion: 23,
+                    est_Id: id,
+                    est_Fecha_cierre: fecha,
+                    // La nota del estado del registro que está en el formulario.
+                    est_Observacion_cierre: $('#est_Observacion').val() || ''
+                },
+                success: function (resp) {
+                    if (resp.ok != 1) {
+                        swal({ type: 'error', title: 'No se pudo cerrar', text: resp.mensaje || 'Intente de nuevo.' });
+                        return;
+                    }
+                    // El aviso, con la ventana ya cerrada: abierto mientras Bootstrap la
+                    // desvanece, la página quedaba corrida hasta recargar.
+                    var $modal = $('#modal-Establecimientos');
+                    var avisar = function () { swal({ type: 'success', title: 'Establecimiento cerrado', timer: 2000 }); };
+                    if ($modal.hasClass('show')) { $modal.one('hidden.bs.modal', avisar).modal('hide'); }
+                    else { avisar(); }
+                    establecimientos.getEstablecimientos();
+                },
+                error: function () {
+                    swal({ type: 'error', title: 'Error de conexión', text: 'No se pudo cerrar el establecimiento.' });
                 }
-                swal({ type: 'success', title: mensajeOk, timer: 1800 });
-                establecimientos.getEstablecimientos();
-            },
-            error: function () {
-                swal({ type: 'error', title: 'Error de conexión',
-                       text: 'No se pudo cambiar el estado del establecimiento.' });
+            });
+        });
+    }
+
+    reabrirEstablecimiento(id) {
+        swal({
+            title: '¿Reabrir el establecimiento?',
+            text: 'Solo si se cerró por error. Escriba el motivo: queda registrado.',
+            input: 'textarea',
+            inputPlaceholder: 'Justificación (mínimo 10 caracteres)',
+            inputAttributes: { maxlength: 1000 },
+            showCancelButton: true,
+            confirmButtonText: 'Reabrir',
+            cancelButtonText: 'Cancelar',
+            inputValidator: function (valor) {
+                return Promise.resolve((!valor || valor.trim().length < 10)
+                    ? 'Escriba la justificación (mínimo 10 caracteres).' : undefined);
             }
+        }).then(function (r) {
+            if (!r.value) { return; }
+
+            $.ajax({
+                url: '../business/controller/class.establecimientos.php',
+                type: 'POST',
+                dataType: 'json',
+                data: { funcion: 24, est_Id: id, justificacion: r.value.trim() },
+                success: function (resp) {
+                    if (resp.ok != 1) {
+                        swal({ type: 'error', title: 'No se pudo reabrir', text: resp.mensaje || 'Intente de nuevo.' });
+                        return;
+                    }
+                    swal({ type: 'success', title: 'Establecimiento reabierto', timer: 2000 });
+                    establecimientos.getEstablecimientos();
+                },
+                error: function () {
+                    swal({ type: 'error', title: 'Error de conexión', text: 'No se pudo reabrir el establecimiento.' });
+                }
+            });
         });
     }
 
@@ -386,23 +490,10 @@ class Establecimientos {
         $("#bodyEstablecimientosRegistrados").empty();
         for (let dep of arrFilter) {
             // OJO: son DOS columnas distintas con nombres casi iguales.
-            //   est_Activo  (int)   1/0  -> activo o inactivo. Es la que
-            //                             escribe _inactivarEstablecimientos.
-            //   est_Activos (float)      -> el monto de ACTIVOS (patrimonio)
-            //                             que se captura en el formulario.
-            // Este boton venia mirando est_Activos, o sea el patrimonio: como
-            // los 12 establecimientos lo tienen en 0, todos se pintaban como
-            // "inactivos" (rojo, "Activar") aunque los 12 estaban activos, y
-            // el boton nunca reflejaba lo que hacia.
-            if (dep.est_Activo == 1) {
-                var icono = "dw dw-checked";
-                var clase = "btn-success";
-                var titulo = "Inactivar Establecimiento";
-            } else {
-                var icono = "dw dw-ban";
-                var clase = "btn-danger";
-                var titulo = "Activar Establecimiento";
-            }
+            //   est_Activo  (int)   1 activo; 0 cerrado (funciones 23 y 24);
+            //                       -1 es el DEFAULT de la columna, tampoco activo.
+            //   est_Activos (float) el monto de ACTIVOS (patrimonio) del formulario.
+            // El estado se venia leyendo de est_Activos, o sea del patrimonio.
 
             // Punto 5: los establecimientos ya no descargan el RIT. El RIT es
             // del contribuyente, no de cada local, asi que un boton por fila
@@ -413,46 +504,36 @@ class Establecimientos {
             // Punto 13: distintivo de estado. El color nunca va solo, lleva
             // texto -mismo criterio que los estados de las declaraciones-,
             // para que se entienda tambien en blanco y negro o con daltonismo.
-            // "Cesado" manda sobre "Inactivo": si tiene fecha de cese, eso es
-            // lo que le importa al funcionario que mira la lista.
-            var fechaCese = establecimientos.fechaParaInput(dep.est_Fecha_cierre);
-            var estadoTexto, estadoFondo, estadoColor;
-
-            if (fechaCese) {
-                estadoTexto = 'Cesado';
-                estadoFondo = '#FEF3C7';
-                estadoColor = '#92400E';
-            } else if (dep.est_Activo == 1) {
-                estadoTexto = 'Activo';
-                estadoFondo = '#D1FAE5';
-                estadoColor = '#065F46';
-            } else {
-                estadoTexto = 'Cerrado';
-                estadoFondo = '#FEE2E2';
-                estadoColor = '#991B1B';
-            }
+            // Manda est_Activo: cerrar lo pone en 0 con su fecha de cese, y
+            // reabrir lo vuelve a 1 y borra la fecha (funciones 23 y 24).
+            var cerrado = Number(dep.est_Activo) !== 1;
+            var fechaCese = cerrado ? establecimientos.fechaParaInput(dep.est_Fecha_cierre) : '';
+            var estadoTexto = cerrado ? 'Cerrado' : 'Activo';
+            var estadoFondo = cerrado ? '#FEE2E2' : '#D1FAE5';
+            var estadoColor = cerrado ? '#991B1B' : '#065F46';
 
             var chipEstado =
                 '<span style="display:inline-block; padding:2px 10px; border-radius:999px;' +
                 ' font-size:12px; font-weight:600; white-space:nowrap;' +
                 ' background:' + estadoFondo + '; color:' + estadoColor + ';">' +
                 estadoTexto + '</span>' +
-                (fechaCese ? '<br><span style="font-size:11px; color:#6B7280;">' + fechaCese + '</span>' : '');
+                (fechaCese ? '<br><span style="font-size:11px; color:#6B7280;">' +
+                    fechaCese.split('-').reverse().join('/') + '</span>' : '');
 
 
                 $('#bodyEstablecimientosRegistrados').append(
                     '<tr>' +
                     '<td>' +
-                    dep.est_Nombre +
+                    establecimientos.escapeHtml(dep.est_Nombre) +
                     '</td>' +
                     '<td>' +
-                    dep.strNombreContribuyente +
+                    establecimientos.escapeHtml(dep.strNombreContribuyente) +
                     '</td>' +
                     '<td>' +
-                    dep.strDocumentoContribuyente +
+                    establecimientos.escapeHtml(dep.strDocumentoContribuyente) +
                     '</td>' +
                     '<td>' +
-                    dep.est_Direccion +
+                    establecimientos.escapeHtml(dep.est_Direccion) +
                     '</td>' +
                     '<td align="center">' +
                     chipEstado +
@@ -460,39 +541,38 @@ class Establecimientos {
                     '<td align="center" style="white-space:nowrap;">' +
                     
                     /*
-                     * Solo Editar y Retirar.
-                     *
                      * Aqui habia ademas "Crear Declaración" y "Consultar
                      * Declaraciones", y los dos sobraban: la declaracion de ICA
                      * es UNA por contribuyente y año, no por establecimiento
-                     * -regla de negocio confirmada por el cliente-. Un boton de
-                     * declarar en la fila de un local sugeria lo contrario, que
-                     * cada local declara por su cuenta. Declarar y consultar
-                     * viven en su propio modulo, que es donde se buscan.
+                     * -regla de negocio confirmada por el cliente-. Declarar y
+                     * consultar viven en su propio modulo.
                      *
-                     * "Retirar" es baja LOGICA (est_Activo = 0, funcion 4): el
-                     * establecimiento no se borra nunca, porque de el cuelgan
-                     * declaraciones y anexos de años anteriores.
+                     * "Retirar" y "Reactivar" se quitaron (cliente, 2026-09-25):
+                     * se cierra solo desde "Cierre de establecimiento", con
+                     * soporte y fecha, y cerrado no se reactiva. Un cerrado se
+                     * abre para CONSULTARLO; si fue un error, el administrador
+                     * lo reabre con una justificacion.
                      */
-                    '<button type="button" class="btn btn-warning btn-sm mr-1" ' +
-                        'data-toggle="tooltip" title="Editar establecimiento" ' +
-                        'onclick="establecimientos.editarEstablecimiento(' + dep.est_Id + ')">' +
-                        '<i class="fa fa-pencil"></i>' +
-                    '</button>' +
+                    (cerrado
+                        ? '<button type="button" class="btn btn-info btn-sm" ' +
+                              'data-toggle="tooltip" title="Ver establecimiento cerrado" ' +
+                              'onclick="establecimientos.editarEstablecimiento(' + dep.est_Id + ')">' +
+                              '<i class="fa fa-eye"></i>' +
+                          '</button>' +
+                          (String(idRol) === '1'
+                              ? '<button type="button" class="btn btn-outline-success btn-sm ml-1" ' +
+                                    'data-toggle="tooltip" title="Reabrir (cerrado por error)" ' +
+                                    'onclick="establecimientos.reabrirEstablecimiento(' + dep.est_Id + ')">' +
+                                    '<i class="fa fa-undo"></i>' +
+                                '</button>'
+                              : '')
+                        : '<button type="button" class="btn btn-warning btn-sm" ' +
+                              'data-toggle="tooltip" title="Editar establecimiento" ' +
+                              'onclick="establecimientos.editarEstablecimiento(' + dep.est_Id + ')">' +
+                              '<i class="fa fa-pencil"></i>' +
+                          '</button>') +
 
                     soporteRit +
-
-                    (dep.est_Activo == 1
-                        ? '<button type="button" class="btn btn-danger btn-sm" ' +
-                              'data-toggle="tooltip" title="Retirar establecimiento" ' +
-                              'onclick="establecimientos.retirarEstablecimiento(' + dep.est_Id + ')">' +
-                              '<i class="fa fa-trash"></i>' +
-                          '</button>'
-                        : '<button type="button" class="btn btn-success btn-sm" ' +
-                              'data-toggle="tooltip" title="Reactivar establecimiento" ' +
-                              'onclick="establecimientos.reactivarEstablecimiento(' + dep.est_Id + ')">' +
-                              '<i class="fa fa-undo"></i>' +
-                          '</button>') +
                     '</td>'+
 
                     '</tr>'
@@ -540,6 +620,12 @@ class Establecimientos {
                 const d = arr.datos[0];
                 console.log(arr);
 
+                // Cerrado: solo consulta, con su fecha de cese a la vista. Va
+                // antes de llenar, para que lo que se ajusta despues (permisos
+                // del cese) quede por encima.
+                $('#cierreFechaCese').val('');
+                establecimientos.bloquearSiEstaCerrado(d);
+
                 // 🔹 llenar campos
                 $("#est_Codigo").val(d.est_Codigo);
                 $("#est_Observacion").val(d.est_Observacion || '');
@@ -566,6 +652,7 @@ class Establecimientos {
                 $("#est_Area").val(d.est_Area);
                 // $("#est_Persona").val(d.est_Persona);
 
+                establecimientos.ajustarOpcionCierre(false);
                 $("#est_OpcionUso").val(d.est_Opcion_uso);
 
                 // Cese de actividades (puntos 14/15/16). Las fechas centinela
@@ -1632,6 +1719,11 @@ limpiarTablaActividades(){
         const esCierre = String($('#est_OpcionUso').val()) === '3';
         $bloque.toggle(esCierre);
 
+        // Con "Cierre" elegido no se guarda con "Actualizar": se cierra con su
+        // propio botón, que exige soporte y fecha. Un cerrado no muestra ninguno.
+        $('#btnCrearEstablecimientos').toggle(!esCierre && !establecimientos._cerrado);
+        $('#bloqueBotonCerrar').hide();
+
         if (esCierre) {
             establecimientos.listarAnexos($('#est_Id').val());
         }
@@ -1742,8 +1834,13 @@ limpiarTablaActividades(){
                             'Todavía no hay archivos cargados.' +
                         '</td></tr>'
                     );
+                    establecimientos.mostrarBotonCerrar(false);
                     return;
                 }
+
+                // Con al menos un soporte del cierre aparece "Cerrar establecimiento".
+                establecimientos.mostrarBotonCerrar(
+                    resp.datos.some(function (a) { return a.anx_Tipo === 'cese'; }));
 
                 var etiquetas = {
                     rut: 'RUT', camara: 'Cámara de Comercio', cedula: 'Cédula',
@@ -1763,10 +1860,12 @@ limpiarTablaActividades(){
                                 '<a class="btn btn-info btn-sm mr-1" target="_blank" ' +
                                    'href="../extensiones/anexo.php?id=' + a.anx_Id + '" ' +
                                    'title="Ver archivo"><i class="fa fa-eye"></i></a>' +
+                                // Cerrado, sus archivos no se quitan: el soporte es la prueba.
+                                (establecimientos._cerrado ? '' :
                                 '<button type="button" class="btn btn-danger btn-sm" ' +
                                    'title="Quitar" ' +
                                    'onclick="establecimientos.quitarAnexo(' + a.anx_Id + ')">' +
-                                   '<i class="fa fa-trash"></i></button>' +
+                                   '<i class="fa fa-trash"></i></button>') +
                             '</td>' +
                         '</tr>';
                 });
@@ -1800,7 +1899,11 @@ limpiarTablaActividades(){
                 type: 'POST',
                 dataType: 'json',
                 data: { funcion: 3, anx_Id: idAnexo },
-                success: function () {
+                success: function (resp) {
+                    if (!resp || resp.ok != 1) {
+                        swal({ type: 'error', title: 'No se pudo quitar el archivo',
+                               text: (resp && resp.mensaje) || 'Intente de nuevo.' });
+                    }
                     establecimientos.listarAnexos($('#est_Id').val());
                 },
                 error: function () {

@@ -153,6 +153,10 @@
 
 <div class="modal-body">
 
+<!-- Un establecimiento cerrado se abre solo para consultarlo (ver
+     establecimientos.bloquearSiEstaCerrado). -->
+<div class="alert alert-warning" id="avisoEstablecimientoCerrado" style="display:none;"></div>
+
 <!-- ===================== DATOS GENERALES ===================== -->
 <div class="bloque-form">
 <div class="titulo-bloque">Datos Generales</div>
@@ -326,9 +330,19 @@
      archivo y escapa el nombre al listarlo. -->
 <div class="col-md-12" id="bloqueConstanciaCierre" style="display:none;">
 	<hr>
-	<label style="font-weight:600;">Constancia de cierre</label>
+	<!-- Revisión del cliente 2026-09-25: el cierre lo hace solo la Alcaldía,
+	     con la fecha de cese (hoy o anterior) y un soporte; con el soporte
+	     cargado aparece "Cerrar establecimiento". Cerrado no se reactiva. -->
+	<div class="row">
+		<div class="col-md-4 form-group">
+			<label>Fecha de cese de actividades <span class="text-danger">*</span></label>
+			<input type="date" class="form-control" id="cierreFechaCese" min="1900-01-02"
+			       max="<?php echo (new DateTime('now', new DateTimeZone('America/Bogota')))->format('Y-m-d'); ?>">
+		</div>
+	</div>
+	<label style="font-weight:600;">Soporte del cierre <span class="text-danger">*</span></label>
 	<p class="text-muted" style="font-size:12px;">
-		Cámara de comercio o acta de liquidación. PDF, JPG o PNG, hasta 10 MB.
+		Cámara de comercio o acta de liquidación (basta uno). PDF, JPG o PNG, hasta 10 MB.
 	</p>
 	<div class="row">
 		<div class="col-md-4">
@@ -345,6 +359,16 @@
 			<thead><tr><th>Tipo</th><th>Archivo</th><th>Tamaño</th><th>Cargado</th><th>Acciones</th></tr></thead>
 			<tbody id="tbodyAnexos"></tbody>
 		</table>
+	</div>
+	<div id="bloqueBotonCerrar" style="display:none;">
+		<button type="button" class="btn btn-danger" id="btnCerrarEstablecimiento"
+		        onclick="establecimientos.cerrarEstablecimiento()">
+			<i class="fa fa-lock"></i> Cerrar establecimiento
+		</button>
+		<small class="text-muted d-block mt-1">
+			Al cerrarlo queda inactivo y no se puede volver a activar. Si se cierra por error,
+			solo el administrador puede reabrirlo.
+		</small>
 	</div>
 </div>
 

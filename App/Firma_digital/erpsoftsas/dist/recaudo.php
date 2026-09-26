@@ -77,6 +77,7 @@
 						<li class="nav-item"><a class="nav-link" data-toggle="tab" href="#tabYaPagadas">Ya estaban pagadas</a></li>
 						<li class="nav-item"><a class="nav-link" data-toggle="tab" href="#tabSinDeclaracion">Sin declaración</a></li>
 						<li class="nav-item"><a class="nav-link" data-toggle="tab" href="#tabSinPresentar">Sin presentar</a></li>
+						<li class="nav-item"><a class="nav-link" data-toggle="tab" href="#tabRevisar">Revisar a mano</a></li>
 					</ul>
 					<div class="tab-content pt-3">
 						<div class="tab-pane fade show active" id="tabAplicables">
@@ -126,6 +127,26 @@
 										<tr><th style="width:180px;">N° Declaración</th><th>Valor en el archivo</th></tr>
 									</thead>
 									<tbody id="tbodySinPresentar"></tbody>
+								</table>
+							</div>
+						</div>
+						<!-- Retención y autorretención numeran igual que el ICA (2026000001
+						     existe en los tres) y sus recibos llevan el mismo EAN. Un número
+						     que también es de una retención o autorretención presentada sin
+						     pagar no se aplica: se lista aquí (ver class.recaudo.php). -->
+						<div class="tab-pane fade" id="tabRevisar">
+							<div class="alert alert-warning mb-3" style="font-size:13px;">
+								Estos pagos <b>no se aplicaron</b>. El número de referencia también es
+								de una retención o autorretención presentada y sin pagar, así que no se
+								sabe a qué declaración corresponde el pago. Revíselos con el comprobante
+								del banco y regístrelos a mano.
+							</div>
+							<div class="table-responsive">
+								<table class="table table-bordered table-sm">
+									<thead style="background:#e9ecef; font-weight:600;">
+										<tr><th style="width:180px;">Referencia</th><th style="width:180px;">Valor en el archivo</th><th>Motivo</th></tr>
+									</thead>
+									<tbody id="tbodyRevisar"></tbody>
 								</table>
 							</div>
 						</div>

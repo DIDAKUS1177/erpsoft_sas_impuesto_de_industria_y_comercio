@@ -70,6 +70,7 @@ function pintarResumen(d) {
         '</div>' +
         '<div class="row mt-3">' +
             '<div class="col-md-3"><small class="text-muted d-block">Sin presentar (no se aplican)</small><b class="text-danger">' + (d.sinPresentar || []).length + '</b></div>' +
+            '<div class="col-md-3"><small class="text-muted d-block">Revisar a mano (no se aplican)</small><b class="text-danger">' + (d.revisar || []).length + '</b></div>' +
         '</div>'
     );
 
@@ -99,6 +100,13 @@ function pintarResumen(d) {
         function (x) { return escapar(x.referencia); },
         function (x) { return pesos(x.valor); }
     ], 'Ninguna: todos los pagos del archivo corresponden a declaraciones presentadas.');
+
+    // Referencias que también son de una retención o autorretención pendiente.
+    pintarFilas('tbodyRevisar', d.revisar, [
+        function (x) { return escapar(x.referencia); },
+        function (x) { return pesos(x.valor); },
+        function (x) { return escapar(x.motivo); }
+    ], 'Ninguna.');
 
     $('#cajaResumen').show();
 }

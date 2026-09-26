@@ -220,7 +220,9 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
                 $lectura['sumas']['registros'],
                 $aplicados,
                 count($analisis['yaPagadas']),
-                count($analisis['sinDeclaracion']) + count($analisis['valorNoCuadra']),
+                // No aplicados: sin declaración, sin presentar y para revisar a mano.
+                count($analisis['sinDeclaracion']) + count($analisis['valorNoCuadra'])
+                    + count($analisis['sinPresentar']) + count($analisis['revisar']),
                 $lectura['control']['valor'],
                 $lectura['sumas']['valor'],
                 $lectura['control']['registros'],
@@ -250,11 +252,46 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
         $sinDeclaracion = [];
         $valorNoCuadra = [];
         $sinPresentar = [];
+        $revisar = [];
+
+        /*
+         * RETENCIÓN Y AUTORRETENCIÓN USAN LOS MISMOS NÚMEROS.
+         *
+         * Cada módulo lleva su propio consecutivo con el mismo formato
+         * (2026000001 existe en los tres), y sus recibos y formularios llevan el
+         * mismo EAN con el número como referencia. El banco no distingue: un pago
+         * de retención llega con una referencia que aquí se tomaba por ICA, y se
+         * marcaba pagada la declaración ICA de otro contribuyente.
+         *
+         * Mientras las referencias no se distingan por módulo, un número que
+         * también es de una retención o autorretención PRESENTADA Y SIN PAGAR no
+         * se aplica: se lista para revisarlo a mano. Las pagadas o sin presentar
+         * no cuentan: esas no pudieron originar este pago.
+         */
+        $otrosModulos = [];
+        foreach ([['ind_reteica', 'ret_', 'retención'], ['ind_autorreteica', 'aut_', 'autorretención']] as [$tabla, $pre, $nombre]) {
+            $hay = $con->obnerFila($con->consultar("SELECT OBJECT_ID(?, 'U') AS o", ['dbo.' . $tabla]));
+            if (!empty($hay['o'])) { $otrosModulos[] = [$tabla, $pre, $nombre]; }
+        }
+        $otrosPendientes = function ($ref) use ($con, $otrosModulos) {
+            $nombres = [];
+            foreach ($otrosModulos as [$tabla, $pre, $nombre]) {
+                $fila = $con->obnerFila($con->consultar(
+                    "SELECT TOP 1 1 AS x FROM $tabla
+                      WHERE {$pre}NumeroDeclaracion = ? AND {$pre}Estado = 2 AND ISNULL({$pre}Pagado, 0) = 0",
+                    [$ref]
+                ));
+                if ($fila) { $nombres[] = $nombre; }
+            }
+            return $nombres;
+        };
 
         foreach ($lectura['detalles'] as $d) {
 
             $ref = $d['referencia'];
             if ($ref === '') { $sinDeclaracion[] = ['referencia' => '(vacía)', 'valor' => $d['valor']]; continue; }
+
+            $otros = $otrosPendientes($ref);
 
             // La referencia del codigo de barras es dec_NumeroDeclaracion.
             $dec = $con->obnerFila($con->consultar(
@@ -266,7 +303,22 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
             ));
 
             if (!$dec) {
-                $sinDeclaracion[] = ['referencia' => $ref, 'valor' => $d['valor']];
+                if ($otros) {
+                    $revisar[] = ['referencia' => $ref, 'valor' => $d['valor'],
+                                  'motivo' => 'Es un número de ' . implode(' y de ', $otros)
+                                            . ' presentada sin pagar; este archivo solo aplica pagos de ICA.'];
+                } else {
+                    $sinDeclaracion[] = ['referencia' => $ref, 'valor' => $d['valor']];
+                }
+                continue;
+            }
+
+            // Va antes de "ya pagada" y "sin presentar": con la ICA pagada o sin
+            // presentar, lo más probable es que el pago sea de la retención.
+            if ($otros) {
+                $revisar[] = ['referencia' => $ref, 'valor' => $d['valor'],
+                              'motivo' => 'El número también es de ' . implode(' y de ', $otros)
+                                        . ' presentada sin pagar: no se sabe a cuál corresponde.'];
                 continue;
             }
 
@@ -327,6 +379,7 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
             'yaPagadas'       => $yaPagadas,
             'sinDeclaracion'  => $sinDeclaracion,
             'sinPresentar'    => $sinPresentar,
+            'revisar'         => $revisar,
             'valorNoCuadra'   => $valorNoCuadra,
         ];
     }
@@ -334,11 +387,11 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
     private function _resumenTexto($a, $aplicados)
     {
         return sprintf(
-            'Banco %s (%s). Registros: %d por $%s. Aplicados: %d. Ya pagadas: %d. Sin declaración: %d. Sin presentar: %d.',
+            'Banco %s (%s). Registros: %d por $%s. Aplicados: %d. Ya pagadas: %d. Sin declaración: %d. Sin presentar: %d. Revisar a mano: %d.',
             $a['banco']['nombre'] ?: '(desconocido)', $a['banco']['codigo'],
             $a['sumas']['registros'], number_format($a['sumas']['valor'], 2, ',', '.'),
             $aplicados, count($a['yaPagadas']), count($a['sinDeclaracion']),
-            count($a['sinPresentar'] ?? [])
+            count($a['sinPresentar'] ?? []), count($a['revisar'] ?? [])
         );
     }
 

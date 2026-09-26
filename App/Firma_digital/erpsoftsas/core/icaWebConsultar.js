@@ -658,7 +658,15 @@ pintarDeclaracionesFiltradas() {
         // cadena: concatenarlo pintaba "[object Object]".
         var fechaPago = DeclaracionesUI.fechaTexto(d.dec_FechaPago);
         var banco     = d.dec_BancoPago  || 'No aplica';
-        var valor     = d.dec_ValorPago  || 0;
+        // El valor a pagar de la casilla 38 (dec_ValorConcepto20), como en
+        // Presentar (cliente, 2026-09-25).
+        var valor     = NumerosCOP.deBaseDeDatosAInput(d.dec_ValorConcepto20);
+        // En una pagada, lo que entró puede ser otra cifra (los intereses de
+        // mora que la Alcaldía escribe a mano en el recibo): se muestra debajo.
+        var pagado    = Number(d.dec_Pagado) === 1 ? Math.round(NumerosCOP.deBaseDeDatos(d.dec_ValorPago)) : 0;
+        var lineaPago = (pagado > 0 && pagado !== Math.round(NumerosCOP.deBaseDeDatos(d.dec_ValorConcepto20)))
+            ? '<br><small style="color:#6B7280;">Pagado $ ' + NumerosCOP.formatear(pagado) + '</small>'
+            : '';
 
         // Hay declaraciones antiguas con dec_NumeroDeclaracion en NULL, que
         // se pintaban con el texto literal "null". El sistema usa el propio
@@ -674,7 +682,7 @@ pintarDeclaracionesFiltradas() {
                 '<td>' + DeclaracionesUI.chipEstado(d) + '</td>' +
                 '<td>' + fechaPago + '</td>' +
                 '<td>' + banco + '</td>' +
-                '<td style="text-align:right;">$ ' + Number(valor).toLocaleString() + '</td>' +
+                '<td style="text-align:right;">$ ' + valor + lineaPago + '</td>' +
                 '<td class="text-center" style="white-space:nowrap;">' +
                     DeclaracionesUI.htmlAcciones(d, 'establecimientos') +
                 '</td>' +
@@ -1464,11 +1472,14 @@ actualizarDeclaracionIca(valor, numeroCampo){
             $('#loading').hide();
             $('#wrapper').removeClass('body-load');
 
+            // El motivo real del servidor: este camino es el recalculo de un
+            // renglon, no el guardado.
             if(arr.ok != 1){
-                swal("Error","No se pudieron guardar las actividades","error");
+                swal({ type: "error", title: "No se pudo recalcular",
+                       text: arr.mensaje || "Intente de nuevo; si persiste, avise a soporte." });
                 return;
-            }       
-            
+            }
+
 
             let d = arr.datos;
             console.log (arr.datos);
@@ -1776,10 +1787,14 @@ $("#btnGenerarOficial").off("click").on("click", function () {
     //$('#loading').show();
     //$('#wrapper').addClass('body-load');
 
+    // Un solo envío: con doble clic se guardaba dos veces.
+    var $guardar = $('#btnGenerarOficial').prop('disabled', true);
+
     $.ajax({
         url: '../business/controller/class.declaracionesICA.php',
         type: 'POST',
         dataType: 'json',
+        complete: function () { $guardar.prop('disabled', false); },
         data:{
             funcion: 6, 
             actividades: JSON.stringify(actividades),
@@ -1794,52 +1809,29 @@ $("#btnGenerarOficial").off("click").on("click", function () {
             $('#loading').hide();
             $('#wrapper').removeClass('body-load');
 
+            // El motivo real del servidor, no un fijo (ver icaWebPresentar.js).
             if(arr.ok != 1){
-                swal("Error","No se pudieron guardar las actividades","error");
+                swal({ type: "error", title: "No se pudo guardar",
+                       text: arr.mensaje || "Intente de nuevo; si persiste, avise a soporte." });
                 return;
-            }       
-            
-            
-            $("#btnDescargarPDF").prop("disabled", false);
-            $("#btnGenerarOficial, #btnLiquidar").prop("disabled", false);
+            }
 
-            let d = arr.datos;
-            console.log (arr.datos);
-            $('[data-campo="industria_comercio"]').val(establecimientos.formatearCOP(establecimientos.limpiarEntero(d.dec_ValorConcepto1)));
-            $('[data-campo="avisos_tableros"]').val(establecimientos.formatearCOP(establecimientos.limpiarEntero(d.dec_ValorConcepto2)));
-            $('[data-campo="sobretasa_bomberil"]').val(establecimientos.formatearCOP(establecimientos.limpiarEntero(d.dec_ValorConcepto3)));
-            
-            $('[data-campo="total_impuesto_cargo"]').val(establecimientos.formatearCOP(establecimientos.limpiarEntero(d.dec_ValorConcepto4)));
-
-            $('[data-campo="valor_exencion_exoneracion"]').val(establecimientos.formatearCOP(establecimientos.limpiarEntero(d.dec_ValorConcepto5)));
-            $('[data-campo="menos_retenciones"]').val(establecimientos.formatearCOP(establecimientos.limpiarEntero(d.dec_ValorConcepto6)));
-            $('[data-campo="menos_autoretenciones"]').val(establecimientos.formatearCOP(establecimientos.limpiarEntero(d.dec_ValorConcepto7)));
-            $('[data-campo="anticipo_anterior"]').val(establecimientos.formatearCOP(establecimientos.limpiarEntero(d.dec_ValorConcepto8)));
-            $('[data-campo="anticipo_siguiente"]').val(establecimientos.formatearCOP(establecimientos.limpiarEntero(d.dec_ValorConcepto9)));
-            $('[data-campo="sanciones"]').val(establecimientos.formatearCOP(establecimientos.limpiarEntero(d.dec_ValorConcepto10)));
-            $('[data-campo="saldo_favor_vigencias_anteriores"]').val(establecimientos.formatearCOP(establecimientos.limpiarEntero(d.dec_ValorConcepto11)));
-            
-            
-            $('[data-campo="total_saldo_a_cargo"]').val(establecimientos.formatearCOP(establecimientos.limpiarEntero(d.dec_ValorConcepto12)));
-            $('[data-campo="total_saldo_a_favor"]').val(establecimientos.formatearCOP(establecimientos.limpiarEntero(d.dec_ValorConcepto13)));
-            $('[data-campo="valor_a_pagar"]').val(establecimientos.formatearCOP(establecimientos.limpiarEntero(d.dec_ValorConcepto14)));
-
-            $('[data-campo="descuento_pronto_pago"]').val(establecimientos.formatearCOP(establecimientos.limpiarEntero(d.dec_ValorConcepto15)));
-
-            $('[data-campo="total_a_pagar"]').val(establecimientos.formatearCOP(establecimientos.limpiarEntero(d.dec_ValorConcepto20)));
-
-            // Tras repintar, el renglon 31 tiene que quedar coherente con la
-            // opcion elegida: con "Ninguna" marcada no puede quedar un importe.
-            if (typeof sancionSegunTipo === 'function') { sancionSegunTipo(); }
-
-            swal({
-                type: 'success',
-                title: 'Liquidación realizada',
-                text: 'Actividades guardadas y SP ejecutado correctamente'
-            });
-
-
-
+            // Guardada, se cierra y se vuelve al listado (cliente, 2026-09-25).
+            // Aqui solo se edita una correccion en borrador, y los borradores se
+            // firman y presentan en "Presentar Declaración", no en esta lista.
+            // El aviso sale cuando la ventana ya cerró (ver icaWebPresentar.js).
+            // Si ya se cerró (Cancelar o × antes de la respuesta), hidden.bs.modal no
+            // vuelve a dispararse: el aviso sale directo y no queda uno colgado.
+            var $modal = $('#modal-CrearDeclaracion');
+            var avisar = function () {
+                swal({
+                    type: 'success',
+                    title: 'Declaración guardada',
+                    text: 'Quedó en "Presentar Declaración", donde puede firmarla y presentarla.'
+                });
+            };
+            if ($modal.hasClass('show')) { $modal.one('hidden.bs.modal', avisar).modal('hide'); }
+            else { avisar(); }
         },
         // Ver nota en icaWebRit.js: sin este error() el boton "Liquidar"
         // quedaba mudo si el backend no devolvia JSON valido.

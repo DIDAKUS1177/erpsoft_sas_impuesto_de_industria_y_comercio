@@ -1032,16 +1032,229 @@ un cuadrado de 32px y el texto sale recortado (así se veía "Gestionar").
 - Inicio y Recaudo ya no cargan dos veces `menu.js`/`Permisos.js`; el título de la
   pestaña del RIT decía "Establecimientos".
 
+### Revisión del cliente 2026-09-25 ("REVISIÓN ICA WEB"), primera entrega
+
+- **"guardo, cierro, vuelvo a editar y me sale error"**: `EditarDeclaracion.abrir`
+  (declaraciones.ui.js) llenaba número, año y período y DESPUÉS llamaba a
+  `limpiarFormularioDeclaracion()`, que borra justo esos tres (regresión de
+  f8ce25c, 2026-08-29). La declaración quedaba abierta sin id: "Guardar"
+  (función 6) y el recálculo de renglones (función 7) respondían "Id de
+  declaración requerido", y la pantalla lo mostraba como "No se pudieron guardar
+  las actividades". Pasaba también con las correcciones (Corregir abre por ahí).
+  Ahora se limpia primero y la casilla lleva el NÚMERO (como al crear); el
+  servidor resuelve número o id. Los dos avisos muestran `arr.mensaje`.
+- "Guardar" cierra la ventana y vuelve al listado (se refresca en
+  `hidden.bs.modal`); en Consultar, donde solo se editan correcciones, el aviso
+  dice que quedó en Presentar.
+- Columna "Valor a pagar" (antes "Valor Pago", que era lo pagado): casilla 38,
+  `dec_ValorConcepto20`, en Presentar y Consultar.
+- Textos del cliente: "Liquidación calculada" → "Estas son las cifras calculadas.
+  Para conservarlas, pulse "Guardar"."; y "Notificación electrónica" en el RIT
+  (arts. 566 y 566-1 ET, art. 7 Decreto 009 de 2017), también en las dos copias
+  del formulario de establecimiento que traen Presentar y Consultar.
+- `establecimientos.js` e `icaWebRit.js` conservan copias viejas del flujo de
+  declaración (datos simulados, avisos falsos) que ya no se alcanzan: no se tocaron.
+
+### Revisión 2026-09-25, segunda entrega (con las respuestas del cliente)
+
+- **Cierre de establecimientos** (funciones 23 y 24 de `class.establecimientos.php`):
+  cierra SOLO la Alcaldía (roles 1 y 2), desde "Estado del registro: Cierre de
+  establecimiento", con fecha de cese (hoy o anterior) y al menos un soporte tipo
+  `cese` (cámara de comercio o acta de liquidación; "con uno basta"). Queda
+  `est_Activo = 0`, `est_Opcion_uso = 3`, `est_Fecha_cierre`. Reabre SOLO el
+  administrador (rol 1, "el director de impuestos") con justificación ≥ 10
+  caracteres. La historia va en `ind_establecimiento_novedades` (migración **035**).
+  Se quitaron "Retirar" y "Reactivar"; la función 4 contesta con el camino nuevo;
+  la función 2 no edita un cerrado, no acepta `est_Activo` ni la opción 3; la 1 no
+  crea cerrados; `_filtrarCese` descarta los datos de cierre para todos; anexos no
+  deja subir ni quitar archivos de un cerrado (el soporte es la prueba). En
+  pantalla: el cerrado se abre solo para consulta ("Ver"), "Reabrir" solo rol 1,
+  la opción 3 no se ofrece al contribuyente ni al crear.
+- **Cerrar un local no toca la declaración**: las actividades son del contribuyente
+  (migraciones 005/007), así que el año del cierre se declara igual (respuesta 6).
+- **RIT obligatorio** (`_faltantesRIT` en `class.contribuyentes.php`, y
+  `validarObligatoriosRIT` en `icaWebRit.js`): no se guarda sin tipo de persona,
+  primer nombre o razón social, primer apellido (solo persona natural), dirección,
+  departamento y municipio, teléfono, correo de notificación, fecha de inicio de
+  actividades, cédula/nombre/correo/celular del representante, un régimen
+  (ordinario/simple/especial) y responsable o no de IVA, más los tres documentos
+  de `RitFirma::DOCUMENTOS_OBLIGATORIOS` (antes solo se exigían al firmar). Para
+  todos los roles y para inscripción y actualización. Contador y revisor quedan
+  opcionales. Identidad (tipo y número) no se edita en el RIT: si falta, lo
+  corrige la Alcaldía en Contribuyentes.
+- **DV**: el cliente lo pidió obligatorio, pero en el RIT es de solo lectura y
+  la columna no admite NULL (los que nunca lo tuvieron guardan 0, que también es
+  un DV válido). `_completarDV` lo recalcula desde el NIT (tipo 5, algoritmo de
+  la DIAN) al guardar el RIT y lo corrige si no coincide.
+- **Correo de la firma**: sin cambios (sigue al representante legal o
+  propietario, opción b del cliente); el RIT ahora lo dice debajo de esos campos.
+- Pruebas: `probar_segunda.php` (22 casos) en el arnés. `caso.php` pone ahora
+  `SCRIPT_FILENAME` como Apache; sin eso `class.anexos.php` no se ejecuta.
+
+### Intereses de mora A MANO (Javier y el cliente, 2026-09-25)
+
+- "Que se deje de manera manual de momento": no hay tabla de tasas ni fórmula.
+  Los escribe a mano quien liquida, en tres sitios:
+  - El renglón de intereses de la DECLARACIÓN (ICA casilla 37 =
+    `dec_ValorConcepto16`; retención 16; autorretención 21), que ya era de
+    captura manual (migración 010): lo liquida el contribuyente al presentar.
+  - El RECIBO DE PAGO, línea "INTERESES DE MORA AL <pague antes de>".
+    `reciboPago.php` sin `?intereses=` muestra primero una casilla (valor de la
+    declaración, fecha límite, días de mora, intereses que ya trae el formulario
+    y total en vivo); "Generar recibo" vuelve con `?intereses=` y el valor se
+    suma al total, al "SON:" y al código de barras.
+  - PSE: el resumen (`extensiones/pse/pagar.php`) trae la misma casilla y
+    `crearSesion.php` cobra el total MÁS los intereses (con un campo "Intereses
+    de mora" en el comprobante del banco).
+- Quién y cuándo (la regla vive en `business/class.vencimientoICA.php`:
+  `leerIntereses`, `exigeIntereses`, `diasDeMora`, `hoy`):
+  - **ICA vencida**: casilla para TODOS. El contribuyente también saca el recibo
+    y paga por PSE, pero CON intereses (cliente, 2026-09-25: "que le salga CON
+    intereses"): son obligatorios, salvo que la declaración ya traiga los suyos
+    en el renglón 37. La Alcaldía los escribe y puede dejarlos en 0.
+  - Retención y autorretención (sin fecha límite todavía): casilla solo para la
+    Alcaldía en el recibo; el contribuyente lo saca directo y no puede poner
+    intereses (403); PSE no los lleva.
+  - ICA que todavía no vence: sin casilla; intereses > 0 se rechazan.
+  - Pesos enteros (acepta puntos de miles; lo pegado pierde los centavos),
+    máximo 10 cifras. Un valor no válido vuelve a la casilla con el error.
+- Lo pagado: el recibo lo registra el recaudo con lo que entró (`dec_ValorPago`);
+  PSE registra lo que confirma el banco (`PlacetoPay::interpretarRespuesta`,
+  campo `valor`), no el total de la declaración. No hay tabla de intereses: el
+  PDF del recibo lleva el LIQUIDADOR cuando lo genera la Alcaldía.
+- Pruebas: `probar_intereses.php` (19 casos, uno mueve `ICA_FECHA_LIMITE` y otro
+  el renglón 37, y los devuelven) y `probar_pse_intereses.php` (11; NO crea
+  sesiones en el banco: con `sinBanco` en `caso.php` la pasarela apunta a
+  `https://sin-banco.invalid`). En `probar_nuevo.php` los recibos pasan intereses.
+
+### Revisión previa al despliegue (2026-09-25)
+
+Tres revisiones independientes del diff (cierre de establecimientos, RIT,
+declaraciones y recibo). Lo que se encontró y quedó arreglado:
+
+- **Establecimiento nuevo nacía "Cerrado"**: `_agregar` quitaba `est_Activo` del
+  POST, el DAO omite lo nulo y la columna trae `DEFAULT -1`, que TODO el sistema
+  lee como no activo (declaración, liquidación y retenciones filtran
+  `est_Activo = 1`). Ahora el servidor pone 1.
+- **Crear no edita**: con `est_Id` en el POST la función 1 hacía UPDATE de ese
+  local (lo reabría y le cambiaba el dueño); ahora se descarta. La 2 convierte
+  `est_Id` a entero antes de todo (el DAO lo pegaba tal cual en el WHERE).
+- **Cerrado es `est_Activo <> 1`** también en el servidor (editar, cerrar,
+  reabrir, anexos), como ya lo leían la pantalla y los PDF.
+- Opción de uso recortada y solo 1/2 por crear/editar ("3 " pasaba y SQL Server
+  lo guarda como 3); el rechazo de la 3 va antes de repartir código.
+- **Cierre**: fecha de cese entre el inicio de actividades del local (o 1900) y
+  hoy de Colombia (un año de dos cifras llegaba como 0025 y daba 500);
+  `SET NOCOUNT ON; UPDATE … WHERE est_Activo = 1; SELECT @@ROWCOUNT` para que un
+  doble envío no deje dos CIERRE; observación cortada a 255; botón deshabilitado
+  mientras envía. **Reapertura** en transacción (o se reabre y se anota, o nada),
+  con el mismo `@@ROWCOUNT` y justificación ≤ 1.000 caracteres (NVARCHAR de la 035).
+- **PDF del RIT**: "Cese de actividades" sale solo por el cese del CONTRIBUYENTE
+  (`ind_FechaCese`). Caía también al `est_Fecha_cierre` de cualquier local, y
+  desde el cierre nuevo eso marcaba cese total a quien cerraba UNO de sus locales.
+- **No. de establecimientos** en declaración, liquidación y retenciones: activos
+  más los cerrados durante el año declarado o después (funcionaron ese año);
+  reimprimir una declaración presentada ya no cambia la cifra al cerrar un local.
+- Lista de establecimientos con el texto escapado; "Quitar" un anexo muestra el
+  rechazo del servidor.
+- **RIT: una sola regla para guardar y firmar**, `RitFirma::faltantes()` (campos
+  y documentos). La firma la aplica sobre lo GUARDADO, antes de mandar el código
+  y antes de firmar (`microservicios/firmas/api.php`): un RIT guardado a medias
+  antes de la regla ya no se firma incompleto. Teléfono y celular cuentan solo
+  con dígitos ("N/A" no pasa); régimen e IVA exigen UNA opción por grupo, y en
+  pantalla las casillas del grupo se excluyen. El departamento ya no se exige
+  aparte (no viaja; si el catálogo no carga quedaba trabado). Las marcas rojas se
+  limpian al recargar y al pasar a persona jurídica.
+- **NIT en el PDF de la declaración ICA y en la liquidación**: marcaban NIT con
+  el tipo 2; el NIT es el 5 (el 2 no existe), así que toda empresa salía con la
+  X en C.C. (`ritActualizado.php` ya se había corregido por lo mismo).
+- **Editar una declaración borraba el impuesto de la Ley 56**: la edición no
+  pintaba capacidad instalada ni `dec_ValorImpuesto`, limpiar los dejaba en 0 y
+  Guardar los grababa en 0; `sp_calculo_comercio` suma ese valor al renglón 20
+  (Termopaipa). Quedó oculto mientras Guardar fallaba en edición (f8ce25c).
+  También se pintan la fecha y la hora.
+- Errores de la base al guardar o recalcular: el detalle va al log y la pantalla
+  recibe un aviso claro, como texto (en SweetAlert2 7 el 2.º argumento es HTML).
+  El aviso "Declaración guardada" sale cuando la ventana ya cerró.
+- Consultar: en una pagada, "Pagado $X" debajo del valor si lo que entró no es
+  la casilla 38 (los intereses a mano del recibo).
+- **Recibo**: al pegar "1.234,00" quedaba 123.400 (se quitaban la coma y los
+  centavos como dígitos); ahora lo pegado pierde los centavos, la coma no se
+  escribe, el tope es de 10 cifras y un valor no válido vuelve a la casilla con
+  el error. "Hoy" es el de Colombia en el recibo, en `VencimientoICA::vencida` y
+  en el cierre: con el servidor en UTC, desde las 7 p. m. ya era "mañana".
+- **Recaudo por archivo**: retención y autorretención numeran igual que el ICA
+  (2026000001 existe en los tres) y sus recibos llevan el mismo EAN, así que un
+  pago de retención se aplicaba a la ICA ajena con ese número. Un número que
+  también es de una retención o autorretención PRESENTADA Y SIN PAGAR ya no se
+  aplica: va a la pestaña "Revisar a mano".
+- Segunda pasada (dos revisiones más, sobre las correcciones y el pago):
+  - **PSE sin dueño**: `pagar.php` y `crearSesion.php` se abrían con la URL, sin
+    sesión: en certificación cualquiera podía crear una sesión del ambiente de
+    PRUEBAS sobre una declaración real, y el banco de pruebas la dejaba "pagada"
+    sin plata. Ahora `PseModulo::motivoParaNoPagar`: sesión, `botonVisible` y
+    dueño (la Alcaldía, cualquiera), como los PDF. `retorno.php` y el webhook
+    siguen abiertos (los usa el banco).
+  - Un error de `sp_calculo_comercio` se tragaba y Guardar, el recálculo y
+    Liquidar decían que todo salió bien: `_ejecutarSpLiquidacion` ya no atrapa;
+    las funciones 6, 7 y 14 registran y avisan. La 14 distingue lo que es del
+    usuario (`DeclaracionesICAException`, "No se encontró la declaración").
+  - PSE: la fecha de pago que se registra y la que muestra el retorno, en hora de
+    Colombia; el aviso de pago pendiente no afirma un monto sin intereses; junto
+    al botón se explica que faltan los intereses; "Atrás" desde el banco deja el
+    botón como debe. La coma de centavos se puede escribir en las dos casillas y
+    se descarta (`leerIntereses`).
+  - "Declaración guardada" y "Establecimiento cerrado": el aviso sale al cerrar
+    la ventana, o directo si ya estaba cerrada (no queda uno colgado); Guardar se
+    deshabilita mientras envía. El cierre ya no da 500 si falla la base.
+  - PDF ICA y liquidación: el pasaporte ya no sale como C.C. y el DV se imprime
+    solo con NIT. El RIT exige al firmar lo mismo que al guardar también con los
+    enteros de la base (municipio 0, tipo de persona que no sea 1 o 2).
+  - El conteo de establecimientos del PDF corta en el 1 de enero de
+    `dec_AnioDeclaracion`, el año que el formulario imprime como "AÑO GRAVABLE".
+    Si el cliente decide que ese año es el de presentación (ver la decisión de
+    enero), el corte pasa al año anterior.
+- Pruebas: `probar_revision.php` (32 casos). `probar_segunda.php` y
+  `probar_intereses.php` fijan `America/Bogota` como el servidor.
+
 ### Pendientes
 
+- Migración **035** (novedades de establecimiento): sin ella se cierra igual
+  (queda en el log), pero no se puede reabrir, porque la justificación tiene que
+  quedar escrita.
+- **Antes de abrir PSE a todos** (además de las credenciales de producción y de
+  registrar el webhook): `crearSesion.php` pisa `*_PSE_RequestId` sin consultar
+  la sesión anterior. Si alguien paga, el banco aprueba, cierra la pestaña sin
+  volver y abre otra sesión antes de que llegue el webhook o pase el cron, la
+  primera queda huérfana (el webhook busca por requestId) y puede pagar dos
+  veces. Con el webhook registrado el riesgo es mínimo; lo de fondo es consultar
+  la sesión anterior antes de crear otra, y probarlo contra el banco. Al
+  certificador hay que avisarle que el ICA 2026 ya venció y pide intereses de
+  mora (cualquier valor), o que pruebe con una retención.
+- **Referencias de recaudo por módulo**: mientras ICA, retención y autorretención
+  compartan números, los choques quedan en "Revisar a mano". Lo de fondo es que
+  la referencia distinga el módulo (decisión con el cliente y el banco, porque
+  cambia el código de barras).
+- Guardar el RIT depende de las migraciones 004 y 017 (anexos del contribuyente):
+  Paipa y Guateque las tienen; confirmarlo en Macanal cuando tenga la clave.
+- El DAO genérico (`class.DAO.php`) arma el SQL pegando los valores entre
+  comillas; los controladores que pasan por él dependen de eso.
+- Revisión 2026-09-25, lo que falta: la parametrización de la corrección (el
+  cliente quiere una reunión para lo pagado, la diferencia, los intereses y un
+  ejemplo); y el calendario tributario de retención y autorretención (por último
+  dígito del NIT; el adjunto no ha llegado). Los intereses quedaron a mano (ver
+  su sección); si algún día se automatizan, el cálculo del cliente era: tabla de
+  tasas mensuales como la de predial, base = total sin sanciones, desde el día
+  siguiente a la fecha límite hasta el pago, redondeo al mil; faltaba saber si
+  los meses cuentan 30 días.
 - Migración **033** (consorcio/patrimonio): `_guardarRIT` omite esas dos columnas
   si no existen, para que desplegar sin correrla no tumbe el guardado del RIT;
   igual hay que aplicarla para que se graben.
 - Migración **034** (fecha límite del ICA): sin ella el código usa el 30/04, pero
   el parámetro no aparece en Municipio y bancos.
-- Intereses de mora (cliente: "dejemos pendiente el cálculo"): falta la fórmula,
-  las tasas y la base. Cuando llegue, va en `$intereses` de `reciboPago.php` y PSE
-  tiene que cobrar total + intereses después de la fecha límite (hoy cobra el
-  total). Faltan también las fechas de vencimiento de retención y autorretención.
-  Y pasar el recibo por el escáner del banco antes de anunciarlo (misma
-  certificación pendiente del GS1-128).
+- Intereses: las dos decisiones que quedaban se cerraron el 2026-09-25 (el
+  contribuyente saca el recibo de una vencida CON intereses; PSE cobra igual que
+  el recibo). Si se automatiza el cálculo, lo que dijo el cliente está en
+  "Revisión 2026-09-25, lo que falta". Faltan las fechas de vencimiento de
+  retención y autorretención, y pasar el recibo por el escáner del banco antes de
+  anunciarlo (misma certificación pendiente del GS1-128).
