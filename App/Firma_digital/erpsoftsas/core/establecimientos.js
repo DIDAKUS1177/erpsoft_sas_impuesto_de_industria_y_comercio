@@ -210,6 +210,7 @@ class Establecimientos {
                 // Ver nota en icaWebRit.js: se carga el catalogo completo y se
                 // preselecciona la ciudad actual del contribuyente.
                 establecimientos.cargarCiudadesInfoContribuyente(d.ind_IdCiudad);
+                establecimientos.modoInfoContribuyente();
 
                 $('#modal-InfoContribuyente').modal({ backdrop: 'static', keyboard: false });
                 $('#modal-InfoContribuyente').modal('show');
@@ -265,10 +266,45 @@ class Establecimientos {
     }
 
     /**
+     * Quién puede cambiar qué en "Información del Contribuyente" (revisión
+     * 2026-09-28).
+     *
+     * Guardar va por la función 2 de class.contribuyentes.php, que el servidor
+     * solo le permite a la Alcaldía. Al contribuyente se le mostraba todo
+     * editable -hasta el número de documento- y al pulsar Guardar recibía "No
+     * tiene permiso sobre el registro de contribuyentes": un formulario sin
+     * salida. Para él la ventana es ahora de consulta; sus datos los actualiza en
+     * el RIT.
+     *
+     * El número de documento no se cambia aquí para NADIE: es la identidad
+     * tributaria y el enlace con la cuenta de acceso. La Alcaldía lo corrige en
+     * Contribuyentes > Editar, donde además se comprueba que no esté repetido. Por
+     * eso esa casilla y la del DV no llevan name (no viajan al guardar).
+     */
+    modoInfoContribuyente() {
+        var alcaldia = establecimientos.esAlcaldia();
+        var $form = $('#formInfoContribuyente');
+
+        $form.find('input:not([type=hidden])').prop('readonly', !alcaldia).toggleClass('campo-bloqueado', !alcaldia);
+        $form.find('select').prop('disabled', !alcaldia);
+        $('#infoContrib_ind_NumeroIdentificacion, #infoContrib_ind_DV').prop('readonly', true).addClass('campo-bloqueado');
+
+        $('#btnGuardarInfoContribuyente').toggle(alcaldia);
+        $('#infoContribAviso').text(alcaldia
+            ? 'El número de documento no se cambia aquí: se corrige en Contribuyentes > Editar.'
+            : 'Estos datos son de consulta. Para actualizarlos use el RIT; el tipo y el número de '
+              + 'documento solo los corrige la Alcaldía.').show();
+    }
+
+    /**
      * guardarInformacionContribuyente: guarda los cambios hechos en el modal
      * de Información del Contribuyente.
      */
     guardarInformacionContribuyente() {
+        // El botón no se le muestra al contribuyente (modoInfoContribuyente); si
+        // aun así llega aquí -Enter en una casilla-, no se envía nada.
+        if (!establecimientos.esAlcaldia()) { return; }
+
         var formData = $("#formInfoContribuyente").serialize() + "&funcion=2";
 
         $.ajax({
@@ -284,6 +320,8 @@ class Establecimientos {
                         text: 'La información del contribuyente se actualizó correctamente.',
                     });
                     $("#modal-InfoContribuyente").modal('hide');
+                    // La lista muestra el nombre del dueño de cada local.
+                    establecimientos.getEstablecimientos();
                 } else {
                     swal({
                         type: 'error',
@@ -670,15 +708,18 @@ class Establecimientos {
 
                 //$("#est_EstadoRegistro").val(d.est_Estado_registro);
                 $("#est_Matricula").val(d.est_Matricula);
-                $("#est_Fecha_matricula").val(d.est_Fecha_matricula ? d.est_Fecha_matricula.date.substring(0,10) : '');
-                $("#est_Fecha_inscripcion").val(d.est_Fecha_inscripcion ? d.est_Fecha_inscripcion.date.substring(0,10) : '');
-                $("#est_Fecha_inicio").val(d.est_Fecha_inicio ? d.est_Fecha_inicio.date.substring(0,10) : '');
+                // Por fechaParaInput, como la del cierre: 8 de los 12 locales
+                // tienen 1900-01-01 (el "vacío" de SQL Server) y el formulario
+                // mostraba "01/01/1900" como fecha de inicio de actividades.
+                $("#est_Fecha_matricula").val(establecimientos.fechaParaInput(d.est_Fecha_matricula));
+                $("#est_Fecha_inscripcion").val(establecimientos.fechaParaInput(d.est_Fecha_inscripcion));
+                $("#est_Fecha_inicio").val(establecimientos.fechaParaInput(d.est_Fecha_inicio));
 
 
                 $("#est_Rut").val(d.est_Rut);
                 $("#est_Rut_segundo").val(d.est_Rut_segundo);
                 $("#est_Rut_tercero").val(d.est_Rut_tercero);
-                $("#est_Fecha_actividad").val(d.est_Fecha_actividad ? d.est_Fecha_actividad.date.substring(0,10) : '');
+                $("#est_Fecha_actividad").val(establecimientos.fechaParaInput(d.est_Fecha_actividad));
 
                 $("#est_Cedula_contador").val(d.est_Cedula_contador);
                 $("#est_Nombre_contador").val(d.est_Nombre_contador);

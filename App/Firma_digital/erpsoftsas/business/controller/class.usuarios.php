@@ -51,8 +51,21 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
             //$con->rollback();
             $arrRespu = array("ok" => $e->getCode(), "mensaje" => "oing! " . $e->getMessage(), "datos" => "");
             //$_obj->cabeceras();
-            header('Content-type: application/json');  
+            header('Content-type: application/json');
             echo json_encode($arrRespu);
+        } catch (\Throwable $e) {
+            // Sin esto, cualquier error de la base (un dato que no cabe en su
+            // columna, por ejemplo) salia como un 500 con el cuerpo vacio: la
+            // inscripcion publica no decia NADA y la pantalla de Usuarios solo
+            // "Error de conexion". El detalle va al log; al usuario, un aviso.
+            error_log('[usuarios] funcion ' . ($_POST['funcion'] ?? '?') . ': ' . $e->getMessage());
+            header('Content-type: application/json');
+            echo json_encode(array(
+                "ok"      => 0,
+                "mensaje" => "No se pudo completar la operación. Revise los datos e intente de nuevo; "
+                           . "si el problema sigue, comuníquese con la Secretaría de Hacienda.",
+                "datos"   => ""
+            ));
         }
     }
 
@@ -75,19 +88,72 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
     *** Realiza el proceso de Crear Usuarios.
     **/  
     protected function _agregarUsuario() {
-        
+
+        /*
+         * CUENTA Y CONTRIBUYENTE: LAS DOS O NINGUNA (revision 2026-09-28).
+         *
+         * Antes se guardaba la cuenta y DESPUES se creaba el contribuyente, sin
+         * transaccion y sin validar. Si el contribuyente fallaba -un telefono
+         * "310 123 4567" en una columna bigint, o el DV y el tipo de persona que
+         * la pantalla de Usuarios nunca manda-, la cuenta ya existia, la
+         * respuesta era un 500 vacio y el RIT de esa persona decia "Su usuario
+         * no esta asociado a un contribuyente": sin salida. Al reintentar,
+         * "Email duplicado". Ahora se valida antes y lo demas va en una sola
+         * transaccion.
+         *
+         * Los roles de la Alcaldia (1 administrador, 2 funcionario) NO reciben
+         * contribuyente: no son contribuyentes, y el que se les creaba quedaba en
+         * el padron como uno mas (asi aparecio el contribuyente con el documento
+         * del administrador). Para los demas, lo que la pantalla de Usuarios no
+         * pide se deduce: el DV sale del NIT, el tipo de persona del tipo de
+         * documento, y el municipio queda en 0, que el RIT trata como "sin
+         * escoger" y obliga a llenar antes de guardar. Es mejor que el 1 (Tunja)
+         * que se ponia a ciegas.
+         */
+        $rolNuevo     = (int) ($_POST['id_rol'] ?? 0);
+        $esAlcaldia   = in_array($rolNuevo, [1, 2], true);
+        $documento    = trim((string) ($_POST['numeroDocumento'] ?? ''));
+        $tipoDocumento = (int) ($_POST['idTipoDocumento'] ?? 0);
+
+        // El telefono se guarda solo con sus digitos: "310 123 4567", "310-123-4567"
+        // y "+57 3101234567" son el mismo numero, y la columna del contribuyente
+        // es bigint. Vacio se admite (en Usuarios no es obligatorio).
+        $telefono = preg_replace('/\D/', '', (string) ($_POST['telefono'] ?? ''));
+        if ($telefono !== '' && (strlen($telefono) < 7 || strlen($telefono) > 15)) {
+            $this->_ok = 0;
+            $this->_mensaje = 'El teléfono debe tener entre 7 y 15 dígitos.';
+            return false;
+        }
+
+        if (!$esAlcaldia) {
+            // La columna del documento del contribuyente es INT: sin puntos, sin
+            // guion ni DV, y hasta 2.147.483.647. Un documento que no cabe hacia
+            // fallar el INSERT del contribuyente con la cuenta ya creada.
+            if ($documento === '' || !ctype_digit($documento) || strlen($documento) > 10
+                || (float) $documento > 2147483647 || (int) $documento <= 0) {
+                $this->_ok = 0;
+                $this->_mensaje = 'Escriba el número de documento solo con números: sin puntos, sin guion y sin el dígito de verificación.';
+                return false;
+            }
+            if ($tipoDocumento < 1 || $tipoDocumento > 5) {
+                $this->_ok = 0;
+                $this->_mensaje = 'Elija el tipo de documento.';
+                return false;
+            }
+        }
+
         $_objUsuario = new \erpsoftsas\DAO_Usuario();
         $_objUsuario->set_usu_Nombres($_POST['nombres']);
         $_objUsuario->set_usu_Apellidos($_POST['apellidos']);
-        $_objUsuario->set_usu_Telefono($_POST['telefono']);
+        $_objUsuario->set_usu_Telefono($telefono);
         $_objUsuario->set_usu_Direccion($_POST['direccion']);
         $_objUsuario->set_usu_IdTipoDocumento($_POST['idTipoDocumento']);
-        $_objUsuario->set_usu_NumeroDocumento($_POST['numeroDocumento']);
+        $_objUsuario->set_usu_NumeroDocumento($documento);
         $_objUsuario->set_usu_Correo($_POST['email']);
         $_objUsuario->set_usu_Password($_POST['clave']);
         $_objUsuario->set_usu_Rol($_POST['id_rol']);
         $_objUsuario->set_usu_Usuario($_POST['usuario']);
-        
+
         $_objUsuario->set_usu_Estado(1);
       
         //Valida los campos que no pueden Duplicarsen en la BD.
@@ -109,7 +175,9 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
                $nomduplicado=1;
                 break;
             }
-            if($nomUsurio[$i]['usu_NumeroDocumento'] == $_objUsuario->get_usu_NumeroDocumento()){
+            // Un documento vacio (se admite para cuentas de la Alcaldia) no
+            // choca con otro vacio: no identifica a nadie.
+            if($documento !== '' && $nomUsurio[$i]['usu_NumeroDocumento'] == $_objUsuario->get_usu_NumeroDocumento()){
                $nomduplicado=2;
                 break;
             }
@@ -122,74 +190,93 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
         if($nomduplicado == 1){
             $this->_ok = 2;
             $this->_mensaje = 'Ya existe un usuario con el mismo email';
-            $return= false; 
+            return false;
         }else if($nomduplicado == 2){
             $this->_ok = 3;
             $this->_mensaje = 'Ya existe un usuario con la misma identificación';
-            $return= false;   
+            return false;
         }else if($nomduplicado == 3){
             $this->_ok = 4;
             $this->_mensaje = 'Ya existe un usuario con el mismo Usuario';
-            $return= false;   
-        }else{
-            if(!$_objUsuario->guardar()){
-                $this->_ok = 0;
-                $this->_mensaje = $_objUsuario->getMysqlError();
-            }else{
-                $id = $_objUsuario->get_usu_Id();
-                
-                // Si el usuario se creó correctamente, verificamos si el contribuyente existe
-                $_objContribuyente = new \erpsoftsas\DAO_Contribuyentes();
-                $_objContribuyente->set_ind_NumeroIdentificacion($_POST['numeroDocumento']);
-                $_objContribuyente->habilita1ResultadoEnArray();
-
-                $existeContribuyente = $_objContribuyente->consultar();
-
-                if (!is_array($existeContribuyente) || count($existeContribuyente) == 0) {
-
-                    // No existe → Crear contribuyente
-                    $_objContribuyenteNuevo = new \erpsoftsas\DAO_Contribuyentes();
-
-                    $_objContribuyenteNuevo->set_ind_NumeroIdentificacion($_POST['numeroDocumento']);
-                    $_objContribuyenteNuevo->set_ind_IdTipoDocumento($_POST['idTipoDocumento']);
-                    $_objContribuyenteNuevo->set_ind_DV($_POST['DV']);
-                    $_objContribuyenteNuevo->set_ind_PrimerNombre($_POST['nombres']);
-                    $_objContribuyenteNuevo->set_ind_PrimerApellido($_POST['apellidos']);
-                    $_objContribuyenteNuevo->set_ind_Direccion($_POST['direccion']);
-                    $_objContribuyenteNuevo->set_ind_Telefono($_POST['telefono']);
-                    $_objContribuyenteNuevo->set_ind_Email($_POST['email']);
-                    $_objContribuyenteNuevo->set_ind_Persona($_POST['tipoPersona']);
-                    // Antes esto era set_ind_IdCiudad(1) fijo -Tunja- para
-                    // CUALQUIER contribuyente sin importar donde estuviera
-                    // realmente. El PDF de la declaracion lee esta columna
-                    // para "MUNICIPIO/DEPARTAMENTO DE NOTIFICACION", asi que
-                    // ese hardcode era el bug que el cliente reporto como
-                    // "municipio de registro carga mal" (punto 5). Ahora se
-                    // toma del select agregado en el formulario de
-                    // inscripcion (index.php); si por algun motivo no llega,
-                    // se cae a 1 solo como ultimo recurso para no romper el
-                    // guardado.
-                    $idCiudad = isset($_POST['idCiudad']) && $_POST['idCiudad'] !== ''
-                        ? (int)$_POST['idCiudad']
-                        : 1;
-                    $_objContribuyenteNuevo->set_ind_IdCiudad($idCiudad);
-                    $_objContribuyenteNuevo->set_ind_Estado(1);
-
-                    if (!$_objContribuyenteNuevo->guardar()) {
-                        $this->_ok = 5;
-                        $this->_mensaje = $_objContribuyenteNuevo->getMysqlError();
-                        return false;
-                    }
-                }
-                
-                //$_objlogs = new logs();
-                //$_objlogs->_insertLogs($id,1,2,7);
-                $this->_ok = 1;
-                $this->_mensaje = "Datos ingresados correctamente";
-            }
-            $return= $_objUsuario->guardar();
+            return false;
         }
-        return $return;
+
+        // La cuenta (por el DAO: la clave se guarda con HASHBYTES, como la
+        // compara el login) y el contribuyente (parametrizado), en la misma
+        // transaccion de la conexion compartida.
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        try {
+            $con->begin();
+
+            if (!$_objUsuario->guardar()) {
+                throw new \Exception('No se pudo guardar la cuenta: ' . $_objUsuario->getMysqlError());
+            }
+
+            if (!$esAlcaldia) {
+                // Mismo criterio que el enlace cuenta-contribuyente del resto del
+                // sistema: por numero de documento. Si ya existe, no se duplica.
+                $existe = $con->obnerFila($con->consultar(
+                    "SELECT TOP 1 ind_Id FROM ind_contribuyentes
+                      WHERE ind_NumeroIdentificacion = ? ORDER BY ind_Id",
+                    [(int) $documento]
+                ));
+
+                if (!$existe) {
+                    $tipoPersona = (int) ($_POST['tipoPersona'] ?? 0);
+                    if (!in_array($tipoPersona, [1, 2], true)) {
+                        $tipoPersona = ($tipoDocumento === 5) ? 2 : 1;
+                    }
+                    // Con NIT el DV se calcula aqui (el que llegue del navegador no
+                    // decide); sin NIT el sistema no usa DV y la columna guarda 0.
+                    $dv = ($tipoDocumento === 5) ? \erpsoftsas\DAO_Contribuyentes::digitoVerificacion($documento) : 0;
+
+                    // Municipio de residencia: lo pide la inscripcion publica
+                    // (index.php). Sin el, 0 = "sin escoger": el RIT no deja
+                    // guardarse hasta que se elija. Antes caia en 1 (Tunja), que
+                    // es justo el "municipio de registro carga mal" del punto 5.
+                    $idCiudad = (isset($_POST['idCiudad']) && ctype_digit((string) $_POST['idCiudad']))
+                        ? (int) $_POST['idCiudad'] : 0;
+
+                    $con->consultar(
+                        "INSERT INTO ind_contribuyentes
+                             (ind_NumeroIdentificacion, ind_IdTipoDocumento, ind_DV, ind_PrimerNombre,
+                              ind_PrimerApellido, ind_Direccion, ind_Telefono, ind_Email,
+                              ind_Persona, ind_IdCiudad, ind_Estado)
+                         VALUES (?, ?, ?, ?, NULLIF(?, ''), ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, 1)",
+                        [
+                            (int) $documento, $tipoDocumento, $dv,
+                            trim((string) ($_POST['nombres'] ?? '')),
+                            // Una persona juridica no tiene apellidos: su razon
+                            // social va entera en el primer nombre.
+                            $tipoPersona === 2 ? '' : trim((string) ($_POST['apellidos'] ?? '')),
+                            trim((string) ($_POST['direccion'] ?? '')),
+                            $telefono,
+                            trim((string) ($_POST['email'] ?? '')),
+                            $tipoPersona, $idCiudad,
+                        ]
+                    );
+                }
+            }
+
+            $con->commit();
+
+        } catch (\Throwable $e) {
+            try { $con->rollback(); } catch (\Throwable $e2) { /* ya no habia transaccion */ }
+            error_log('[usuarios] no se creo la cuenta ' . $documento . ': ' . $e->getMessage());
+            $this->_ok = 0;
+            $this->_mensaje = 'No se pudo completar el registro y no quedó nada guardado. Revise los datos '
+                            . 'e intente de nuevo; si el problema sigue, comuníquese con la Secretaría de Hacienda.';
+            return false;
+        }
+
+        //$_objlogs = new logs();
+        //$_objlogs->_insertLogs($id,1,2,7);
+        $this->_ok = 1;
+        $this->_mensaje = "Datos ingresados correctamente";
+
+        // Antes aqui habia un segundo $_objUsuario->guardar(): un UPDATE repetido
+        // de la cuenta recien creada, que ademas corria fuera de todo control.
+        return true;
     }
     
     /**
@@ -373,11 +460,11 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
     *** concatenando strings, NO con parametros. Por eso aqui:
     ***   - usu_Id se castea a int antes de tocar el DAO (en guardar() va al
     ***     WHERE del UPDATE sin comillas siquiera: " WHERE usu_Id = $valor").
-    ***   - la clave nueva se escapa duplicando la comilla simple, que es como
-    ***     SQL Server escapa dentro de un literal. Esto NO cambia el hash
-    ***     resultante: SQL Server parsea '' como una sola comilla, asi que
-    ***     HASHBYTES recibe la contraseña original y el login (que hace
-    ***     sha1() en PHP sobre el texto crudo) sigue coincidiendo.
+    ***   - la comilla simple de la clave nueva la escapa el DAO
+    ***     (DAOGeneral::_literalSql, desde 2026-09-28). Antes se escapaba
+    ***     AQUI; con el escape en el DAO eso la duplicaba dos veces, HASHBYTES
+    ***     recibia dos comillas y el login (sha1() sobre el texto crudo) ya no
+    ***     coincidia. No volver a escaparla en este metodo.
     **/
     protected function _cambiarClave() {
 
@@ -415,7 +502,8 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
 
         $_objUsuario = new \erpsoftsas\DAO_Usuario();
         $_objUsuario->set_usu_Id($idUsuario);
-        $_objUsuario->set_usu_Password(str_replace("'", "''", $claveNueva));
+        // Sin escapar: lo hace el DAO (ver la nota de arriba).
+        $_objUsuario->set_usu_Password($claveNueva);
 
         if (!$_objUsuario->guardar()) {
             $this->_ok = 0;

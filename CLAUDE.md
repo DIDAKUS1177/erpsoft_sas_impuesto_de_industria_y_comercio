@@ -92,8 +92,10 @@ ya trae datos de RIT).
   código CIIU.
 - Contador/revisor fiscal firman con OTP a su correo (`ind_EmailContador` /
   `ind_EmailRevisor` en `ind_contribuyentes`), comparten una sola casilla en el
-  formulario (se usa el del contador; el del revisor solo si el del contador está
-  vacío).
+  formulario. Manda el REVISOR FISCAL; el contador solo si no hay revisor (el
+  cliente lo cambió en la reunión del 2026-08-26: "si tienen al revisor y al
+  contador, se le da prioridad al revisor"; ver `_destinatarioContador` en
+  `microservicios/firmas/api.php`).
 - Es obligatorio firmar como contador/revisor **cuando el contribuyente tiene uno
   registrado**: si `ind_EmailContador` o `ind_EmailRevisor` tienen valor, esa firma se
   exige para presentar, sin importar tipo de persona ni ingresos (regla nueva desde
@@ -216,17 +218,17 @@ nuevo contra este DAO:
 
 - **Todo id que venga del cliente hay que castearlo** (`(int) $_POST[...]`)
   antes de pasarlo al DAO. Sin eso hay inyección directa.
-- **Todo texto libre del usuario hay que escaparlo** duplicando la comilla
-  simple (`str_replace("'", "''", $v)`), que es como SQL Server escapa dentro
-  de un literal. Para el campo de contraseña esto **no** altera el hash
-  guardado: SQL Server parsea `''` como una sola comilla, así que
-  `HASHBYTES` recibe el texto original y el login (que hace `sha1()` en PHP
-  sobre el texto crudo) sigue coincidiendo — verificado con una contraseña
-  que contiene comilla, cambiándola y volviendo a entrar.
+- **El texto libre ya lo escapa el DAO** (desde el 2026-09-28, `_literalSql`
+  en `guardar()` y en los WHERE): duplica la comilla simple, que es como SQL
+  Server escapa dentro de un literal. Antes no lo hacía y "Donde Pepe's" o
+  "INVERSIONES D'LUCA" rompían el guardado con un 500 vacío. **Quien llama al
+  DAO NO debe escapar por su cuenta**: la comilla quedaría doble en la base (y
+  en una clave, el hash dejaría de coincidir). `_cambiarClave()` lo hacía a
+  mano y se le quitó. Para la contraseña el escape no altera el hash: SQL
+  Server parsea `''` como una sola comilla y `HASHBYTES` recibe el texto
+  original, el mismo que el login pasa por `sha1()` en PHP.
 
-Ambas cosas están aplicadas en `_cambiarClave()`. El resto de controladores
-viejos **no** las aplica; es deuda conocida, no asumir que un endpoint
-existente ya está protegido.
+Lo de castear los ids sigue haciendo falta en todo controlador que use el DAO.
 
 ### Bug de producción encontrado y corregido en el camino (2026-08-11)
 
@@ -548,6 +550,16 @@ invalidarla. El hash cubre exactamente lo que el formulario imprime
 invalidaría por cambios que el papel no muestra, de menos dejaría pasar cambios
 visibles sin volver a firmar. `RitFirma::VERSION` permite invalidar a propósito
 todas las firmas viejas si algún día cambia *qué* se firma.
+
+**Versiones de la huella (2026-09-28)**: la v3 metía TODOS los establecimientos,
+aunque el formulario ya no imprime esa lista, así que crear, editar o cerrar
+cualquier local dejaba el RIT en "firma desactualizada". Las firmas nuevas son
+**v4** (del establecimiento, solo lo que el papel imprime: `lugarImpreso`, el
+local ACTIVO más antiguo). Para no tumbar las firmas ya guardadas en producción,
+`firmaVigente` compara la huella guardada con cada versión de
+`VERSIONES_ACEPTADAS` (`v4`, `v3`); `_datosV3` está CONGELADA (es la fórmula
+anterior tal cual: comprobado que da el mismo hash y el mismo "firmado" en
+todos los contribuyentes locales). No tocarla; lo nuevo va en `_datosV4`.
 
 El OTP del RIT usa `codigo_Rol = 'rit'`, distinto de `'declarante'`. Sin eso, un
 código pedido para firmar una declaración serviría para firmar el RIT y al
@@ -1217,8 +1229,218 @@ declaraciones y recibo). Lo que se encontró y quedó arreglado:
 - Pruebas: `probar_revision.php` (32 casos). `probar_segunda.php` y
   `probar_intereses.php` fijan `America/Bogota` como el servidor.
 
+### Firmas de retención y autorretención (cliente, 2026-09-28)
+
+El cliente reportó en los dos módulos: firmaba y "no sale para la firma del
+contador", Guardar no volvía al listado y al PDF de retención le faltaba la
+actividad económica principal. Las tres eran ciertas.
+
+- **El estado sale de las firmas**, como en el ICA. `_filaParaPantalla` lo leía
+  de `Estado = 1`, que nada escribe: firmar no cambiaba nada, la fila seguía en
+  borrador y "Presentar" (donde se pedía la firma del contador) solo aparecía
+  con `Estado = 1`, o sea nunca, desde que 6ef2a2c quitó el botón del
+  formulario. Ahora `_listar` trae `firma_declarante`, `firma_contador` y
+  `requiere_contador` (correo de contador o revisor en el contribuyente), y el
+  estado es borrador / `pendienteCont` ("Falta contador") / firmada.
+  `_firmasDeFila` consulta lo mismo cuando se abre una sola declaración.
+- **El listado de "Presentar" firma y presenta**: Falta contador → Editar,
+  Descargar, **Firmar contador** (solo firma) y **Presentar** (pide la firma
+  que falte y presenta). Guardar vuelve al listado; Liquidar se queda en el
+  formulario.
+- **Guardar una firmada le quita las firmas** (`_guardar`, paso 4; lo firmado ya
+  no era lo guardado y se presentaba igual), con aviso antes en pantalla
+  (`confirmarSiFirmada`) y después en el mensaje (`firmasQuitadas`). Descartar
+  un borrador borra también sus firmas. Los números no se repiten
+  (`ind_consecutivos`; la corrección lleva número propio), así que borrar por
+  número y módulo no toca otra declaración.
+- **PDF de retención, casilla 6**: `pdfret_perfilContribuyente` buscaba las
+  actividades con `atc_Anio = MAX(...)` y las vigentes tienen año NULL desde la
+  007; ahora toma las de año NULL y, solo si no hay, las fechadas. La
+  autorretención no tiene esa casilla: sus actividades van en la sección C.
+- `pruebas/declaracionesFiltro.test.js` fallaba desde 901f9e7: esperaba
+  "pagada" con solo `dec_Pagado`, que es justo el estado imposible que
+  `claveEstado` dejó de pintar (217 y 218). Se corrigió la prueba.
+- Pruebas: `probar_retenciones_flujo.php` (41 casos: los dos módulos, con y sin
+  contador, guardar una firmada con y sin cambios, guardado que falla a mitad,
+  descartar una firmada, corregir, 2025, borrador que se pone al día, PDF). Los
+  códigos se insertan en `codigos_verificacion`; no se llama a la función 1 (no
+  sale correo).
+
+### Revisión completa del 2026-09-28 (cuatro revisores en paralelo)
+
+Diego pidió, además de lo de las firmas, que "todo lo demás debe de servir".
+Retención y autorretención, además de lo anterior:
+
+- **Año de catálogo** (`business/class.catalogoAnio.php`, `CatalogoAnio`): los
+  renglones solo existen para 2026 y las actividades para 2025, y todo pedía el
+  año EXACTO: una retención de 2025 (la pantalla ofrece el año actual y los dos
+  anteriores) salía sin liquidación y se presentaba en $0, y desde el 1 de enero
+  de 2027 pasaría con todas. Rige el año más reciente que no pase del declarado;
+  si no hay, el más antiguo. Lo usan el motor, los dos PDF y el recibo.
+- **Guardar**: todo o nada (transacción) y solo quita las firmas si CAMBIÓ algo
+  (`_huella`: casillas, actividades y `_columnasFirmadas`, que en
+  autorretención es la energía). Abrir una firmada y pulsar Guardar ya no le
+  cuesta las firmas. La energía se guarda en `_guardarExtra`, dentro de la
+  transacción.
+- **Corregir una autorretención** copia la energía (`_copiarContenido`): la
+  corrección nacía con energía 0 y una generadora presentaba de menos.
+- **Precarga de la autorretención** por CÓDIGO contra el catálogo que rige (el
+  RIT guarda el `acc_Id` del catálogo con que se inscribió; el día que se cargue
+  otro año, uniendo por id quedaba vacía) y sin repetir; `_completarBorrador` la
+  corre al abrir un borrador SIN firmas, así que uno que nació vacío recibe las
+  actividades cuando el RIT se actualiza.
+- PDF: casilla 6 con todas las actividades del contribuyente, sin filtro por
+  año (como el RIT: desde la 007 hay una fila por actividad y todas son
+  vigentes); tipo de documento por `ind_IdTipoDocumento` (1 C.C., 3 C.E., 4
+  pasaporte, 5 NIT) y D.V. solo con NIT, en los dos formularios.
+- Presentación con la hora de Colombia calculada en PHP (`GETDATE()` es el
+  reloj del servidor SQL; en local, UTC).
+- Pantalla: "Presentar" pide confirmación (como el ICA) y hay candados contra
+  el doble clic (la capa `#loading` no se ve: `loading.css` la oculta mientras
+  tenga `hidden`, a propósito); un pedido de código a la vez; mensaje de qué
+  sigue al firmar desde el listado; "Volver" avisa si hay cambios sin guardar;
+  una fila con valor y sin actividad no se descarta en silencio; quitar la
+  última actividad deja la tabla vacía (antes repintaba las guardadas); el
+  catálogo del desplegable es el del año de la DECLARACIÓN (con el del selector
+  las actividades quedaban en blanco y Guardar las borraba) y una actividad
+  retirada del catálogo se conserva; la URL `?id=&accion=` se usa una vez; la
+  papelera solo en lo no presentado (y avisa si ya tiene firmas); sin "Pagar
+  PSE" en $0.
+
+**Recaudo en los tres módulos** (`class.recaudo.php`): el recibo y el formulario
+de retención y de autorretención llevan el mismo EAN y su número, pero el
+recaudo solo buscaba en el ICA: un pago de retención no quedaba registrado
+nunca. Ahora busca el número en los tres y aplica cuando hay UNA sola
+declaración presentada y sin pagar; con dos o más va a "Revisar a mano" con las
+candidatas (contribuyente y total), y DESPUÉS de aplicar el archivo la Alcaldía
+asigna cada una (función 4). Cada pago una sola vez: se cuentan las líneas del
+archivo con esa referencia y ese valor contra las declaraciones que ya lo tienen
+aplicado (número, valor, fecha y vía). Para volver otro día sobre lo pendiente
+se carga de nuevo el mismo archivo: la vista previa lo reconoce y deja asignar.
+Prueba: `probar_recaudo_modulos.php` (10 casos, arma un archivo Asobancaria de
+verdad). `probar_revision.php` cambió dos casos a la regla nueva.
+
+**API de firmas** (`microservicios/firmas/api.php`):
+- El correo del código dice qué se firma (asunto "… - Retención N° 2026000018",
+  y "Es para firmar la retención N° … (firma del contador o revisor fiscal)"):
+  todos decían "- ICA". El remitente es `MUNICIPIO_NOMBRE` del servidor
+  (`config.php` trae "Alcaldía de paipa" fijo para los cuatro).
+- Una ICA sin actividades guardadas no recibe código ni se firma, y la
+  comprobación va ANTES de gastar el código. También "ya fue firmada" se
+  comprueba antes de gastarlo (se perdía si firmaba otra pestaña u otra persona).
+- `fd_FechaHora` con la hora de Colombia (solo se muestra; ninguna consulta
+  ordena por ella).
+- La firma del RIT se muestra con el nombre del representante, como la casilla
+  30 del PDF (la pantalla mostraba el de la cuenta, o "administrador").
+- La fecha del sello del RIT (`rif_FechaHora`) sigue con `GETDATE()`:
+  `RitFirma::firmaVigente` ordena por ella, y mezclar horas nuevas en Colombia
+  con viejas del servidor podía tomar por "última" una firma anterior. Para
+  cambiarla, ordenar antes por `rif_Id`.
+Prueba: `probar_firmas_api.php` (8 casos, sin enviar correos).
+
+**ICA** (`class.declaracionesICA.php`, PDF, pantallas y `extensiones/pse/`):
+- **Migración 036**: `sp_calculo_comercio` liquidaba los renglones 21 a 38 con
+  las fórmulas de `ind_Conceptos` del año EXACTO, y solo hay de 2026: desde el 1
+  de enero de 2027 toda declaración nueva saldría con el total en $0. Ahora cada
+  renglón toma la fórmula del año más reciente que no pase del declarado (o la
+  más antigua), RENGLÓN POR RENGLÓN: para cambiar una fórmula en 2027 se carga
+  una fila de 2027 solo para ese renglón en Parámetros ICA > Conceptos (editar la
+  de 2026 cambia también los borradores de 2026). Para 2026 no cambia nada; lo
+  único distinto del procedimiento es el filtro del cursor. Vuelta atrás: la 011.
+- **Una corrección ya no hereda la sesión PSE de la original** (`dec_PSE_*`, por
+  prefijo): el cron consultaba la sesión aprobada de la original y marcaba
+  pagada la corrección en borrador. `PagoDeclaracion::registrar` exige
+  `_Estado = 2`, el cron solo mira presentadas, y retorno, webhook y cron
+  aplican una sesión solo a la declaración cuyo número lleva como referencia
+  (`sesionDeOtraDeclaracion`); a las demás se la quitan (`olvidarSesionAjena`),
+  nunca a una pagada. Eso cubre las correcciones viejas sin migración de datos.
+- **La corrección se imprime como corrección**: X en CORRECCIÓN con el número y
+  la fecha de la que corrige (declaracion.php y liquidacion.php), y nace con
+  `dec_OpcionUso = 3`; en pantalla la opción de uso es de solo lectura.
+- **Corregir sigue la cadena real** (`dec_DeclaracionCorrige`, del
+  contribuyente), no "la última presentada del año": con varias originales del
+  mismo año corregía siempre la última y decía que la pulsada "ya había sido
+  corregida".
+- **Firmada = no se edita sin quitar firmas**: abrir para editar (función 13)
+  contesta `FIRMADA` y la pantalla toma el camino de "Editar" de una firmada;
+  guardar (6) y recalcular un renglón (7) rechazan firmadas y presentadas
+  (`_motivoParaNoEditar`). "Corregir" con una corrección en curso firmada lo avisa.
+- **Firmas del ICA solo del módulo ICA** (`_firmasIca`, comparando como texto):
+  un borrador ICA no se podía borrar si una retención homónima estaba firmada.
+- Sin actividades guardadas no se presenta (`SIN_ACTIVIDADES`) ni se ofrece
+  Firmar/Presentar (el listado trae `n_actividades`); presentar dos veces ya no
+  mueve la fecha; la fecha de presentación es la de Colombia; la zona horaria se
+  fija antes del `date('Y')` de `_agregarDeclaracion` (el 31/12 desde las 7 p. m.
+  nacía con el año siguiente).
+- La lectura del formulario vive una vez en `FormularioDeclaracion`
+  (declaraciones.ui.js): Consultar recalculaba un renglón con las actividades
+  guardadas y pisaba lo que acababa de mostrar "Liquidar".
+- PDF: tarifa "por mil" (salía ".004"); la banda de la sección C cuenta la fila
+  "Continúa en la hoja 2" (con más de 3 actividades la fila 18 salía corrida);
+  "PAGADA" solo si además está presentada.
+- Menores: fecha y hora al crear; "Cerrar" del retorno de PSE lleva al listado si
+  el navegador no deja cerrar la pestaña; Consultar solo ofrece años con
+  presentadas; por PSE la Alcaldía puede dejar los intereses en 0 como en el
+  recibo; sin "Pagar PSE" con la casilla 38 en $0.
+Pruebas: `probar_ica_revision.php` (49 casos) y `probar_ica_ui.test.js` (16,
+`node probar_ica_ui.test.js <ruta de erpsoftsas>`).
+
+**RIT, establecimientos y administración**:
+- **Registro** (index.php / login.js / `class.usuarios.php`): el teléfono viaja
+  solo con dígitos (7 a 15; "310 123 4567" iba a una columna numérica y el
+  registro fallaba a medias: cuenta sin contribuyente), cuenta y contribuyente
+  en UNA transacción, y el error vuelve como mensaje, no como 500 vacío. En
+  Usuarios, los roles 1 y 2 no crean contribuyente; los demás, con tipo de
+  persona según el documento, DV de la DIAN
+  (`DAO_Contribuyentes::digitoVerificacion`) y municipio 0 (se elige en el RIT).
+- **RIT**: Guardar lleva las actividades en la misma transacción y con la misma
+  regla de obligatorios (marca `actividadesEnviadas`; sin ella no se tocan);
+  "Guardar actividades" es el mismo Guardar (antes recargaba y borraba lo
+  escrito); Firmar no deja firmar con cambios sin guardar y recarga al terminar.
+- **Inscripción/Actualización**: una sola regla en pantalla y PDF ("Inscripción"
+  mientras nunca se haya firmado); abrir el RIT ya no marca
+  `ind_RIT_FechaCreacion` (la marca el primer guardado).
+- **Contribuyentes**: tipo y número repetidos se rechazan al crear y al editar
+  (al editar, solo si cambia el documento); un opcional vaciado se guarda NULL;
+  pasar a jurídica borra apellidos y segundo nombre.
+- **Establecimientos**: "Información del Contribuyente" es de solo consulta para
+  el contribuyente, con los tipos 1/3/4/5 y sin editar número ni DV; un local sin
+  fecha de inicio queda NULL (no 1900-01-01); errores como JSON claro.
+- **Sesión**: la fecha de sesión es la de Colombia (con la UTC, a las 7 p. m. se
+  sacaba a todos), y cualquier respuesta "Debe iniciar sesión" / `sinSesion = 1`
+  lleva al login con aviso (`dist/menu.php`, `ajaxSuccess`; esos textos solo
+  salen sin sesión).
+- **Municipio y bancos**: la fecha límite del ICA se valida con `checkdate`
+  contra un año no bisiesto (29/02, 31/04… se rechazan; "5/4" se guarda 05/04).
+Prueba: `probar_rit_revision.php` (53 casos; `foto30.php` guarda y restaura el
+contribuyente 30).
+
 ### Pendientes
 
+- **Migración 036** (fórmulas del ICA del año vigente): aplicarla en Paipa y
+  Guateque al desplegar (y en Macanal/Sutatenza cuando tengan base). Sin ella
+  todo sigue igual en 2026, pero desde el 1 de enero de 2027 el ICA liquidaría
+  en $0.
+- **Decisiones del cliente que dejó la revisión del 2026-09-28**:
+  - El **rol 2** ("Internos Alcaldía") no puede entrar: no tiene ni un permiso
+    en `conf_permisos` y el login lo corta. Para que funcione: cargarle permisos
+    (¿cuáles?), permisos 312/313 de Contribuyentes → 1639, crear el submódulo 45
+    (Municipio y bancos, permiso 1645), la barra "Gestionando a" también para el
+    rol 2, y el cese del contribuyente (la pantalla lo deja a 1 y 2, el servidor
+    solo a 1).
+  - "Inactivar" un contribuyente no bloquea nada (`ind_Estado` no lo lee nadie).
+  - Contribuyentes y cuentas repetidos que ya existen (en local: contribuyentes
+    24 y 29, cuentas 17 y 1020): cuál queda.
+  - "Inscripción" para un contribuyente antiguo que nunca firmó el RIT (regla
+    nueva de pantalla y PDF).
+  - El tipo de sanción de la declaración ICA no se guarda ni se imprime (hace
+    falta una columna).
+  - Qué pasa con la ORIGINAL cuando se presenta una corrección (hoy sigue
+    ofreciendo pago; va con la reunión de la corrección).
+  - Falta la fila `PASARELA_USUARIOS_PRUEBA` en `conf_parametros` fuera de
+    Paipa (ninguna migración la crea).
+- La fecha del sello del RIT (`rif_FechaHora`) sigue en la hora del servidor SQL
+  (ver "API de firmas" arriba).
 - Migración **035** (novedades de establecimiento): sin ella se cierra igual
   (queda en el log), pero no se puede reabrir, porque la justificación tiene que
   quedar escrita.
@@ -1232,9 +1454,10 @@ declaraciones y recibo). Lo que se encontró y quedó arreglado:
   certificador hay que avisarle que el ICA 2026 ya venció y pide intereses de
   mora (cualquier valor), o que pruebe con una retención.
 - **Referencias de recaudo por módulo**: mientras ICA, retención y autorretención
-  compartan números, los choques quedan en "Revisar a mano". Lo de fondo es que
-  la referencia distinga el módulo (decisión con el cliente y el banco, porque
-  cambia el código de barras).
+  compartan números, los choques (dos pendientes con el mismo número) quedan en
+  "Revisar a mano" y la Alcaldía los asigna uno a uno (función 4 del recaudo,
+  2026-09-28). Lo de fondo es que la referencia distinga el módulo (decisión con
+  el cliente y el banco, porque cambia el código de barras).
 - Guardar el RIT depende de las migraciones 004 y 017 (anexos del contribuyente):
   Paipa y Guateque las tienen; confirmarlo en Macanal cuando tenga la clave.
 - El DAO genérico (`class.DAO.php`) arma el SQL pegando los valores entre

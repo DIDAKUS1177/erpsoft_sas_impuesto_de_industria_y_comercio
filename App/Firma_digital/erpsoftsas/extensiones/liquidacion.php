@@ -150,11 +150,13 @@ while ($a = $con->obnerFila($stmtAct)) {
     $actividades[] = $a;
 }
 
+// La del DECLARANTE y del modulo ICA: sin esos filtros podia salir la del
+// contador, o la de una retencion con el mismo numero (ver declaracion.php).
 $sqlFirma = "
 SELECT fd_NombreUsuario, fd_EmailUsuario, fd_FechaHora, fu.fu_Base64
 FROM firmas_declaraciones fd
 LEFT JOIN firmas_usuario fu ON fu.fu_IdUsuario = fd.fd_IdUsuario
-WHERE fd.fd_NumeroDeclaracion = ?
+WHERE fd.fd_NumeroDeclaracion = ? AND fd.fd_Modulo = 'ICA' AND fd.fd_Rol = 'declarante'
 ";
 $stmtFirma = $con->consultar($sqlFirma, [$idDeclaracion]);
 $firmaData = $con->obnerFila($stmtFirma);
@@ -234,12 +236,13 @@ $chk_sep_oct  = false;
 $chk_nov_dic  = false;
 $chk_anual    = true;
 
-// Opción de uso (igual que declaracion.php: el sistema no maneja
-// correcciones todavia, siempre es declaracion inicial)
-$chk_declaracion_inicial = true;
+// Opción de uso: como en declaracion.php, una declaracion que corrige a otra
+// (dec_DeclaracionCorrige) sale como CORRECCIÓN y con el numero que corrige.
+// Estaba fija en "inicial" y la correccion se imprimia como una original.
+$no_declaracion_corrige  = htmlspecialchars(trim((string) ($row['dec_DeclaracionCorrige'] ?? '')));
+$chk_correccion          = $no_declaracion_corrige !== '';
+$chk_declaracion_inicial = !$chk_correccion;
 $chk_solo_pago           = false;
-$chk_correccion          = false;
-$no_declaracion_corrige  = "";
 $fecha_declaracion       = $row['dec_FechaDeclaracion'] instanceof DateTime
     ? $row['dec_FechaDeclaracion']->format('d/m/Y')
     : (string)($row['dec_FechaDeclaracion'] ?? '');
@@ -303,7 +306,9 @@ $vlr_16_total_ingresos_gravables   = (float)($row['dec_BaseGravable'] ?? 0);
 $actividad_codigo       = $actividades[0]['acc_Codigo'] ?? '';
 $actividad_descripcion  = $actividades[0]['acc_Nombre'] ?? 'ACTIVIDADES GRAVADAS';
 $actividad_ingresos     = (float)($actividades[0]['dia_BaseGravable'] ?? 0);
-$actividad_tarifa_mil   = (float)($actividades[0]['dia_Tarifa'] ?? 0);
+// La tarifa se guarda como fraccion (0.004): por mil es por 1000. Se imprimia
+// "0,004 ‰" donde van 4 por mil.
+$actividad_tarifa_mil   = (float)($actividades[0]['dia_Tarifa'] ?? 0) * 1000;
 $actividad_impuesto     = (float)($actividades[0]['dia_ValorImpuesto'] ?? 0);
 $total_impuesto_renglon = (float)$totalImpuestoActividades;
 
@@ -400,7 +405,8 @@ $estaPresentada = ((int)($row['dec_Estado'] ?? 0) === 2);
 // PAGADA seguia diciendo "PRESENTADA": el contribuyente descargaba su
 // comprobante de pago y el documento no reflejaba que estuviera pagado, que es
 // justo el dato que le importa cuando lo tiene que mostrar.
-$estaPagada     = ((int)($row['dec_Pagado'] ?? 0) === 1);
+// "Pagada" exige ademas estar presentada, como en declaracion.php.
+$estaPagada     = $estaPresentada && ((int)($row['dec_Pagado'] ?? 0) === 1);
 $textoMarcaAgua = $estaPagada ? 'PAGADA' : ($estaPresentada ? 'PRESENTADA' : 'BORRADOR');
 
 $nombreFirmanteContadorRevisor = $contador_nombre !== '' ? $contador_nombre : $revisor_nombre;
@@ -599,7 +605,7 @@ IMPUESTO DE INDUSTRIA Y COMERCIO
 <td>' . htmlspecialchars($actividad_descripcion) . '</td>
 <td align="center">' . htmlspecialchars($actividad_codigo) . '</td>
 <td align="right">' . moneyCol($actividad_ingresos) . '</td>
-<td align="center">' . number_format($actividad_tarifa_mil,3,',','.') . ' ‰</td>
+<td align="center">' . rtrim(rtrim(number_format($actividad_tarifa_mil,3,',','.'), '0'), ',') . ' ‰</td>
 <td align="right">' . moneyCol($actividad_impuesto) . '</td>
 </tr>
 

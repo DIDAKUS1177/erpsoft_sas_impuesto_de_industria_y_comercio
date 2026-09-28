@@ -76,8 +76,12 @@ $html = pdfret_encabezado(
 
 $marca      = function ($activo) { return $activo ? 'X' : '&#160;'; };
 $fechaDoc   = $fechaSello ? substr($fechaSello, 0, 10) : date('d/m/Y');
-$esJuridica = (int) ($contribuyente['ind_Persona'] ?? 0) === 2;
-$dv = (isset($contribuyente['ind_DV']) && $contribuyente['ind_DV'] !== null)
+/* Casilla 1: se marca por el TIPO DE DOCUMENTO del RIT, no por el tipo de
+   persona (una persona natural con NIT salía "C.C."). Catálogo del sistema:
+   1 C.C., 3 C.E., 4 pasaporte, 5 NIT (el 2 no existe); C.E. y pasaporte van en
+   "OTRO". El D.V. solo existe con NIT. Misma regla que el ICA (2026-09-25). */
+$tipoDoc = (int) ($contribuyente['ind_IdTipoDocumento'] ?? 0);
+$dv = ($tipoDoc === 5 && isset($contribuyente['ind_DV']) && $contribuyente['ind_DV'] !== null)
       ? (string) (int) $contribuyente['ind_DV'] : '';
 
 /* El encabezado (escudo + títulos) se pinta solo y $ySecA se toma ANTES de
@@ -119,9 +123,9 @@ $html = '
 </tr>
 <tr>
     <td width="19%"><b>1. TIPO DE DOCUMENTO</b></td>
-    <td width="10%">NIT [<b>' . $marca($esJuridica) . '</b>]</td>
-    <td width="10%">C.C. [<b>' . $marca(!$esJuridica) . '</b>]</td>
-    <td width="11%">OTRO [<b>&#160;</b>]</td>
+    <td width="10%">NIT [<b>' . $marca($tipoDoc === 5) . '</b>]</td>
+    <td width="10%">C.C. [<b>' . $marca($tipoDoc === 1) . '</b>]</td>
+    <td width="11%">OTRO [<b>' . $marca($tipoDoc === 3 || $tipoDoc === 4) . '</b>]</td>
     <td width="6%"><b>D.V.</b></td>
     <td width="6%" align="center">' . htmlspecialchars($dv) . '</td>
     <td width="6%"><b>No.</b></td>
@@ -181,7 +185,8 @@ $stmt = $con->consultar(
        FROM ind_renglones_retencion
       WHERE ren_Modulo = 'AUTORRETEICA' AND ren_Anio = ? AND ren_Estado = 1
       ORDER BY ren_Orden",
-    [(int) $row['aut_Anio']]
+    // El año de catálogo que rige (CatalogoAnio), no el exacto.
+    [\erpsoftsas\CatalogoAnio::renglones($con, 'AUTORRETEICA', (int) $row['aut_Anio'])]
 );
 while ($r = $con->obnerFila($stmt)) { $renglones[(int) $r['ren_Codigo']] = $r; }
 

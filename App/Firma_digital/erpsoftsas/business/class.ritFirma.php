@@ -24,16 +24,43 @@ namespace erpsoftsas;
  * una firma y no un adorno.
  *
  * El hash cubre EXACTAMENTE lo que el formulario imprime -datos del
- * contribuyente, actividades y establecimientos-, ni mas ni menos. De mas,
- * invalidaria firmas por cambios que el papel no muestra; de menos, dejaria
- * pasar cambios visibles sin volver a firmar.
+ * contribuyente, actividades y, del establecimiento, lo que sale en el papel
+ * (lugarImpreso)-, ni mas ni menos. De mas, invalidaria firmas por cambios que
+ * el papel no muestra; de menos, dejaria pasar cambios visibles sin volver a
+ * firmar. Ver VERSION y VERSIONES_ACEPTADAS para como convive con las firmas
+ * hechas con la formula anterior.
  */
 class RitFirma
 {
-    /** Version del formato del hash. Si algun dia cambia QUE se firma, subir
-     *  este numero invalida las firmas viejas a proposito, en vez de dejar
-     *  hashes viejos y nuevos conviviendo sin poder distinguirlos. */
-    const VERSION = 'v3';
+    /**
+     * Version con que se FIRMA hoy (la huella que guarda una firma nueva).
+     *
+     * v4 (2026-09-28): la v3 metia en la huella TODOS los establecimientos
+     * -nombre, direccion, barrio, codigo, estado, cierre-, pero el formulario
+     * dejo de imprimir esa lista (revision del 2026-08-21). Resultado: si la
+     * Alcaldia creaba, editaba, cerraba o reabria CUALQUIER local, el RIT del
+     * contribuyente pasaba a "Firma desactualizada" y el PDF salia SIN FIRMAR
+     * sin que nada impreso hubiera cambiado. La v4 cubre lo que el papel si
+     * muestra del establecimiento (lugarImpreso: direccion y telefono de la
+     * actividad, y la matricula y fechas cuando el contribuyente no tiene las
+     * suyas) y deja fuera el resto.
+     */
+    const VERSION = 'v4';
+
+    /**
+     * Versiones cuya huella se ACEPTA al comprobar una firma.
+     *
+     * Subir VERSION sin mas habria tumbado todas las firmas guardadas en
+     * produccion (cada RIT firmado pasaria a "firma desactualizada"). Por eso
+     * una firma vieja se compara tambien con la formula con que se hizo: la v3
+     * cubre MAS que la v4, asi que si su huella coincide nada de lo firmado
+     * cambio. Una firma v3 se sigue cayendo, como antes, si cambia un local; las
+     * nuevas (v4), solo si cambia algo impreso.
+     *
+     * Para invalidar a proposito todas las firmas viejas (si algun dia cambia QUE
+     * se firma), subir VERSION y quitar de esta lista las versiones anteriores.
+     */
+    const VERSIONES_ACEPTADAS = ['v4', 'v3'];
 
     /**
      * Los documentos que hay que haber cargado para poder firmar el RIT.
@@ -186,8 +213,23 @@ class RitFirma
      * Los datos del RIT que quedan amparados por la firma, en un orden fijo.
      * El orden importa: json_encode de un arreglo asociativo respeta el orden
      * de insercion, y dos ejecuciones tienen que producir el mismo texto.
+     *
+     * $version: la de hoy por defecto; 'v3' para comprobar firmas hechas antes
+     * del 2026-09-28 (ver VERSIONES_ACEPTADAS).
      */
-    public static function datosFirmables($con, $idContribuyente)
+    public static function datosFirmables($con, $idContribuyente, $version = self::VERSION)
+    {
+        return ($version === 'v3')
+            ? self::_datosV3($con, $idContribuyente)
+            : self::_datosV4($con, $idContribuyente);
+    }
+
+    /**
+     * Formula v3, CONGELADA: las firmas hechas hasta el 2026-09-28 guardaron esta
+     * huella, y se comprueban recalculandola. Cambiar aqui un solo campo, el orden
+     * o una consulta tumbaria todas esas firmas. Lo nuevo va en _datosV4.
+     */
+    private static function _datosV3($con, $idContribuyente)
     {
         $idContribuyente = (int) $idContribuyente;
 
@@ -222,7 +264,7 @@ class RitFirma
 
         if (!$fila) { return null; }
 
-        $datos = ['_v' => self::VERSION, 'contribuyente' => []];
+        $datos = ['_v' => 'v3', 'contribuyente' => []];
         foreach ($campos as $c) {
             $datos['contribuyente'][$c] = self::_texto($fila[$c] ?? null);
         }
@@ -255,6 +297,153 @@ class RitFirma
         }
 
         return $datos;
+    }
+
+    /**
+     * Formula v4 (2026-09-28): los mismos datos del contribuyente y las mismas
+     * actividades que la v3, pero del establecimiento solo lo que el formulario
+     * imprime (lugarImpreso), no la lista entera que ya no sale en el papel.
+     */
+    private static function _datosV4($con, $idContribuyente)
+    {
+        $idContribuyente = (int) $idContribuyente;
+
+        $campos = [
+            'ind_NumeroIdentificacion', 'ind_DV', 'ind_IdTipoDocumento',
+            'ind_PrimerNombre', 'ind_SegundoNombre', 'ind_PrimerApellido', 'ind_SegundoApellido',
+            'ind_Direccion', 'ind_IdCiudad', 'ind_Persona', 'ind_IdRegimen',
+            'ind_Telefono', 'ind_Email',
+            'ind_Matricula', 'ind_Fecha_matricula', 'ind_Fecha_inicio', 'ind_Ind_camara_comercio',
+            'ind_Cedula_representante', 'ind_Nombre_representante', 'ind_Email_representante',
+            'ind_Telefono_representante',
+            'ind_CedulaContador', 'ind_NombreContador', 'ind_TarjetaProfContador', 'ind_EmailContador',
+            'ind_CedulaRevisor', 'ind_NombreRevisor', 'ind_TarjetaProfRevisor', 'ind_EmailRevisor',
+            'ind_Rut', 'ind_Rut_segundo', 'ind_Rut_tercero',
+            'ind_Autorizacion',
+            'ind_RegimenTributario', 'ind_Responsabilidades',
+            'ind_NoSujetas', 'ind_SinAvisosTableros',
+            'ind_FechaCese', 'ind_CausalCese', 'ind_ObservacionCese',
+        ];
+
+        $fila = $con->obnerFila($con->consultar(
+            'SELECT ' . implode(', ', $campos) . ' FROM ind_contribuyentes WHERE ind_Id = ?',
+            [$idContribuyente]
+        ));
+
+        if (!$fila) { return null; }
+
+        $datos = ['_v' => 'v4', 'contribuyente' => []];
+        foreach ($campos as $c) {
+            $datos['contribuyente'][$c] = self::_texto($fila[$c] ?? null);
+        }
+
+        $datos['actividades'] = [];
+        $st = $con->consultar(
+            'SELECT atc_IdCodigoActividad FROM ind_actividad_contribuyente
+              WHERE atc_IdContribuyente = ? ORDER BY atc_IdCodigoActividad',
+            [$idContribuyente]
+        );
+        while ($a = $con->obnerFila($st)) {
+            $datos['actividades'][] = (string) $a['atc_IdCodigoActividad'];
+        }
+
+        $datos['lugar'] = array_map(
+            [self::class, '_texto'],
+            self::lugarImpreso($fila, self::filaEstablecimientoImpreso($con, $idContribuyente))
+        );
+
+        return $datos;
+    }
+
+    /**
+     * El establecimiento del que el formulario del RIT toma el "lugar donde se
+     * ejerce la actividad": el mas antiguo ACTIVO. Antes era el mas antiguo a
+     * secas, y quien cerraba su primer local seguia apareciendo en el papel con
+     * esa direccion. null si no tiene ninguno activo (el formulario cae entonces a
+     * la direccion y el telefono de notificacion).
+     */
+    public static function establecimientoImpreso($con, $idContribuyente)
+    {
+        $fila = $con->obnerFila($con->consultar(
+            'SELECT TOP 1 est_Id FROM ind_establecimientos
+              WHERE est_IdContribuyente = ? AND est_Activo = 1
+              ORDER BY est_Id',
+            [(int) $idContribuyente]
+        ));
+        return $fila ? (int) $fila['est_Id'] : null;
+    }
+
+    /** Columnas de ese establecimiento que el formulario imprime, o null. */
+    private static function filaEstablecimientoImpreso($con, $idContribuyente)
+    {
+        $idEst = self::establecimientoImpreso($con, $idContribuyente);
+        if ($idEst === null) { return null; }
+
+        return $con->obnerFila($con->consultar(
+            'SELECT est_Nombre, est_Direccion, est_Telefono, est_Matricula,
+                    est_Fecha_matricula, est_Fecha_inicio
+               FROM ind_establecimientos WHERE est_Id = ?',
+            [$idEst]
+        )) ?: null;
+    }
+
+    /**
+     * Lo que el formulario del RIT imprime y depende del establecimiento, tal
+     * como se imprime (sin escapar). extensiones/ritActualizado.php pinta ESTOS
+     * valores y la huella v4 los cubre: asi el papel y la firma no pueden decir
+     * cosas distintas.
+     *
+     * $c es la fila del contribuyente (ind_*) y $e la del establecimiento impreso
+     * (est_*), o null. Las reglas son las que ya tenia el PDF: manda el dato del
+     * contribuyente y el del local es el respaldo (bases de antes de la
+     * migracion 003); la razon social de una juridica sin nombre cae al nombre
+     * del local; direccion y telefono de la actividad son los del local, y sin
+     * local, los de notificacion.
+     */
+    public static function lugarImpreso(array $c, ?array $e)
+    {
+        $e = $e ?: [];
+
+        $nombreCompleto = trim(
+            ($c['ind_PrimerNombre'] ?? '') . ' ' . ($c['ind_SegundoNombre'] ?? '') . ' ' .
+            ($c['ind_PrimerApellido'] ?? '') . ' ' . ($c['ind_SegundoApellido'] ?? '')
+        );
+
+        return [
+            'razon' => ($c['ind_Persona'] ?? null) == 1
+                ? $nombreCompleto
+                : (trim((string) ($c['ind_PrimerNombre'] ?? '')) !== ''
+                    ? (string) $c['ind_PrimerNombre']
+                    : (string) ($e['est_Nombre'] ?? '')),
+            'matricula'           => (string) (($c['ind_Matricula'] ?? null) ?: ($e['est_Matricula'] ?? '')),
+            'fecha_matricula'     => self::fechaImpresa($c['ind_Fecha_matricula'] ?? null, $e['est_Fecha_matricula'] ?? null),
+            'fecha_inicio'        => self::fechaImpresa($c['ind_Fecha_inicio'] ?? null, $e['est_Fecha_inicio'] ?? null),
+            'telefono_actividad'  => trim((string) ($e['est_Telefono'] ?? '')) !== ''
+                ? (string) $e['est_Telefono'] : (string) ($c['ind_Telefono'] ?? ''),
+            'direccion_actividad' => trim((string) ($e['est_Direccion'] ?? '')) !== ''
+                ? (string) $e['est_Direccion'] : (string) ($c['ind_Direccion'] ?? ''),
+        ];
+    }
+
+    /**
+     * Primera fecha que traiga valor, como la imprime el formulario (dd-mm-aaaa).
+     * 1900-01-01 es el "vacio" de SQL Server, no una fecha: se salta. Es la
+     * funcion _fecha() que tenia ritActualizado.php; ahora la usan los dos.
+     */
+    public static function fechaImpresa(...$candidatas)
+    {
+        foreach ($candidatas as $f) {
+            if (empty($f)) { continue; }
+
+            $texto = ($f instanceof \DateTimeInterface)
+                ? $f->format('d-m-Y')
+                : (($t = strtotime((string) $f)) !== false ? date('d-m-Y', $t) : null);
+
+            if ($texto === null || $texto === '01-01-1900') { continue; }
+
+            return $texto;
+        }
+        return '';
     }
 
     /**
@@ -297,7 +486,6 @@ class RitFirma
     public static function firmaVigente($con, $idContribuyente)
     {
         $idContribuyente = (int) $idContribuyente;
-        $actual = self::hashActual($con, $idContribuyente);
 
         $ultima = $con->obnerFila($con->consultar(
             'SELECT TOP 1 rif_Id, rif_IdUsuario, rif_NombreUsuario, rif_EmailUsuario,
@@ -312,8 +500,14 @@ class RitFirma
             return ['firmado' => false, 'firma' => null, 'desactualizada' => null];
         }
 
-        if (hash_equals((string) $ultima['rif_Hash'], $actual)) {
-            return ['firmado' => true, 'firma' => $ultima, 'desactualizada' => null];
+        // La huella guardada se compara con cada formula aceptada: una firma de
+        // antes de la v4 se comprueba con la v3, que es con la que se hizo (ver
+        // VERSIONES_ACEPTADAS). Si no coincide con ninguna, el RIT cambio.
+        foreach (self::VERSIONES_ACEPTADAS as $version) {
+            $huella = self::hash(self::datosFirmables($con, $idContribuyente, $version));
+            if ($huella !== '' && hash_equals((string) $ultima['rif_Hash'], $huella)) {
+                return ['firmado' => true, 'firma' => $ultima, 'desactualizada' => null];
+            }
         }
 
         return ['firmado' => false, 'firma' => null, 'desactualizada' => $ultima];

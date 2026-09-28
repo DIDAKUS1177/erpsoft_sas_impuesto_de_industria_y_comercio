@@ -491,7 +491,10 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', 'vendors/
 						</div>
 						<div class="form-group col-md-6">
 							<label>* Telefono</label>
-							<input type="text" class="form-control" id="usu_Telefono" required>
+							<!-- Se guarda solo con sus digitos (login.js y class.usuarios.php);
+							     el teclado numerico y el ejemplo lo sugieren desde el principio. -->
+							<input type="text" class="form-control" id="usu_Telefono" required
+							       inputmode="tel" maxlength="20" placeholder="Ej. 3101234567">
 						</div>
 
 						<div class="form-group col-md-8">

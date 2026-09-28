@@ -15,6 +15,7 @@ include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
 require_once SERVER . '/business/class.placetopay.php';
 require_once SERVER . '/business/class.pseModulo.php';
+require_once SERVER . '/business/class.pagoDeclaracion.php';
 
 $configPath = dirname(dirname(dirname(__DIR__))) . '/config.municipio.php';
 if (!file_exists($configPath)) {
@@ -43,20 +44,29 @@ if (!PlacetoPay::validarFirmaWebhook($body)) {
 
 $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
-// Buscar el requestId en los tres modulos.
-$m = null; $row = null;
+/*
+ * Buscar el requestId en los tres modulos, y TODAS las filas que lo tengan.
+ *
+ * Se tomaba la primera que apareciera. Hasta el 2026-09-28 una correccion
+ * heredaba el requestId de la original, asi que el mismo requestId podia estar
+ * en dos filas y el pago caia en cualquiera de ellas. Ahora se revisan todas y
+ * la sesion se aplica solo a la declaracion cuyo numero lleva (la referencia
+ * con que se creo); a las demas se les quita, porque no es suya.
+ */
+$filas = [];
 foreach (\erpsoftsas\PseModulo::claves() as $clave) {
     $cand = \erpsoftsas\PseModulo::get($clave);
     $req = \erpsoftsas\PseModulo::colRequestId($cand);
-    $r = $con->obnerFila($con->consultar(
-        "SELECT {$cand['pk']} AS id, {$cand['valor']} AS valor, {$cand['pagado']} AS pagado
+    $st = $con->consultar(
+        "SELECT {$cand['pk']} AS id, {$cand['valor']} AS valor, {$cand['pagado']} AS pagado,
+                {$cand['numero']} AS numero, {$cand['estado']} AS estado
          FROM {$cand['tabla']} WHERE {$req} = ?",
         [$requestId]
-    ));
-    if ($r) { $m = $cand; $row = $r; break; }
+    );
+    while ($r = $con->obnerFila($st)) { $filas[] = ['m' => $cand, 'row' => $r]; }
 }
 
-if (!$row) {
+if (!$filas) {
     // Puede ser una notificacion de una sesion que no es de esta integracion.
     // Se responde 200 para que PlacetoPay no reintente indefinidamente.
     http_response_code(200);
@@ -64,7 +74,12 @@ if (!$row) {
     exit;
 }
 
-if ((int) $row['pagado'] === 1) {
+// Las ya pagadas no se tocan; si no queda ninguna, no hay nada que consultar.
+$pendientes = array_values(array_filter($filas, function ($f) {
+    return (int) $f['row']['pagado'] !== 1;
+}));
+
+if (!$pendientes) {
     echo json_encode(['ok' => true, 'mensaje' => 'Ya estaba pagada']);
     exit;
 }
@@ -73,10 +88,25 @@ try {
     $respuesta = PlacetoPay::consultarSesion($requestId);
     $info = PlacetoPay::interpretarRespuesta($respuesta);
 
-    // Se guarda SIEMPRE el estado, apruebe o no.
-    PlacetoPay::aplicarADeclaracion($con, $row['id'], $info, $row['valor'], $m);
+    $aplicadas = [];
+    foreach ($pendientes as $f) {
+        if (\erpsoftsas\PagoDeclaracion::sesionDeOtraDeclaracion($respuesta, $f['row']['numero'])) {
+            \erpsoftsas\PagoDeclaracion::olvidarSesionAjena($con, $f['row']['id'], $f['m']);
+            continue;
+        }
+        // Un borrador no se paga (PagoDeclaracion::registrar ya no lo marca).
+        // Si la sesion SI es suya -solo pudo nacer antes de que crearSesion.php
+        // exigiera la presentacion- se deja tal cual, para conciliarla a mano.
+        if ((int) ($f['row']['estado'] ?? 0) !== 2) {
+            continue;
+        }
 
-    echo json_encode(['ok' => true, 'modulo' => $m['clave'], 'estado' => $info['estado']]);
+        // Se guarda SIEMPRE el estado, apruebe o no.
+        PlacetoPay::aplicarADeclaracion($con, $f['row']['id'], $info, $f['row']['valor'], $f['m']);
+        $aplicadas[] = $f['m']['clave'] . ':' . $f['row']['id'];
+    }
+
+    echo json_encode(['ok' => true, 'estado' => $info['estado'], 'aplicadas' => $aplicadas]);
 } catch (Exception $e) {
     // 500: que PlacetoPay reintente el webhook mas tarde. Si aun asi nunca se
     // confirma, el cron de respaldo la recoge en su siguiente corrida.

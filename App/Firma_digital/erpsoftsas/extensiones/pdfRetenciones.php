@@ -34,6 +34,7 @@ require_once __DIR__ . '/tcpdf/tcpdf_barcodes_1d.php';
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
 include_once SERVER . '/business/class.codigoBarrasRecaudo.php';
+include_once SERVER . '/business/class.catalogoAnio.php';
 
 /*
  * La configuracion del municipio. Ubicacion real (Plesk/produccion): un nivel
@@ -774,8 +775,9 @@ function pdfret_numeroALetras($numero)
    nombre y el NIT, el nombre del establecimiento, la actividad economica
    principal y la secundaria con su codigo, el numero de establecimientos y el
    regimen. Todo sale del RIT; no se captura en la retencion. Se resuelve aqui,
-   compartido por RETEICA y AUTORRETEICA, con el mismo criterio que el PDF del
-   ICA (declaracion.php): la actividad "principal" es la primera del RIT.
+   compartido por RETEICA y AUTORRETEICA: la actividad "principal" es la
+   primera del RIT (el PDF del ICA, declaracion.php, toma la primera de la
+   propia declaracion, que guarda su copia de las actividades).
 
    Ojo: la clasificacion COMERCIAL / SERVICIOS que muestra el Excel NO se puede
    reconstruir -el sistema no guarda ese tipo por actividad-, asi que las
@@ -804,21 +806,23 @@ function pdfret_perfilContribuyente($con, $idContribuyente, $anio)
         $params
     ));
 
-    /* Actividades del RIT, la mas reciente que no pase del año declarado (mismo
-       criterio que el catalogo: pedir literalmente el año podria devolver vacio).
-       La primera es la principal; la segunda, la secundaria. */
+    /* Actividades del RIT. La primera es la principal; la segunda, la secundaria.
+
+       SIN FILTRO POR AÑO, igual que el RIT (class.contribuyentes.php): desde la
+       migracion 007 hay UNA fila por actividad y todas son las vigentes -las
+       repetidas entre años se colapsaron y quedo un indice unico por
+       contribuyente y actividad-. Las que el RIT guarda ahora llevan año NULL y
+       las de antes conservan el suyo. Se buscaban con "atc_Anio = MAX(...)", que
+       no casa nunca con NULL: la casilla 6 salia vacia para todo el que hubiera
+       guardado su RIT (cliente, 2026-09-28), y para el resto dependia del año. */
     $acts = [];
     $stmt = $con->consultar(
         "SELECT ac.acc_Codigo, ac.acc_Nombre
            FROM ind_actividad_contribuyente atc
            INNER JOIN ind_actividadescomercio ac ON ac.acc_Id = atc.atc_IdCodigoActividad
           WHERE atc.atc_IdContribuyente = ?
-            AND atc.atc_Anio = (
-                SELECT MAX(a2.atc_Anio) FROM ind_actividad_contribuyente a2
-                 WHERE a2.atc_IdContribuyente = atc.atc_IdContribuyente
-                   AND a2.atc_Anio <= ?)
           ORDER BY atc.atc_Id",
-        [$idContribuyente, $anio]
+        [$idContribuyente]
     );
     while ($a = $con->obnerFila($stmt)) { $acts[] = $a; }
 

@@ -84,7 +84,7 @@
 							<div class="table-responsive">
 								<table class="table table-bordered table-sm">
 									<thead style="background:#e9ecef; font-weight:600;">
-										<tr><th style="width:180px;">N° Declaración</th><th>Valor pagado</th><th style="width:160px;">Estado</th></tr>
+										<tr><th style="width:180px;">N° Declaración</th><th>Valor pagado</th><th style="width:220px;">Se aplica a</th></tr>
 									</thead>
 									<tbody id="tbodyAplicables"></tbody>
 								</table>
@@ -136,15 +136,15 @@
 						     pagar no se aplica: se lista aquí (ver class.recaudo.php). -->
 						<div class="tab-pane fade" id="tabRevisar">
 							<div class="alert alert-warning mb-3" style="font-size:13px;">
-								Estos pagos <b>no se aplicaron</b>. El número de referencia también es
-								de una retención o autorretención presentada y sin pagar, así que no se
-								sabe a qué declaración corresponde el pago. Revíselos con el comprobante
-								del banco y regístrelos a mano.
+								Estos pagos <b>no se aplicaron</b>. El número de referencia es de más de
+								una declaración presentada y sin pagar (ICA, retención y autorretención
+								numeran igual), así que no se sabe a cuál corresponde. Después de aplicar
+								el archivo, revíselos con el comprobante del banco y asígnelos aquí.
 							</div>
 							<div class="table-responsive">
 								<table class="table table-bordered table-sm">
 									<thead style="background:#e9ecef; font-weight:600;">
-										<tr><th style="width:180px;">Referencia</th><th style="width:180px;">Valor en el archivo</th><th>Motivo</th></tr>
+										<tr><th style="width:150px;">Referencia</th><th style="width:150px;">Valor en el archivo</th><th>Motivo</th><th style="width:340px;">Asignar a</th></tr>
 									</thead>
 									<tbody id="tbodyRevisar"></tbody>
 								</table>

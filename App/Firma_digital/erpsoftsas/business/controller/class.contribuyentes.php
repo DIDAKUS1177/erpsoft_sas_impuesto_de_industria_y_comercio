@@ -94,7 +94,11 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         $negado = self::_verificarAcceso();
         if ($negado !== null) {
             header('Content-type: application/json');
-            echo json_encode(["ok" => 0, "mensaje" => $negado, "datos" => []]);
+            // sinSesion: la sesion PHP vencio aunque la pantalla siga abierta.
+            // dist/menu.php lo detecta y lleva al login con un aviso, en vez de
+            // dejar un RIT vacio con "Debe iniciar sesion." en letra gris.
+            echo json_encode(["ok" => 0, "mensaje" => $negado, "datos" => [],
+                              "sinSesion" => empty($_SESSION['id_usuario']) ? 1 : 0]);
             return;
         }
 
@@ -152,13 +156,15 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             );
             header('Content-type: application/json');
             echo json_encode($arrRespu);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             // Antes solo se atrapaba ContribuyentesException: un error real de
             // SQL Server (por ejemplo, una fecha con formato invalido o un
             // texto mas largo que la columna) se propagaba sin capturar y
             // terminaba en un 500 con cuerpo vacio -sin JSON, sin mensaje-.
             // Con esto, cualquier fallo del driver responde igual que un
-            // error de negocio normal.
+            // error de negocio normal. \Throwable y no \Exception: un Error de
+            // PHP (un tipo inesperado) tambien dejaba el 500 mudo.
+            error_log('[contribuyentes] funcion ' . ($_POST['funcion'] ?? '?') . ': ' . $e->getMessage());
             header('Content-type: application/json');
             echo json_encode(array(
                 "ok"      => 0,
@@ -168,92 +174,212 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         }
     }
 
+    /*
+     * FICHA DEL CONTRIBUYENTE (funciones 1 y 2, solo Alcaldia) -- revision 2026-09-28.
+     *
+     * Iban por el DAO, que tiene tres problemas para este caso:
+     *   - Salta los valores vacios: borrar el segundo nombre, el correo o el
+     *     telefono decia "actualizado exitosamente" y el dato viejo seguia ahi. Y
+     *     al pasar a persona juridica, el apellido de antes se quedaba (asi quedo
+     *     "SISTEMAS ERPSOFT S.A.S pp" en los listados).
+     *   - No revisaba si el documento ya existia: por esta puerta entro el
+     *     contribuyente repetido (24 y 29, C.C. 1052400234). Con dos registros, la
+     *     cuenta del contribuyente queda atada al de menor ind_Id y lo que la
+     *     Alcaldia gestione en el otro no le aparece.
+     *   - Pegaba los valores en el SQL (ver la nota del DAO).
+     * Ahora las dos funciones validan lo mismo (_leerFicha) y escriben con
+     * parametros.
+     */
+
+    /**
+     * Reglas de cada columna de la ficha. 'obligatorio' => la columna es NOT NULL
+     * y no puede quedar vacia; las demas, vacias, se guardan NULL.
+     */
+    private static function _camposFicha()
+    {
+        return [
+            'ind_NumeroIdentificacion' => ['el número de documento', true],
+            'ind_IdTipoDocumento'      => ['el tipo de documento', true],
+            'ind_PrimerNombre'         => ['el primer nombre o la razón social', true],
+            'ind_SegundoNombre'        => ['el segundo nombre', false],
+            'ind_PrimerApellido'       => ['el primer apellido', false],
+            'ind_SegundoApellido'      => ['el segundo apellido', false],
+            'ind_Direccion'            => ['la dirección', true],
+            'ind_IdCiudad'             => ['el municipio', true],
+            'ind_Persona'              => ['el tipo de persona', true],
+            'ind_IdRegimen'            => ['el régimen', false],
+            'ind_Telefono'             => ['el teléfono', false],
+            'ind_Email'                => ['el correo electrónico', false],
+        ];
+    }
+
+    /**
+     * Lee y valida los campos de la ficha que vengan en el POST.
+     *
+     * Devuelve ['valores' => [columna => valor normalizado o null]] con SOLO las
+     * columnas que llegaron, o ['error' => mensaje]. Con $exigirTodas (crear)
+     * falta una obligatoria es error; al editar, lo que no llega no se toca.
+     */
+    private static function _leerFicha($exigirTodas)
+    {
+        $valores = [];
+
+        foreach (self::_camposFicha() as $campo => list($rotulo, $obligatorio)) {
+            if (!array_key_exists($campo, $_POST)) {
+                if ($exigirTodas && $obligatorio) {
+                    return ['error' => 'Falta ' . $rotulo . '.'];
+                }
+                continue;
+            }
+
+            $v = trim((string) $_POST[$campo]);
+
+            if ($v === '') {
+                if ($obligatorio) {
+                    return ['error' => 'Complete ' . $rotulo . '.'];
+                }
+                $valores[$campo] = null;
+                continue;
+            }
+
+            switch ($campo) {
+                case 'ind_NumeroIdentificacion':
+                    // La columna es INT: se aceptan puntos y espacios de quien lo
+                    // copia de un documento, pero no letras ni el DV pegado.
+                    $v = str_replace(['.', ' '], '', $v);
+                    if (!ctype_digit($v) || strlen($v) > 10 || (float) $v > 2147483647 || (int) $v <= 0) {
+                        return ['error' => 'Escriba el número de documento solo con números: sin guion ni dígito de verificación.'];
+                    }
+                    $v = (int) $v;
+                    break;
+
+                case 'ind_IdTipoDocumento':
+                    // El catalogo del sistema (icaWebRit.js, PDF): 1 C.C., 3 C.E.,
+                    // 4 pasaporte, 5 NIT. El 2 no existe.
+                    if (!in_array($v, ['1', '3', '4', '5'], true)) {
+                        return ['error' => 'Elija el tipo de documento (C.C., C.E., pasaporte o NIT).'];
+                    }
+                    $v = (int) $v;
+                    break;
+
+                case 'ind_Persona':
+                    if (!in_array($v, ['1', '2'], true)) {
+                        return ['error' => 'Elija si es persona natural o jurídica.'];
+                    }
+                    $v = (int) $v;
+                    break;
+
+                case 'ind_IdCiudad':
+                    if (!ctype_digit($v) || (int) $v <= 0) {
+                        return ['error' => 'Elija el municipio.'];
+                    }
+                    $v = (int) $v;
+                    break;
+
+                case 'ind_IdRegimen':
+                    if (!ctype_digit($v)) {
+                        return ['error' => 'El régimen no es válido.'];
+                    }
+                    $v = (int) $v;
+                    break;
+
+                case 'ind_Telefono':
+                    // bigint: solo los digitos, como el RIT. "310 123 4567" es el
+                    // mismo numero; mas de 15 digitos no es un telefono.
+                    $v = preg_replace('/\D/', '', $v);
+                    if ($v === '') {
+                        $v = null;
+                    } elseif (strlen($v) > 15) {
+                        return ['error' => 'El teléfono no puede tener más de 15 dígitos.'];
+                    }
+                    break;
+
+                case 'ind_Email':
+                    if (!filter_var($v, FILTER_VALIDATE_EMAIL)) {
+                        return ['error' => 'El correo "' . $v . '" no es válido.'];
+                    }
+                    break;
+
+                default:
+                    // Textos: el largo de la columna (varchar 100 los nombres, 200
+                    // la direccion). Pasarse era un 500 mudo.
+                    $maximo = ($campo === 'ind_Direccion') ? 200 : 100;
+                    if (mb_strlen($v) > $maximo) {
+                        return ['error' => 'El texto de ' . $rotulo . ' no puede pasar de ' . $maximo . ' caracteres.'];
+                    }
+            }
+
+            $valores[$campo] = $v;
+        }
+
+        return ['valores' => $valores];
+    }
+
+    /** Otro contribuyente (distinto de $excepto) con ese tipo y numero, o null. */
+    private static function _documentoRepetido($con, $tipo, $numero, $excepto = 0)
+    {
+        $fila = $con->obnerFila($con->consultar(
+            "SELECT TOP 1 ind_Id FROM ind_contribuyentes
+              WHERE ind_IdTipoDocumento = ? AND ind_NumeroIdentificacion = ? AND ind_Id <> ?
+              ORDER BY ind_Id",
+            [(int) $tipo, (int) $numero, (int) $excepto]
+        ));
+        return $fila ? (int) $fila['ind_Id'] : null;
+    }
+
     /**
      * Agrega un nuevo contribuyente
      */
-    protected function _agregarContribuyente() 
+    protected function _agregarContribuyente()
     {
-        $_obj = new \erpsoftsas\DAO_Contribuyentes();
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
-        if(isset($_POST['ind_NumeroIdentificacion'])){
-            if (!empty($_POST['ind_NumeroIdentificacion']) || $_POST['ind_NumeroIdentificacion'] != NULL ) {
-                $_obj->set_ind_NumeroIdentificacion($_POST['ind_NumeroIdentificacion'] ?? null);
-            }    
-        }
-        if(isset($_POST['ind_DV'])){
-            if (!empty($_POST['ind_DV']) || $_POST['ind_DV'] != NULL ) {
-                $_obj->set_ind_DV($_POST['ind_DV']);
-            }    
-        }
-        if(isset($_POST['ind_IdTipoDocumento'])){
-            if (!empty($_POST['ind_IdTipoDocumento']) || $_POST['ind_IdTipoDocumento'] != NULL ) {
-                $_obj->set_ind_IdTipoDocumento($_POST['ind_IdTipoDocumento']);
-            }    
-        } 
-        if(isset($_POST['ind_PrimerNombre'])){
-            if (!empty($_POST['ind_PrimerNombre']) || $_POST['ind_PrimerNombre'] != NULL ) {
-                $_obj->set_ind_PrimerNombre($_POST['ind_PrimerNombre'] ?? null);
-            }    
-        }
-        if(isset($_POST['ind_SegundoNombre'])){
-            if (!empty($_POST['ind_SegundoNombre']) || $_POST['ind_SegundoNombre'] != NULL ) {
-                $_obj->set_ind_SegundoNombre($_POST['ind_SegundoNombre']);
-            }    
-        }
-        if(isset($_POST['ind_PrimerApellido'])){
-            if (!empty($_POST['ind_PrimerApellido']) || $_POST['ind_PrimerApellido'] != NULL ) {
-                $_obj->set_ind_PrimerApellido($_POST['ind_PrimerApellido']);
-            }    
-        }
-        if(isset($_POST['ind_SegundoApellido'])){
-            if (!empty($_POST['ind_SegundoApellido']) || $_POST['ind_SegundoApellido'] != NULL ) {
-                $_obj->set_ind_SegundoApellido($_POST['ind_SegundoApellido']);
-            }    
-        }  
-        if(isset($_POST['ind_Direccion'])){
-            if (!empty($_POST['ind_Direccion']) || $_POST['ind_Direccion'] != NULL ) {
-                $_obj->set_ind_Direccion($_POST['ind_Direccion']);
-            }    
-        }
-        if(isset($_POST['ind_IdCiudad'])){
-            if (!empty($_POST['ind_IdCiudad']) || $_POST['ind_IdCiudad'] != NULL ) {
-                $_obj->set_ind_IdCiudad($_POST['ind_IdCiudad']);
-            }    
-        }
-        if(isset($_POST['ind_Persona'])){
-            if (!empty($_POST['ind_Persona']) || $_POST['ind_Persona'] != NULL ) {
-                $_obj->set_ind_Persona($_POST['ind_Persona']);
-            }    
-        }
-        if(isset($_POST['ind_IdRegimen'])){
-            if (!empty($_POST['ind_IdRegimen']) || $_POST['ind_IdRegimen'] != NULL ) {
-                $_obj->set_ind_IdRegimen($_POST['ind_IdRegimen']);
-            }    
-        }
-        if(isset($_POST['ind_Telefono'])){
-            if (!empty($_POST['ind_Telefono']) || $_POST['ind_Telefono'] != NULL ) {
-                $_obj->set_ind_Telefono($_POST['ind_Telefono']);
-            }    
-        }
-        if(isset($_POST['ind_Email'])){
-            if (!empty($_POST['ind_Email']) || $_POST['ind_Email'] != NULL ) {
-                $_obj->set_ind_Email($_POST['ind_Email']);
-            }    
-        }
-
-        $_obj->set_ind_Estado(1); 
-
-
-        // Llamamos al método "guardar()" (de DAOGeneral o tu capa DAO)
-        if (!$_obj->guardar()) {
+        $leido = self::_leerFicha(true);
+        if (isset($leido['error'])) {
             $this->_ok = 0;
-            $this->_mensaje = $_obj->getMysqlError(); // método de DAOGeneral para error
-        } else {
-            $id = $_obj->get_ind_Id(); 
-            $this->_ok = 1;
-            $this->_mensaje = "Contribuyente agregado correctamente. ID = $id";
+            $this->_mensaje = $leido['error'];
+            return [];
         }
-        return $_obj->guardar();
+        $v = $leido['valores'];
+
+        $repetido = self::_documentoRepetido($con, $v['ind_IdTipoDocumento'], $v['ind_NumeroIdentificacion']);
+        if ($repetido !== null) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Ya existe un contribuyente con ese tipo y número de documento. '
+                            . 'Búsquelo en esta pantalla y use "Gestionar" en vez de crear otro.';
+            return ['repetido' => $repetido];
+        }
+
+        // Persona juridica: sin segundo nombre ni apellidos (la razon social va
+        // entera en el primer nombre), igual que en el RIT.
+        if ($v['ind_Persona'] === 2) {
+            $v['ind_SegundoNombre'] = $v['ind_PrimerApellido'] = $v['ind_SegundoApellido'] = null;
+        }
+
+        // Con NIT el DV lo calcula el servidor; sin NIT el sistema no lo usa (0).
+        $dv = ($v['ind_IdTipoDocumento'] === 5)
+            ? \erpsoftsas\DAO_Contribuyentes::digitoVerificacion($v['ind_NumeroIdentificacion']) : 0;
+
+        $fila = $con->obnerFila($con->consultar(
+            "SET NOCOUNT ON;
+             INSERT INTO ind_contribuyentes
+                 (ind_NumeroIdentificacion, ind_DV, ind_IdTipoDocumento, ind_PrimerNombre, ind_SegundoNombre,
+                  ind_PrimerApellido, ind_SegundoApellido, ind_Direccion, ind_IdCiudad, ind_Persona,
+                  ind_IdRegimen, ind_Telefono, ind_Email, ind_Estado)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1);
+             SELECT CAST(SCOPE_IDENTITY() AS INT) AS id;",
+            [
+                $v['ind_NumeroIdentificacion'], $dv, $v['ind_IdTipoDocumento'], $v['ind_PrimerNombre'],
+                $v['ind_SegundoNombre'] ?? null, $v['ind_PrimerApellido'] ?? null, $v['ind_SegundoApellido'] ?? null,
+                $v['ind_Direccion'], $v['ind_IdCiudad'], $v['ind_Persona'],
+                $v['ind_IdRegimen'] ?? null, $v['ind_Telefono'] ?? null, $v['ind_Email'] ?? null,
+            ]
+        ));
+
+        $id = (int) ($fila['id'] ?? 0);
+        $this->_ok = 1;
+        $this->_mensaje = "Contribuyente agregado correctamente. ID = $id";
+        return ['ind_Id' => $id];
     }
 
     /**
@@ -261,87 +387,98 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
      */
     protected function _editarContribuyente()
     {
-        $_obj = new \erpsoftsas\DAO_Contribuyentes();
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
-        // Cargamos el ID del contribuyente que se desea editar
-        $_obj->set_ind_Id($_POST['ind_Id'] ?? null);
-
-        if(isset($_POST['ind_NumeroIdentificacion'])){
-            if (!empty($_POST['ind_NumeroIdentificacion']) || $_POST['ind_NumeroIdentificacion'] != NULL ) {
-                $_obj->set_ind_NumeroIdentificacion($_POST['ind_NumeroIdentificacion'] ?? null);
-            }    
-        }
-        if(isset($_POST['ind_DV'])){
-            if (!empty($_POST['ind_DV']) || $_POST['ind_DV'] != NULL ) {
-                $_obj->set_ind_DV($_POST['ind_DV']);
-            }    
-        }
-        if(isset($_POST['ind_IdTipoDocumento'])){
-            if (!empty($_POST['ind_IdTipoDocumento']) || $_POST['ind_IdTipoDocumento'] != NULL ) {
-                $_obj->set_ind_IdTipoDocumento($_POST['ind_IdTipoDocumento']);
-            }    
-        } 
-        if(isset($_POST['ind_PrimerNombre'])){
-            if (!empty($_POST['ind_PrimerNombre']) || $_POST['ind_PrimerNombre'] != NULL ) {
-                $_obj->set_ind_PrimerNombre($_POST['ind_PrimerNombre'] ?? null);
-            }    
-        }
-        if(isset($_POST['ind_SegundoNombre'])){
-            if (!empty($_POST['ind_SegundoNombre']) || $_POST['ind_SegundoNombre'] != NULL ) {
-                $_obj->set_ind_SegundoNombre($_POST['ind_SegundoNombre']);
-            }    
-        }
-        if(isset($_POST['ind_PrimerApellido'])){
-            if (!empty($_POST['ind_PrimerApellido']) || $_POST['ind_PrimerApellido'] != NULL ) {
-                $_obj->set_ind_PrimerApellido($_POST['ind_PrimerApellido']);
-            }    
-        }
-        if(isset($_POST['ind_SegundoApellido'])){
-            if (!empty($_POST['ind_SegundoApellido']) || $_POST['ind_SegundoApellido'] != NULL ) {
-                $_obj->set_ind_SegundoApellido($_POST['ind_SegundoApellido']);
-            }    
-        }  
-        if(isset($_POST['ind_Direccion'])){
-            if (!empty($_POST['ind_Direccion']) || $_POST['ind_Direccion'] != NULL ) {
-                $_obj->set_ind_Direccion($_POST['ind_Direccion']);
-            }    
-        }
-        if(isset($_POST['ind_IdCiudad'])){
-            if (!empty($_POST['ind_IdCiudad']) || $_POST['ind_IdCiudad'] != NULL ) {
-                $_obj->set_ind_IdCiudad($_POST['ind_IdCiudad']);
-            }    
-        }
-        if(isset($_POST['ind_Persona'])){
-            if (!empty($_POST['ind_Persona']) || $_POST['ind_Persona'] != NULL ) {
-                $_obj->set_ind_Persona($_POST['ind_Persona']);
-            }    
-        }
-        if(isset($_POST['ind_IdRegimen'])){
-            if (!empty($_POST['ind_IdRegimen']) || $_POST['ind_IdRegimen'] != NULL ) {
-                $_obj->set_ind_IdRegimen($_POST['ind_IdRegimen']);
-            }    
-        }
-        if(isset($_POST['ind_Telefono'])){
-            if (!empty($_POST['ind_Telefono']) || $_POST['ind_Telefono'] != NULL ) {
-                $_obj->set_ind_Telefono($_POST['ind_Telefono']);
-            }    
-        }
-        if(isset($_POST['ind_Email'])){
-            if (!empty($_POST['ind_Email']) || $_POST['ind_Email'] != NULL ) {
-                $_obj->set_ind_Email($_POST['ind_Email']);
-            }    
-        }
-
-        // Guardar cambios
-        if (!$_obj->guardar()) {
+        $idContribuyente = (int) ($_POST['ind_Id'] ?? 0);
+        $actual = $idContribuyente > 0 ? $con->obnerFila($con->consultar(
+            "SELECT ind_IdTipoDocumento, ind_NumeroIdentificacion, ind_Persona
+               FROM ind_contribuyentes WHERE ind_Id = ?",
+            [$idContribuyente]
+        )) : null;
+        if (!$actual) {
             $this->_ok = 0;
-            $this->_mensaje = $_obj->getMysqlError();
-        } else {
-            $id = $_obj->get_ind_Id();
-            $this->_ok = 1;
-            $this->_mensaje = "Contribuyente ID $id editado correctamente";
+            $this->_mensaje = 'El contribuyente no existe.';
+            return [];
         }
-        return $_obj->getArray();
+
+        $leido = self::_leerFicha(false);
+        if (isset($leido['error'])) {
+            $this->_ok = 0;
+            $this->_mensaje = $leido['error'];
+            return [];
+        }
+        $v = $leido['valores'];
+
+        // Identidad como quedaria despues de guardar.
+        $tipo    = $v['ind_IdTipoDocumento'] ?? (int) $actual['ind_IdTipoDocumento'];
+        $numero  = $v['ind_NumeroIdentificacion'] ?? (int) $actual['ind_NumeroIdentificacion'];
+        $persona = $v['ind_Persona'] ?? (int) $actual['ind_Persona'];
+
+        $cambiaDocumento = $tipo !== (int) $actual['ind_IdTipoDocumento']
+                        || $numero !== (int) $actual['ind_NumeroIdentificacion'];
+
+        // Solo si el documento CAMBIA: los que ya estaban repetidos (24 y 29) se
+        // pueden seguir editando sin tocar su documento.
+        if ($cambiaDocumento && self::_documentoRepetido($con, $tipo, $numero, $idContribuyente) !== null) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Ya existe otro contribuyente con ese tipo y número de documento.';
+            return [];
+        }
+
+        if ($persona === 2) {
+            $v['ind_SegundoNombre'] = $v['ind_PrimerApellido'] = $v['ind_SegundoApellido'] = null;
+        }
+
+        // El DV sale del NIT (algoritmo de la DIAN), como en el RIT; el que llegue
+        // del navegador no decide. Sin NIT el sistema no usa DV.
+        if (array_key_exists('ind_IdTipoDocumento', $v) || array_key_exists('ind_NumeroIdentificacion', $v)
+            || array_key_exists('ind_DV', $_POST)) {
+            $v['ind_DV'] = ($tipo === 5) ? \erpsoftsas\DAO_Contribuyentes::digitoVerificacion($numero) : 0;
+        }
+
+        if (!$v) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No llegó ningún dato para guardar.';
+            return [];
+        }
+
+        $sets = [];
+        $params = [];
+        foreach ($v as $columna => $valor) {
+            $sets[]   = $columna . ' = ?';
+            $params[] = $valor;
+        }
+        $params[] = $idContribuyente;
+
+        $con->consultar(
+            "UPDATE ind_contribuyentes SET " . implode(', ', $sets) . ", ind_FechaActualizacion = GETDATE()
+              WHERE ind_Id = ?",
+            $params
+        );
+
+        $this->_ok = 1;
+        $this->_mensaje = "Contribuyente ID $idContribuyente editado correctamente";
+
+        /*
+         * La cuenta de acceso se enlaza al contribuyente por el NUMERO de
+         * documento (conf_usuarios.usu_NumeroDocumento). Si se corrige el numero
+         * aqui y no alli, esa persona entra y su RIT dice "Su usuario no esta
+         * asociado a un contribuyente". No se cambia la cuenta sola -puede no ser
+         * de esta persona-, pero se avisa.
+         */
+        if ($numero !== (int) $actual['ind_NumeroIdentificacion']) {
+            $cuentas = $con->obnerFila($con->consultar(
+                "SELECT COUNT(*) AS n FROM conf_usuarios WHERE usu_NumeroDocumento = ?",
+                [(string) $actual['ind_NumeroIdentificacion']]
+            ));
+            if ((int) ($cuentas['n'] ?? 0) > 0) {
+                $this->_mensaje .= '. Ojo: hay una cuenta de acceso con el documento anterior ('
+                                 . $actual['ind_NumeroIdentificacion'] . '); corrija también su documento en '
+                                 . 'Usuarios, o esa persona no verá su RIT.';
+            }
+        }
+
+        return ['ind_Id' => $idContribuyente];
     }
 
     /**
@@ -800,20 +937,16 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             $fila[$nombreFormulario] = $fila[$columnaReal] ?? null;
         }
 
-        // Punto 10: el RIT se da por inicializado en el primer ingreso. No se
-        // crea nada nuevo -el contribuyente ya existe desde la inscripcion-,
-        // solo se deja constancia de cuando el sistema lo abrio por primera
-        // vez, para poder auditarlo y para no repetirlo.
-        if (empty($fila['ind_RIT_FechaCreacion'])) {
-            $con->consultar(
-                "UPDATE ind_contribuyentes
-                    SET ind_RIT_FechaCreacion = GETDATE()
-                  WHERE ind_Id = ? AND ind_RIT_FechaCreacion IS NULL",
-                [$idContribuyente]
-            );
-            $fila['ind_RIT_FechaCreacion']  = date('Y-m-d H:i:s');
-            $fila['rit_recien_inicializado'] = 1;
-        }
+        // Punto 10: la pantalla avisa cuando el RIT nunca se ha guardado.
+        //
+        // Hasta el 2026-09-28 aqui se marcaba ind_RIT_FechaCreacion con solo
+        // ABRIR el RIT, y el PDF usaba esa fecha para decidir entre inscripcion y
+        // actualizacion: como el boton de descarga esta en esta misma pantalla,
+        // todo PDF salia "Actualizacion" -incluida la inscripcion de alguien
+        // nuevo- mientras la pantalla decia "Inscripcion". Ahora la fecha se pone
+        // al primer GUARDADO (_guardarRIT) y la opcion de uso sale, en los dos
+        // lados, de si el RIT se ha firmado alguna vez. Consultar ya no escribe.
+        $fila['rit_sin_guardar'] = empty($fila['ind_RIT_FechaCreacion']) ? 1 : 0;
 
         // Las fechas salen como DateTime del driver y asi no le sirven a un
         // <input type="date">.
@@ -895,17 +1028,14 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
      * "para quien la ley le obliga", y eso el sistema no lo sabe.
      */
 
-    /** Dígito de verificación de un NIT: el algoritmo de la DIAN, el mismo de core/contribuyentes.js. */
+    /**
+     * Dígito de verificación de un NIT: el algoritmo de la DIAN, el mismo de
+     * core/contribuyentes.js. Vive en DAO_Contribuyentes desde 2026-09-28 porque
+     * la creación de cuentas (class.usuarios.php) también lo necesita.
+     */
     private static function _digitoVerificacion($nit)
     {
-        $pesos   = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71];
-        $digitos = strrev(preg_replace('/\D/', '', (string) $nit));
-        $suma    = 0;
-        for ($i = 0, $n = min(strlen($digitos), 15); $i < $n; $i++) {
-            $suma += (int) $digitos[$i] * $pesos[$i];
-        }
-        $resto = $suma % 11;
-        return $resto > 1 ? 11 - $resto : $resto;
+        return \erpsoftsas\DAO_Contribuyentes::digitoVerificacion($nit);
     }
 
     /**
@@ -1211,12 +1341,49 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
 
         $valores[] = $idContribuyente;
 
-        $con->consultar(
-            "UPDATE ind_contribuyentes SET " . implode(', ', $sets) . ",
-                    ind_FechaActualizacion = GETDATE()
-              WHERE ind_Id = ?",
-            $valores
-        );
+        /*
+         * LAS ACTIVIDADES VIAJAN CON EL RIT (revision 2026-09-28).
+         *
+         * Iban solo por "Guardar actividades" (funcion 8). Quien agregaba
+         * actividades y pulsaba Guardar veia "RIT actualizado" y las perdia: no se
+         * mandaban, y la pantalla se repintaba con las de la base. La pantalla
+         * manda ahora actividadesEnviadas = 1 con la lista (vacia si las quito
+         * todas), y se reemplazan aqui, con la MISMA regla de obligatorios de
+         * arriba. Sin la bandera no se tocan: una llamada que no las trae (las
+         * pruebas, otra pantalla) no las borra.
+         */
+        $conActividades = !empty($_POST['actividadesEnviadas']);
+        $actividades    = $conActividades
+            ? self::_actividadesValidas($con, (array) ($_POST['actividades'] ?? []))
+            : [];
+
+        // Datos y actividades juntos: o queda el RIT entero, o nada.
+        try {
+            $con->begin();
+
+            // ind_RIT_FechaCreacion: la del PRIMER guardado (antes se ponia con
+            // solo abrir la pantalla; ver _consultarRIT).
+            $con->consultar(
+                "UPDATE ind_contribuyentes SET " . implode(', ', $sets) . ",
+                        ind_FechaActualizacion = GETDATE(),
+                        ind_RIT_FechaCreacion = COALESCE(ind_RIT_FechaCreacion, GETDATE())
+                  WHERE ind_Id = ?",
+                $valores
+            );
+
+            if ($conActividades) {
+                self::_reemplazarActividades($con, $idContribuyente, $actividades);
+            }
+
+            $con->commit();
+        } catch (\Throwable $e) {
+            try { $con->rollback(); } catch (\Throwable $e2) { /* ya no habia transaccion */ }
+            error_log('[contribuyentes] no se guardo el RIT de ' . $idContribuyente . ': ' . $e->getMessage());
+            $this->_ok = 0;
+            $this->_mensaje = 'No se pudo guardar el RIT y no quedó nada a medias. Intente de nuevo; '
+                            . 'si el problema sigue, avise a soporte.';
+            return [];
+        }
 
         self::_completarDV($con, $idContribuyente);
 
@@ -1302,10 +1469,9 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
      * ind_actividad_contribuyente, que es donde el negocio ya las usaba: la
      * declaracion es una por contribuyente y agrega por codigo CIIU.
      *
-     * Se reemplaza el juego completo del año en una sola pasada. El DELETE va
-     * acotado al año que se esta editando para no borrar el historico de otros
-     * periodos, que es exactamente el error que costo las actividades perdidas
-     * de la Fase 0 (punto 23).
+     * Se reemplaza el juego completo en una sola pasada (ver
+     * _reemplazarActividades). Desde el 2026-09-28 lo normal es que viajen con
+     * Guardar (funcion 7); esta funcion queda por compatibilidad.
      */
     protected function _guardarActividadesRIT()
     {
@@ -1325,35 +1491,30 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             return [];
         }
 
-        // Se aceptan solo codigos que existan en el catalogo, y sin repetir:
-        // la tabla tiene indice UNICO por (contribuyente, actividad, año) y un
-        // duplicado abortaria el guardado entero.
-        $enviadas = (array) ($_POST['actividades'] ?? []);
-        $limpias  = [];
-        foreach ($enviadas as $id) {
-            $id = (int) $id;
-            if ($id <= 0 || isset($limpias[$id])) { continue; }
-            $existe = $con->obnerFila($con->consultar(
-                "SELECT acc_Id FROM ind_actividadescomercio WHERE acc_Id = ?", [$id]
-            ));
-            if ($existe) { $limpias[$id] = true; }
+        /*
+         * Las actividades son parte del RIT (se imprimen y entran en la firma), asi
+         * que tambien aqui rige "incompleto no se guarda" (RitFirma::faltantes,
+         * sobre lo guardado). La pantalla ya no llama a esta funcion: las
+         * actividades viajan con Guardar (funcion 7). Queda por compatibilidad,
+         * sin ser una puerta para cambiar el RIT saltandose la regla.
+         */
+        include_once SERVER . '/business/class.ritFirma.php';
+        $faltan = \erpsoftsas\RitFirma::faltantes($con, $idContribuyente);
+        if ($faltan) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Para guardar el RIT falta: ' . implode('; ', $faltan) . '.';
+            return ['faltan' => $faltan];
         }
 
-        // Se reemplaza el juego completo del contribuyente. Ya no hay que
-        // acotar por año: desde la migracion 007 estas son sus actividades
-        // VIGENTES, y el historico por periodo lo guarda cada declaracion.
-        $con->consultar(
-            "DELETE FROM ind_actividad_contribuyente WHERE atc_IdContribuyente = ?",
-            [$idContribuyente]
-        );
+        $limpias = self::_actividadesValidas($con, (array) ($_POST['actividades'] ?? []));
 
-        foreach (array_keys($limpias) as $id) {
-            $con->consultar(
-                "INSERT INTO ind_actividad_contribuyente
-                     (atc_IdContribuyente, atc_IdCodigoActividad)
-                 VALUES (?, ?)",
-                [$idContribuyente, $id]
-            );
+        try {
+            $con->begin();
+            self::_reemplazarActividades($con, $idContribuyente, $limpias);
+            $con->commit();
+        } catch (\Throwable $e) {
+            try { $con->rollback(); } catch (\Throwable $e2) { /* ya no habia transaccion */ }
+            throw $e;
         }
 
         $this->_ok = 1;
@@ -1362,6 +1523,49 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             : 'Se retiraron todas las actividades';
 
         return ['guardadas' => count($limpias)];
+    }
+
+    /**
+     * Ids de actividad que existen en el catalogo, sin repetir y en el orden en
+     * que llegaron: la tabla tiene indice UNICO por (contribuyente, actividad) y
+     * un duplicado abortaria el guardado entero. Lo que no existe se descarta.
+     */
+    private static function _actividadesValidas($con, array $enviadas)
+    {
+        $limpias = [];
+        foreach ($enviadas as $id) {
+            $id = (int) $id;
+            if ($id <= 0 || in_array($id, $limpias, true)) { continue; }
+            $existe = $con->obnerFila($con->consultar(
+                "SELECT acc_Id FROM ind_actividadescomercio WHERE acc_Id = ?", [$id]
+            ));
+            if ($existe) { $limpias[] = $id; }
+        }
+        return $limpias;
+    }
+
+    /**
+     * Reemplaza el juego completo de actividades del contribuyente. Ya no hay que
+     * acotar por año: desde la migracion 007 son sus actividades VIGENTES (sin
+     * año) y el historico por periodo lo guarda cada declaracion. Quien llama
+     * abre la transaccion: un DELETE que corre y un INSERT que falla dejaba al
+     * contribuyente sin actividades.
+     */
+    private static function _reemplazarActividades($con, $idContribuyente, array $ids)
+    {
+        $con->consultar(
+            "DELETE FROM ind_actividad_contribuyente WHERE atc_IdContribuyente = ?",
+            [(int) $idContribuyente]
+        );
+
+        foreach ($ids as $id) {
+            $con->consultar(
+                "INSERT INTO ind_actividad_contribuyente
+                     (atc_IdContribuyente, atc_IdCodigoActividad)
+                 VALUES (?, ?)",
+                [(int) $idContribuyente, (int) $id]
+            );
+        }
     }
 
 }

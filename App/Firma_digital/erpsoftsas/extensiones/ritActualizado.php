@@ -7,6 +7,9 @@ include_once SERVER . '/business/class.conexionSqlServer.php';
 // contra auto-ejecutarse al incluirse desde otro archivo (mismo patron que
 // usa extensiones/anexo.php).
 include_once SERVER . '/business/controller/class.anexos.php';
+// Firma vigente y "lo que el formulario imprime del establecimiento"
+// (RitFirma::lugarImpreso): el papel y la huella de la firma salen de lo mismo.
+include_once SERVER . '/business/class.ritFirma.php';
 
 use ConexionMysqlUsuariosSqlServer\ConexionSQLServer;
 
@@ -68,31 +71,21 @@ if (empty($_SESSION['id_usuario'])) {
  */
 function _fecha(...$candidatas)
 {
-    foreach ($candidatas as $f) {
-        if (empty($f)) { continue; }
-
-        $texto = ($f instanceof \DateTimeInterface)
-            ? $f->format('d-m-Y')
-            : (($t = strtotime((string) $f)) !== false ? date('d-m-Y', $t) : null);
-
-        if ($texto === null) { continue; }
-
-        /*
-         * 01-01-1900 NO ES UNA FECHA, ES UN HUECO.
-         *
-         * SQL Server guarda ese valor cuando le llega una cadena vacia en una
-         * columna de fecha, y en esta base hay establecimientos con
-         * est_Fecha_cierre = 1900-01-01 sin haber cesado nada. El guard que
-         * decide si se pinta el bloque de cese SI lo descartaba, pero esta
-         * funcion no, asi que la casilla 27 salia con «01-01-1900»: el
-         * certificado afirmaba que el negocio cerro en 1900.
-         * Medido en el contribuyente 30 el 2026-09-01.
-         */
-        if ($texto === '01-01-1900') { continue; }
-
-        return $texto;
-    }
-    return '';
+    /*
+     * 01-01-1900 NO ES UNA FECHA, ES UN HUECO.
+     *
+     * SQL Server guarda ese valor cuando le llega una cadena vacia en una
+     * columna de fecha, y en esta base hay establecimientos con
+     * est_Fecha_cierre = 1900-01-01 sin haber cesado nada. El guard que
+     * decide si se pinta el bloque de cese SI lo descartaba, pero esta
+     * funcion no, asi que la casilla 27 salia con «01-01-1900»: el
+     * certificado afirmaba que el negocio cerro en 1900.
+     * Medido en el contribuyente 30 el 2026-09-01.
+     *
+     * La regla vive desde el 2026-09-28 en RitFirma::fechaImpresa, porque la
+     * huella de la firma tiene que ver las fechas exactamente como se imprimen.
+     */
+    return \erpsoftsas\RitFirma::fechaImpresa(...$candidatas);
 }
 
 function _ritEsDeLaSesion($idContribuyente, $con)
@@ -123,12 +116,10 @@ $idEstablecimiento = $idEstablecimientoCrudo !== null ? (int) $idEstablecimiento
 $idContribuyente    = isset($_GET['contribuyente']) ? (int) $_GET['contribuyente'] : null;
 
 if (!$idEstablecimiento && $idContribuyente) {
-    $fila = $con->obnerFila($con->consultar(
-        "SELECT TOP 1 est_Id FROM ind_establecimientos
-          WHERE est_IdContribuyente = ? ORDER BY est_Id",
-        [$idContribuyente]
-    ));
-    $idEstablecimiento = $fila['est_Id'] ?? null;
+    // El mas antiguo ACTIVO (revision 2026-09-28): con el mas antiguo a secas,
+    // quien cerraba su primer local seguia saliendo en el papel "ejerciendo la
+    // actividad" en esa direccion.
+    $idEstablecimiento = \erpsoftsas\RitFirma::establecimientoImpreso($con, $idContribuyente);
 
     /*
      * Aqui se cortaba con "este contribuyente todavia no tiene
@@ -205,6 +196,13 @@ if (!$permitido) {
     exit('No tiene permiso para ver este registro.');
 }
 
+// Lo que se IMPRIME del establecimiento sale siempre del mismo local: el mas
+// antiguo ACTIVO del contribuyente, que es tambien lo que cubre la huella de la
+// firma (RitFirma::lugarImpreso). Entrar por ?codigo= de otro local sirvio para
+// comprobar el permiso; si el papel mostrara ese otro, podria estampar una firma
+// que ampara una direccion distinta de la impresa.
+$idEstablecimiento = \erpsoftsas\RitFirma::establecimientoImpreso($con, $idContribuyente);
+
 // Oficio 8.5 x 13 pulgadas = 215.9 x 330.2 mm. Es el mismo tamaño que ya usan
 // declaracion.php y liquidacion.php; el certificado era el unico que seguia en
 // carta, y por eso se veia mas apretado que los otros dos documentos.
@@ -255,18 +253,21 @@ $row = $con->obnerFila($con->consultar($sql, [$idEstablecimiento, $idContribuyen
  * que llevaba tiempo en el sistema pero sin firmar seguia saliendo como
  * inscripcion.
  *
- * Ahora se mira si el RIT ya EXISTE -ind_RIT_FechaCreacion, que se llena la
- * primera vez que se diligencia-, que es lo que distingue inscribirse de
- * reportar una novedad. La firma se sigue teniendo en cuenta como respaldo:
- * un RIT firmado esta creado por definicion, aunque la fecha no se hubiera
- * registrado en su momento.
+ * Esa correccion miraba ind_RIT_FechaCreacion, pero la pantalla la llenaba con
+ * solo ABRIR el RIT, y el boton de descarga esta en esa pantalla: TODO PDF salia
+ * "Actualizacion", la inscripcion de alguien nuevo incluida, mientras la
+ * pantalla decia "Inscripcion" (revision 2026-09-28).
+ *
+ * Regla unica desde el 2026-09-28, la misma en pantalla (icaWebRit.js,
+ * pintarOpcionUso) y aqui: INSCRIPCION mientras el RIT nunca se haya firmado;
+ * desde la primera firma, ACTUALIZACION. Una firma "desactualizada" cuenta:
+ * hubo firma, luego la inscripcion ya ocurrio. OJO: contradice lo que se anoto
+ * el 2026-08-26 para contribuyentes antiguos que aun no firman (saldran
+ * "Inscripcion"); si el cliente lo confirma asi, queda; si no, hay que cambiar
+ * la regla en los DOS sitios.
  */
 $previo = $con->obnerFila($con->consultar(
-    "SELECT TOP 1 1 AS x
-       FROM ind_contribuyentes c
-      WHERE c.ind_Id = ?
-        AND (c.ind_RIT_FechaCreacion IS NOT NULL
-             OR EXISTS (SELECT 1 FROM ind_rit_firmas f WHERE f.rif_IdContribuyente = c.ind_Id))",
+    "SELECT TOP 1 1 AS x FROM ind_rit_firmas WHERE rif_IdContribuyente = ?",
     [$idContribuyente]
 ));
 $ritYaFormalizado = (bool) $previo;
@@ -481,6 +482,12 @@ if ($usuarioTramite['nombre'] === '' && !empty($firmaRit['rif_NombreUsuario'])) 
     $usuarioTramite['nombre'] = (string) $firmaRit['rif_NombreUsuario'];
 }
 
+// Lo que el papel toma del establecimiento (razon social de respaldo, matricula,
+// fechas, direccion y telefono de la actividad). Sale de la MISMA funcion que la
+// huella de la firma (RitFirma v4), para que lo impreso y lo firmado no puedan
+// diferir. $row trae juntas las columnas ind_* y est_*.
+$lugar = \erpsoftsas\RitFirma::lugarImpreso($row, $row);
+
 $d = [
 
 // Estos cuatro iban fijos en Paipa. Con varios municipios sobre el mismo
@@ -541,13 +548,7 @@ $d = [
  * escribe la pantalla del RIT-, asi que es de ahi de donde tiene que salir. El
  * nombre del establecimiento queda como ultimo respaldo, no como fuente.
  */
-'razon' => $esc(
-    $row['ind_Persona'] == 1
-        ? $nombreCompleto
-        : (trim((string) $row['ind_PrimerNombre']) !== ''
-            ? $row['ind_PrimerNombre']
-            : ($row['est_Nombre'] ?? ''))
-),
+'razon' => $esc($lugar['razon']),
 
 'direccion' => $esc($row['ind_Direccion']),
 'municipio' => $esc($row['ciu_Nombre']),
@@ -579,7 +580,7 @@ $d = [
 // Punto 8: la matricula de la PERSONA vive ahora en el
 // contribuyente. Se cae a la del establecimiento solo para las
 // bases donde la migracion 003 todavia no dejo el dato.
-'matricula' => $esc($row['ind_Matricula'] ?: $row['est_Matricula']),
+'matricula' => $esc($lugar['matricula']),
 /*
  * Estas dos leian SOLO del establecimiento, y la pantalla del RIT las
  * guarda en el contribuyente desde la migracion 003: el contribuyente
@@ -594,10 +595,10 @@ $d = [
  * cae al establecimiento solo para las bases donde la migracion 003
  * todavia no dejo el dato.
  */
-'fecha_matricula' => _fecha($row['ind_Fecha_matricula'] ?? null, $row['est_Fecha_matricula'] ?? null),
+'fecha_matricula' => $lugar['fecha_matricula'],
 
 // ACTIVIDAD
-'fecha_inicio'    => _fecha($row['ind_Fecha_inicio'] ?? null, $row['est_Fecha_inicio'] ?? null),
+'fecha_inicio'    => $lugar['fecha_inicio'],
 
 'actividades' => $actividades,
 
@@ -613,17 +614,9 @@ $d = [
  * es el unico domicilio que el sistema conoce de el, antes que dejar vacia una
  * casilla del formulario oficial.
  */
-'telefono_actividad' => $esc(
-    trim((string) ($row['est_Telefono'] ?? '')) !== ''
-        ? $row['est_Telefono']
-        : ($row['ind_Telefono'] ?? '')
-),
+'telefono_actividad' => $esc($lugar['telefono_actividad']),
 
-'direccion_actividad' => $esc(
-    trim((string) ($row['est_Direccion'] ?? '')) !== ''
-        ? $row['est_Direccion']
-        : ($row['ind_Direccion'] ?? '')
-),
+'direccion_actividad' => $esc($lugar['direccion_actividad']),
 
 // REPRESENTANTE
 'representante' => $esc($row['ind_Nombre_representante'] ?: $row['est_Nombre_representante']),
@@ -742,6 +735,9 @@ $d['regimen_otro']     = ($regimen == 5);
 
 $regimen = $row['ind_IdRegimen'];
 
+// Sin regimen de un solo valor (NULL en quien solo tiene la seleccion multiple
+// de la 014) la variable quedaba sin definir: un Warning de PHP en el log.
+$regimenNombre = '';
 if($row['ind_IdRegimen']== 1) $regimenNombre = 'Responsable de IVA';
 if($row['ind_IdRegimen']== 2) $regimenNombre = 'No Responsable de IVA';
 if($row['ind_IdRegimen']== 3) $regimenNombre = 'Autoretenedor';

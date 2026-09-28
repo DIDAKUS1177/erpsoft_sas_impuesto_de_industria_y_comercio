@@ -110,6 +110,14 @@ class PagoDeclaracion
          * del banco y el retorno del usuario llegan casi a la vez y las dos
          * intentan aplicar el mismo pago. Sin ella, la segunda pisaría la fecha
          * de la primera con una posterior.
+         *
+         * Y la de _Estado = 2 cumple AQUÍ la regla de la cabecera ("un pago solo
+         * existe sobre una declaración presentada"), que hasta el 2026-09-28
+         * dependía de que cada vía la revisara antes de llamar. PSE no lo hacía:
+         * una corrección que heredaba la sesión de pago de la original quedaba
+         * pagada en borrador por el cron. Un borrador no se marca, venga de
+         * donde venga el pago; la llamada devuelve false y el pago queda para
+         * quien lo concilie.
          */
         $con->consultar(
             "UPDATE $t
@@ -120,7 +128,7 @@ class PagoDeclaracion
                     {$p}_BancoPago     = ?,
                     {$p}_AnioPago      = ?,
                     {$p}_RutaPago      = ?
-              WHERE $pk = ? AND ISNULL({$p}_Pagado, 0) = 0",
+              WHERE $pk = ? AND ISNULL({$p}_Pagado, 0) = 0 AND {$p}_Estado = 2",
             [$fechaPago, $datos['valor'] ?? 0, $banco, $anio, $via, $idDeclaracion]
         );
 
@@ -131,5 +139,58 @@ class PagoDeclaracion
 
         // Fue esta llamada la que la marcó si la vía guardada es la suya.
         return isset($fila['ruta']) && $fila['ruta'] === $via;
+    }
+
+    /**
+     * ¿La sesión de pago en línea que contestó el banco es de OTRA declaración?
+     *
+     * Cada sesión de PlacetoPay se crea con el número de la declaración como
+     * referencia (extensiones/pse/crearSesion.php), y el banco la devuelve al
+     * consultarla. Hasta el 2026-09-28 una corrección heredaba el requestId de
+     * la original: el retorno, el webhook y el cron consultaban esa sesión
+     * ajena y, si estaba aprobada, marcaban pagada la corrección con el pago de
+     * la original. Ya no se copia, pero las correcciones creadas antes pueden
+     * tenerlo; con esta comprobación una sesión solo se aplica a la
+     * declaración cuyo número lleva.
+     *
+     * Si la respuesta no trae la referencia no hay con qué comparar y se
+     * responde false: se aplica como siempre, en vez de dejar sin registrar un
+     * pago bueno.
+     */
+    public static function sesionDeOtraDeclaracion(array $respuesta, $numero)
+    {
+        $referencia = $respuesta['request']['payment']['reference']
+                   ?? $respuesta['payment'][0]['reference']
+                   ?? null;
+
+        if ($referencia === null || trim((string) $referencia) === '') { return false; }
+
+        return trim((string) $referencia) !== trim((string) $numero);
+    }
+
+    /**
+     * Le quita a una declaración SIN PAGAR la sesión de pago en línea que no es
+     * suya (ver sesionDeOtraDeclaracion): el requestId y lo que se anotó de él.
+     *
+     * Con esa sesión encima, el resumen de pago la mostraba "en proceso" si la
+     * ajena estaba pendiente, y el cron la volvía a consultar cada hora. Sin
+     * ella, el contribuyente puede iniciar su propio pago. Una pagada no se
+     * toca: su pago ya quedó registrado.
+     */
+    public static function olvidarSesionAjena($con, $idDeclaracion, $m = null)
+    {
+        require_once __DIR__ . '/class.pseModulo.php';
+        if ($m === null) { $m = \erpsoftsas\PseModulo::get('ica'); }
+
+        // Tabla y columnas salen del mapa fijo de PseModulo, nunca del usuario.
+        $con->consultar(
+            "UPDATE {$m['tabla']}
+                SET " . \erpsoftsas\PseModulo::colRequestId($m)   . " = NULL,
+                    " . \erpsoftsas\PseModulo::colEstado($m)      . " = NULL,
+                    " . \erpsoftsas\PseModulo::colFechaEstado($m) . " = NULL,
+                    " . \erpsoftsas\PseModulo::colMensaje($m)     . " = NULL
+              WHERE {$m['pk']} = ? AND ISNULL({$m['pagado']}, 0) = 0",
+            [(int) $idDeclaracion]
+        );
     }
 }

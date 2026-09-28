@@ -53,6 +53,28 @@ class DAO_Contribuyentes extends \erpsoftsas\DAOGeneral
         parent::__construct();
     }
 
+    /**
+     * Digito de verificacion de un NIT, con el algoritmo de la DIAN.
+     *
+     * Vive aqui y no en un controlador porque lo necesitan dos que no se pueden
+     * incluir entre si (cada controlador se ejecuta solo al cargarse): el RIT y
+     * Contribuyentes (class.contribuyentes.php) y la creacion de cuentas
+     * (class.usuarios.php). Es el mismo calculo de core/contribuyentes.js y de
+     * login.js; tener una copia distinta en cada lado es como el DV de una misma
+     * empresa terminaba siendo uno en el RIT y otro en su cuenta.
+     */
+    public static function digitoVerificacion($nit)
+    {
+        $pesos   = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71];
+        $digitos = strrev(preg_replace('/\D/', '', (string) $nit));
+        $suma    = 0;
+        for ($i = 0, $n = min(strlen($digitos), 15); $i < $n; $i++) {
+            $suma += (int) $digitos[$i] * $pesos[$i];
+        }
+        $resto = $suma % 11;
+        return $resto > 1 ? 11 - $resto : $resto;
+    }
+
     // Getters y Setters    
 
     public function get_ind_Id() {

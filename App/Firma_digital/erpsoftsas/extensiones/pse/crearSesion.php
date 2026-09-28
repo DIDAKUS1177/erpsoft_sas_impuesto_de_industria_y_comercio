@@ -125,7 +125,11 @@ if ($modulo === 'ica') {
     ));
     $anioIca    = (int) ($ica['dec_AnioDeclaracion'] ?? 0);
     $vencidaIca = $ica && \erpsoftsas\VencimientoICA::vencida($anioIca);
-    $exige      = $vencidaIca && \erpsoftsas\VencimientoICA::exigeIntereses($anioIca, $ica['dec_ValorConcepto16'] ?? 0);
+    // Obligatorios solo para el contribuyente, como en el recibo de pago: la
+    // Alcaldía (roles 1 y 2) puede cobrar sin intereses (ver pagar.php).
+    $esAlcaldia = in_array((int) ($_SESSION['id_Rol'] ?? 0), [1, 2], true);
+    $exige      = $vencidaIca && !$esAlcaldia
+                  && \erpsoftsas\VencimientoICA::exigeIntereses($anioIca, $ica['dec_ValorConcepto16'] ?? 0);
 }
 $textoIntereses = trim((string) ($_POST['intereses'] ?? ''));
 if ($textoIntereses !== '') {

@@ -296,7 +296,11 @@ $estaPresentada = ((int)($row['dec_Estado'] ?? 0) === 2);
 // PAGADA seguia diciendo "PRESENTADA": el contribuyente descargaba su
 // comprobante de pago y el documento no reflejaba que estuviera pagado, que es
 // justo el dato que le importa cuando lo tiene que mostrar.
-$estaPagada     = ((int)($row['dec_Pagado'] ?? 0) === 1);
+//
+// "Pagada" exige ademas estar presentada, como en la pantalla (claveEstado):
+// un borrador con dec_Pagado es el estado imposible que dejaba el pago PSE
+// heredado por una correccion (revision 2026-09-28), y su PDF salia "PAGADA".
+$estaPagada     = $estaPresentada && ((int)($row['dec_Pagado'] ?? 0) === 1);
 $textoMarcaAgua = $estaPagada ? 'PAGADA' : ($estaPresentada ? 'PRESENTADA' : 'BORRADOR');
 
 /* ===========================
@@ -343,10 +347,24 @@ $CUPO_PRIMERA_HOJA = 3;
 $actividadesPrimera = array_slice($actividades, 0, $CUPO_PRIMERA_HOJA);
 $actividadesResto   = array_slice($actividades, $CUPO_PRIMERA_HOJA);
 
+/*
+ * La tarifa se guarda como FRACCION (0.004) y la columna dice "TARIFA (por
+ * mil)": se imprimia ".004" -el decimal crudo de SQL Server, sin el cero- donde
+ * va un 4. Se multiplica por mil y se escribe en formato colombiano, con los
+ * decimales que tenga ("9,66" en un municipio con tarifas fraccionarias).
+ */
+if (!function_exists('erp_tarifaPorMil')) {
+function erp_tarifaPorMil($tarifa) {
+    if ($tarifa === null || trim((string) $tarifa) === '') { return ''; }
+    $porMil = number_format(((float) $tarifa) * 1000, 3, ',', '.');
+    return rtrim(rtrim($porMil, '0'), ',');
+}
+}
+
 $filaActividad = function ($rotulo, $a) {
     $codigo   = $a['acc_Codigo'] ?? '';
     $ingresos = isset($a['dia_BaseGravable'])  ? '$'.number_format($a['dia_BaseGravable'],0,',','.') : '';
-    $tarifa   = $a['dia_Tarifa'] ?? '';
+    $tarifa   = erp_tarifaPorMil($a['dia_Tarifa'] ?? '');
     $impuesto = isset($a['dia_ValorImpuesto']) ? number_format($a['dia_ValorImpuesto'],0,',','.') : '';
     return '<tr>'
          . '<td><b>'.htmlspecialchars($rotulo, ENT_QUOTES, 'UTF-8').'</b></td>'
@@ -375,10 +393,12 @@ if ($actividadesResto) {
 FIRMA DIGITAL
 =========================== */
 
+// Solo firmas del modulo ICA: la retencion y la autorretencion reparten numeros
+// de su propia serie y comparten la tabla (ver _firmasIca en el controlador).
 $sqlFirma = "
 SELECT fd_NombreUsuario, fd_EmailUsuario, fd_FechaHora
 FROM firmas_declaraciones
-WHERE fd_NumeroDeclaracion = ? AND fd_Rol = ?
+WHERE fd_NumeroDeclaracion = ? AND fd_Rol = ? AND fd_Modulo = 'ICA'
 ";
 $firmaData         = $con->obnerFila($con->consultar($sqlFirma, [$idDeclaracion, 'declarante']));
 $firmaContadorData = $con->obnerFila($con->consultar($sqlFirma, [$idDeclaracion, 'contador']));
@@ -499,6 +519,34 @@ DATOS
 // paga con el recibo de pago (ver el bloque del código de barras).
 $fechaLimite = \erpsoftsas\VencimientoICA::fechaLimite($row['dec_AnioDeclaracion'] ?? 0);
 
+/*
+ * DECLARACION DE CORRECCION (revision 2026-09-28).
+ *
+ * Las casillas del tipo de declaracion estaban fijas: "DECLARACIÓN INICIAL"
+ * marcada, "CORRECCIÓN" en blanco y "No. DE DECLARACIÓN A CORREGIR" vacia. Una
+ * correccion se imprimia como si fuera una original, sin decir a cual
+ * sustituye. Lo que la hace correccion es el enlace dec_DeclaracionCorrige (el
+ * NUMERO de la corregida, o su id si es de las viejas sin numero); la fecha
+ * que pide el formulario es la de presentacion de esa corregida.
+ */
+$corrige        = trim((string) ($row['dec_DeclaracionCorrige'] ?? ''));
+$fechaCorregida = '';
+if ($corrige !== '') {
+    $corregida = $con->obnerFila($con->consultar(
+        "SELECT TOP 1 dec_FechaPresentacion FROM ind_declaraciones_ica
+          WHERE dec_IdContribuyente = ?
+            AND (dec_NumeroDeclaracion = ? OR (dec_NumeroDeclaracion IS NULL AND dec_Id = ?))
+          ORDER BY dec_Id",
+        [$row['dec_IdContribuyente'], $corrige, $corrige]
+    ));
+    $fp = $corregida['dec_FechaPresentacion'] ?? null;
+    if ($fp instanceof DateTime) {
+        $fechaCorregida = $fp->format('d/m/Y');
+    } elseif (is_string($fp) && trim($fp) !== '') {
+        $fechaCorregida = date('d/m/Y', strtotime($fp));
+    }
+}
+
 $d = [
     // Encabezado entidad / periodo
     'entidad'     => mb_strtoupper(MUNICIPIO_NOMBRE, 'UTF-8'),
@@ -574,10 +622,12 @@ $d = [
 
 
 
-    // Tipo de declaración
-    'es_decl_inicial'   => true,
+    // Tipo de declaración: corrección si corrige a otra (ver $corrige arriba).
+    'es_decl_inicial'   => $corrige === '',
     'es_solo_pago'      => false,
-    'es_correccion'     => false,
+    'es_correccion'     => $corrige !== '',
+    'no_corrige'        => $corrige,
+    'fecha_corrige'     => $fechaCorregida,
     // Migracion 033: se capturan en el RIT (ind_contribuyentes) y ya vienen en
     // $row por el c.* del SELECT. Antes estaban fijos en false y la casilla
     // salia siempre en blanco.
@@ -625,17 +675,17 @@ $d = [
     */
     'codigo1' => $actividades[0]['acc_Codigo'] ?? '',
     'ingresos1' => '$'.number_format($actividades[0]['dia_BaseGravable'] ?? 0,0,',','.'),
-    'tarifa1' => $actividades[0]['dia_Tarifa'] ?? '',
+    'tarifa1' => erp_tarifaPorMil($actividades[0]['dia_Tarifa'] ?? ''),
     'impuesto1' => number_format($actividades[0]['dia_ValorImpuesto'] ?? 0,0,',','.'),
 
     'codigo2' => $actividades[1]['acc_Codigo'] ?? '',
     'ingresos2' => '$'.number_format($actividades[1]['dia_BaseGravable'] ?? 0,0,',','.'),
-    'tarifa2' => $actividades[1]['dia_Tarifa'] ?? '',
+    'tarifa2' => erp_tarifaPorMil($actividades[1]['dia_Tarifa'] ?? ''),
     'impuesto2' => number_format($actividades[1]['dia_ValorImpuesto'] ?? 0,0,',','.'),
 
     'codigo3' => $actividades[2]['acc_Codigo'] ?? '',
     'ingresos3' => '$'.number_format($actividades[2]['dia_BaseGravable'] ?? 0,0,',','.'),
-    'tarifa3' => $actividades[2]['dia_Tarifa'] ?? '',
+    'tarifa3' => erp_tarifaPorMil($actividades[2]['dia_Tarifa'] ?? ''),
     'impuesto3' => number_format($actividades[2]['dia_ValorImpuesto'] ?? 0,0,',','.'),
 
 
@@ -851,9 +901,9 @@ IMPUESTO DE INDUSTRIA Y COMERCIO
 <td width="15%">DECLARACIÓN DE CORRECCIÓN</td>
 <td width="3%" align="center">'.($d['es_correccion'] ? 'X' : '').'</td>
 <td width="20%">No. DE DECLARACIÓN A CORREGIR</td>
-<td width="10%"></td>
+<td width="10%">'.htmlspecialchars($d['no_corrige']).'</td>
 <td width="16%">FECHA DE PRESENTACIÓN DECLARACIÓN A CORREGIR</td>
-<td width="10%"></td>
+<td width="10%">'.htmlspecialchars($d['fecha_corrige']).'</td>
 </tr>
 
 </table>
@@ -995,13 +1045,24 @@ $pdf->writeHTML($html, true, false, true, false, '');
 $ySecB_fin = $pdf->GetY() - DESFASE_GETY;
 $ySecC_inicio = $ySecB_fin;
 
+/*
+ * La banda gris de la izquierda abarca TODAS las filas de la seccion C:
+ * cabecera + las tres actividades + "Continúa en la hoja 2" (solo si hay mas
+ * de tres) + TOTAL + la fila 18/19 de energia. Estaba fija en 6, que no cuenta
+ * la fila de continuacion: con cuatro actividades o mas la banda terminaba una
+ * fila antes, la fila 18 se corria hacia la izquierda y el rotulo "C. DISCR.
+ * ACTIVIDADES GRAVADAS" se montaba sobre ella (visto en el render de la 358,
+ * revision 2026-09-28). Mismo arreglo que ya tenia el PDF de retencion.
+ */
+$rowspanC = 1 + $CUPO_PRIMERA_HOJA + ($actividadesResto ? 1 : 0) + 2;
+
 $html = '
 <br>
 
 <table border="1" cellpadding="2" width="100%">
 
 <tr bgcolor="#cae6e7">
-<td width="5%" rowspan="6" bgcolor="#e1dada"></td>
+<td width="5%" rowspan="' . $rowspanC . '" bgcolor="#e1dada"></td>
 <td width="35%"><b>ACTIVIDADES GRAVADAS</b></td>
 <td width="10%"><b>CÓDIGO</b></td>
 <td width="15%"><b>INGRESOS GRAVADOS</b></td>

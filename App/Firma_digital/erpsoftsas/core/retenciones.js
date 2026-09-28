@@ -102,7 +102,7 @@ var Retenciones = (function () {
 
         $('#loading').show();
 
-        $.ajax({
+        return $.ajax({
             url: cfg.endpoint,
             type: 'POST',
             dataType: 'json',
@@ -145,20 +145,22 @@ var Retenciones = (function () {
      * El chip de estado del ICA, no un badge de Bootstrap.
      *
      * `.chip-estado.est-*` está definido en dist/menu.php, que estas pantallas
-     * ya incluyen, y sus cuatro variantes coinciden una a una con los estados
-     * que devuelve el backend. Usar el mismo componente no es cosmética: el
+     * ya incluyen, y sus variantes coinciden con los estados que devuelve el
+     * backend ("Falta contador" usa la de firmada, como el ICA). Usar el mismo
+     * componente no es cosmética: el
      * cliente compara las pantallas entre sí, y dos formas distintas de pintar
      * "Presentada" en el mismo sistema se leen como descuido.
      */
     function insignia(fila) {
-        var textos = {
-            borrador:   'Borrador',
-            firmada:    'Firmada',
-            presentada: 'Presentada',
-            pagada:     'Pagada'
+        var estados = {
+            borrador:      { texto: 'Borrador',       clase: 'borrador' },
+            pendienteCont: { texto: 'Falta contador', clase: 'firmada' },
+            firmada:       { texto: 'Firmada',        clase: 'firmada' },
+            presentada:    { texto: 'Presentada',     clase: 'presentada' },
+            pagada:        { texto: 'Pagada',         clase: 'pagada' }
         };
-        var clave = textos[fila.estadoClave] ? fila.estadoClave : 'borrador';
-        return '<span class="chip-estado est-' + clave + '">' + textos[clave] + '</span>';
+        var e = estados[fila.estadoClave] || estados.borrador;
+        return '<span class="chip-estado est-' + e.clase + '">' + e.texto + '</span>';
     }
 
     /** El bloque de "no hay nada", con el mismo formato que el ICA. */
@@ -194,6 +196,7 @@ var Retenciones = (function () {
      *   o.title   tooltip
      *   o.clase   clase js-* para la delegacion   (con o.id)
      *   o.id      data-id de la fila
+     *   o.numero  data-numero: el N° de la declaracion (con él se firma)
      *   o.href    enlace directo   + o.target opcional (por defecto _blank)
      */
     function accBtn(o) {
@@ -205,6 +208,7 @@ var Retenciones = (function () {
                  + 'title="' + o.title + '" href="' + o.href + '">' + cuerpo + '</a>';
         }
         return '<button class="' + cls + '" data-id="' + o.id + '" '
+             + (o.numero ? 'data-numero="' + escapar(o.numero) + '" ' : '')
              + 'title="' + o.title + '">' + cuerpo + '</button>';
     }
 
@@ -219,16 +223,18 @@ var Retenciones = (function () {
      * listado de retención solo traía Ver/Descargar y "faltaba Firmar". Ahora,
      * según el estado, ofrece lo mismo que icaWebConsultar/Presentar:
      *
-     *   borrador   -> Editar / Firmar / Descargar / Borrar
-     *   firmada    -> Editar / Descargar / Presentar
-     *   presentada -> Descargar / Corregir
-     *   pagada     -> Descargar
+     *   borrador       -> Editar / Firmar / Descargar / Borrar
+     *   falta contador -> Editar / Descargar / Firmar contador / Presentar
+     *   firmada        -> Editar / Descargar / Presentar
+     *   presentada     -> Descargar / Pagar PSE / Recibo de pago / Corregir
+     *   pagada         -> Descargar
      *
-     * Los que abren el formulario (Editar/Firmar/Presentar) llevan clase js-*;
-     * cada pantalla decide si NAVEGA a "Presentar" (desde Consultar) o abre el
-     * formulario en la misma página. Editar/Firmar/Presentar reutilizan todo el
-     * flujo del formulario (guardar, firma encadenada, presentar); no se duplica
-     * lógica. Descargar es un enlace directo al PDF.
+     * El estado sale de las firmas (class.retenciones.php, _filaParaPantalla).
+     *
+     * Los botones con acción llevan clase js-* y cada pantalla pone el manejador:
+     * en "Presentar", Editar abre el formulario y Firmar, Firmar contador y
+     * Presentar se hacen desde el listado; en "Consultar" (solo presentadas)
+     * queda Corregir. Descargar, Pagar PSE y Recibo son enlaces directos.
      */
     function accionesRetencion(f, cfg) {
         var estado = f.estadoClave || 'borrador';
@@ -240,10 +246,11 @@ var Retenciones = (function () {
         if (estado === 'presentada' || estado === 'pagada') {
             b = pdf;
             if (estado === 'presentada') {
-                // Pagar PSE: solo en presentadas y si la entidad tiene convenio
-                // (pago_en_linea, igual que en el ICA). Va al RESUMEN (pagar.php),
-                // que muestra monto + logo AvalPay + politica antes de redirigir.
-                if (Number(f.pago_en_linea) === 1) {
+                // Pagar PSE: solo en presentadas, si la entidad tiene convenio
+                // (pago_en_linea, igual que en el ICA) y si hay valor a pagar
+                // (en $0 pagar.php solo puede decir "no aplica"). Va al RESUMEN
+                // (pagar.php): monto + logo AvalPay + politica antes de redirigir.
+                if (Number(f.pago_en_linea) === 1 && Number(f.total) > 0) {
                     b += accBtn({ tipo: 'danger', icono: 'fa-money', texto: 'Pagar PSE', title: 'Pagar por PSE',
                                   href: '../extensiones/pse/pagar.php?modulo=' + encodeURIComponent(cfg.modulo || '') + '&id=' + f.id,
                                   target: '_blank' });
@@ -259,15 +266,23 @@ var Retenciones = (function () {
                 b += accBtn({ tipo: 'warning', icono: 'fa-pencil', texto: 'Corregir',
                               title: 'Corregir', clase: 'js-corregir', id: f.id });
             }
-        } else if (estado === 'firmada') {
+        } else if (estado === 'pendienteCont' || estado === 'firmada') {
             b = accBtn({ tipo: 'warning', icono: 'fa-pencil', texto: 'Editar',
-                         title: 'Editar (elimina las firmas)', clase: 'js-editar', id: f.id })
-              + pdf
-              + accBtn({ tipo: 'success', icono: 'fa-paper-plane', texto: 'Presentar',
-                         title: 'Presentar', clase: 'js-presentar', id: f.id });
+                         title: 'Editar (si cambia algo, al guardar se quitan las firmas)', clase: 'js-editar', id: f.id })
+              + pdf;
+            if (estado === 'pendienteCont') {
+                // Firmar como contador es un acto propio, con su botón, como en
+                // el ICA (cliente, 2026-09-01): el contador firma y se va.
+                // "Presentar" pide la firma que falte y presenta de una vez.
+                b += accBtn({ tipo: 'info', icono: 'fa-pencil-square-o', texto: 'Firmar contador',
+                              title: 'Firmar como contador o revisor fiscal (solo firma, no presenta)',
+                              clase: 'js-firmar-contador', id: f.id, numero: f.numero });
+            }
+            b += accBtn({ tipo: 'success', icono: 'fa-paper-plane', texto: 'Presentar',
+                          title: 'Presentar', clase: 'js-presentar', id: f.id, numero: f.numero });
         } else { // borrador
             b = accBtn({ tipo: 'warning',   icono: 'fa-pencil',          texto: 'Editar', title: 'Editar',          clase: 'js-editar', id: f.id })
-              + accBtn({ tipo: 'secondary', icono: 'fa-pencil-square-o', texto: 'Firmar', title: 'Firmar',          clase: 'js-firmar', id: f.id })
+              + accBtn({ tipo: 'secondary', icono: 'fa-pencil-square-o', texto: 'Firmar', title: 'Firmar',          clase: 'js-firmar', id: f.id, numero: f.numero })
               + pdf
               + accBtn({ tipo: 'danger',    icono: 'fa-trash',           texto: 'Borrar', title: 'Borrar borrador', clase: 'js-borrar', id: f.id });
         }
@@ -323,6 +338,10 @@ var Retenciones = (function () {
         var _timerVigencia = null;
         var _timerReenvio  = null;
         var _cfg = null, _numero = null, _rol = 'declarante', _alFirmar = null;
+
+        // Un pedido de código a la vez: con doble clic salían dos correos y el
+        // primer código quedaba inválido (la función 1 anula los anteriores).
+        var _pidiendo = false;
 
         function _mmss(seg) {
             var m = Math.floor(seg / 60), s = seg % 60;
@@ -423,10 +442,15 @@ var Retenciones = (function () {
 
         function _solicitarCodigo(esReenvio) {
 
+            if (_pidiendo) { return; }
+            _pidiendo = true;
+
             if (!esReenvio) {
                 Swal.fire({
                     title: 'Generando código',
-                    text: 'Por favor espere…',
+                    text: _rol === 'contador'
+                        ? 'Falta la firma del contador o revisor fiscal: el código va a su correo. Por favor espere…'
+                        : 'Por favor espere…',
                     allowOutsideClick: false,
                     didOpen: function () { Swal.showLoading(); }
                 });
@@ -447,6 +471,7 @@ var Retenciones = (function () {
                     modulo: _cfg.modulo,
                     numero_declaracion: _numero
                 },
+                complete: function () { _pidiendo = false; },
                 success: function (r) {
 
                     if (!r || r.ok != 1) {
@@ -537,6 +562,8 @@ var Retenciones = (function () {
          * @param {function} alFirmar Qué hacer cuando la firma quedó registrada.
          */
         function abrir(cfg, numero, rol, alFirmar) {
+            if (_pidiendo) { return; }   // doble clic: ya se está pidiendo uno
+
             _cfg      = cfg;
             _numero   = numero;
             _rol      = (rol === 'contador') ? 'contador' : 'declarante';
@@ -545,6 +572,9 @@ var Retenciones = (function () {
             _asegurarModal();
             _pararTimers();
             _limpiarError();
+            $('#retModalFirma .modal-title').text(_rol === 'contador'
+                ? 'Firma del contador o revisor fiscal'
+                : 'Firma del declarante');
             $('#retOtpDestino').text(_rol === 'contador'
                 ? 'el correo del contador o revisor fiscal'
                 : 'su correo electrónico');
@@ -616,8 +646,10 @@ var Retenciones = (function () {
             });
         }
 
-        // Editar/Firmar/Presentar abren el formulario de "Presentar Declaración"
-        // (misma pantalla y flujo del ICA); la acción a encadenar viaja en la URL.
+        // Consultar solo lista presentadas, así que hoy solo se usa Corregir.
+        // Estos quedan por si vuelve a listar borradores: abren "Presentar
+        // Declaración" con la acción en la URL (ver presentar(), que la usa una
+        // sola vez y pide confirmación para presentar).
         $('#tablaDeclaraciones').on('click', '.js-editar', function () {
             window.location = cfg.pantallaPresentar + '?id=' + $(this).data('id');
         });
@@ -672,8 +704,12 @@ var Retenciones = (function () {
 
     function presentar(cfg) {
 
-        var catalogo = [];   // actividades disponibles para el desplegable
-        var abierta  = null; // la declaracion que se esta editando
+        var catalogo     = [];   // actividades disponibles para el desplegable
+        var anioCatalogo = null; // de que año es ese catalogo
+        var abierta      = null; // la declaracion que se esta editando
+        var sucio        = false; // hay cambios en pantalla sin guardar
+        var guardando    = false; // candados contra el doble clic: la capa
+        var presentando  = false; // #loading no se ve (loading.css la oculta)
 
         $('#tituloModulo').text(cfg.titulo);
         $('#etiquetaPeriodo').text(cfg.nombrePeriodo);
@@ -682,36 +718,57 @@ var Retenciones = (function () {
         llenarSelectPeriodos($('#nuevoPeriodo'), cfg);
 
         // Si la pantalla de consulta mando un id -y, opcionalmente, una acción a
-        // encadenar (firmar/presentar)-, se abre directamente.
+        // encadenar (firmar/presentar)-, se abre directamente. UNA sola vez: la
+        // URL se limpia, para que recargar (F5) no vuelva a abrir el formulario
+        // ni a pedir un código o presentar.
         var params    = new URLSearchParams(window.location.search);
         var idUrl     = params.get('id');
         var accionUrl = params.get('accion');
+        if (idUrl && window.history && history.replaceState) {
+            history.replaceState(null, '', window.location.pathname);
+        }
 
-        cargarCatalogo(function () {
-            if (idUrl) { abrir(idUrl, accionUrl); } else { listarBorradores(); }
-        });
+        if (idUrl) { abrir(idUrl, accionUrl); } else { listarBorradores(); }
 
         /* ---------------- catalogo de actividades ---------------- */
 
-        function cargarCatalogo(luego) {
-            pedir(cfg, 8, { anio: $('#nuevoAnio').val() }, function (r) {
-                catalogo = r.datos;
+        /*
+         * El catalogo es el del AÑO DE LA DECLARACION que se abre, no el del
+         * selector de "Crear": con el selector en otro año, las actividades
+         * guardadas no aparecian en el desplegable, quedaban en blanco y
+         * Guardar las borraba.
+         */
+        function cargarCatalogo(anio, luego) {
+            anio = String(anio);
+            if (anio === anioCatalogo) { luego(); return; }
+            pedir(cfg, 8, { anio: anio }, function (r) {
+                catalogo = r.datos || [];
+                anioCatalogo = anio;
                 luego();
             });
         }
 
-        function opcionesActividad(seleccionada) {
+        function opcionesActividad(a) {
+            var sel = a.idActividad, esta = false;
             var html = '<option value="">Seleccione la actividad…</option>';
-            catalogo.forEach(function (a) {
-                html += '<option value="' + a.id + '"' + (a.id == seleccionada ? ' selected' : '') + '>'
-                      + escapar(a.codigo + ' — ' + a.descripcion) + '</option>';
+            catalogo.forEach(function (c) {
+                if (c.id == sel) { esta = true; }
+                html += '<option value="' + c.id + '"' + (c.id == sel ? ' selected' : '') + '>'
+                      + escapar(c.codigo + ' — ' + c.descripcion) + '</option>';
             });
+            // Guardada con una actividad que no está en el catálogo de su año
+            // (la Alcaldía la retiró): se conserva, para que Guardar no la
+            // borre sin que nadie lo note.
+            if (sel && !esta) {
+                html += '<option value="' + sel + '" selected>'
+                      + escapar((a.codigo || '') + ' — ' + (a.descripcion || '')) + '</option>';
+            }
             return html;
         }
 
         /* ---------------- listado corto de lo pendiente ---------------- */
 
-        function listarBorradores() {
+        function listarBorradores(luego) {
             pedir(cfg, 2, {}, function (r) {
                 var $c = $('#tablaMias tbody').empty();
                 // Esta pantalla es "Presentar Declaración": solo se trabajan los
@@ -727,28 +784,54 @@ var Retenciones = (function () {
                         'No tiene declaraciones en edición',
                         'Elija el año y el período arriba y pulse "Crear declaración".',
                         'fa-file-o'));
-                    return;
+                } else {
+                    filas.forEach(function (f) {
+                        $c.append(
+                            '<tr>'
+                          + '<td>' + f.anio + '</td>'
+                          + '<td>' + nombrePeriodo(cfg, f.periodo) + '</td>'
+                          + '<td>' + escapar(f.numero) + '</td>'
+                          + '<td>' + insignia(f) + '</td>'
+                          + '<td style="text-align:right;">' + pesos(f.total) + '</td>'
+                          + '<td class="text-center">' + accionesRetencion(f, cfg) + '</td>'
+                          + '</tr>'
+                        );
+                    });
                 }
-                filas.forEach(function (f) {
-                    $c.append(
-                        '<tr>'
-                      + '<td>' + f.anio + '</td>'
-                      + '<td>' + nombrePeriodo(cfg, f.periodo) + '</td>'
-                      + '<td>' + escapar(f.numero) + '</td>'
-                      + '<td>' + insignia(f) + '</td>'
-                      + '<td style="text-align:right;">' + pesos(f.total) + '</td>'
-                      + '<td class="text-center">' + accionesRetencion(f, cfg) + '</td>'
-                      + '</tr>'
-                    );
-                });
+                if (luego) { luego(filas); }
             });
         }
 
-        // Mismos botones que el ICA, aquí abriendo el formulario en la misma
-        // página (sin navegar). Editar abre; Firmar/Presentar encadenan la acción.
-        $('#tablaMias').on('click', '.js-editar',   function () { abrir($(this).data('id')); });
-        $('#tablaMias').on('click', '.js-firmar',   function () { abrir($(this).data('id'), 'firmar'); });
-        $('#tablaMias').on('click', '.js-presentar', function () { abrir($(this).data('id'), 'presentar'); });
+        /* Después de firmar desde el listado: se refresca y se dice qué sigue.
+           Antes el modal se cerraba y solo cambiaba la etiqueta de la fila. */
+        function trasFirmar(id, rol) {
+            listarBorradores(function (filas) {
+                var f = filas.filter(function (x) { return String(x.id) === String(id); })[0];
+                var texto = !f ? 'La firma quedó registrada.'
+                    : f.estadoClave === 'pendienteCont'
+                        ? 'Falta la firma del contador o revisor fiscal: use "Firmar contador", o "Presentar", que la pide.'
+                        : 'Ya puede presentarla con "Presentar".';
+                Swal.fire(rol === 'contador' ? 'Firmada por el contador' : 'Firmada', texto, 'success');
+            });
+        }
+
+        // Mismos botones que el ICA. Editar abre el formulario; Firmar, Firmar
+        // contador y Presentar se hacen AQUÍ, en el listado, que es donde el
+        // cliente espera firmar (2026-09-28) y donde se ve el paso siguiente.
+        $('#tablaMias').on('click', '.js-editar', function () { abrir($(this).data('id')); });
+        $('#tablaMias').on('click', '.js-firmar', function () {
+            var id = $(this).data('id');
+            FirmaRetencion.abrir(cfg, String($(this).data('numero')), 'declarante',
+                function () { trasFirmar(id, 'declarante'); });
+        });
+        $('#tablaMias').on('click', '.js-firmar-contador', function () {
+            var id = $(this).data('id');
+            FirmaRetencion.abrir(cfg, String($(this).data('numero')), 'contador',
+                function () { trasFirmar(id, 'contador'); });
+        });
+        $('#tablaMias').on('click', '.js-presentar', function () {
+            presentarDeclaracion($(this).data('id'), String($(this).data('numero')));
+        });
         $('#tablaMias').on('click', '.js-corregir', function () {
             var id = $(this).data('id');
             Swal.fire({
@@ -795,23 +878,21 @@ var Retenciones = (function () {
 
         function abrir(id, accion) {
             pedir(cfg, 3, { id: id }, function (r) {
-                abierta = r.datos;
-                pintarFormulario();
-                $('#panelCrear').hide();
-                $('#panelFormulario').show();
-                $('html, body').animate({ scrollTop: 0 }, 200);
+                cargarCatalogo(r.datos.declaracion.anio, function () {
+                    abierta = r.datos;
+                    pintarFormulario();
+                    $('#panelCrear').hide();
+                    $('#panelFormulario').show();
+                    $('html, body').animate({ scrollTop: 0 }, 200);
 
-                // Acción encadenada desde el listado (botones Firmar/Presentar,
-                // homogéneos con el ICA), ya con la declaración en pantalla. Se
-                // reutiliza el mismo flujo del formulario: la firma standalone
-                // del declarante, o "Presentar" que encadena las firmas que
-                // falten. Ocurre una sola vez.
-                if (accion === 'firmar') {
-                    FirmaRetencion.abrir(cfg, abierta.declaracion.numero, 'declarante',
-                        function () { abrir(abierta.declaracion.id); });
-                } else if (accion === 'presentar') {
-                    intentarPresentar();
-                }
+                    // Acción que llegó por la URL (hoy nadie la manda: Consultar
+                    // solo lista presentadas). Presentar pide confirmación.
+                    if (accion === 'firmar') {
+                        FirmaRetencion.abrir(cfg, abierta.declaracion.numero, 'declarante', volverAlListado);
+                    } else if (accion === 'presentar') {
+                        presentarDeclaracion(abierta.declaracion.id, abierta.declaracion.numero);
+                    }
+                });
             });
         }
 
@@ -850,23 +931,30 @@ var Retenciones = (function () {
 
             $('#btnAgregarActividad').toggle(editable && cfg.actividadesEditables);
             $('#btnGuardar, #btnLiquidar').toggle(editable);
+            // Eliminar solo lo que no se ha presentado: en una presentada el
+            // servidor lo rechaza y el aviso remitía a un "Corregir" que aquí
+            // no existe.
+            $('#btnDescartar').toggle(editable);
             $('#avisoCerrada').toggle(!editable);
+
+            sucio = false;   // lo que acaba de pintarse es lo guardado
         }
 
         /* ---------------- actividades ---------------- */
 
         function pintarActividades(editable) {
 
-            var $c = $('#tablaActividades tbody').empty();
+            $('#tablaActividades tbody').empty();
 
-            if (!abierta.actividades.length) {
-                $c.append('<tr class="js-vacia">'
-                        + vacio(5, 'Sin actividades', cfg.textoSinActividades, 'fa-list').replace(/^<tr><td colspan="5">/, '<td colspan="5">').replace(/<\/td><\/tr>$/, '</td>')
-                        + '</tr>');
-                return;
-            }
+            if (!abierta.actividades.length) { pintarFilaVacia(); return; }
 
             abierta.actividades.forEach(function (a) { filaActividad(a, editable); });
+        }
+
+        function pintarFilaVacia() {
+            $('#tablaActividades tbody').empty().append('<tr class="js-vacia">'
+                + vacio(5, 'Sin actividades', cfg.textoSinActividades, 'fa-list').replace(/^<tr><td colspan="5">/, '<td colspan="5">').replace(/<\/td><\/tr>$/, '</td>')
+                + '</tr>');
         }
 
         function filaActividad(a, editable) {
@@ -875,7 +963,7 @@ var Retenciones = (function () {
 
             var celdaActividad = editable && cfg.actividadesEditables
                 ? '<select class="form-control form-control-sm js-actividad">'
-                  + opcionesActividad(a.idActividad) + '</select>'
+                  + opcionesActividad(a) + '</select>'
                 : '<input type="hidden" class="js-actividad" value="' + (a.idActividad || '') + '">'
                   + escapar((a.codigo || '') + ' — ' + (a.descripcion || ''));
 
@@ -901,12 +989,17 @@ var Retenciones = (function () {
 
         $('#btnAgregarActividad').on('click', function () {
             filaActividad({ idActividad: '', tarifa: 0, base: 0, valor: 0 }, true);
+            sucio = true;
             recalcularEnVivo();
         });
 
+        // Quitar la última deja la tabla vacía. Antes se repintaban las
+        // actividades GUARDADAS: reaparecían todas y no se podía dejar un mes
+        // sin retenciones ni cambiar la única actividad.
         $('#tablaActividades').on('click', '.js-quitar', function () {
             $(this).closest('tr').remove();
-            if (!$('#tablaActividades tbody tr').length) { pintarActividades(true); }
+            if (!$('#tablaActividades tbody tr').length) { pintarFilaVacia(); }
+            sucio = true;
             recalcularEnVivo();
         });
 
@@ -978,6 +1071,9 @@ var Retenciones = (function () {
         // estan editando.
         $('#panelFormulario')
             .on('input', '.js-renglon, .js-base, #impuestoEnergia', recalcularEnVivo);
+
+        // Cualquier cosa que el usuario escriba o elija es un cambio sin guardar.
+        $('#panelFormulario').on('input change', 'input, select', function () { sucio = true; });
 
         /* ---------------- renglones ---------------- */
 
@@ -1062,28 +1158,90 @@ var Retenciones = (function () {
         }
 
         function guardar(alTerminar) {
+            if (guardando) { return; }
+            guardando = true;
             pedir(cfg, 4, recoger(), function (r) {
                 abierta = r.datos;
                 pintarFormulario();
-                if (alTerminar) { alTerminar(); }
+                if (alTerminar) { alTerminar(r); }
+            }).always(function () { guardando = false; });
+        }
+
+        /* Una fila con base pero sin actividad elegida se descartaba en
+           silencio al guardar (recoger() la salta): se avisa antes. */
+        function filasSinActividad() {
+            var n = 0;
+            $('#tablaActividades tbody tr').each(function () {
+                var $f = $(this);
+                if (!$f.find('.js-base').length) { return; }   // fila "sin actividades"
+                if (!$f.find('.js-actividad').val() && NumerosCOP.aEntero($f.find('.js-base').val()) > 0) { n++; }
+            });
+            return n;
+        }
+
+        /*
+         * Guardar (o liquidar, que guarda) una declaración firmada le quita las
+         * firmas en el servidor SI CAMBIÓ algo: lo firmado dejaría de ser lo
+         * guardado. Se avisa antes, y solo si hay cambios en pantalla.
+         */
+        function confirmarSiFirmada(textoBoton, seguir) {
+            if (filasSinActividad()) {
+                Swal.fire('Falta la actividad', 'Hay una fila con valor pero sin actividad elegida. '
+                        + 'Elija la actividad o quite la fila.', 'warning');
+                return;
+            }
+            var e = abierta && abierta.declaracion && abierta.declaracion.estadoClave;
+            if ((e !== 'firmada' && e !== 'pendienteCont') || !sucio) { seguir(); return; }
+            Swal.fire({
+                title: 'La declaración ya está firmada',
+                text: 'Si cambió algún dato, al guardar se quitan las firmas y habrá que firmarla de nuevo. ¿Continuar?',
+                icon: 'warning', showCancelButton: true,
+                confirmButtonText: textoBoton, cancelButtonText: 'Cancelar'
+            }).then(function (res) {
+                if (res.isConfirmed) { seguir(); }
             });
         }
 
+        function volverAlListado() {
+            $('#panelFormulario').hide();
+            $('#panelCrear').show();
+            listarBorradores();
+        }
+
         // "Liquidar" y "Guardar" son el mismo camino: solo corre sobre
-        // borradores, asi que recalcular guardando no pisa nada cerrado. Tener
-        // dos caminos distintos ya produjo, en el ICA, dos cifras discrepando
-        // en la misma pantalla.
+        // borradores, asi que recalcular guardando no pisa nada presentado.
+        // Tener dos caminos distintos ya produjo, en el ICA, dos cifras
+        // discrepando en la misma pantalla.
         $('#btnLiquidar').on('click', function () {
-            guardar(function () { Swal.fire('Liquidada', 'Se recalcularon los valores.', 'success'); });
+            confirmarSiFirmada('Sí, liquidar', function () {
+                guardar(function (r) {
+                    Swal.fire('Liquidada', r.datos && r.datos.firmasQuitadas == 1
+                        ? 'Se recalcularon los valores. Como cambió, se quitaron las firmas.'
+                        : 'Se recalcularon los valores.', 'success');
+                });
+            });
         });
 
+        // Guardar vuelve al listado, que es donde se firma y se presenta (como
+        // el ICA desde el 2026-09-25; el cliente lo pidió aquí el 2026-09-28).
         $('#btnGuardar').on('click', function () {
-            guardar(function () { Swal.fire('Guardada', 'Los datos quedaron guardados.', 'success'); });
+            confirmarSiFirmada('Sí, guardar', function () {
+                guardar(function (r) {
+                    var e = r.datos && r.datos.declaracion && r.datos.declaracion.estadoClave;
+                    volverAlListado();
+                    Swal.fire('Declaración guardada',
+                        r.datos && r.datos.firmasQuitadas == 1
+                            ? 'Como cambió, se quitaron las firmas: fírmela de nuevo desde el listado.'
+                            : (e === 'firmada' || e === 'pendienteCont')
+                                ? 'No cambió nada de lo firmado: las firmas siguen. Desde el listado puede presentarla.'
+                                : 'Desde el listado puede firmarla y presentarla.', 'success');
+                });
+            });
         });
 
         /**
-         * Intenta presentar. Si el backend contesta que falta una firma, abre
-         * el modal para esa firma y vuelve a intentarlo al terminar.
+         * Presenta. Si el backend contesta que falta una firma, abre el modal
+         * para esa firma y vuelve a intentarlo al terminar. Al final, al listado.
          *
          * ES UN SOLO BOTÓN de principio a fin: la persona pulsa "Presentar" en
          * el listado y el sistema le va pidiendo lo que haga falta -su firma y,
@@ -1096,13 +1254,30 @@ var Retenciones = (function () {
          * El reintento NO es un bucle infinito: cada vuelta ocurre solo después
          * de una firma registrada de verdad, y solo hay dos firmas posibles.
          */
-        function intentarPresentar() {
+        function presentarDeclaracion(id, numero, confirmada) {
 
-            pedir(cfg, 6, { id: abierta.declaracion.id },
+            if (presentando) { return; }
+
+            // Se pregunta antes, como en el ICA: presentar no tiene vuelta
+            // atrás. Los reintentos de la cadena de firmas ya van confirmados.
+            if (!confirmada) {
+                Swal.fire({
+                    title: '¿Presentar la declaración?',
+                    text: 'Al presentarla ya no podrá editarla; si hay que cambiar algo después, se hace con "Corregir".',
+                    icon: 'warning', showCancelButton: true,
+                    confirmButtonText: 'Sí, presentar', cancelButtonText: 'Cancelar'
+                }).then(function (res) {
+                    if (res.isConfirmed) { presentarDeclaracion(id, numero, true); }
+                });
+                return;
+            }
+
+            presentando = true;
+            pedir(cfg, 6, { id: id },
 
                 function () {
-                    Swal.fire('Presentada', 'La declaración quedó presentada.', 'success');
-                    abrir(abierta.declaracion.id);
+                    volverAlListado();
+                    Swal.fire('Presentada', 'La declaración quedó presentada. Está en "Consultar Declaraciones".', 'success');
                 },
 
                 function (r) {
@@ -1114,42 +1289,44 @@ var Retenciones = (function () {
                         return;
                     }
 
-                    FirmaRetencion.abrir(
-                        cfg,
-                        abierta.declaracion.numero,
-                        falta,
-                        intentarPresentar
-                    );
+                    FirmaRetencion.abrir(cfg, numero, falta,
+                        function () { presentarDeclaracion(id, numero, true); });
                 }
-            );
+            ).always(function () { presentando = false; });
         }
 
         $('#btnDescartar').on('click', function () {
+            var e = abierta.declaracion.estadoClave;
+            var firmada = (e === 'firmada' || e === 'pendienteCont');
             Swal.fire({
-                title: '¿Eliminar este borrador?',
-                text: 'Se perderá lo que haya diligenciado.',
+                title: firmada ? '¿Eliminar esta declaración firmada?' : '¿Eliminar este borrador?',
+                text: firmada
+                    ? 'Ya tiene firmas: se pierden lo diligenciado y las firmas.'
+                    : 'Se perderá lo que haya diligenciado.',
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonText: 'Sí, eliminar',
                 cancelButtonText: 'Cancelar'
             }).then(function (res) {
                 if (!res.isConfirmed) { return; }
-                pedir(cfg, 5, { id: abierta.declaracion.id }, function () {
-                    $('#panelFormulario').hide();
-                    $('#panelCrear').show();
-                    listarBorradores();
-                });
+                pedir(cfg, 5, { id: abierta.declaracion.id }, volverAlListado);
             });
         });
 
+        // Volver sin guardar pregunta si hay cambios: ahora que Firmar y
+        // Presentar están en el listado, salir sin guardar llevaba a firmar lo
+        // último guardado, que podía ser un formulario en cero.
         $('#btnVolver').on('click', function () {
-            $('#panelFormulario').hide();
-            $('#panelCrear').show();
-            listarBorradores();
+            if (!sucio || !(abierta && abierta.editable == 1)) { volverAlListado(); return; }
+            Swal.fire({
+                title: 'Hay cambios sin guardar',
+                text: 'Si vuelve al listado, se pierden. ¿Salir sin guardar?',
+                icon: 'warning', showCancelButton: true,
+                confirmButtonText: 'Salir sin guardar', cancelButtonText: 'Seguir editando'
+            }).then(function (res) {
+                if (res.isConfirmed) { volverAlListado(); }
+            });
         });
-
-        // Cambiar el año recarga el catalogo: las tarifas son por año.
-        $('#nuevoAnio').on('change', function () { cargarCatalogo(function () {}); });
     }
 
 

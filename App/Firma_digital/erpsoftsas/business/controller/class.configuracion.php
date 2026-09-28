@@ -376,6 +376,25 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
             }
         }
 
+        /*
+         * FECHA LIMITE DEL ICA: EL PATRON NO BASTA (revision 2026-09-28).
+         *
+         * El patron DD/MM deja pasar "31/02" o "30/02", y aqui se contestaba
+         * "Parametro actualizado"; pero VencimientoICA::fechaLimite las descarta
+         * con checkdate y usa el 30/04 SIN AVISAR, asi que la Alcaldia creia haber
+         * movido la fecha y el sistema seguia con otra. Se valida contra un año NO
+         * bisiesto: el 29/02 existiria solo uno de cada cuatro años, y los otros
+         * tres el sistema volveria en silencio al 30/04. Se guarda como DD/MM.
+         */
+        if ($par['par_Clave'] === 'ICA_FECHA_LIMITE' && $valor !== '') {
+            if (!preg_match('#^(\d{1,2})/(\d{1,2})$#', $valor, $m) || !checkdate((int) $m[2], (int) $m[1], 2025)) {
+                $this->_mensaje = 'La fecha "' . $valor . '" no existe en todos los años. Escríbala como '
+                                . 'día/mes, por ejemplo 30/04 (el 29/02 no sirve: no existe en tres de cada cuatro años).';
+                return [];
+            }
+            $valor = sprintf('%02d/%02d', $m[1], $m[2]);
+        }
+
         $con->consultar(
             "UPDATE conf_parametros
                 SET par_Valor = ?, par_FechaActualizacion = GETDATE()

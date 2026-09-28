@@ -4,6 +4,8 @@ namespace erpsoftsas;
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.sessions.php';
 include_once SERVER . '/business/class.recaudoAsobancaria.php';
+include_once SERVER . '/business/class.pseModulo.php';
+include_once SERVER . '/business/class.pagoDeclaracion.php';
 
 /**
  * Conciliacion del recaudo pagado en ventanilla con codigo de barras.
@@ -17,6 +19,14 @@ include_once SERVER . '/business/class.recaudoAsobancaria.php';
  *   funcion 1  PREVISUALIZAR  lee el archivo y dice que pasaria, sin tocar
  *                             una sola declaracion.
  *   funcion 2  APLICAR        vuelve a leer ese mismo archivo y aplica.
+ *   funcion 4  ASIGNAR A MANO un pago que quedo "para revisar" (el numero es
+ *                             de dos declaraciones pendientes), a la que
+ *                             elija la Alcaldia. Solo despues de aplicar.
+ *
+ * LOS TRES MODULOS. El recibo de pago y el formulario de retencion y de
+ * autorretencion llevan el mismo EAN que el ICA y su numero como referencia,
+ * asi que el archivo del banco trae pagos de los tres. Antes solo se buscaban
+ * en el ICA: un pago de retencion nunca quedaba registrado.
  *
  * Aplicar a ciegas un archivo de recaudo es irreversible en la practica: deja
  * declaraciones marcadas como pagadas que despues hay que desmarcar a mano.
@@ -77,6 +87,9 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
                     break;
                 case 3:
                     $respuesta = $_obj->_historial();
+                    break;
+                case 4:
+                    $respuesta = $_obj->_asignarAMano();
                     break;
                 default:
                     throw new \Exception('Función no válida');
@@ -191,16 +204,14 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
          * ventanilla, que puede ser de dias atras. dec_FechaRealPago guarda
          * aparte cuando se cargo el archivo.
          */
-        require_once dirname(__DIR__) . '/class.pagoDeclaracion.php';
-
         $aplicados = 0;
         foreach ($analisis['aplicables'] as $item) {
-            $marcada = \erpsoftsas\PagoDeclaracion::registrar($con, $item['dec_Id'], [
+            $marcada = \erpsoftsas\PagoDeclaracion::registrar($con, $item['id'], [
                 'valor'     => $item['valor'],
                 'banco'     => $nombreBanco,
                 'via'       => \erpsoftsas\PagoDeclaracion::VIA_RECAUDO,
                 'fechaPago' => $fechaPago,
-            ]);
+            ], \erpsoftsas\PseModulo::get($item['modulo']));
             if ($marcada) { $aplicados++; }
         }
 
@@ -255,75 +266,65 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
         $revisar = [];
 
         /*
-         * RETENCIÓN Y AUTORRETENCIÓN USAN LOS MISMOS NÚMEROS.
+         * LOS TRES MÓDULOS USAN LOS MISMOS NÚMEROS.
          *
          * Cada módulo lleva su propio consecutivo con el mismo formato
          * (2026000001 existe en los tres), y sus recibos y formularios llevan el
-         * mismo EAN con el número como referencia. El banco no distingue: un pago
-         * de retención llega con una referencia que aquí se tomaba por ICA, y se
-         * marcaba pagada la declaración ICA de otro contribuyente.
+         * mismo EAN con el número como referencia. El banco no distingue. Por
+         * eso se busca el número en los tres y se aplica solo cuando hay UNA
+         * declaración presentada y sin pagar que pueda haber originado el pago:
+         * las pagadas o sin presentar no pudieron. Con dos o más, no se adivina:
+         * va a "Revisar a mano", con las candidatas, y la Alcaldía lo asigna
+         * (función 4) después de aplicar el archivo.
          *
-         * Mientras las referencias no se distingan por módulo, un número que
-         * también es de una retención o autorretención PRESENTADA Y SIN PAGAR no
-         * se aplica: se lista para revisarlo a mano. Las pagadas o sin presentar
-         * no cuentan: esas no pudieron originar este pago.
+         * Antes solo se buscaba en el ICA: un pago de retención se tomaba por el
+         * de la ICA ajena con ese número, o no se registraba nunca.
          */
-        $otrosModulos = [];
-        foreach ([['ind_reteica', 'ret_', 'retención'], ['ind_autorreteica', 'aut_', 'autorretención']] as [$tabla, $pre, $nombre]) {
-            $hay = $con->obnerFila($con->consultar("SELECT OBJECT_ID(?, 'U') AS o", ['dbo.' . $tabla]));
-            if (!empty($hay['o'])) { $otrosModulos[] = [$tabla, $pre, $nombre]; }
-        }
-        $otrosPendientes = function ($ref) use ($con, $otrosModulos) {
-            $nombres = [];
-            foreach ($otrosModulos as [$tabla, $pre, $nombre]) {
-                $fila = $con->obnerFila($con->consultar(
-                    "SELECT TOP 1 1 AS x FROM $tabla
-                      WHERE {$pre}NumeroDeclaracion = ? AND {$pre}Estado = 2 AND ISNULL({$pre}Pagado, 0) = 0",
-                    [$ref]
-                ));
-                if ($fila) { $nombres[] = $nombre; }
-            }
-            return $nombres;
-        };
-
         foreach ($lectura['detalles'] as $d) {
 
             $ref = $d['referencia'];
             if ($ref === '') { $sinDeclaracion[] = ['referencia' => '(vacía)', 'valor' => $d['valor']]; continue; }
 
-            $otros = $otrosPendientes($ref);
+            $candidatas = $this->_candidatas($con, $ref);
+            $pendientes = array_values(array_filter($candidatas, function ($c) {
+                return $c['presentada'] && !$c['pagada'];
+            }));
 
-            // La referencia del codigo de barras es dec_NumeroDeclaracion.
-            $dec = $con->obnerFila($con->consultar(
-                "SELECT dec_Id, dec_NumeroDeclaracion, dec_Pagado, dec_Estado,
-                        dec_TotalCalculo, dec_ValorImpuesto, dec_IdContribuyente
-                   FROM ind_declaraciones_ica
-                  WHERE dec_NumeroDeclaracion = ?",
-                [$ref]
-            ));
-
-            if (!$dec) {
-                if ($otros) {
-                    $revisar[] = ['referencia' => $ref, 'valor' => $d['valor'],
-                                  'motivo' => 'Es un número de ' . implode(' y de ', $otros)
-                                            . ' presentada sin pagar; este archivo solo aplica pagos de ICA.'];
-                } else {
-                    $sinDeclaracion[] = ['referencia' => $ref, 'valor' => $d['valor']];
-                }
+            if (count($pendientes) === 1) {
+                $c = $pendientes[0];
+                $aplicables[] = [
+                    'modulo'     => $c['modulo'],
+                    'etiqueta'   => $c['etiqueta'],
+                    'id'         => $c['id'],
+                    'referencia' => $ref,
+                    'valor'      => $d['valor'],
+                    'presentada' => true,
+                ];
                 continue;
             }
 
-            // Va antes de "ya pagada" y "sin presentar": con la ICA pagada o sin
-            // presentar, lo más probable es que el pago sea de la retención.
-            if ($otros) {
-                $revisar[] = ['referencia' => $ref, 'valor' => $d['valor'],
-                              'motivo' => 'El número también es de ' . implode(' y de ', $otros)
-                                        . ' presentada sin pagar: no se sabe a cuál corresponde.'];
+            if (count($pendientes) > 1) {
+                $revisar[] = [
+                    'referencia' => $ref,
+                    'valor'      => $d['valor'],
+                    'motivo'     => 'El número es de ' . count($pendientes) . ' declaraciones presentadas sin pagar ('
+                                  . implode(', ', array_map(function ($c) { return $c['etiqueta']; }, $pendientes))
+                                  . '): no se sabe a cuál corresponde el pago.',
+                    'candidatas' => $pendientes,
+                ];
                 continue;
             }
 
-            if ((int) ($dec['dec_Pagado'] ?? 0) === 1) {
-                $yaPagadas[] = ['referencia' => $ref, 'valor' => $d['valor'], 'dec_Id' => $dec['dec_Id']];
+            if (!$candidatas) {
+                $sinDeclaracion[] = ['referencia' => $ref, 'valor' => $d['valor']];
+                continue;
+            }
+
+            // Ninguna pendiente: o ya estaban pagadas, o no se han presentado.
+            $pagadas = array_values(array_filter($candidatas, function ($c) { return $c['pagada']; }));
+            if ($pagadas) {
+                $yaPagadas[] = ['referencia' => $ref, 'valor' => $d['valor'],
+                                'etiqueta' => implode(', ', array_map(function ($c) { return $c['etiqueta']; }, $pagadas))];
                 continue;
             }
 
@@ -346,21 +347,10 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
              * aplica. La plata no se pierde: queda listada para que la
              * Alcaldia la concilie a mano.
              */
-            if ((int) ($dec['dec_Estado'] ?? 0) !== 2) {
-                $sinPresentar[] = [
-                    'referencia' => $ref,
-                    'valor'      => $d['valor'],
-                    'dec_Id'     => (int) $dec['dec_Id'],
-                    'estado'     => (int) ($dec['dec_Estado'] ?? 0),
-                ];
-                continue;
-            }
-
-            $aplicables[] = [
-                'dec_Id'     => (int) $dec['dec_Id'],
+            $sinPresentar[] = [
                 'referencia' => $ref,
                 'valor'      => $d['valor'],
-                'presentada' => true,
+                'etiqueta'   => implode(', ', array_map(function ($c) { return $c['etiqueta']; }, $candidatas)),
             ];
         }
 
@@ -382,6 +372,180 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
             'revisar'         => $revisar,
             'valorNoCuadra'   => $valorNoCuadra,
         ];
+    }
+
+    /** Nombre del modulo como se le dice a la Alcaldia. */
+    private static function _etiqueta($clave)
+    {
+        return ['ica' => 'ICA', 'reteica' => 'retención', 'autorreteica' => 'autorretención'][$clave] ?? $clave;
+    }
+
+    private function _existeTabla($con, $tabla)
+    {
+        $hay = $con->obnerFila($con->consultar("SELECT OBJECT_ID(?, 'U') AS o", ['dbo.' . $tabla]));
+        return !empty($hay['o']);
+    }
+
+    /**
+     * Las declaraciones de los tres modulos que llevan ese numero, con lo que
+     * hace falta para decidir (presentada, pagada) y para que la Alcaldia elija
+     * a mano (contribuyente y total). Tablas y columnas salen de PseModulo.
+     */
+    private function _candidatas($con, $ref)
+    {
+        $lista = [];
+        foreach (\erpsoftsas\PseModulo::claves() as $clave) {
+            $m = \erpsoftsas\PseModulo::get($clave);
+            if (!$this->_existeTabla($con, $m['tabla'])) { continue; }
+            $p = $m['prefijo'];
+            $stmt = $con->consultar(
+                "SELECT d.{$m['pk']} AS id, d.{$m['estado']} AS estado,
+                        ISNULL(d.{$m['pagado']}, 0) AS pagado, d.{$m['valor']} AS total,
+                        LTRIM(RTRIM(CONCAT(c.ind_PrimerNombre, ' ', c.ind_SegundoNombre, ' ',
+                                           c.ind_PrimerApellido, ' ', c.ind_SegundoApellido))) AS contribuyente,
+                        c.ind_NumeroIdentificacion AS documento
+                   FROM {$m['tabla']} d
+                   LEFT JOIN ind_contribuyentes c ON c.ind_Id = d.{$p}_IdContribuyente
+                  WHERE d.{$m['numero']} = ?",
+                [$ref]
+            );
+            while ($f = $con->obnerFila($stmt)) {
+                $lista[] = [
+                    'modulo'        => $clave,
+                    'etiqueta'      => self::_etiqueta($clave),
+                    'id'            => (int) $f['id'],
+                    'presentada'    => (int) $f['estado'] === 2,
+                    'pagada'        => (int) $f['pagado'] === 1,
+                    'total'         => (float) $f['total'],
+                    'contribuyente' => preg_replace('/\s+/', ' ', (string) $f['contribuyente']),
+                    'documento'     => (string) $f['documento'],
+                ];
+            }
+        }
+        return $lista;
+    }
+
+    /* ====================================================================
+       FUNCION 4 — asignar a mano un pago "para revisar"
+
+       Solo sobre un archivo YA APLICADO: si se asignara antes, al aplicar el
+       archivo la otra candidata quedaria sola y se le aplicaria el mismo pago.
+       Y cada pago una sola vez: se cuentan las lineas del archivo con esa
+       referencia y ese valor, y las declaraciones que ya lo tienen aplicado
+       (mismo numero, valor, fecha y via); no se aplica mas de lo que el banco
+       reporto.
+       ==================================================================== */
+    private function _asignarAMano()
+    {
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+
+        $nombreEnDisco = basename((string) ($_POST['archivo'] ?? ''));
+        $ruta  = $this->_carpeta() . DIRECTORY_SEPARATOR . $nombreEnDisco;
+        $ref   = trim((string) ($_POST['referencia'] ?? ''));
+        $clave = strtolower(trim((string) ($_POST['modulo'] ?? '')));
+        $id    = (int) ($_POST['id'] ?? 0);
+        $valor = round((float) ($_POST['valor'] ?? 0), 2);
+
+        if ($nombreEnDisco === '' || !is_file($ruta)) {
+            $this->_ok = 0;
+            $this->_mensaje = 'El archivo ya no está disponible. Vuelva a cargarlo.';
+            return [];
+        }
+        if ($ref === '' || $id <= 0 || !\erpsoftsas\PseModulo::existe($clave)) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Faltan datos para asignar el pago.';
+            return [];
+        }
+
+        $archivo = $con->obnerFila($con->consultar(
+            "SELECT a.arc_Id, b.ban_Nombre
+               FROM ind_archivos_asobancaria a
+               LEFT JOIN ind_bancos b ON b.ban_Id = a.arc_IdBanco
+              WHERE a.arc_Hash = ?",
+            [hash_file('sha256', $ruta)]
+        ));
+        if (!$archivo) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Primero aplique el archivo; después se asignan a mano los pagos que quedaron para revisar.';
+            return [];
+        }
+
+        $lectura = \erpsoftsas\RecaudoAsobancaria::leer($ruta);
+        if (!$lectura['ok']) {
+            $this->_ok = 0;
+            $this->_mensaje = $lectura['error'];
+            return [];
+        }
+        $fechaPago = \erpsoftsas\RecaudoAsobancaria::fechaAIso($lectura['encabezado']['fecha']);
+
+        $lineas = 0;
+        foreach ($lectura['detalles'] as $d) {
+            if ($d['referencia'] === $ref && abs((float) $d['valor'] - $valor) < 0.005) { $lineas++; }
+        }
+        if ($lineas === 0) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Ese pago no está en el archivo.';
+            return [];
+        }
+
+        $yaAplicados = 0;
+        foreach (\erpsoftsas\PseModulo::claves() as $k) {
+            $mm = \erpsoftsas\PseModulo::get($k);
+            if (!$this->_existeTabla($con, $mm['tabla'])) { continue; }
+            $pp = $mm['prefijo'];
+            $f = $con->obnerFila($con->consultar(
+                "SELECT COUNT(*) AS n FROM {$mm['tabla']}
+                  WHERE {$mm['numero']} = ? AND ISNULL({$pp}_Pagado, 0) = 1
+                    AND {$pp}_RutaPago = ? AND ABS(ISNULL({$pp}_ValorPago, 0) - ?) < 0.005
+                    AND CAST({$pp}_FechaPago AS DATE) = ?",
+                [$ref, \erpsoftsas\PagoDeclaracion::VIA_RECAUDO, $valor, $fechaPago]
+            ));
+            $yaAplicados += (int) ($f['n'] ?? 0);
+        }
+        if ($yaAplicados >= $lineas) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Ese pago ya se aplicó. No se hizo nada.';
+            return [];
+        }
+
+        $m = \erpsoftsas\PseModulo::get($clave);
+        $dec = $con->obnerFila($con->consultar(
+            "SELECT {$m['pk']} AS id FROM {$m['tabla']}
+              WHERE {$m['pk']} = ? AND {$m['numero']} = ?
+                AND {$m['estado']} = 2 AND ISNULL({$m['pagado']}, 0) = 0",
+            [$id, $ref]
+        ));
+        if (!$dec) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Esa declaración ya no está presentada y sin pagar. Vuelva a cargar el archivo para ver el estado actual.';
+            return [];
+        }
+
+        $marcada = \erpsoftsas\PagoDeclaracion::registrar($con, $id, [
+            'valor'     => $valor,
+            'banco'     => (string) ($archivo['ban_Nombre'] ?? ''),
+            'via'       => \erpsoftsas\PagoDeclaracion::VIA_RECAUDO,
+            'fechaPago' => $fechaPago,
+        ], $m);
+        if (!$marcada) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No se pudo marcar como pagada: otra persona la marcó al mismo tiempo. Vuelva a cargar el archivo.';
+            return [];
+        }
+
+        // Queda en el historial del archivo: quién lo asignó y a qué.
+        $con->consultar(
+            "UPDATE ind_archivos_asobancaria
+                SET arc_TotalAplicados = arc_TotalAplicados + 1,
+                    arc_TotalFallidos  = CASE WHEN arc_TotalFallidos > 0 THEN arc_TotalFallidos - 1 ELSE 0 END,
+                    arc_Descripcion    = CONCAT(arc_Descripcion, N' | A mano: ', ?, N' a ', ?, N' (usuario ', ?, N')')
+              WHERE arc_Id = ?",
+            [$ref, self::_etiqueta($clave), (int) $_SESSION['id_usuario'], (int) $archivo['arc_Id']]
+        );
+
+        $this->_ok = 1;
+        $this->_mensaje = 'Pago aplicado a la ' . self::_etiqueta($clave) . ' N° ' . $ref . '.';
+        return ['modulo' => $clave, 'id' => $id];
     }
 
     private function _resumenTexto($a, $aplicados)

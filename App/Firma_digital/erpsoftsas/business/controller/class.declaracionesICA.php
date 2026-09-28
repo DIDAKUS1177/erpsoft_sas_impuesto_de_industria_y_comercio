@@ -210,6 +210,77 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
         return $f === null ? null : $f['id'];
     }
 
+    /**
+     * Los roles que ya firmaron ESTA declaracion de ICA ('declarante',
+     * 'contador'); vacio si no tiene firmas.
+     *
+     * SOLO LAS DEL MODULO ICA. firmas_declaraciones guarda las firmas de los
+     * tres formularios, y retencion y autorretencion reparten numeros de su
+     * propia serie: la ICA 2026000001 y la retencion 2026000001 existen a la
+     * vez. Sin el filtro de fd_Modulo, una retencion firmada le "ponia firmas"
+     * a la ICA homonima -medido el 2026-09-28: los borradores 232, 350 y 352
+     * no se podian borrar ("ya tiene firmas registradas") y no habia como
+     * quitarselas, porque ya eran borradores-.
+     *
+     * Las del ICA se anotan con el dec_Id, que es lo que manda la ventana de
+     * firma; se mira tambien el numero por las que quedaron anotadas asi en la
+     * epoca en que numero e identity coincidian. Se compara como TEXTO:
+     * fd_NumeroDeclaracion es VARCHAR, y contra un BIGINT SQL Server convierte
+     * la columna entera, con lo que un valor no numerico tumbaria la consulta.
+     *
+     * Un solo sitio para la regla: la usan borrar, abrir para editar, guardar,
+     * recalcular un renglon, presentar y la correccion en curso.
+     */
+    private static function _firmasIca($con, $idFila)
+    {
+        $roles = [];
+        $st = $con->consultar(
+            "SELECT DISTINCT f.fd_Rol
+               FROM firmas_declaraciones f, ind_declaraciones_ica d
+              WHERE d.dec_Id = ?
+                AND f.fd_Modulo = 'ICA'
+                AND f.fd_NumeroDeclaracion IN (CAST(d.dec_Id AS VARCHAR(30)),
+                                               CAST(d.dec_NumeroDeclaracion AS VARCHAR(30)))",
+            [(int) $idFila]
+        );
+        while ($f = $con->obnerFila($st)) {
+            $roles[] = (string) $f['fd_Rol'];
+        }
+        return $roles;
+    }
+
+    /**
+     * Por que esta declaracion ya no se puede cambiar, o null si se puede.
+     *
+     * Guardar (funcion 6) y recalcular un renglon (funcion 7) escriben en la
+     * declaracion, y ninguna de las dos miraba su estado: la integridad
+     * dependia de que la pantalla no ofreciera el formulario. Y hubo un camino
+     * que si lo ofrecia: "Corregir" reabria una correccion en curso YA FIRMADA
+     * directo al formulario, y se guardaba contenido nuevo debajo de las firmas
+     * viejas (revision 2026-09-28). La regla del cliente es que editar una
+     * firmada le quita las firmas; eso lo hace "Editar" (funcion 10), que
+     * pregunta antes. Aqui solo se impide que alguna puerta se la salte, venga
+     * de otra pestaña o de un clic.
+     */
+    private static function _motivoParaNoEditar($con, $idFila)
+    {
+        $d = $con->obnerFila($con->consultar(
+            "SELECT dec_Estado FROM ind_declaraciones_ica WHERE dec_Id = ?",
+            [(int) $idFila]
+        ));
+
+        if ((int) ($d['dec_Estado'] ?? 0) === 2) {
+            return 'Una declaración presentada no se puede editar. Genere una corrección.';
+        }
+
+        if (self::_firmasIca($con, $idFila)) {
+            return 'La declaración está firmada. Para cambiarla use "Editar" en el listado: '
+                 . 'se quitarán las firmas y volverá a borrador.';
+        }
+
+        return null;
+    }
+
     private static function _contribuyenteDeLaSesion($con)
     {
         if (session_status() === PHP_SESSION_NONE) { @session_start(); }
@@ -495,7 +566,15 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
          * este date('Y') ofrecera el año nuevo y no el que toca declarar. No es
          * un olvido, es una decision del cliente que habra que revisar antes de
          * esa fecha.
+         *
+         * LA ZONA HORARIA VA ANTES DEL date('Y'), NO DESPUES (revision
+         * 2026-09-28). Se fijaba mas abajo, justo antes de la fecha y la hora,
+         * asi que el AÑO salia con el reloj del servidor, que esta en UTC: el
+         * 31 de diciembre desde las 7 p. m. de Colombia la declaracion nacia
+         * con el año SIGUIENTE -y con el numero de la serie siguiente-,
+         * mientras su fecha decia 31/12. Año, fecha y hora, los tres de Colombia.
          */
+        date_default_timezone_set('America/Bogota');
         $anio = (int) date('Y');
         $mes  = 12;
 
@@ -543,7 +622,7 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
         }
         $_obj->set_dec_IdContribuyente($idContribuyente);
 
-        date_default_timezone_set('America/Bogota');
+        // La zona de Colombia ya quedo fijada arriba, antes del año.
         $_obj->set_dec_FechaDeclaracion(date('Y-m-d'));
         $_obj->set_dec_HoraDeclaracion(date('H:i:s'));
         $_obj->set_dec_OpcionUso(1);
@@ -827,16 +906,8 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
         }
         $id = $fila['id'];
 
-        /*
-         * Las firmas se guardan por NUMERO (fd_NumeroDeclaracion), no por id.
-         * Se comprueban contra los dos valores: durante un tiempo la pantalla
-         * mando el id creyendo que era el numero, asi que puede haber firmas
-         * anotadas de las dos formas y ninguna debe pasarse por alto.
-         */
         $d = $con->obnerFila($con->consultar(
-            "SELECT d.dec_Estado, d.dec_NumeroDeclaracion,
-                    (SELECT COUNT(*) FROM firmas_declaraciones f
-                      WHERE f.fd_NumeroDeclaracion IN (d.dec_NumeroDeclaracion, d.dec_Id)) firmas
+            "SELECT d.dec_Estado, d.dec_NumeroDeclaracion
                FROM ind_declaraciones_ica d WHERE d.dec_Id = ?",
             [$id]
         ));
@@ -848,10 +919,18 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
             return [];
         }
 
-        if ((int) ($d['firmas'] ?? 0) > 0) {
+        /*
+         * Solo cuentan las firmas de ESTA declaracion de ICA (_firmasIca).
+         * Antes se contaban las de cualquier modulo con el mismo numero, y como
+         * las tres series empiezan en 2026000001, un borrador de ICA no se podia
+         * borrar en cuanto una retencion homonima estaba firmada.
+         */
+        if (self::_firmasIca($con, $id)) {
             $this->_ok = 0;
+            // "Devuélvala a borrador" no decía cómo: el botón que lo hace es
+            // "Editar" de una firmada (función 10).
             $this->_mensaje = 'Esta declaración ya tiene firmas registradas y no se puede borrar. '
-                            . 'Devuélvala a borrador si necesita cambiarla.';
+                            . 'Para cambiarla use "Editar": se quitan las firmas y vuelve a borrador.';
             return [];
         }
 
@@ -1040,6 +1119,22 @@ $sql = "
             return [];
         }
 
+        /*
+         * Una FIRMADA tampoco se abre directo para editar: primero se le quitan
+         * las firmas (funcion 10, que pide confirmacion en pantalla).
+         *
+         * "Corregir" con una correccion en curso ya firmada la abria aqui sin
+         * mas, y se guardaba contenido nuevo debajo de las firmas viejas. El
+         * codigo FIRMADA le dice a la pantalla que tome el camino de "Editar"
+         * de una firmada en vez de mostrar un error suelto; sirve para
+         * cualquier otra puerta que llegue aqui con una firmada.
+         */
+        if (self::_firmasIca($con, $declaracion['dec_Id'])) {
+            $this->_ok = 0;
+            $this->_mensaje = 'La declaración está firmada: para editarla hay que quitarle las firmas.';
+            return ['codigo' => 'FIRMADA', 'dec_Id' => (int) $declaracion['dec_Id']];
+        }
+
         $sqlAct = "
             SELECT
                 da.dia_IdActividad,
@@ -1159,6 +1254,14 @@ private function _insertarActividadesDeclaracionIca(){
             return [];
         }
         $idFila = $fila['id'];
+
+        // Ni presentada ni firmada: ver _motivoParaNoEditar.
+        $motivo = self::_motivoParaNoEditar($con, $idFila);
+        if ($motivo !== null) {
+            $this->_ok = 0;
+            $this->_mensaje = $motivo;
+            return [];
+        }
 
         /*
          * Guardado de totales y actividades: lo hace _guardarActividadesYTotales.
@@ -1482,6 +1585,14 @@ private function _actualizarDeclaracionIca(){
         }
         $idFila = $fila['id'];
 
+        // Ni presentada ni firmada, como Guardar: ver _motivoParaNoEditar.
+        $motivo = self::_motivoParaNoEditar($con, $idFila);
+        if ($motivo !== null) {
+            $this->_ok = 0;
+            $this->_mensaje = $motivo;
+            return [];
+        }
+
         $sqlUpdate = "
         UPDATE ind_declaraciones_ica SET
             ".$NombreCampo." = ?
@@ -1624,16 +1735,19 @@ private function _presentarDeclaracion(){
 
     $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
-    $idDeclaracion = $_POST['dec_Id'] ?? null;
+    $idDeclaracion = (int) ($_POST['dec_Id'] ?? 0);
 
-    if (!$idDeclaracion) {
+    if ($idDeclaracion <= 0) {
         $this->_ok = 0;
         $this->_mensaje = "Id de declaración requerido";
         return [];
     }
 
     $decl = $con->obnerFila($con->consultar(
-        "SELECT dec_IdContribuyente FROM ind_declaraciones_ica WHERE dec_Id = ?",
+        "SELECT dec_IdContribuyente, dec_Estado,
+                (SELECT COUNT(*) FROM ind_declaraciones_ica_actividades a
+                  WHERE a.dia_IdDeclaracion = d.dec_Id) AS n_actividades
+           FROM ind_declaraciones_ica d WHERE d.dec_Id = ?",
         [$idDeclaracion]
     ));
 
@@ -1643,15 +1757,35 @@ private function _presentarDeclaracion(){
         return [];
     }
 
-    $firmas = $con->consultar(
-        "SELECT fd_Rol FROM firmas_declaraciones WHERE fd_NumeroDeclaracion = ?",
-        [$idDeclaracion]
-    );
-
-    $roles = [];
-    while ($f = $con->obnerFila($firmas)) {
-        $roles[] = $f['fd_Rol'];
+    /*
+     * Presentar dos veces movia la fecha de presentacion -la que imprime el
+     * sello- a la del segundo intento. Una presentada ya no se toca.
+     */
+    if ((int) ($decl['dec_Estado'] ?? 0) === 2) {
+        $this->_ok = 0;
+        $this->_mensaje = "La declaración ya está presentada.";
+        return [];
     }
+
+    /*
+     * SIN ACTIVIDADES GUARDADAS NO SE PRESENTA (revision 2026-09-28).
+     *
+     * Una declaracion recien creada ya ofrece "Firmar", y nada impedia firmarla
+     * y presentarla sin haberla guardado nunca: quedaba presentada en $0, sin
+     * actividades, y la unica salida era una correccion. La firma ya lo exige
+     * (microservicios/firmas/api.php, _icaSinContenido, con el mismo conteo);
+     * aqui se exige tambien, porque hay declaraciones que se firmaron antes de
+     * esa regla y porque presentar es el acto que cuenta.
+     */
+    if ((int) ($decl['n_actividades'] ?? 0) === 0) {
+        $this->_ok = 0;
+        $this->_mensaje = 'La declaración no tiene actividades guardadas. '
+                        . 'Ábrala, liquídela y guárdela antes de presentarla.';
+        return ['codigo' => 'SIN_ACTIVIDADES'];
+    }
+
+    // Solo las firmas de ESTA declaracion de ICA: ver _firmasIca.
+    $roles = self::_firmasIca($con, $idDeclaracion);
 
     if (!in_array('declarante', $roles, true)) {
         $this->_ok = 0;
@@ -1677,11 +1811,22 @@ private function _presentarDeclaracion(){
         return ['codigo' => 'FALTA_CONTADOR'];
     }
 
+    /*
+     * LA FECHA DE PRESENTACION ES LA DE COLOMBIA, CALCULADA AQUI.
+     *
+     * Era GETDATE(): el reloj del servidor SQL, que en local -y segun el propio
+     * codigo, en produccion- va en UTC. El sello del PDF imprime esta fecha tal
+     * cual, asi que una declaracion presentada a las 8 p. m. del 30 de abril
+     * salia sellada "01/05/2026 01:00", como si se hubiera presentado tarde.
+     * La fecha y la hora de la declaracion ya se ponian en hora de Colombia.
+     */
+    $ahora = (new \DateTime('now', new \DateTimeZone('America/Bogota')))->format('Y-m-d H:i:s');
+
     $con->consultar(
         "UPDATE ind_declaraciones_ica
-         SET dec_Estado = 2, dec_FechaPresentacion = GETDATE()
-         WHERE dec_Id = ?",
-        [$idDeclaracion]
+         SET dec_Estado = 2, dec_FechaPresentacion = ?
+         WHERE dec_Id = ? AND ISNULL(dec_Estado, 0) <> 2",
+        [$ahora, $idDeclaracion]
     );
 
     $res = $con->consultar(
@@ -1742,9 +1887,20 @@ private function _revertirABorrador(){
     // Se borran TODAS las firmas de la declaracion (declarante y, cuando
     // exista, contador/revisor): si el contenido cambia, ninguna sigue
     // acreditando lo que se firmo.
+    //
+    // Las mismas que ve _firmasIca -por id o por numero, y SOLO del modulo
+    // ICA-: si se borraran menos de las que se cuentan, "Editar" de una
+    // firmada volveria a encontrarla firmada al abrirla. Y sin el filtro de
+    // modulo se podian llevar por delante las de una retencion homonima.
     $con->consultar(
-        "DELETE FROM firmas_declaraciones WHERE fd_NumeroDeclaracion = ?",
-        [$idDeclaracion]
+        "DELETE FROM firmas_declaraciones
+          WHERE fd_Modulo = 'ICA'
+            AND fd_NumeroDeclaracion IN (
+                  SELECT CAST(dec_Id AS VARCHAR(30)) FROM ind_declaraciones_ica WHERE dec_Id = ?
+                  UNION
+                  SELECT CAST(dec_NumeroDeclaracion AS VARCHAR(30)) FROM ind_declaraciones_ica
+                   WHERE dec_Id = ? AND dec_NumeroDeclaracion IS NOT NULL)",
+        [(int) $idDeclaracion, (int) $idDeclaracion]
     );
 
     $con->consultar(
@@ -1815,32 +1971,43 @@ private function _crearCorreccion(){
      * Corregir es sustituir lo ultimo que se presento del periodo. Si lo que se
      * pulso no es eso, se sigue la cadena hasta el ultimo acto en firme y se
      * dice, en vez de obedecer un clic que produce un documento incorrecto.
+     *
+     * LA CADENA ES LA DE dec_DeclaracionCorrige, NO "LA ULTIMA DEL AÑO"
+     * (revision 2026-09-28). La vigente se buscaba como la ultima presentada
+     * del contribuyente en ese año y mes. Eso valia mientras hubo una sola
+     * original por periodo; desde que "crear crea siempre" (2026-08-31) puede
+     * haber varias -en la base local, el contribuyente 30 tiene cinco
+     * originales presentadas en 2026-, y todas nacen con mes 12 y el año en
+     * que se crean. Corregir cualquiera de ellas corregia la ULTIMA, con el
+     * aviso falso de que "la que seleccionó ya había sido corregida"; las
+     * anteriores no se podian corregir nunca.
+     *
+     * Ahora se sigue el enlace real: si la pulsada tiene una correccion
+     * presentada, se pasa a esa, y asi hasta la que nadie ha corregido. El
+     * tope de vueltas y el registro de las vistas son solo por si un enlace
+     * mal grabado formara un ciclo.
      */
-    $vigente = $con->obnerFila($con->consultar(
-        "SELECT TOP 1 dec_Id, dec_NumeroDeclaracion
-           FROM ind_declaraciones_ica
-          WHERE dec_IdContribuyente = ?
-            AND dec_AnioDeclaracion = ?
-            AND dec_MesDeclaracion  = ?
-            AND dec_Estado = 2
-          ORDER BY dec_FechaPresentacion DESC, dec_Id DESC",
-        [$orig['dec_IdContribuyente'], $orig['dec_AnioDeclaracion'], $orig['dec_MesDeclaracion']]
-    ));
+    $seleccionada = $orig['dec_NumeroDeclaracion'] ?: $orig['dec_Id'];
+    $seRedirigio  = false;
+    $vistas       = [(int) $orig['dec_Id'] => true];
 
-    $seRedirigio = false;
+    for ($vuelta = 0; $vuelta < 50; $vuelta++) {
+        $siguiente = $con->obnerFila($con->consultar(
+            "SELECT TOP 1 *
+               FROM ind_declaraciones_ica
+              WHERE dec_DeclaracionCorrige = ?
+                AND dec_IdContribuyente = ?
+                AND dec_Estado = 2
+              ORDER BY dec_FechaPresentacion DESC, dec_Id DESC",
+            [$orig['dec_NumeroDeclaracion'] ?: $orig['dec_Id'], $orig['dec_IdContribuyente']]
+        ));
 
-    if ($vigente && (int) $vigente['dec_Id'] !== (int) $orig['dec_Id']) {
-        $stmt = $con->consultar(
-            "SELECT * FROM ind_declaraciones_ica WHERE dec_Id = ?",
-            [$vigente['dec_Id']]
-        );
-        $filaVigente = $con->obnerFila($stmt);
+        if (!$siguiente || isset($vistas[(int) $siguiente['dec_Id']])) { break; }
 
-        if ($filaVigente) {
-            $orig          = $filaVigente;
-            $idDeclaracion = $filaVigente['dec_Id'];
-            $seRedirigio   = true;
-        }
+        $vistas[(int) $siguiente['dec_Id']] = true;
+        $orig          = $siguiente;
+        $idDeclaracion = $siguiente['dec_Id'];
+        $seRedirigio   = true;
     }
 
     /*
@@ -1865,22 +2032,34 @@ private function _crearCorreccion(){
         "SELECT TOP 1 dec_Id, dec_NumeroDeclaracion
            FROM ind_declaraciones_ica
           WHERE dec_DeclaracionCorrige = ?
+            AND dec_IdContribuyente = ?
             AND (dec_Estado IS NULL OR dec_Estado <> 2)
           ORDER BY dec_Id DESC",
-        [$orig['dec_NumeroDeclaracion'] ?: $orig['dec_Id']]
+        [$orig['dec_NumeroDeclaracion'] ?: $orig['dec_Id'], $orig['dec_IdContribuyente']]
     ));
 
     if ($enCurso) {
+        /*
+         * Si la que esta en curso ya se FIRMO, no se abre tal cual: la pantalla
+         * la pide para editar (funcion 13), que ahora contesta FIRMADA, y toma
+         * el camino de "Editar" de una firmada -pregunta y quita las firmas-.
+         * Antes se abria directo y se guardaba contenido nuevo debajo de las
+         * firmas viejas. Aqui solo se avisa en el mensaje.
+         */
+        $firmada = (bool) self::_firmasIca($con, $enCurso['dec_Id']);
+
         $this->_ok = 1;
         $this->_mensaje = 'Ya tenía una corrección en curso de la N° '
             . ($orig['dec_NumeroDeclaracion'] ?: $orig['dec_Id'])
             . ': la N° ' . ($enCurso['dec_NumeroDeclaracion'] ?: $enCurso['dec_Id'])
-            . '. Se abre esa, con lo que hubiera guardado. No se creó otra.';
+            . '. Se abre esa, con lo que hubiera guardado. No se creó otra.'
+            . ($firmada ? ' Está firmada: para editarla se le quitarán las firmas.' : '');
 
         return [
             'dec_Id'                 => $enCurso['dec_Id'],
             'dec_DeclaracionCorrige' => $orig['dec_NumeroDeclaracion'] ?: $orig['dec_Id'],
-            '_reabierta'             => 1
+            '_reabierta'             => 1,
+            'firmada'                => $firmada ? 1 : 0
         ];
     }
 
@@ -1906,7 +2085,11 @@ private function _crearCorreccion(){
          * hoy, igual que hace _agregarDeclaracion().
          */
         'dec_FechaDeclaracion', 'dec_HoraDeclaracion',
-        'dec_FechaCreador', 'dec_FechaModificador', 'dec_Modificador'
+        'dec_FechaCreador', 'dec_FechaModificador', 'dec_Modificador',
+        // La opcion de uso de una correccion es "Corrección" (3); se fija abajo.
+        // Se copiaba el 1 de la original, y la pantalla la mostraba como
+        // "Declaración Inicial".
+        'dec_OpcionUso'
     ];
 
     $columnas = [];
@@ -1914,6 +2097,19 @@ private function _crearCorreccion(){
 
     foreach ($orig as $col => $val) {
         if (in_array($col, $excluidas, true)) { continue; }
+        /*
+         * NI LA SESION DE PAGO EN LINEA (dec_PSE_*). Revision 2026-09-28.
+         *
+         * Se copiaba el requestId de PlacetoPay de la original, y con el su
+         * estado. El cron de respaldo revisa toda declaracion SIN PAGAR que
+         * tenga requestId: consultaba la sesion de la ORIGINAL -aprobada- y
+         * marcaba pagada la correccion, en borrador y sin un peso de por medio,
+         * con el valor de la original. Y si la original tenia un pago PENDIENTE,
+         * la correccion nacia bloqueada en "Pago en proceso". Una correccion no
+         * ha pasado por la pasarela: nace sin sesion. Se excluye por prefijo
+         * para que una columna PSE nueva tampoco se herede.
+         */
+        if (strpos($col, 'dec_PSE_') === 0) { continue; }
         if ($val instanceof \DateTime) { $val = $val->format('Y-m-d H:i:s'); }
         $columnas[] = $col;
         $valores[]  = $val;
@@ -1923,6 +2119,9 @@ private function _crearCorreccion(){
     // que es lo que pide el formulario (no el id interno).
     $columnas[] = 'dec_DeclaracionCorrige';
     $valores[]  = $orig['dec_NumeroDeclaracion'] ?: $orig['dec_Id'];
+
+    $columnas[] = 'dec_OpcionUso';
+    $valores[]  = '3';
 
     date_default_timezone_set('America/Bogota');
 
@@ -2006,11 +2205,13 @@ private function _crearCorreccion(){
     }
 
     $this->_ok = 1;
+    // Ahora el aviso dice la verdad: solo se redirige cuando la pulsada SI
+    // tiene una correccion presentada, y se nombra cual.
     $this->_mensaje = "Declaración de corrección creada. "
                     . "Corrige la N° " . ($orig['dec_NumeroDeclaracion'] ?: $orig['dec_Id'])
                     . ($seRedirigio
-                        ? ', que es la última presentada de este período. La que '
-                          . 'seleccionó ya había sido corregida.'
+                        ? ', que es la vigente: la N° ' . $seleccionada
+                          . ' que seleccionó ya había sido corregida.'
                         : '');
 
     return [
@@ -2029,6 +2230,14 @@ private function _consultarDeclaracionesListado(){
     // _requiereContador: no es obligatoria para todo el mundo). El
     // frontend necesita distinguirlas para saber que boton ofrecer.
     // Tambien viaja si el contribuyente tiene a quien enviarle el codigo.
+    /*
+     * Las firmas, solo del modulo ICA (ver _firmasIca): la serie de retencion
+     * repite numeros y no debe teñir el estado de una ICA.
+     *
+     * n_actividades: cuantas actividades tiene GUARDADAS. Sin ninguna, la
+     * declaracion no se firma ni se presenta (revision 2026-09-28), y la
+     * pantalla deja de ofrecer esos botones en vez de dejar que reboten.
+     */
     $sql = "
         SELECT d.*,
                CASE WHEN fd.fd_Id IS NOT NULL THEN 1 ELSE 0 END AS is_signed,
@@ -2036,14 +2245,18 @@ private function _consultarDeclaracionesListado(){
                CASE WHEN LTRIM(RTRIM(ISNULL(c.ind_EmailContador,''))) <> ''
                       OR LTRIM(RTRIM(ISNULL(c.ind_EmailRevisor,'')))  <> ''
                     THEN 1 ELSE 0 END AS tiene_correo_contador,
+               (SELECT COUNT(*) FROM ind_declaraciones_ica_actividades a
+                 WHERE a.dia_IdDeclaracion = d.dec_Id) AS n_actividades,
                c.ind_Persona
         FROM ind_declaraciones_ica d
         LEFT JOIN firmas_declaraciones fd
                ON fd.fd_NumeroDeclaracion = CAST(d.dec_Id AS VARCHAR)
               AND fd.fd_Rol = 'declarante'
+              AND fd.fd_Modulo = 'ICA'
         LEFT JOIN firmas_declaraciones fc
                ON fc.fd_NumeroDeclaracion = CAST(d.dec_Id AS VARCHAR)
               AND fc.fd_Rol = 'contador'
+              AND fc.fd_Modulo = 'ICA'
         LEFT JOIN ind_contribuyentes c
                ON c.ind_Id = d.dec_IdContribuyente
         WHERE " . (!empty($_POST['dec_IdContribuyente'])

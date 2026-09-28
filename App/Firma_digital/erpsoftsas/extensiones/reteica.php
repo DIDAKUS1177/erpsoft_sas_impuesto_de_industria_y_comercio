@@ -116,7 +116,14 @@ $ySecA = $pdf->GetY() - DESFASE_GETY_RET;
    se agrega o quita una fila, el rowspan cambia con ella.
    =========================================================================== */
 
-$dv = (isset($contribuyente['ind_DV']) && $contribuyente['ind_DV'] !== null)
+/* Casilla 2: el documento del RIT con su tipo. El formulario dice "NIT", pero
+   un retenedor persona natural se identifica con su cédula, y salía "NIT
+   1052400237 D.V. 0". Catálogo del sistema: 1 C.C., 3 C.E., 4 pasaporte, 5 NIT
+   (el 2 no existe); el D.V. solo existe con NIT. Misma regla que el ICA
+   (declaracion.php, 2026-09-25). */
+$tipoDoc   = (int) ($contribuyente['ind_IdTipoDocumento'] ?? 0);
+$rotuloDoc = [1 => 'C.C.', 3 => 'C.E.', 4 => 'PASAPORTE', 5 => 'NIT'][$tipoDoc] ?? 'NIT';
+$dv = ($tipoDoc === 5 && isset($contribuyente['ind_DV']) && $contribuyente['ind_DV'] !== null)
       ? (string) (int) $contribuyente['ind_DV'] : '';
 
 $html = '
@@ -145,7 +152,7 @@ $html = '
 <tr>
     <td width="10%"><b>1. AÑO</b></td>
     <td width="15%" align="center">' . (int) $row['ret_Anio'] . '</td>
-    <td width="10%"><b>2. NIT</b></td>
+    <td width="10%"><b>2. ' . $rotuloDoc . '</b></td>
     <td width="20%">' . htmlspecialchars((string) ($contribuyente['ind_NumeroIdentificacion'] ?? '')) . '</td>
     <td width="7%"><b>D.V.</b></td>
     <td width="8%" align="center">' . htmlspecialchars($dv) . '</td>
@@ -267,7 +274,9 @@ $stmt = $con->consultar(
        FROM ind_renglones_retencion
       WHERE ren_Modulo = 'RETEICA' AND ren_Anio = ? AND ren_Estado = 1
       ORDER BY ren_Orden",
-    [(int) $row['ret_Anio']]
+    // El año de catálogo que rige (CatalogoAnio), no el exacto: con el exacto,
+    // una retención de 2025 o 2027 salía sin liquidación.
+    [\erpsoftsas\CatalogoAnio::renglones($con, 'RETEICA', (int) $row['ret_Anio'])]
 );
 while ($r = $con->obnerFila($stmt)) { $renglones[] = $r; }
 

@@ -89,12 +89,30 @@ var DeclaracionesUI = (function () {
         var descargar = accBtn({ tipo: 'primary', icono: 'fa-download', texto: 'Descargar', title: 'Descargar',
                                  href: '../extensiones/declaracion.php?dec_Id=' + d.dec_Id, target: '_blank' });
 
+        /*
+         * SIN ACTIVIDADES GUARDADAS NO SE FIRMA NI SE PRESENTA (revision
+         * 2026-09-28). Una declaracion recien creada ofrecia "Firmar" antes de
+         * haberse guardado nunca, y se podia presentar en $0 sin actividades.
+         * El servidor ya lo rechaza (firma y presentacion); aqui el boton sale
+         * en gris con el motivo, en vez de dejar que rebote.
+         *
+         * n_actividades lo trae el listado (funcion 8). Si no viniera -un
+         * servidor sin este cambio- no se bloquea nada: decide el servidor.
+         */
+        var sinGuardar = (d.n_actividades !== undefined && d.n_actividades !== null
+                          && Number(d.n_actividades) === 0);
+        // Sin comillas dobles: el texto va dentro del atributo title="...".
+        var MOTIVO_SIN_GUARDAR = 'Primero ábrala con Editar, liquídela y pulse Guardar: todavía no tiene actividades guardadas';
+
         if (clave === 'borrador') {
             return envolverAcciones(
                 accBtn({ tipo: 'warning',   icono: 'fa-pencil',          texto: 'Editar', title: 'Editar',
                          onclick: objJs + '.editarDeclaracion(' + d.dec_Id + ')' }) +
-                accBtn({ tipo: 'secondary', icono: 'fa-pencil-square-o', texto: 'Firmar', title: 'Firmar',
-                         onclick: objJs + '.abrirFirmaDigital(' + d.dec_Id + ', ' + d.dec_IdEstablecimiento + ')' }) +
+                (sinGuardar
+                    ? accBtn({ tipo: 'secondary', icono: 'fa-pencil-square-o', texto: 'Firmar',
+                               title: MOTIVO_SIN_GUARDAR, off: true })
+                    : accBtn({ tipo: 'secondary', icono: 'fa-pencil-square-o', texto: 'Firmar', title: 'Firmar',
+                               onclick: objJs + '.abrirFirmaDigital(' + d.dec_Id + ', ' + d.dec_IdEstablecimiento + ')' })) +
                 descargar +
                 accBtn({ tipo: 'danger',    icono: 'fa-trash',           texto: 'Borrar', title: 'Borrar borrador',
                          onclick: objJs + '.borrarDeclaracion(' + d.dec_Id + ')' })
@@ -109,6 +127,18 @@ var DeclaracionesUI = (function () {
                                     title: 'Editar borrador (elimina las firmas)',
                                     onclick: objJs + '.editarFirmada(' + d.dec_Id + ')' }) +
                            descargar;
+
+            // Firmada antes de la regla, pero sin actividades guardadas: ni la
+            // firma del contador ni la presentacion van a pasar. Se dice por qué.
+            if (sinGuardar) {
+                if (clave === 'pendienteCont') {
+                    acciones += accBtn({ tipo: 'info', icono: 'fa-pencil-square-o', texto: 'Firmar contador',
+                                         title: MOTIVO_SIN_GUARDAR, off: true });
+                }
+                return envolverAcciones(acciones +
+                       accBtn({ tipo: 'success', icono: 'fa-paper-plane', texto: 'Presentar',
+                                title: MOTIVO_SIN_GUARDAR, off: true }));
+            }
 
             if (clave === 'pendienteCont') {
                 // Falta la firma del contador/revisor, pero para quien
@@ -197,7 +227,10 @@ var DeclaracionesUI = (function () {
         // (pago_en_linea, migracion 023). Sin el, el boton solo puede llevar
         // a un mensaje de "no disponible"; se prefiere no ofrecerlo. El
         // servidor lo vuelve a comprobar: esta URL se puede llamar a mano.
-        if (clave === 'presentada' && Number(d.pago_en_linea) === 1) {
+        // Y solo con algo que pagar, como el recibo de abajo: con la casilla 38
+        // en $0 el boton solo llevaba a "Sin valor a pagar" (revision 2026-09-28;
+        // ya era asi en retencion y autorretencion).
+        if (clave === 'presentada' && Number(d.pago_en_linea) === 1 && Number(d.dec_ValorConcepto20) > 0) {
             // Va al RESUMEN de pago (pagar.php), no directo a crear la sesion:
             // la certificacion WC exige mostrar el monto y aceptar la politica
             // de datos antes de redirigir al banco (items 4 y 12.1).
@@ -349,6 +382,35 @@ var DeclaracionesUI = (function () {
         return (p.length === 3) ? (p[2] + '/' + p[1] + '/' + p[0]) : soloFecha;
     }
 
+    /**
+     * Los años del filtro de "Consultar Declaraciones" y el que se elige al
+     * abrir.
+     *
+     * Salian de TODAS las declaraciones, borradores incluidos, aunque esa
+     * pantalla solo muestra las presentadas y pagadas (paso >= 5). Con un
+     * borrador del año en curso, la pantalla abria filtrada en ese año y decia
+     * "Ninguna declaración coincide con el filtro" aunque la presentada del año
+     * anterior estuviera ahi -en enero le pasaria a todo el que empieza la
+     * nueva- (revision 2026-09-28). Ahora solo cuentan los años con algo que
+     * mostrar; se abre en el actual si tiene, y si no en el mas reciente.
+     *
+     * @param {Array}  lista      filas del listado (funcion 8)
+     * @param {number} anioActual el año de hoy
+     * @return {{anios: string[], porDefecto: string}}
+     */
+    function aniosConsulta(lista, anioActual) {
+        var anios = [];
+        (lista || []).forEach(function (d) {
+            if (estado(d).paso < 5) { return; }
+            var a = String(d.dec_AnioDeclaracion);
+            if (anios.indexOf(a) === -1) { anios.push(a); }
+        });
+        anios.sort(function (a, b) { return Number(b) - Number(a); });
+
+        var actual = String(anioActual);
+        return { anios: anios, porDefecto: anios.indexOf(actual) !== -1 ? actual : (anios[0] || '') };
+    }
+
     return {
         nombreMes: nombreMes,
         htmlAcciones: htmlAcciones,
@@ -356,7 +418,8 @@ var DeclaracionesUI = (function () {
         chipEstado: chipEstado,
         resumenDeclaracion: resumenDeclaracion,
         stepperHtml: stepperHtml,
-        fechaTexto: fechaTexto
+        fechaTexto: fechaTexto,
+        aniosConsulta: aniosConsulta
     };
 
 })();
@@ -711,9 +774,120 @@ function limpiarFormularioDeclaracion() {
     $('#txtOtraSancion').val('');
     $('#inputOtraSancion').hide();
 
+    // La opcion de uso vuelve a "inicial": abrir una correccion y despues
+    // crear una declaracion nueva dejaba a la vista "Declaración que corrige".
+    FormularioDeclaracion.pintarOpcionUso({});
+
     // Los botones que dependen de tener una declaracion abierta.
     $('#btnDescargarPDF').prop('disabled', true);
 }
+
+/**
+ * Lo que el formulario de la declaracion lee y pinta igual en las dos
+ * pantallas (Presentar y Consultar comparten el modal y sus ids).
+ *
+ * UNA SOLA LECTURA DEL FORMULARIO. Las actividades y los ingresos se armaban en
+ * cada pantalla por su cuenta, y la de Consultar se quedo sin mandarlos al
+ * recalcular un renglon (funcion 7): el servidor liquidaba con las actividades
+ * GUARDADAS y repintaba los renglones 20 a 38 con cifras viejas encima de lo que
+ * acababa de mostrar "Liquidar". Es el "pongo un dato y me cambia toda la
+ * declaracion" del 2026-09-01, que se arreglo en Presentar y quedo vivo en
+ * Consultar, donde se edita cada correccion recien creada (revision
+ * 2026-09-28). Las cifras pasan por core/numeros.js, como en todo el sistema.
+ */
+var FormularioDeclaracion = {
+
+    /** Las actividades tal como estan en la tabla del formulario. */
+    actividades: function () {
+        var idDeclaracion = $('#numDeclaracion').val();
+        var lista = [];
+        $('#tbodyActividades tr').each(function () {
+            lista.push({
+                dia_IdDeclaracion: idDeclaracion,
+                dia_IdActividad:   $(this).find('.actividad-id').val(),
+                dia_BaseGravable:  NumerosCOP.aCifra($(this).find('.base-gravable').val()),
+                dia_Tarifa:        parseFloat($(this).find('.tarifa').val()) || 0,
+                dia_ValorImpuesto: NumerosCOP.aCifra($(this).find('.impuesto').val())
+            });
+        });
+        return lista;
+    },
+
+    /**
+     * Los renglones de ingresos y de energia tal como estan en el formulario.
+     * Un campo que NO esta en la pantalla no viaja (no se escribe un 0 encima
+     * del dato guardado); uno que esta vacio si viaja, como 0. Ver la nota de
+     * totalesDelFormulario en core/icaWebPresentar.js.
+     */
+    totales: function () {
+        var campo = function (nombre) {
+            var $e = $('[data-campo="' + nombre + '"]');
+            if ($e.length === 0) {
+                console.error('FormularioDeclaracion.totales: no existe data-campo="' + nombre + '"');
+                return undefined;
+            }
+            return NumerosCOP.aCifra($e.val());
+        };
+
+        var totales = {
+            dec_TotalIngresos:            campo('ingresos_total_pais'),
+            dec_IngresosFueraMunicipio:   campo('menos_fuera_municipio'),
+            dec_IngresosDevoluciones:     campo('devoluciones'),
+            dec_IngresosExportaciones:    campo('exportaciones'),
+            dec_IngresosVentas:           campo('venta_activos'),
+            dec_IngresosActividades:      campo('actividades_excluidas'),
+            dec_IngresosOtrasActividades: campo('otras_exentas'),
+            dec_BaseGravable:             campo('ingresos_gravables'),
+            dec_CapacidadInstalada:       campo('capacidad_instalada'),
+            dec_ValorImpuesto:            campo('valor_impuesto')
+        };
+
+        Object.keys(totales).forEach(function (k) {
+            if (totales[k] === undefined) { delete totales[k]; }
+        });
+
+        return totales;
+    },
+
+    /**
+     * Fecha y hora de la declaracion en sus casillas (solo lectura).
+     *
+     * sqlsrv entrega las fechas como objeto ({date: 'AAAA-MM-DD hh:mm:ss…'}),
+     * no como texto. Al CREAR se metia ese objeto tal cual en el input y la
+     * fecha y la hora salian vacias; al editar ya se hacia bien. Ahora los dos
+     * caminos pasan por aqui.
+     */
+    pintarFechaHora: function (d) {
+        var crudo = function (v) { return (v && typeof v === 'object') ? String(v.date || '') : String(v || ''); };
+        var fecha = crudo(d.dec_FechaDeclaracion).substring(0, 10);
+        var hora  = crudo(d.dec_HoraDeclaracion).match(/\d{2}:\d{2}(:\d{2})?/);
+        $('#fechaDeclaracion').val(/^\d{4}-\d{2}-\d{2}$/.test(fecha) && fecha !== '1900-01-01' ? fecha : '');
+        $('#horaDeclaracion').val(hora ? hora[0] : '');
+    },
+
+    /**
+     * Opcion de uso: "Corrección" y el numero que corrige si la declaracion
+     * corrige a otra (dec_DeclaracionCorrige); si no, "Declaración Inicial".
+     *
+     * La correccion copiaba la opcion de la original y se mostraba como
+     * "Declaración Inicial", con la casilla "Declaración que corrige" oculta y
+     * vacia (revision 2026-09-28). Las dos casillas son de solo lectura: lo que
+     * hace correccion a una declaracion es el enlace, que pone "Corregir".
+     */
+    pintarOpcionUso: function (d) {
+        var corrige = (d && d.dec_DeclaracionCorrige) ? String(d.dec_DeclaracionCorrige) : '';
+
+        $('#opcionUso').val(corrige ? '3' : '1');
+
+        var $sel = $('#declaracionCorrige').empty();
+        if (corrige) {
+            $sel.append($('<option>').val(corrige).text('N° ' + corrige)).val(corrige);
+        } else {
+            $sel.append($('<option>').val('').text('Seleccione…'));
+        }
+        $('#grupoDeclaracionCorrige').toggle(!!corrige);
+    }
+};
 
 /**
  * Explica por que NO se pudo crear la declaracion, y ofrece el camino.
@@ -752,6 +926,19 @@ var EditarDeclaracion = (function () {
             success: function (resp) {
 
                 if (resp.ok != 1) {
+                    /*
+                     * Firmada: se toma el camino de "Editar" de una firmada, que
+                     * pregunta y le quita las firmas (funcion 10) antes de
+                     * abrirla. Asi llega, por ejemplo, la correccion en curso ya
+                     * firmada que reabre "Corregir": antes se abria tal cual y
+                     * se guardaba contenido nuevo debajo de las firmas viejas.
+                     */
+                    if (resp.datos && resp.datos.codigo === 'FIRMADA'
+                        && typeof establecimientos !== 'undefined'
+                        && typeof establecimientos.editarFirmada === 'function') {
+                        establecimientos.editarFirmada(decId);
+                        return;
+                    }
                     swal({
                         type: 'error',
                         title: 'No se pudo abrir para editar',
@@ -784,15 +971,14 @@ var EditarDeclaracion = (function () {
                 $('#numDeclaracion').val(d.dec_NumeroDeclaracion || d.dec_Id);
                 $('#anioDeclaracion').val(d.dec_AnioDeclaracion);
                 $('#periodoDeclaracion').val(d.dec_MesDeclaracion);
-                $('#opcionUso').val(d.dec_OpcionUso);
+
+                // "Corrección" y el numero que corrige, si es una correccion (ver
+                // FormularioDeclaracion.pintarOpcionUso).
+                FormularioDeclaracion.pintarOpcionUso(d);
 
                 // Fecha y hora: limpiar las borra y aquí no las volvía a poner
                 // nadie. sqlsrv las manda como objeto ({date: 'AAAA-MM-DD hh:mm:ss…'}).
-                var crudo = function (v) { return (v && typeof v === 'object') ? String(v.date || '') : String(v || ''); };
-                var fecha = crudo(d.dec_FechaDeclaracion).substring(0, 10);
-                var hora  = crudo(d.dec_HoraDeclaracion).match(/\d{2}:\d{2}(:\d{2})?/);
-                $('#fechaDeclaracion').val(/^\d{4}-\d{2}-\d{2}$/.test(fecha) && fecha !== '1900-01-01' ? fecha : '');
-                $('#horaDeclaracion').val(hora ? hora[0] : '');
+                FormularioDeclaracion.pintarFechaHora(d);
 
                 // Los totales se repueblan desde las columnas dec_* (mismo
                 // mapeo, a la inversa, que usa el guardado en
@@ -992,33 +1178,11 @@ var LiquidacionEnPantalla = {
 
     /** Arma el mismo cuerpo que manda "Guardar y liquidar". */
     _datosDelFormulario: function () {
-        var n = function (sel) { return establecimientos.numero($(sel).val()); };
-
-        var totales = {
-            dec_TotalIngresos:            n('[data-campo="ingresos_total_pais"]'),
-            dec_IngresosFueraMunicipio:   n('[data-campo="menos_fuera_municipio"]'),
-            dec_IngresosDevoluciones:     n('[data-campo="devoluciones"]'),
-            dec_IngresosExportaciones:    n('[data-campo="exportaciones"]'),
-            dec_IngresosVentas:           n('[data-campo="venta_activos"]'),
-            dec_IngresosActividades:      n('[data-campo="actividades_excluidas"]'),
-            dec_IngresosOtrasActividades: n('[data-campo="otras_exentas"]'),
-            dec_BaseGravable:             n('[data-campo="ingresos_gravables"]'),
-            dec_CapacidadInstalada:       n('[data-campo="capacidad_instalada"]'),
-            dec_ValorImpuesto:            n('[data-campo="valor_impuesto"]')
-        };
-
+        // La misma lectura del formulario que el recalculo de un renglon
+        // (FormularioDeclaracion): antes cada camino tenia su copia.
+        var totales       = FormularioDeclaracion.totales();
         var idDeclaracion = $('#numDeclaracion').val();
-        var actividades = [];
-
-        $('#tbodyActividades tr').each(function () {
-            actividades.push({
-                dia_IdDeclaracion: idDeclaracion,
-                dia_IdActividad:   $(this).find('.actividad-id').val(),
-                dia_BaseGravable:  establecimientos.numero($(this).find('.base-gravable').val()),
-                dia_Tarifa:        parseFloat($(this).find('.tarifa').val()) || 0,
-                dia_ValorImpuesto: establecimientos.numero($(this).find('.impuesto').val())
-            });
-        });
+        var actividades   = FormularioDeclaracion.actividades();
 
         return {
             funcion: 14,

@@ -191,6 +191,19 @@ class Login {
             return false;
         }
 
+        // El teléfono viaja solo con sus dígitos: "310 123 4567" o "310-123-4567"
+        // es el mismo número, y así se guarda en el contribuyente (columna
+        // numérica). Antes se mandaba tal cual y el registro fallaba a medias.
+        var telefonoDigitos = String($("#usu_Telefono").val() || '').replace(/\D/g, '');
+        if (telefonoDigitos.length < 7 || telefonoDigitos.length > 15) {
+            swal({
+                type: 'warning',
+                title: 'Teléfono no válido',
+                text: 'Escriba el teléfono con números, entre 7 y 15 dígitos (por ejemplo 3101234567).'
+            });
+            return false;
+        }
+
 
          // 🔒 Activar bloqueo
         this.enviandoUsuario = true;
@@ -205,7 +218,7 @@ class Login {
 
         var nombres = $("#usu_Nombres").val();
         var apellidos = $("#usu_Apellidos").val();
-        var telefono = $("#usu_Telefono").val();
+        var telefono = telefonoDigitos;
         var direccion = $("#usu_Direccion").val();
         var idTipoDocumento = $("#usu_IdTipoDocumento").val();
         var idTipoPersona = $("#usu_IdTipoPersona").val();
@@ -269,10 +282,12 @@ class Login {
                         text: arr.mensaje,
                     });
                 } else {
+                    // Desde 2026-09-28 cuenta y contribuyente se crean juntos o no
+                    // se crea nada, y el servidor dice por qué: se muestra tal cual.
                     swal({
                         type: 'error',
-                        title: 'Error',
-                        text: 'No se pudo crear el usuario',
+                        title: 'No se pudo completar el registro',
+                        text: arr.mensaje || 'Revise los datos e intente de nuevo.',
                     });
                 }
             },
@@ -281,7 +296,18 @@ class Login {
                 $("#btnCrearUsuario")
                     .prop("disabled", false)
                     .html('<span class="ti-plus"></span> Crear');
+                $('#loading').hide();
+                $('#wrapper').removeClass('body-load');
                 console.log('Este es el error', XMLHttpRequest, textStatus, errorThrown);
+                // Esta pantalla no carga dist/menu.php, así que no tiene el aviso
+                // global de errores: sin este swal, un fallo no decía NADA y la
+                // persona volvía a intentar sin saber si su cuenta existía.
+                swal({
+                    type: 'error',
+                    title: 'No se pudo completar el registro',
+                    text: 'No hubo respuesta del servidor. Intente de nuevo en unos minutos; '
+                        + 'si el problema sigue, comuníquese con la Secretaría de Hacienda.'
+                });
             }
         });
     }
@@ -344,7 +370,11 @@ class Login {
                     localStorage.setItem('NomUsu',postL.datos_usuario.usu_Nombres + ' ' + postL.datos_usuario.usu_Apellidos);
                     localStorage.setItem('mailUsu',postL.datos_usuario.usu_Correo);
 
-                    const fechaHoy = new Date().toISOString().slice(0, 10); 
+                    // La sesión vale por el día de COLOMBIA. toISOString() da la
+                    // fecha UTC, que cambia a las 7 p. m. de aquí: dist/menu.php
+                    // (validarSesion) sacaba a todos los que siguieran trabajando.
+                    // Colombia no tiene horario de verano: UTC-5 fijo.
+                    const fechaHoy = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
                     localStorage.setItem('fechaSesion', fechaHoy);
 
                     console.log('postt ', postL);

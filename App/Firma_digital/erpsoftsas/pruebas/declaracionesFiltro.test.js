@@ -37,10 +37,14 @@ const casos = [
     { nombre: 'firmada pero falta contador', d: { is_signed: 1, requiere_contador: 1 },                  esperado: false },
     { nombre: 'presentada',               d: { dec_Estado: 2 },                                          esperado: true  },
     { nombre: 'presentada y firmada',     d: { dec_Estado: 2, is_signed: 1 },                            esperado: true  },
-    { nombre: 'pagada',                   d: { dec_Pagado: 1 },                                          esperado: true  },
+    { nombre: 'pagada',                   d: { dec_Estado: 2, dec_Pagado: 1 },                           esperado: true  },
+    // Pagada exige ADEMAS estar presentada (declaraciones.ui.js, claveEstado;
+    // declaraciones 217 y 218 del cliente). Un pago sin presentar es un estado
+    // imposible y no es una declaracion presentada.
+    { nombre: 'pago sin presentar (estado imposible)', d: { dec_Pagado: 1 },                             esperado: false },
     // SQL Server devuelve estos campos como texto en varios endpoints.
     { nombre: 'presentada con dec_Estado como texto', d: { dec_Estado: '2' },                            esperado: true  },
-    { nombre: 'pagada con dec_Pagado como texto',     d: { dec_Pagado: '1' },                            esperado: true  },
+    { nombre: 'pagada con los campos como texto',     d: { dec_Estado: '2', dec_Pagado: '1' },           esperado: true  },
 ];
 
 let fallos = 0;

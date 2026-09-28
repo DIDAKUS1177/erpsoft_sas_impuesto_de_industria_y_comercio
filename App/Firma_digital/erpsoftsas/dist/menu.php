@@ -947,8 +947,10 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 			return;
 		}
 
-		// Fecha actual en YYYY-MM-DD
-		const fechaHoy = new Date().toISOString().slice(0, 10);
+		// Fecha actual en YYYY-MM-DD, la de COLOMBIA (UTC-5 fijo, sin horario de
+		// verano), igual que la guarda login.js. Con toISOString() a secas era la
+		// fecha UTC: a las 7 p. m. de aquí ya era "mañana" y se sacaba a todos.
+		const fechaHoy = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
 		console.log('Fecha Hoy '+fechaHoy);
 		console.log('Fecha Guardada '+fechaGuardada);
 
@@ -961,6 +963,55 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 
     // Llamamos a la validación de la sesión al cargar la página
     window.addEventListener('load', validarSesion);
+
+    /*
+     * LA SESIÓN DEL SERVIDOR VENCIÓ (revisión 2026-09-28).
+     *
+     * La pantalla se cree "con sesión" mientras localStorage diga que sí, pero la
+     * sesión PHP vence sola tras un rato sin actividad, y desde ahí los
+     * controladores contestan "Debe iniciar sesión." (o "Sesión no válida" la API
+     * de firmas). Eso se veía como un RIT vacío con una línea gris bajo el título,
+     * o un listado de establecimientos vacío, sin decir qué pasaba ni qué hacer.
+     * Ahora cualquier respuesta que lo diga -o que traiga sinSesion = 1, como
+     * contribuyentes y establecimientos- lleva al login con un aviso.
+     *
+     * Va en window.load por lo mismo que el ajaxError de más abajo (el jQuery que
+     * hace las peticiones se carga al final de la página), pero con bandera PROPIA:
+     * __erpRedAjax también la pone declaraciones.ui.js, y en esas pantallas -el
+     * RIT entre ellas- este aviso no se habría registrado.
+     */
+    window.addEventListener('load', function () {
+        if (window.__erpSesionAjax || typeof jQuery === 'undefined') { return; }
+        window.__erpSesionAjax = true;
+
+        var avisado = false;
+        jQuery(document).ajaxSuccess(function (event, jqxhr, settings, datos) {
+            if (avisado || !datos || typeof datos !== 'object') { return; }
+            var sinSesion = datos.sinSesion == 1
+                || /debe iniciar sesi[oó]n|sesi[oó]n no v[aá]lida/i.test(String(datos.mensaje || ''));
+            if (!sinSesion) { return; }
+            avisado = true;
+
+            var alLogin = function () {
+                try { localStorage.clear(); } catch (e) { /* navegador sin almacenamiento */ }
+                window.location = '../index.php';
+            };
+            if (typeof swal === 'function') {
+                swal({
+                    type: 'warning',
+                    title: 'Su sesión terminó',
+                    text: 'La sesión se cierra sola tras un tiempo sin actividad. Ingrese de nuevo '
+                        + 'para continuar; lo que no alcanzó a guardar tendrá que escribirlo otra vez.',
+                    confirmButtonText: 'Ir al inicio de sesión',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false
+                }).then(alLogin, alLogin);
+            } else {
+                alert('Su sesión terminó. Ingrese de nuevo para continuar.');
+                alLogin();
+            }
+        });
+    });
 
     /* ===== Mostrar / ocultar el menú lateral en escritorio =====
        El menú arranca desplegado; si el usuario lo oculta se recuerda.

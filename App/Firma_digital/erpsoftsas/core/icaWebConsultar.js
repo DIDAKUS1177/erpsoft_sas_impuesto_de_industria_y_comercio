@@ -507,10 +507,10 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
             $("#anioDeclaracion").val(d.dec_AnioDeclaracion);
             $("#periodoDeclaracion").val(d.dec_MesDeclaracion);
 
-            $("#fechaDeclaracion").val(d.dec_FechaDeclaracion);
-            $("#horaDeclaracion").val(d.dec_HoraDeclaracion);
-
-            $("#opcionUso").val(d.dec_OpcionUso);
+            // Mismos ayudantes que Presentar y la edicion: sqlsrv manda la fecha
+            // y la hora como objeto y puestas tal cual salian vacias.
+            FormularioDeclaracion.pintarFechaHora(d);
+            FormularioDeclaracion.pintarOpcionUso(d);
 
             $("#modal-CrearDeclaracion")
             .data("idDeclaracion", d.dec_Id);
@@ -590,19 +590,17 @@ consultarDeclaraciones(idEstablecimiento, idContribuyente) {
             // servidor cada vez que se cambia un filtro.
             establecimientos._declaraciones = resp.datos;
 
-            var anios = [];
-            resp.datos.forEach(function (d) {
-                if (anios.indexOf(d.dec_AnioDeclaracion) === -1) { anios.push(d.dec_AnioDeclaracion); }
-            });
-            anios.sort(function (a, b) { return b - a; });
+            // Solo los años que tienen algo que mostrar aqui (presentadas y
+            // pagadas): con un borrador del año en curso la pantalla abria en
+            // ese año y vacia. Ver DeclaracionesUI.aniosConsulta.
+            var filtroAnios = DeclaracionesUI.aniosConsulta(resp.datos, new Date().getFullYear());
 
             var opciones = '<option value="">Todos los años</option>';
-            anios.forEach(function (a) { opciones += '<option value="' + a + '">' + a + '</option>'; });
+            filtroAnios.anios.forEach(function (a) { opciones += '<option value="' + a + '">' + a + '</option>'; });
             $('#filtroAnioDecl').html(opciones);
 
-            // Abre en el año en curso si existe; si no, en el mas reciente.
-            var actual = new Date().getFullYear();
-            $('#filtroAnioDecl').val(anios.indexOf(actual) !== -1 ? actual : (anios[0] || ''));
+            // Abre en el año en curso si tiene presentadas; si no, en el mas reciente.
+            $('#filtroAnioDecl').val(filtroAnios.porDefecto);
             $('#filtroEstadoDecl').val('');
 
             establecimientos.pintarDeclaracionesFiltradas();
@@ -1459,13 +1457,24 @@ actualizarDeclaracionIca(valor, numeroCampo){
         type: 'POST',
         dataType: 'json',
         data:{
-            funcion: 7, 
+            funcion: 7,
             campoSeleccionado : numeroCampo,
             valorLimpio : valorLimpio,
             idDeclaracion: idDeclaracion,
             anio: anio,
             mes: mes,
-            numero: numero
+            numero: numero,
+
+            /*
+             * Las actividades y los ingresos que hay EN PANTALLA, como hace
+             * Presentar desde el 2026-09-01. Aqui faltaban: el servidor
+             * recalculaba con lo guardado y repintaba los renglones 20 a 38 con
+             * cifras viejas encima de lo que "Liquidar" acababa de mostrar. En
+             * esta pantalla se edita cada correccion recien creada, que es
+             * justo cuando se cambian bases e ingresos (revision 2026-09-28).
+             */
+            actividades: JSON.stringify(FormularioDeclaracion.actividades()),
+            totales: JSON.stringify(FormularioDeclaracion.totales())
         },
         success: function(arr){
 
@@ -1527,6 +1536,16 @@ actualizarDeclaracionIca(valor, numeroCampo){
 
 
 
+        },
+        // El comentario de arriba lo daba por hecho, pero este .ajax() no tenia
+        // error(): una respuesta rota dejaba el renglon escrito y los totales
+        // sin recalcular, sin ningun aviso propio.
+        error: function (xhr) {
+            $('#loading').hide();
+            $('#wrapper').removeClass('body-load');
+            console.error('Recalcular renglón:', xhr.responseText);
+            swal({ type: 'error', title: 'No se pudo recalcular',
+                   text: 'Intente de nuevo; si persiste, avise a soporte.' });
         }
     })
 

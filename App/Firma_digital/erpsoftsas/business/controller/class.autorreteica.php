@@ -18,6 +18,7 @@ namespace erpsoftsas;
 
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.retenciones.php';
+include_once SERVER . '/business/class.catalogoAnio.php';
 
 class ControladorAutorreteica extends \erpsoftsas\ControladorRetencion
 {
@@ -45,56 +46,48 @@ class ControladorAutorreteica extends \erpsoftsas\ControladorRetencion
 
     /**
      * La declaracion nace con las actividades que el contribuyente tiene
-     * registradas en el RIT.
+     * registradas en el RIT, con ingresos en cero: el contribuyente solo
+     * escribe las cifras del bimestre.
      *
-     * Se declara sobre lo propio, asi que el sistema ya sabe cuales son: estan
-     * en ind_actividad_establecimiento, colgando de los establecimientos del
-     * contribuyente. Se traen con ingresos en cero, para que el contribuyente
-     * solo escriba las cifras del bimestre.
+     * Estan en ind_actividad_contribuyente, UNA fila por actividad (las
+     * migraciones 005 y 007 las subieron de los establecimientos al
+     * contribuyente y colapsaron las repetidas entre años; todas las filas son
+     * las vigentes, tengan o no año). Leer de ind_actividad_establecimiento, a
+     * la que ya nadie escribe, dejaba la autorretencion sin nada que precargar.
      *
-     * SE AGRUPAN POR ACTIVIDAD, no por establecimiento. Un contribuyente con
-     * tres locales que ejercen la misma actividad tiene esa actividad tres
-     * veces en la tabla; en el formulario es UNA linea. Es el mismo criterio
-     * que ya usa la declaracion anual de ICA: se declara por contribuyente y
-     * las actividades se agregan por codigo.
+     * SE CASAN POR CODIGO con el catalogo del año que rige (CatalogoAnio), no
+     * por acc_Id: el RIT guarda el acc_Id del catalogo con que se inscribio, y
+     * el dia que se cargue el catalogo de otro año sus filas tendran ids nuevos.
+     * Uniendo por id y exigiendo el año vigente, la precarga quedaba vacia.
+     *
+     * NO REPITE: solo agrega las que el borrador no tenga ya. Por eso sirve
+     * tambien para ponerlo al dia (_completarBorrador): un borrador que nacio
+     * sin actividades -el RIT estaba vacio- las recibe al abrirlo despues de
+     * actualizar el RIT, en vez de quedarse vacio para siempre.
      *
      * LA TARIFA SE COPIA DEL CATALOGO Y SE GUARDA. Una declaracion presentada
      * tiene que seguir diciendo lo mismo dentro de cinco años, aunque el
      * acuerdo municipal cambie la tarifa despues.
-     *
-     * El catalogo esta por año y hoy solo tiene 2025, asi que se toma el año
-     * vigente mas reciente que no pase del declarado -misma regla que el
-     * desplegable de actividades del motor, y por el mismo motivo-.
      */
     protected function _sembrarActividades($con, $id, $idContribuyente, $anio)
     {
-        $vigente = $con->obnerFila($con->consultar(
-            "SELECT MAX(acc_Anio) AS anio FROM ind_actividadescomercio WHERE acc_Anio <= ?",
-            [(int) $anio]
-        ));
-        $anioCatalogo = (isset($vigente['anio']) && $vigente['anio'] !== null)
-                      ? (int) $vigente['anio'] : (int) $anio;
+        $anioCatalogo = CatalogoAnio::actividades($con, $anio);
 
-        /*
-         * Las actividades del contribuyente viven en ind_actividad_contribuyente
-         * -la tabla NUEVA-. Las migraciones 005 y 007 las subieron del
-         * establecimiento al contribuyente y les quitaron el año; desde
-         * entonces la pantalla del RIT guarda ahi y a ind_actividad_establecimiento
-         * ya nadie escribe. Leer de la vieja devolvia CERO actividades para todo
-         * contribuyente cuyo RIT se tocara despues de esa migracion, y la
-         * autorretencion salia sin nada que precargar. Es la misma correccion que
-         * ya llevan el RIT (class.establecimientos.php) y el ICA.
-         *
-         * La tarifa se toma del catalogo del año vigente uniendo por acc_Id, igual
-         * que antes: el RIT guarda el acc_Id del catalogo, que es por año.
-         */
         $stmt = $con->consultar(
-            "SELECT DISTINCT ac.acc_Id, ac.acc_Tarifa
+            "SELECT cur.acc_Id, cur.acc_Tarifa
                FROM ind_actividad_contribuyente atc
-               INNER JOIN ind_actividadescomercio ac ON ac.acc_Id = atc.atc_IdCodigoActividad
+               INNER JOIN ind_actividadescomercio rit ON rit.acc_Id = atc.atc_IdCodigoActividad
+               INNER JOIN ind_actividadescomercio cur ON cur.acc_Codigo = rit.acc_Codigo
+                                                     AND cur.acc_Anio = ?
               WHERE atc.atc_IdContribuyente = ?
-                AND ac.acc_Anio = ?",
-            [(int) $idContribuyente, $anioCatalogo]
+                AND NOT EXISTS (
+                    SELECT 1 FROM ind_autorreteica_actividades ya
+                     INNER JOIN ind_actividadescomercio yc ON yc.acc_Id = ya.aua_IdActividad
+                     WHERE ya.aua_IdAutorreteica = ? AND ya.aua_Activo = 1
+                       AND yc.acc_Codigo = cur.acc_Codigo)
+              GROUP BY cur.acc_Id, cur.acc_Tarifa
+              ORDER BY MIN(atc.atc_Id)",
+            [$anioCatalogo, (int) $idContribuyente, (int) $id]
         );
 
         $filas = [];
@@ -113,6 +106,14 @@ class ControladorAutorreteica extends \erpsoftsas\ControladorRetencion
         return count($filas);
     }
 
+    /** Un borrador sin firmas recibe las actividades que el RIT gano despues. */
+    protected function _completarBorrador($con, array $fila)
+    {
+        $this->_sembrarActividades(
+            $con, (int) $fila['aut_Id'], (int) $fila['aut_IdContribuyente'], (int) $fila['aut_Anio']
+        );
+    }
+
     /**
      * El impuesto por generacion de energia se guarda antes de liquidar.
      *
@@ -122,33 +123,45 @@ class ControladorAutorreteica extends \erpsoftsas\ControladorRetencion
      * aparte. Lo escribe el contribuyente: es el impuesto de la Ley 56 de 1981
      * para generadoras, y solo aplica a unas pocas.
      *
-     * Va ANTES de llamar al motor porque la casilla 15 lo usa; si se guardara
-     * despues, la liquidacion correria con el valor viejo.
+     * Va ANTES de liquidar porque la casilla 15 lo usa; si se guardara
+     * despues, la liquidacion correria con el valor viejo. Lo llama _guardar
+     * dentro de su transaccion, ya comprobado que la fila es de quien pide y
+     * que sigue siendo borrador.
      *
      * Y es justo el dato de la discrepancia mas grave del proyecto: el Excel
      * del cliente lo suma dentro del TOTAL y otra vez en la casilla 15, lo que
      * cobra el impuesto de energia dos veces. Por eso la formula de la 15 esta
      * en NULL hasta que el cliente confirme.
      */
-    protected function _guardar()
+    protected function _guardarExtra($con, array $fila)
     {
-        if (array_key_exists('impuestoEnergia', $_POST)) {
+        if (!array_key_exists('impuestoEnergia', $_POST)) { return; }
 
-            $con  = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
-            $fila = $this->_filaAutorizada($con, isset($_POST['id']) ? $_POST['id'] : 0);
+        $con->consultar(
+            "UPDATE ind_autorreteica SET aut_ImpuestoEnergia = ? WHERE aut_Id = ?",
+            [$this->_cifra($_POST['impuestoEnergia']), (int) $fila['aut_Id']]
+        );
+    }
 
-            // Solo si la fila es suya Y sigue abierta. Sin las dos condiciones
-            // esto seria una puerta lateral para escribir en una declaracion
-            // ajena o ya presentada, saltandose las guardas del motor.
-            if ($fila !== null && $this->_esBorrador($fila)) {
-                $con->consultar(
-                    "UPDATE ind_autorreteica SET aut_ImpuestoEnergia = ? WHERE aut_Id = ?",
-                    [$this->_cifra($_POST['impuestoEnergia']), (int) $fila['aut_Id']]
-                );
-            }
-        }
+    /** La energia tambien se firma: cambiarla quita las firmas, como una casilla. */
+    protected function _columnasFirmadas() { return ['aut_ImpuestoEnergia']; }
 
-        return parent::_guardar();
+    /**
+     * La correccion arranca con lo que decia la original, y la energia no es
+     * un renglon: el motor copia los renglones manuales y las actividades, asi
+     * que sin esto la correccion nacia con energia en 0 y la casilla 15 se
+     * recalculaba sin ella. Una generadora que corrigiera presentaba de menos.
+     */
+    protected function _copiarContenido($con, $origen, $destino)
+    {
+        parent::_copiarContenido($con, $origen, $destino);
+
+        $con->consultar(
+            "UPDATE d SET d.aut_ImpuestoEnergia = o.aut_ImpuestoEnergia
+               FROM ind_autorreteica d, ind_autorreteica o
+              WHERE d.aut_Id = ? AND o.aut_Id = ?",
+            [(int) $destino, (int) $origen]
+        );
     }
 
     /** Lo que la pantalla necesita y no cabe en el catalogo de renglones. */

@@ -543,10 +543,13 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
             $("#anioDeclaracion").val(d.dec_AnioDeclaracion);
             $("#periodoDeclaracion").val(d.dec_MesDeclaracion);
 
-            $("#fechaDeclaracion").val(d.dec_FechaDeclaracion);
-            $("#horaDeclaracion").val(d.dec_HoraDeclaracion);
+            // sqlsrv manda la fecha y la hora como objeto, no como texto: puestas
+            // tal cual, las dos casillas salian vacias al crear (revision
+            // 2026-09-28). El mismo ayudante que usa la edicion.
+            FormularioDeclaracion.pintarFechaHora(d);
 
-            $("#opcionUso").val(d.dec_OpcionUso);
+            // Nueva = "Declaración Inicial", y sin "Declaración que corrige".
+            FormularioDeclaracion.pintarOpcionUso(d);
 
             $("#modal-CrearDeclaracion")
             .data("idDeclaracion", d.dec_Id);
@@ -1543,21 +1546,9 @@ calcularTotalesActividades(){
  * otra no, y las cifras se borraban solas.
  */
 actividadesDelFormulario(){
-
-    let idDeclaracion = $("#numDeclaracion").val();
-    let actividades = [];
-
-    $("#tbodyActividades tr").each(function(){
-        actividades.push({
-            dia_IdDeclaracion: idDeclaracion,
-            dia_IdActividad:   $(this).find(".actividad-id").val(),
-            dia_BaseGravable:  establecimientos.numero($(this).find(".base-gravable").val()),
-            dia_Tarifa:        parseFloat($(this).find(".tarifa").val()) || 0,
-            dia_ValorImpuesto: establecimientos.numero($(this).find(".impuesto").val())
-        });
-    });
-
-    return actividades;
+    // La lectura vive una sola vez en core/declaraciones.ui.js
+    // (FormularioDeclaracion), compartida con Consultar y con "Liquidar".
+    return FormularioDeclaracion.actividades();
 }
 
 /**
@@ -1579,37 +1570,13 @@ actividadesDelFormulario(){
  * campo() devuelve undefined cuando el elemento NO ESTA en la pantalla, y las
  * claves undefined se retiran antes de enviar. Un campo que existe y esta vacio
  * SI viaja como 0, que es lo correcto: el contribuyente puede poner cero.
+ *
+ * Esa lectura vive ahora en core/declaraciones.ui.js (FormularioDeclaracion),
+ * porque Consultar la necesita igual (revision 2026-09-28): alla faltaba y el
+ * recalculo de un renglon liquidaba con lo guardado. Este metodo solo delega.
  */
 totalesDelFormulario(){
-
-    const campo = function (nombre) {
-        const $e = $('[data-campo="' + nombre + '"]');
-        if ($e.length === 0) {
-            // No se calla: un selector roto es un defecto, no un caso normal.
-            console.error('totalesDelFormulario: no existe data-campo="' + nombre + '"');
-            return undefined;
-        }
-        return establecimientos.numero($e.val());
-    };
-
-    const totales = {
-        dec_TotalIngresos:            campo('ingresos_total_pais'),
-        dec_IngresosFueraMunicipio:   campo('menos_fuera_municipio'),
-        dec_IngresosDevoluciones:     campo('devoluciones'),
-        dec_IngresosExportaciones:    campo('exportaciones'),
-        dec_IngresosVentas:           campo('venta_activos'),
-        dec_IngresosActividades:      campo('actividades_excluidas'),
-        dec_IngresosOtrasActividades: campo('otras_exentas'),
-        dec_BaseGravable:             campo('ingresos_gravables'),
-        dec_CapacidadInstalada:       campo('capacidad_instalada'),
-        dec_ValorImpuesto:            campo('valor_impuesto')
-    };
-
-    Object.keys(totales).forEach(function (k) {
-        if (totales[k] === undefined) { delete totales[k]; }
-    });
-
-    return totales;
+    return FormularioDeclaracion.totales();
 }
 
 actualizarDeclaracionIca(valor, numeroCampo){
@@ -1709,6 +1676,15 @@ actualizarDeclaracionIca(valor, numeroCampo){
 
 
 
+        },
+        // El comentario de arriba lo daba por hecho, pero este .ajax() no tenia
+        // error() (revision 2026-09-28; igual en Consultar).
+        error: function (xhr) {
+            $('#loading').hide();
+            $('#wrapper').removeClass('body-load');
+            console.error('Recalcular renglón:', xhr.responseText);
+            swal({ type: 'error', title: 'No se pudo recalcular',
+                   text: 'Intente de nuevo; si persiste, avise a soporte.' });
         }
     })
 

@@ -647,10 +647,16 @@ Guardar
                                            readonly title="Es la hora en que se creó la declaración">
                                 </div>
 
-                                <!-- OPCIÓN DE USO -->
+                                <!-- OPCIÓN DE USO
+                                     Solo lectura (revision 2026-09-28): la pone el sistema.
+                                     Una declaracion es "Corrección" cuando se creo con
+                                     "Corregir" y corrige a otra; se pinta desde
+                                     FormularioDeclaracion.pintarOpcionUso. Era editable pero
+                                     nunca se enviaba, y una correccion salia como "Inicial". -->
                                 <div class="col-sm-3">
                                     <label>Opción de uso</label>
-                                    <select id="opcionUso" class="form-control input-sm">
+                                    <select id="opcionUso" class="form-control input-sm campo-bloqueado" disabled
+                                            title="La define el sistema: Corrección si la declaración corrige a otra">
                                         <option value="">Seleccione…</option>
                                         <option value="1">Declaración Inicial</option>
                                         <option value="3">Corrección</option>
@@ -664,7 +670,8 @@ Guardar
                                 <!-- DECLARACIÓN QUE CORRIGE -->
                                 <div class="col-sm-3" id="grupoDeclaracionCorrige">
                                     <label>Declaración que corrige</label>
-                                    <select id="declaracionCorrige" class="form-control input-sm">
+                                    <select id="declaracionCorrige" class="form-control input-sm campo-bloqueado" disabled
+                                            title="La declaración que esta corrección sustituye">
                                         <option value="">Seleccione…</option>
                                     </select>
                                 </div>

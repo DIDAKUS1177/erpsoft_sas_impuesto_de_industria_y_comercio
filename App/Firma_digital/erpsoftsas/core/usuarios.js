@@ -308,14 +308,17 @@ class Usuario {
                         text: arr.mensaje,
                     });
                 } else {
+                    // El servidor dice qué falló (documento no numérico, teléfono
+                    // inválido...) y que no quedó nada a medias: se muestra tal cual.
                     swal({
                         type: 'error',
-                        title: 'Error',
-                        text: 'No se pudo crear el usuario',
+                        title: 'No se pudo crear el usuario',
+                        text: arr.mensaje || 'Revise los datos e intente de nuevo.',
                     });
                 }
             },
             error: function(XMLHttpRequest, textStatus, errorThrown) {
+                // El aviso lo da el ajaxError global de dist/menu.php.
                 console.log('Este es el error', XMLHttpRequest, textStatus, errorThrown);
             }
         });
@@ -459,8 +462,8 @@ class Usuario {
                 } else {
                     swal({
                         type: 'error',
-                        title: 'Error',
-                        text: 'No se pudo actualizar el usuario',
+                        title: 'No se pudo actualizar el usuario',
+                        text: arr.mensaje || 'Revise los datos e intente de nuevo.',
                     });
                 }
             },

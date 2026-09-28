@@ -373,10 +373,12 @@ class Contribuyentes {
                         text: 'Contribuyentes creada exitosamente',
                     });
                 } else {
+                    // El servidor dice por qué (documento repetido, un campo
+                    // obligatorio vacío, un correo mal escrito...): se muestra.
                     swal({
                         type: 'error',
-                        title: 'Error',
-                        text: 'No se pudo crear la Contribuyentes',
+                        title: 'No se pudo crear el contribuyente',
+                        text: arr.mensaje || 'Revise los datos e intente de nuevo.',
                     });
                 }
             },
@@ -516,16 +518,18 @@ class Contribuyentes {
                     $("#formCrearContribuyentes").trigger("reset");
                     $("#modal-Contribuyentes").modal('hide');
                     contribuyentes.buscar();
+                    // El mensaje puede traer un aviso (p. ej. que la cuenta de
+                    // acceso quedó con el documento anterior): se muestra entero.
                     swal({
                         type: 'success',
                         title: 'Contribuyente actualizado',
-                        text: 'Contribuyente actualizado exitosamente',
+                        text: arr.mensaje || 'Contribuyente actualizado exitosamente',
                     });
                 }else {
                     swal({
                         type: 'error',
-                        title: 'Error',
-                        text: 'No se pudo actualizar el contribuyentes',
+                        title: 'No se pudo actualizar el contribuyente',
+                        text: arr.mensaje || 'Revise los datos e intente de nuevo.',
                     });
                 }
             },
@@ -593,13 +597,16 @@ class Contribuyentes {
                 .find("label")
                 .text("* Razón Social")
                 .find("title").text("Razón Social");
-            $
-            $("#ind_SegundoNombre").closest(".col-md-6").hide();
+            // Se ocultan Y se vacían: una jurídica no tiene segundo nombre ni
+            // apellidos (la razón social va entera arriba). Ocultos con valor, se
+            // enviaban igual y el apellido de cuando era natural quedaba guardado
+            // ("SISTEMAS ERPSOFT S.A.S pp"). El servidor también los limpia.
+            $("#ind_SegundoNombre").val("").closest(".col-md-6").hide();
 
             // Ocultar apellidos
             $("#ind_PrimerApellido").closest(".col-md-6").hide();
             $("#ind_PrimerApellido").prop("required", false).val("");
-            $("#ind_SegundoApellido").closest(".col-md-6").hide();
+            $("#ind_SegundoApellido").val("").closest(".col-md-6").hide();
 
         } else { // Natural
 

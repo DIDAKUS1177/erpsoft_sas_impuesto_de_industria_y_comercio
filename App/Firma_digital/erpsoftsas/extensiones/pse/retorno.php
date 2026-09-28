@@ -14,6 +14,7 @@ include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
 require_once SERVER . '/business/class.placetopay.php';
 require_once SERVER . '/business/class.pseModulo.php';
+require_once SERVER . '/business/class.pagoDeclaracion.php';
 
 $configPath = dirname(dirname(dirname(__DIR__))) . '/config.municipio.php';
 if (!file_exists($configPath)) {
@@ -60,26 +61,38 @@ if (!$row || empty($row['pse_req'])) {
 } else {
     try {
         $respuesta = PlacetoPay::consultarSesion($row['pse_req']);
-        $info = PlacetoPay::interpretarRespuesta($respuesta);
-        // Lo que cobró el banco: en una ICA vencida, el total más los intereses de mora.
-        if (!empty($info['valor'])) { $valor = (float) $info['valor']; }
 
-        // Se guarda el estado venga como venga; solo se marca pagada si el
-        // banco la aprobo. El descriptor $m dice a que tabla/columnas escribir.
-        PlacetoPay::aplicarADeclaracion($con, $id, $info, $valor, $m);
-
-        $estado   = $info['estado'];
-        $fechaIso = $info['fecha'] ?? '';
-
-        if ($info['aprobado']) {
-            $aprobado = true;
-            $mensaje = 'Pago aprobado. Gracias.';
-        } elseif ($info['estado'] === 'PENDING') {
-            $mensaje = 'El pago quedó en proceso. En cuanto el banco confirme, se actualizará automáticamente (puede tardar unos minutos).';
+        /*
+         * La sesion tiene que ser DE ESTA declaracion (la referencia con que se
+         * creo es su numero). Una correccion anterior al 2026-09-28 pudo heredar
+         * la de la original: aplicada aqui, quedaba pagada con el pago ajeno.
+         * Se le quita, para que el contribuyente pueda iniciar el suyo.
+         */
+        if (\erpsoftsas\PagoDeclaracion::sesionDeOtraDeclaracion($respuesta, $row['numero'])) {
+            \erpsoftsas\PagoDeclaracion::olvidarSesionAjena($con, $id, $m);
+            $mensaje = 'No se encontró un pago PSE iniciado para esta declaración. Puede iniciarlo desde su declaración.';
         } else {
-            $mensaje = 'El pago no fue aprobado. Puede intentarlo de nuevo desde su declaración.';
-            if (!empty($info['mensaje'])) {
-                $mensaje .= ' (' . $info['mensaje'] . ')';
+            $info = PlacetoPay::interpretarRespuesta($respuesta);
+            // Lo que cobró el banco: en una ICA vencida, el total más los intereses de mora.
+            if (!empty($info['valor'])) { $valor = (float) $info['valor']; }
+
+            // Se guarda el estado venga como venga; solo se marca pagada si el
+            // banco la aprobo. El descriptor $m dice a que tabla/columnas escribir.
+            PlacetoPay::aplicarADeclaracion($con, $id, $info, $valor, $m);
+
+            $estado   = $info['estado'];
+            $fechaIso = $info['fecha'] ?? '';
+
+            if ($info['aprobado']) {
+                $aprobado = true;
+                $mensaje = 'Pago aprobado. Gracias.';
+            } elseif ($info['estado'] === 'PENDING') {
+                $mensaje = 'El pago quedó en proceso. En cuanto el banco confirme, se actualizará automáticamente (puede tardar unos minutos).';
+            } else {
+                $mensaje = 'El pago no fue aprobado. Puede intentarlo de nuevo desde su declaración.';
+                if (!empty($info['mensaje'])) {
+                    $mensaje .= ' (' . $info['mensaje'] . ')';
+                }
             }
         }
     } catch (Exception $e) {
@@ -102,6 +115,20 @@ try {
     $fechaTxt = (new DateTime('now', $zonaCo))->format('Y-m-d H:i');
 }
 $claseEstado = $aprobado ? 'ok' : ($estado === 'PENDING' ? 'pendiente' : 'error');
+
+/*
+ * "Cerrar" no cerraba nada. Los navegadores solo dejan que window.close()
+ * cierre una pestaña abierta por un script y sin historial, y esta llega
+ * despues de pasar por el resumen, crearSesion.php y las paginas del banco:
+ * el boton quedaba muerto y el contribuyente atrapado en el comprobante.
+ * Ahora se intenta cerrar y, si el navegador no lo permite, se va al listado
+ * de consulta del modulo, que es donde aparece la declaracion pagada.
+ */
+$volver = [
+    'ica'          => '../../dist/icaWebConsultar.php',
+    'reteica'      => '../../dist/reteicaConsultar.php',
+    'autorreteica' => '../../dist/autoretencionConsultar.php',
+][$m['clave']] ?? '../../dist/dashboard.php';
 
 ?><!DOCTYPE html>
 <html lang="es">
@@ -148,7 +175,17 @@ $claseEstado = $aprobado ? 'ok' : ($estado === 'PENDING' ? 'pendiente' : 'error'
       <div class="fila"><span class="k">Valor</span><span class="v"><?= htmlspecialchars($valorFmt) ?></span></div>
       <div class="fila"><span class="k">Entidad</span><span class="v"><?= htmlspecialchars($muni) ?></span></div>
     </div>
-    <a class="btn" href="javascript:window.close();">Cerrar</a>
+    <a class="btn" id="btnCerrar" href="<?= htmlspecialchars($volver) ?>">Cerrar</a>
   </div>
+<script>
+  // Primero se intenta cerrar la pestaña; si el navegador no lo permite, a los
+  // 300 ms se sigue el enlace (el listado del módulo).
+  document.getElementById('btnCerrar').addEventListener('click', function (e) {
+    e.preventDefault();
+    var destino = this.href;
+    window.close();
+    setTimeout(function () { location.href = destino; }, 300);
+  });
+</script>
 </body>
 </html>

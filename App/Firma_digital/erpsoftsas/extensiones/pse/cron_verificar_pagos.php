@@ -16,6 +16,7 @@
 require_once __DIR__ . '/../../business/class.conexionSqlServer.php';
 require_once __DIR__ . '/../../business/class.placetopay.php';
 require_once __DIR__ . '/../../business/class.pseModulo.php';
+require_once __DIR__ . '/../../business/class.pagoDeclaracion.php';
 
 $configPath = dirname(__DIR__, 3) . '/config.municipio.php';
 if (!file_exists($configPath)) {
@@ -34,10 +35,19 @@ foreach (\erpsoftsas\PseModulo::claves() as $clave) {
     $m   = \erpsoftsas\PseModulo::get($clave);
     $req = \erpsoftsas\PseModulo::colRequestId($m);
 
+    /*
+     * Solo PRESENTADAS (Estado = 2). Un borrador no se paga por PSE
+     * (crearSesion.php lo rechaza), asi que un borrador con requestId es una
+     * sesion que no es suya: la que una correccion heredaba de la original
+     * hasta el 2026-09-28. Este cron la consultaba y, aprobada, marcaba la
+     * correccion pagada en borrador.
+     */
     $stmt = $con->consultar(
-        "SELECT {$m['pk']} AS id, {$req} AS pse_req, {$m['valor']} AS valor
+        "SELECT {$m['pk']} AS id, {$req} AS pse_req, {$m['valor']} AS valor,
+                {$m['numero']} AS numero
          FROM {$m['tabla']}
-         WHERE {$req} IS NOT NULL AND ISNULL({$m['pagado']}, 0) = 0",
+         WHERE {$req} IS NOT NULL AND ISNULL({$m['pagado']}, 0) = 0
+           AND {$m['estado']} = 2",
         []
     );
 
@@ -45,6 +55,15 @@ foreach (\erpsoftsas\PseModulo::claves() as $clave) {
         $revisadas++;
         try {
             $respuesta = PlacetoPay::consultarSesion($row['pse_req']);
+
+            // Una sesion creada para OTRA declaracion (la heredada por una
+            // correccion de antes del arreglo) no se aplica: se le quita.
+            if (\erpsoftsas\PagoDeclaracion::sesionDeOtraDeclaracion($respuesta, $row['numero'])) {
+                \erpsoftsas\PagoDeclaracion::olvidarSesionAjena($con, $row['id'], $m);
+                echo "[{$clave}] id {$row['id']}: la sesión {$row['pse_req']} es de otra declaración; se le quitó.\n";
+                continue;
+            }
+
             $info = PlacetoPay::interpretarRespuesta($respuesta);
 
             $pagada = PlacetoPay::aplicarADeclaracion($con, $row['id'], $info, $row['valor'], $m);

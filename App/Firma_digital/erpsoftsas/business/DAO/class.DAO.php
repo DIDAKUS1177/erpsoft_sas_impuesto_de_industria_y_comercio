@@ -160,8 +160,35 @@ class DAOGeneral {
     public function getUnico($index = NULL) {
         return $index == NULL ? $this->_unico : $this->_unico[$index];
     }
+
     /**
-     * 
+     * Texto listo para ir DENTRO de un literal '...' de SQL Server.
+     *
+     * Este DAO arma las consultas pegando los valores entre comillas (no
+     * parametriza, ver CLAUDE.md). Sin duplicar la comilla simple, un nombre
+     * como "Donde Pepe's" o una razon social "INVERSIONES D'LUCA" cerraba el
+     * literal antes de tiempo: la consulta no compilaba, el controlador
+     * respondia 500 con el cuerpo vacio y la pantalla solo decia "error de
+     * conexion". En SQL Server la comilla se escapa duplicandola, y el motor
+     * guarda UNA sola: en la base queda el texto tal como se escribio.
+     *
+     * Por lo mismo, quien llame al DAO NO debe escapar por su cuenta: la
+     * comilla quedaria doble en la base, y en una clave el hash dejaria de
+     * coincidir con el del login. _cambiarClave (class.usuarios.php) lo hacia
+     * a mano y se le quito al traer el escape aqui (2026-09-28).
+     *
+     * El driver devuelve las fechas como DateTime, que no se puede pegar a un
+     * texto (PHP lanza Error): se escribe como AAAA-MM-DD hh:mm:ss.
+     */
+    protected static function _literalSql($valor){
+        if ($valor instanceof \DateTimeInterface) {
+            $valor = $valor->format('Y-m-d H:i:s');
+        }
+        return str_replace("'", "''", (string) $valor);
+    }
+
+    /**
+     *
      * @return boolean
      */
     public function guardar(){
@@ -185,12 +212,15 @@ class DAOGeneral {
 */
                 case 'clave':
                     if(!empty($this->{'_' . $nom_campo})) {
+                        // La comilla duplicada no cambia el hash: SQL Server la lee
+                        // como UNA, y HASHBYTES recibe la clave tal como se escribio
+                        // (la misma que el login compara con sha1() en PHP).
                         if ($this->_namespace === 'sqlserver') {
                             // SQL Server usa HASHBYTES
-                            $set[] = $nom_campo . " = CONVERT(VARCHAR(40), HASHBYTES('SHA1', '" . $this->{'_' . $nom_campo} . "'), 2)";
+                            $set[] = $nom_campo . " = CONVERT(VARCHAR(40), HASHBYTES('SHA1', '" . self::_literalSql($this->{'_' . $nom_campo}) . "'), 2)";
                         } else {
                             // MySQL
-                            $set[] = $nom_campo . " = SHA1('" . $this->{'_' . $nom_campo} . "')";
+                            $set[] = $nom_campo . " = SHA1('" . self::_literalSql($this->{'_' . $nom_campo}) . "')";
                         }
                     }
                 break;
@@ -198,8 +228,8 @@ class DAOGeneral {
                       $set[] = $nom_campo . " = " . $this->{'_' . $nom_campo} . "";
                 break;
                 default : // tratamiento a cuaquier otro elemento
-                    
-                    $set[] = $nom_campo . " = '" . $this->{'_' . $nom_campo} . "'";
+
+                    $set[] = $nom_campo . " = '" . self::_literalSql($this->{'_' . $nom_campo}) . "'";
                 }
             }
         }
@@ -254,18 +284,21 @@ class DAOGeneral {
         foreach($this->_mapa as $nom_campo => $arrAtributos){
             if ($this->{'_' . $nom_campo} !== null) {
                 switch($arrAtributos['tipodato']){
+                    // Mismo escape que guardar() (ver _literalSql): el login busca
+                    // aqui el usuario que se escribe, y un filtro con comilla
+                    // tampoco debe partir la consulta.
                     case 'varchar-like':
-                        $where[] = $nom_campo . " LIKE '%" . $this->{'_' . $nom_campo} . "%' ";
+                        $where[] = $nom_campo . " LIKE '%" . self::_literalSql($this->{'_' . $nom_campo}) . "%' ";
                     break;
                     default :
                         if(is_array($this->{'_' . $nom_campo} )){
                             $aux = array();
                             for ($i = 0; $i < count($this->{'_' . $nom_campo}); $i++ ) {
-                                $aux[] = "'".$this->{'_' . $nom_campo}[$i]."'";
+                                $aux[] = "'".self::_literalSql($this->{'_' . $nom_campo}[$i])."'";
                             }
                             $where[] = $nom_campo . " in (" . implode(",", $aux ) . ")";
                         } else {
-                            $where[] = ($nom_campo . " ".$this->_operador[isset($this->_indexOperador[$nom_campo]) ? $this->_indexOperador[$nom_campo] : 0 ]." '" . $this->{'_' . $nom_campo} . "'");
+                            $where[] = ($nom_campo . " ".$this->_operador[isset($this->_indexOperador[$nom_campo]) ? $this->_indexOperador[$nom_campo] : 0 ]." '" . self::_literalSql($this->{'_' . $nom_campo}) . "'");
                         }
                 }
             }
@@ -345,7 +378,7 @@ class DAOGeneral {
         $where = array();
         foreach($this->_mapa as $nom_campo => $arrAtributos){
             if ($this->{'_' . $nom_campo} !== null) {
-                $where[] = $nom_campo . " = '" . $this->{'_' . $nom_campo} . "'";
+                $where[] = $nom_campo . " = '" . self::_literalSql($this->{'_' . $nom_campo}) . "'";
             }
         }
         if (count($where) != 0) {

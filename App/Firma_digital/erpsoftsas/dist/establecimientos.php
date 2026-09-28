@@ -890,6 +890,8 @@ Guardar
 					<form id="formInfoContribuyente" onsubmit="establecimientos.guardarInformacionContribuyente(); return false;">
 					<div class="modal-body">
 						<input type="hidden" id="infoContrib_ind_Id" name="ind_Id">
+						<!-- Quién puede cambiar qué: ver modoInfoContribuyente en core/establecimientos.js. -->
+						<p class="text-muted" id="infoContribAviso" style="display:none; font-size:12px;"></p>
 						<div class="row">
 							<div class="col-md-6">
 								<div class="form-group">
@@ -903,23 +905,32 @@ Guardar
 							<div class="col-md-6">
 								<div class="form-group">
 									<label>Tipo de Documento</label>
+									<!-- El catalogo del sistema: 1 C.C., 3 C.E., 4 Pasaporte, 5 NIT
+									     (el mismo de icaWebRit.js y de los PDF). Aqui decia 2 = NIT: un
+									     NIT salia en blanco y, si se elegia "NIT", se grababa el 2, que
+									     no existe -RIT sin tipo, PDF sin X, DV sin recalcular-. -->
 									<select class="form-control" id="infoContrib_ind_IdTipoDocumento" name="ind_IdTipoDocumento">
 										<option value="1">C.C.</option>
-										<option value="2">NIT</option>
 										<option value="3">C.E.</option>
+										<option value="4">Pasaporte</option>
+										<option value="5">NIT</option>
 									</select>
 								</div>
 							</div>
+							<!-- Numero y DV SIN name: no viajan al guardar. El numero es la
+							     identidad tributaria y el enlace con la cuenta de acceso; se
+							     corrige en Contribuyentes > Editar, que comprueba que no este
+							     repetido. El DV sale del NIT (lo recalcula el servidor). -->
 							<div class="col-md-6">
 								<div class="form-group">
 									<label>Número de Documento</label>
-									<input type="text" class="form-control" id="infoContrib_ind_NumeroIdentificacion" name="ind_NumeroIdentificacion">
+									<input type="text" class="form-control campo-bloqueado" id="infoContrib_ind_NumeroIdentificacion" readonly>
 								</div>
 							</div>
 							<div class="col-md-6">
 								<div class="form-group">
 									<label>DV</label>
-									<input type="text" class="form-control" id="infoContrib_ind_DV" name="ind_DV">
+									<input type="text" class="form-control campo-bloqueado" id="infoContrib_ind_DV" readonly>
 								</div>
 							</div>
 							<div class="col-md-6">
@@ -977,7 +988,7 @@ Guardar
 					</div>
 					<div class="modal-footer">
 						<button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
-						<button type="submit" class="btn btn-success"><span class="ti-save"></span> Guardar</button>
+						<button type="submit" class="btn btn-success" id="btnGuardarInfoContribuyente"><span class="ti-save"></span> Guardar</button>
 					</div>
 					</form>
 				</div>

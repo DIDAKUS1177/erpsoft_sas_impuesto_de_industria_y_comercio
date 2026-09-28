@@ -282,7 +282,8 @@ if ($modulo === 'ICA') {
           WHERE ren_Modulo = ? AND ren_Anio = ? AND ren_Estado = 1
             AND ren_Codigo >= ? AND ren_Codigo <> ?
           ORDER BY ren_Orden",
-        [$modulo, $anio, $desde, $renglonTotal]
+        // El año de catálogo que rige, como el formulario (CatalogoAnio).
+        [$modulo, \erpsoftsas\CatalogoAnio::renglones($con, $modulo, $anio), $desde, $renglonTotal]
     );
     while ($r = $con->obnerFila($stmt)) {
         $conceptos[] = [

@@ -619,8 +619,12 @@
 					     negocio ya las usaba: la declaracion es una por contribuyente y
 					     agrega por codigo CIIU.
 
-					     Se guardan con su propio boton (funcion 8) y no con el resto del
-					     formulario: son filas de otra tabla, no campos del contribuyente.
+					     Desde el 2026-09-28 se guardan CON el RIT (funcion 7, misma
+					     transaccion y misma regla de obligatorios). Antes tenian su propio
+					     boton (funcion 8): Guardar no las mandaba -las agregadas se perdian- y
+					     "Guardar actividades" recargaba el formulario, borrando lo escrito en
+					     los demas campos. El boton de aqui abajo es el mismo Guardar, a la
+					     mano de la tabla.
 					-->
 					<div class="d-flex justify-content-between align-items-center flex-wrap mb-3" style="gap:10px;">
 						<h5 class="mb-0" style="font-weight:600;">Actividades económicas</h5>
@@ -636,8 +640,9 @@
 							<button type="button" class="btn btn-sm btn-outline-success" id="btnAgregarActividadRIT">
 								<span class="ti-plus"></span> Agregar
 							</button>
-							<button type="button" class="btn btn-sm btn-primary" id="btnGuardarActividadesRIT">
-								Guardar actividades
+							<button type="button" class="btn btn-sm btn-primary" id="btnGuardarActividadesRIT"
+							        title="Guarda el RIT completo, con sus actividades">
+								Guardar RIT
 							</button>
 						</div>
 					</div>

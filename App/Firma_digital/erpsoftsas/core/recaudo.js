@@ -12,6 +12,12 @@ var RUTA_RECAUDO = '../business/controller/class.recaudo.php';
 var archivoRevisado = null;
 var nombreOriginal  = null;
 
+/** El archivo en disco sobre el que se asignan a mano los pagos "para revisar",
+ *  y si ya se aplicó (solo entonces se puede: ver class.recaudo.php, función 4). */
+var archivoEnDisco   = null;
+var archivoAplicado  = false;
+var revisarActual    = [];
+
 function escapar(v) {
     if (v === null || v === undefined) { return ''; }
     return String(v)
@@ -26,8 +32,8 @@ function pesos(v) {
 
 function pintarFilas(idCuerpo, lista, columnas, vacio) {
     var filas = '';
-    (lista || []).forEach(function (x) {
-        filas += '<tr>' + columnas.map(function (c) { return '<td>' + c(x) + '</td>'; }).join('') + '</tr>';
+    (lista || []).forEach(function (x, i) {
+        filas += '<tr>' + columnas.map(function (c) { return '<td>' + c(x, i) + '</td>'; }).join('') + '</tr>';
     });
     if (!filas) {
         filas = '<tr><td colspan="' + columnas.length + '" class="text-center text-muted py-3">' + vacio + '</td></tr>';
@@ -77,14 +83,15 @@ function pintarResumen(d) {
     // Aqui ya solo pueden entrar declaraciones presentadas: el servidor manda
     // las demas a sinPresentar y no las aplica. La columna se conserva porque
     // el usuario pidio ver el estado, pero deja de ser una advertencia.
+    // Los tres módulos numeran igual: se dice a cuál va cada pago.
     pintarFilas('tbodyAplicables', d.aplicables, [
         function (x) { return escapar(x.referencia); },
         function (x) { return pesos(x.valor); },
-        function ()  { return '<span class="text-success">Presentada</span>'; }
+        function (x) { return '<span class="text-success">' + escapar(x.etiqueta || 'ICA') + ', presentada</span>'; }
     ], 'Ninguna declaración quedará marcada como pagada con este archivo.');
 
     pintarFilas('tbodyYaPagadas', d.yaPagadas, [
-        function (x) { return escapar(x.referencia); },
+        function (x) { return escapar(x.referencia) + (x.etiqueta ? ' <small class="text-muted">(' + escapar(x.etiqueta) + ')</small>' : ''); },
         function (x) { return pesos(x.valor); }
     ], 'Ninguna.');
 
@@ -101,15 +108,74 @@ function pintarResumen(d) {
         function (x) { return pesos(x.valor); }
     ], 'Ninguna: todos los pagos del archivo corresponden a declaraciones presentadas.');
 
-    // Referencias que también son de una retención o autorretención pendiente.
-    pintarFilas('tbodyRevisar', d.revisar, [
-        function (x) { return escapar(x.referencia); },
-        function (x) { return pesos(x.valor); },
-        function (x) { return escapar(x.motivo); }
-    ], 'Ninguna.');
+    // Referencias que son de dos o más declaraciones pendientes: se asignan a
+    // mano, con las candidatas a la vista.
+    revisarActual = d.revisar || [];
+    pintarRevisar();
 
     $('#cajaResumen').show();
 }
+
+function pintarRevisar() {
+    pintarFilas('tbodyRevisar', revisarActual, [
+        function (x) { return escapar(x.referencia); },
+        function (x) { return pesos(x.valor); },
+        function (x) { return escapar(x.motivo); },
+        function (x, i) {
+            if (x.asignada) {
+                return '<span class="text-success">Aplicado a la ' + escapar(x.asignada) + '</span>';
+            }
+            if (!archivoAplicado) {
+                return '<span class="text-muted">Aplique primero el archivo; después podrá asignarlo aquí.</span>';
+            }
+            return (x.candidatas || []).map(function (c) {
+                return '<button type="button" class="btn btn-sm btn-outline-primary mb-1 js-asignar"'
+                     + ' data-ref="' + escapar(x.referencia) + '" data-valor="' + escapar(x.valor) + '"'
+                     + ' data-modulo="' + escapar(c.modulo) + '" data-id="' + escapar(c.id) + '">'
+                     + 'Aplicar a ' + escapar(c.etiqueta) + ': ' + escapar(c.contribuyente || c.documento || '')
+                     + ' (total ' + pesos(c.total) + ')</button>';
+            }).join('<br>');
+        }
+    ], 'Ninguna.');
+}
+
+// Asignar a mano un pago "para revisar" a la declaración que se elija.
+$('#tbodyRevisar').on('click', '.js-asignar', function () {
+    var $b = $(this);
+    var dato = { ref: String($b.data('ref')), valor: $b.data('valor'), modulo: $b.data('modulo'), id: $b.data('id') };
+    swal({
+        title: '¿Aplicar este pago?',
+        text: 'La referencia ' + dato.ref + ' por ' + pesos(dato.valor) + ' quedará como pago de esta '
+            + 'declaración. Hágalo solo si el comprobante del banco lo confirma.',
+        type: 'warning', showCancelButton: true,
+        confirmButtonText: 'Sí, aplicar', cancelButtonText: 'Cancelar'
+    }).then(function (res) {
+        if (!res.value) { return; }
+        $('#tbodyRevisar .js-asignar').prop('disabled', true);
+        $.ajax({
+            url: RUTA_RECAUDO, type: 'POST', dataType: 'json',
+            data: { funcion: 4, archivo: archivoEnDisco, referencia: dato.ref, valor: dato.valor,
+                    modulo: dato.modulo, id: dato.id },
+            success: function (r) {
+                if (r.ok == 1) {
+                    revisarActual.forEach(function (x) {
+                        if (String(x.referencia) === dato.ref && Number(x.valor) === Number(dato.valor) && !x.asignada) {
+                            var c = (x.candidatas || []).filter(function (k) { return k.modulo === dato.modulo; })[0];
+                            x.asignada = c ? c.etiqueta : dato.modulo;
+                        }
+                    });
+                    cargarHistorial();
+                }
+                pintarRevisar();
+                swal({ type: r.ok == 1 ? 'success' : 'warning', title: r.ok == 1 ? 'Listo' : 'No se aplicó', text: r.mensaje || '' });
+            },
+            error: function () {
+                pintarRevisar();
+                swal({ type: 'error', title: 'Error', text: 'No se pudo aplicar el pago. Intente de nuevo.' });
+            }
+        });
+    });
+});
 
 function cargarHistorial() {
     $.ajax({
@@ -164,6 +230,10 @@ $('#btnPrevisualizar').on('click', function () {
             }
             archivoRevisado = r.datos.archivo.ruta;
             nombreOriginal  = r.datos.archivo.nombre;
+            archivoEnDisco  = r.datos.archivo.ruta;
+            // Un archivo ya aplicado (se vuelve a cargar para asignar lo que
+            // quedó por revisar) permite asignar a mano de una vez.
+            archivoAplicado = !!r.datos.yaSubido;
             pintarResumen(r.datos);
             // Sin nada que aplicar, el boton sigue bloqueado.
             $('#btnAplicar').prop('disabled', (r.datos.aplicables || []).length === 0);
@@ -204,6 +274,9 @@ $('#btnAplicar').on('click', function () {
                 if (r.ok == 1) {
                     $('#btnAplicar').prop('disabled', true);
                     archivoRevisado = null;
+                    // Ya aplicado: los que quedaron "para revisar" se pueden asignar.
+                    archivoAplicado = true;
+                    pintarRevisar();
                     cargarHistorial();
                 }
             },

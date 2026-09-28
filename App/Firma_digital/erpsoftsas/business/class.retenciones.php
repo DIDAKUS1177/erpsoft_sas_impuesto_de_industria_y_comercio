@@ -49,6 +49,7 @@ namespace erpsoftsas;
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.sessions.php';
 include_once SERVER . '/business/controller/class.cabecera.php';
+include_once SERVER . '/business/class.catalogoAnio.php';
 
 abstract class ControladorRetencion extends \erpsoftsas\Cabecera
 {
@@ -292,9 +293,10 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
         );
 
         /*
-         * 2. Los renglones con formula, en orden.
+         * 2. Los renglones con formula, en orden. Del año de catalogo que rige
+         *    (CatalogoAnio): con el año exacto, 2025 y 2027 salian en $0.
          */
-        $anio = $this->_anioDe($con, $id);
+        $anio = $this->_anioRenglones($con, $this->_anioDe($con, $id));
 
         $stmt = $con->consultar(
             "SELECT ren_Codigo, ren_Formula
@@ -339,6 +341,12 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
         }
 
         return $aplicados;
+    }
+
+    /** El año de ind_renglones_retencion que rige un año declarado. */
+    protected function _anioRenglones($con, $anio)
+    {
+        return CatalogoAnio::renglones($con, $this->modulo, $anio);
     }
 
     protected function _anioDe($con, $id)
@@ -519,14 +527,27 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
          * la razon social va en ind_PrimerNombre. Es la misma trampa que hacia
          * salir el nombre en blanco en el RIT de las juridicas.
          */
+        /* Las firmas van en el listado, como en el ICA: el estado (borrador, falta
+           contador, firmada) sale de ellas y no de la columna Estado, que solo
+           pasa a 2 al presentar. Ver _filaParaPantalla. */
+        $numeroTxt = "CAST(d.{$this->c('NumeroDeclaracion')} AS VARCHAR(30))";
         $sql = "SELECT d.*,
                        c.ind_NumeroIdentificacion AS documento,
                        c.ind_PrimerNombre, c.ind_SegundoNombre,
-                       c.ind_PrimerApellido, c.ind_SegundoApellido
+                       c.ind_PrimerApellido, c.ind_SegundoApellido,
+                       (SELECT COUNT(*) FROM firmas_declaraciones f
+                         WHERE f.fd_NumeroDeclaracion = $numeroTxt
+                           AND f.fd_Rol = 'declarante' AND f.fd_Modulo = ?) AS firma_declarante,
+                       (SELECT COUNT(*) FROM firmas_declaraciones f
+                         WHERE f.fd_NumeroDeclaracion = $numeroTxt
+                           AND f.fd_Rol = 'contador' AND f.fd_Modulo = ?) AS firma_contador,
+                       CASE WHEN LTRIM(RTRIM(ISNULL(c.ind_EmailContador, ''))) <> ''
+                              OR LTRIM(RTRIM(ISNULL(c.ind_EmailRevisor, ''))) <> ''
+                            THEN 1 ELSE 0 END AS requiere_contador
                   FROM {$this->tabla} d
                   LEFT JOIN ind_contribuyentes c ON c.ind_Id = d.{$this->c('IdContribuyente')}
                  WHERE 1 = 1";
-        $params = [];
+        $params = [$this->modulo, $this->modulo];
 
         /*
          * El filtro por contribuyente se fija SIEMPRE para un usuario externo,
@@ -584,12 +605,24 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
 
         $pagado = !empty($f[$this->c('Pagado')]);
 
-        // "Pagada" exige las DOS condiciones. Un pago sobre algo no presentado
-        // es un estado imposible que ya rompio "Corregir" en el ICA.
+        /*
+         * "Pagada" exige las DOS condiciones. Un pago sobre algo no presentado
+         * es un estado imposible que ya rompio "Corregir" en el ICA.
+         *
+         * Antes de presentar, el estado sale de las FIRMAS, como en el ICA:
+         * sin la del declarante es borrador; con ella, "falta contador" si el
+         * contribuyente tiene contador o revisor registrado y este no ha
+         * firmado; si no, firmada. Se leia de la columna Estado = 1, que nada
+         * escribe: firmar no cambiaba el estado, la fila seguia en borrador y
+         * "Presentar" -donde se pide la firma del contador- no aparecia nunca
+         * (cliente, 2026-09-28: "la firmé y no sale para la firma del contador").
+         */
+        $firmas = $this->_firmasDeFila($f);
         if ($pagado && $estado === 2)      { $clave = 'pagada'; }
         elseif ($estado === 2)             { $clave = 'presentada'; }
-        elseif ($estado === 1)             { $clave = 'firmada'; }
-        else                               { $clave = 'borrador'; }
+        elseif (!$firmas['declarante'])    { $clave = 'borrador'; }
+        elseif ($firmas['requiereContador'] && !$firmas['contador']) { $clave = 'pendienteCont'; }
+        else                               { $clave = 'firmada'; }
 
         $razon = trim((string) (isset($f['razon']) ? $f['razon'] : ''));
         if ($razon === '') {
@@ -637,6 +670,37 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
         return $this->_pagoEnLineaCache;
     }
 
+    /**
+     * Las firmas de una declaracion y si le hace falta la del contador. El
+     * listado las trae en la misma consulta (firma_declarante, firma_contador,
+     * requiere_contador); al abrir una sola declaracion se consultan aqui.
+     */
+    protected function _firmasDeFila(array $f)
+    {
+        if (array_key_exists('firma_declarante', $f)) {
+            return [
+                'declarante'       => (int) $f['firma_declarante'] > 0,
+                'contador'         => (int) $f['firma_contador'] > 0,
+                'requiereContador' => (int) $f['requiere_contador'] === 1,
+            ];
+        }
+
+        $con   = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        $roles = [];
+        $stmt  = $con->consultar(
+            "SELECT fd_Rol FROM firmas_declaraciones
+              WHERE fd_NumeroDeclaracion = ? AND fd_Modulo = ?",
+            [(string) $f[$this->c('NumeroDeclaracion')], $this->modulo]
+        );
+        while ($r = $con->obnerFila($stmt)) { $roles[] = $r['fd_Rol']; }
+
+        return [
+            'declarante'       => in_array('declarante', $roles, true),
+            'contador'         => in_array('contador', $roles, true),
+            'requiereContador' => $this->_requiereContador($con, (int) $f[$this->c('IdContribuyente')]),
+        ];
+    }
+
     /** La casilla "TOTAL A PAGAR" de cada formulario: 17 en retencion, 23 en autorretencion. */
     abstract protected function renglonTotal();
 
@@ -666,6 +730,16 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
         $id   = (int) $fila[$this->pk()];
         $anio = (int) $fila[$this->c('Anio')];
 
+        /* Un borrador SIN firmas se pone al dia antes de mostrarlo (en
+           autorretencion: las actividades que el RIT gano despues de crearlo).
+           Con firmas no se toca: lo firmado tiene que seguir siendo lo guardado. */
+        if ($this->_esBorrador($fila)) {
+            $firmas = $this->_firmasDeFila($fila);
+            if (!$firmas['declarante'] && !$firmas['contador']) {
+                $this->_completarBorrador($con, $fila);
+            }
+        }
+
         /* Los renglones: valor guardado + si lo escribe el usuario o lo calcula
            el sistema. La pantalla no tiene que saberse las casillas de memoria. */
         $renglones = [];
@@ -674,7 +748,7 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
                FROM ind_renglones_retencion
               WHERE ren_Modulo = ? AND ren_Anio = ? AND ren_Estado = 1
               ORDER BY ren_Orden",
-            [$this->modulo, $anio]
+            [$this->modulo, $this->_anioRenglones($con, $anio)]
         );
         while ($r = $con->obnerFila($stmt)) {
             $codigo  = (int) $r['ren_Codigo'];
@@ -722,6 +796,49 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
     /** Cada modulo añade lo suyo. */
     protected function _datosExtra($con, $fila) { return []; }
 
+    /** Lo que un modulo pone al dia en un borrador sin firmas antes de mostrarlo. */
+    protected function _completarBorrador($con, array $fila) {}
+
+    /** Lo que un modulo guarda fuera de renglones y actividades (la energia de
+     *  la autorretencion). Corre dentro de la transaccion de _guardar. */
+    protected function _guardarExtra($con, array $fila) {}
+
+    /** Columnas de la tabla principal que no son casillas y tambien se firman. */
+    protected function _columnasFirmadas() { return []; }
+
+    /**
+     * Huella de lo que se firma: las casillas, las filas de actividad y las
+     * columnas propias del modulo. _guardar la compara antes y despues.
+     */
+    protected function _huella($con, $id)
+    {
+        $fila = $con->obnerFila($con->consultar(
+            "SELECT * FROM {$this->tabla} WHERE {$this->pk()} = ?", [(int) $id]
+        ));
+
+        $partes = [];
+        $prefijo = $this->c('ValorConcepto');
+        foreach ((array) $fila as $col => $v) {
+            if (strpos($col, $prefijo) === 0 || in_array($col, $this->_columnasFirmadas(), true)) {
+                $partes[] = $col . '=' . (float) $v;
+            }
+        }
+
+        $stmt = $con->consultar(
+            "SELECT {$this->ca('IdActividad')} AS a, {$this->ca($this->colBase)} AS b,
+                    {$this->ca('Tarifa')} AS t
+               FROM {$this->tablaAct}
+              WHERE {$this->fkAct} = ? AND {$this->ca('Activo')} = 1
+              ORDER BY {$this->ca('IdActividad')}, {$this->ca($this->colBase)}",
+            [(int) $id]
+        );
+        while ($a = $con->obnerFila($stmt)) {
+            $partes[] = 'act=' . (int) $a['a'] . ':' . (float) $a['b'] . ':' . (float) $a['t'];
+        }
+
+        return md5(implode('|', $partes));
+    }
+
     protected function _actividadesDe($con, $id)
     {
         $stmt = $con->consultar(
@@ -759,8 +876,9 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
      * "Liquidar" y "Guardar" son el MISMO camino a proposito. En el ICA son
      * dos -uno calcula sin guardar y otro guarda-, y esa duplicidad ya produjo
      * el caso de dos fuentes de verdad discrepando en pantalla. Como esto solo
-     * corre sobre BORRADORES, guardar antes de mostrar no tiene coste: nada de
-     * lo que se pisa estaba cerrado.
+     * corre sobre BORRADORES, guardar antes de mostrar no pisa nada cerrado. Lo
+     * unico que puede costar son las firmas de una firmada, y solo si cambio
+     * algo (paso 4).
      */
     protected function _guardar()
     {
@@ -781,45 +899,88 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
 
         $id = (int) $fila[$this->pk()];
 
-        /* 1. Los renglones que escribe el usuario.
-              SOLO los marcados manuales en el catalogo: si se aceptara
-              cualquier casilla que llegue en el POST, un cliente podria
-              escribir directamente el total a pagar. */
-        $manuales = [];
-        $stmt = $con->consultar(
-            "SELECT ren_Codigo FROM ind_renglones_retencion
-              WHERE ren_Modulo = ? AND ren_Anio = ? AND ren_Estado = 1 AND ren_Manual = 1",
-            [$this->modulo, (int) $fila[$this->c('Anio')]]
-        );
-        while ($r = $con->obnerFila($stmt)) { $manuales[] = (int) $r['ren_Codigo']; }
+        /* Lo que habia antes, para saber al final si cambio algo. */
+        $antes = $this->_huella($con, $id);
+        $firmasQuitadas = 0;
 
-        $entrantes = (isset($_POST['renglones']) && is_array($_POST['renglones']))
-                   ? $_POST['renglones'] : [];
+        /* TODO O NADA. Si algo falla a medio camino (una cifra que desborda la
+           columna, por ejemplo), sin transaccion quedaban las actividades
+           borradas y las firmas sobre un contenido distinto. */
+        $con->begin();
+        try {
 
-        foreach ($manuales as $codigo) {
-            if (!array_key_exists($codigo, $entrantes)) { continue; }
-            $columna = $this->c('ValorConcepto' . $codigo);
-            if (!$this->_existeColumna($con, $this->tabla, $columna)) { continue; }
-            $con->consultar(
-                "UPDATE {$this->tabla} SET {$columna} = ? WHERE {$this->pk()} = ?",
-                [$this->_cifra($entrantes[$codigo]), $id]
+            /* 1. Los renglones que escribe el usuario.
+                  SOLO los marcados manuales en el catalogo: si se aceptara
+                  cualquier casilla que llegue en el POST, un cliente podria
+                  escribir directamente el total a pagar. */
+            $manuales = [];
+            $stmt = $con->consultar(
+                "SELECT ren_Codigo FROM ind_renglones_retencion
+                  WHERE ren_Modulo = ? AND ren_Anio = ? AND ren_Estado = 1 AND ren_Manual = 1",
+                [$this->modulo, $this->_anioRenglones($con, (int) $fila[$this->c('Anio')])]
             );
+            while ($r = $con->obnerFila($stmt)) { $manuales[] = (int) $r['ren_Codigo']; }
+
+            $entrantes = (isset($_POST['renglones']) && is_array($_POST['renglones']))
+                       ? $_POST['renglones'] : [];
+
+            foreach ($manuales as $codigo) {
+                if (!array_key_exists($codigo, $entrantes)) { continue; }
+                $columna = $this->c('ValorConcepto' . $codigo);
+                if (!$this->_existeColumna($con, $this->tabla, $columna)) { continue; }
+                $con->consultar(
+                    "UPDATE {$this->tabla} SET {$columna} = ? WHERE {$this->pk()} = ?",
+                    [$this->_cifra($entrantes[$codigo]), $id]
+                );
+            }
+
+            /* 1b. Lo propio de cada modulo (la energia de la autorretencion). */
+            $this->_guardarExtra($con, $fila);
+
+            /* 2. Las filas de actividad. */
+            $this->_guardarActividades(
+                $con, $id,
+                (isset($_POST['actividades']) && is_array($_POST['actividades'])) ? $_POST['actividades'] : []
+            );
+
+            /* 3. Recalcular. */
+            $this->_liquidar($con, $id);
+
+            /* 4. Si lo firmado ya no es lo guardado, las firmas se quitan, como
+                  al editar una firmada en el ICA. Seguian ahi y se presentaba
+                  con firmas sobre otro contenido. Solo si CAMBIO algo: abrir una
+                  firmada para revisarla y pulsar Guardar no le cuesta las firmas
+                  (ni otro codigo al contador). */
+            if ($this->_huella($con, $id) !== $antes) {
+                $borradas = $con->obnerFila($con->consultar(
+                    "SET NOCOUNT ON;
+                     DELETE FROM firmas_declaraciones
+                      WHERE fd_NumeroDeclaracion = ? AND fd_Modulo = ?;
+                     SELECT @@ROWCOUNT AS n;",
+                    [(string) $fila[$this->c('NumeroDeclaracion')], $this->modulo]
+                ));
+                $firmasQuitadas = (int) ($borradas['n'] ?? 0) > 0 ? 1 : 0;
+            }
+
+            $con->commit();
+
+        } catch (\Throwable $e) {
+            try { $con->rollback(); } catch (\Throwable $e2) { /* ya cerrada */ }
+            error_log('[' . $this->modulo . '] no se pudo guardar ' . $id . ': ' . $e->getMessage());
+            $this->_ok = 0;
+            $this->_mensaje = 'No se pudo guardar la declaración: no quedó ningún cambio. '
+                            . 'Revise las cifras e intente de nuevo; si persiste, avise a la Alcaldía.';
+            return [];
         }
-
-        /* 2. Las filas de actividad. */
-        $this->_guardarActividades(
-            $con, $id,
-            (isset($_POST['actividades']) && is_array($_POST['actividades'])) ? $_POST['actividades'] : []
-        );
-
-        /* 3. Recalcular. */
-        $this->_liquidar($con, $id);
 
         $_POST['id'] = $id;
         $respuesta = $this->_abrir();
+        $respuesta['firmasQuitadas'] = $firmasQuitadas;
 
         $this->_ok = 1;
-        $this->_mensaje = 'Declaración guardada y liquidada';
+        $this->_mensaje = $firmasQuitadas
+            ? 'Declaración guardada y liquidada. Como cambió, se quitaron las firmas: vuelva a firmarla.'
+            : 'Declaración guardada y liquidada';
         return $respuesta;
     }
 
@@ -903,8 +1064,13 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
 
         $id = (int) $fila[$this->pk()];
 
-        // Las filas hijas primero: hay clave foranea.
+        // Las filas hijas primero: hay clave foranea. Las firmas van por numero
+        // y modulo (no tienen clave foranea): sin esto quedaban huerfanas.
         $con->consultar("DELETE FROM {$this->tablaAct} WHERE {$this->fkAct} = ?", [$id]);
+        $con->consultar(
+            "DELETE FROM firmas_declaraciones WHERE fd_NumeroDeclaracion = ? AND fd_Modulo = ?",
+            [(string) $fila[$this->c('NumeroDeclaracion')], $this->modulo]
+        );
         $con->consultar("DELETE FROM {$this->tabla} WHERE {$this->pk()} = ?", [$id]);
 
         $this->_ok = 1;
@@ -1000,14 +1166,17 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
         // ser lo que sale de los datos guardados, no lo que quedo en pantalla.
         $this->_liquidar($con, $id);
 
-        date_default_timezone_set('America/Bogota');
+        // La hora de Colombia, calculada aqui. GETDATE() es el reloj del
+        // servidor SQL, que no tiene por que estar en Colombia (en local esta
+        // en UTC: una presentada a las 8 p. m. salia fechada al dia siguiente).
+        $ahora = (new \DateTime('now', new \DateTimeZone('America/Bogota')))->format('Y-m-d H:i:s');
 
         $con->consultar(
             "UPDATE {$this->tabla}
                 SET {$this->c('Estado')} = 2,
-                    {$this->c('FechaPresentacion')} = GETDATE()
+                    {$this->c('FechaPresentacion')} = ?
               WHERE {$this->pk()} = ?",
-            [$id]
+            [$ahora, $id]
         );
 
         $this->_ok = 1;
@@ -1135,7 +1304,7 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
     /** Copia renglones manuales y actividades del original a la correccion. */
     protected function _copiarContenido($con, $origen, $destino)
     {
-        $anio = $this->_anioDe($con, $destino);
+        $anio = $this->_anioRenglones($con, $this->_anioDe($con, $destino));
 
         $stmt = $con->consultar(
             "SELECT ren_Codigo FROM ind_renglones_retencion
@@ -1197,12 +1366,7 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
          * acuerdo del año siguiente-. El dia que se cargue 2026, esta misma
          * consulta empieza a usarlo sola.
          */
-        $vigente = $con->obnerFila($con->consultar(
-            "SELECT MAX(acc_Anio) AS anio FROM ind_actividadescomercio WHERE acc_Anio <= ?",
-            [$anio]
-        ));
-        $anioCatalogo = (isset($vigente['anio']) && $vigente['anio'] !== null)
-                      ? (int) $vigente['anio'] : $anio;
+        $anioCatalogo = CatalogoAnio::actividades($con, $anio);
 
         $stmt = $con->consultar(
             "SELECT acc_Id, acc_Codigo, acc_Nombre, acc_Tarifa, acc_Exento

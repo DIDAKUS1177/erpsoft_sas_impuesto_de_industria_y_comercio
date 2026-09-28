@@ -133,6 +133,11 @@ class FirmasAPI
                     . 'correo del representante legal en el RIT.']);
                 return;
             }
+        } elseif (($sinContenido = $this->_icaSinContenido($conSql)) !== null) {
+            // Una declaración de ICA que nunca se guardó no recibe código.
+            header('Content-type: application/json');
+            echo json_encode(['ok' => 0, 'mensaje' => $sinContenido]);
+            return;
         } elseif ($rol === 'declarante') {
             // El código va al REPRESENTANTE del contribuyente DUEÑO de la
             // declaración que se firma (regla del cliente 2026-08-26), NO al del
@@ -215,7 +220,7 @@ class FirmasAPI
             [$codigo, $idUsuario, $email, $idEstablecimiento, $expiracion, $rolCodigo]
         );
 
-        $enviado = $this->_enviarCodigo($email, $nombre, $codigo);
+        $enviado = $this->_enviarCodigo($email, $nombre, $codigo, $this->_queSeFirma($conSql, $rol));
 
         header('Content-type: application/json');
         echo json_encode([
@@ -244,6 +249,65 @@ class FirmasAPI
     {
         $m = strtoupper(trim($_POST['modulo'] ?? 'ICA'));
         return in_array($m, ['RETEICA', 'AUTORRETEICA'], true) ? $m : 'ICA';
+    }
+
+    /**
+     * Qué se firma, para el asunto y el cuerpo del correo del código. Antes
+     * todos decían "- ICA" y nada más, también los de retención: un contador
+     * con varios meses pendientes recibía correos idénticos y no sabía cuál
+     * código era de cuál (revisión 2026-09-28).
+     */
+    private function _queSeFirma($conSql, $rol)
+    {
+        if ($rol === 'rit') {
+            return ['corto' => 'RIT', 'largo' => 'el RIT (Registro de Información Tributaria)'];
+        }
+
+        $modulo = $this->_moduloFirma();
+        $numero = preg_replace('/[^A-Za-z0-9\-]/', '', $_POST['numero_declaracion'] ?? $_POST['id_declaracion'] ?? '');
+        if ($modulo === 'ICA') {
+            // El ICA firma por dec_Id; el número que ve la gente es otro.
+            $f = $conSql->obnerFila($conSql->consultar(
+                "SELECT dec_NumeroDeclaracion AS n FROM ind_declaraciones_ica WHERE dec_Id = ?",
+                [(int) $numero]
+            ));
+            if (!empty($f['n'])) { $numero = (string) $f['n']; }
+        }
+
+        $corto  = ['ICA' => 'ICA', 'RETEICA' => 'Retención', 'AUTORRETEICA' => 'Autorretención'][$modulo];
+        $largo  = ['ICA' => 'la declaración de ICA', 'RETEICA' => 'la retención', 'AUTORRETEICA' => 'la autorretención'][$modulo];
+        $quien  = ($rol === 'contador') ? 'firma del contador o revisor fiscal' : 'firma del declarante';
+
+        return [
+            'corto' => $corto . ' N° ' . $numero,
+            'largo' => $largo . ' N° ' . $numero . ' (' . $quien . ')',
+        ];
+    }
+
+    /**
+     * Una declaración de ICA sin actividades guardadas no se firma: se creó y
+     * nunca se guardó. Se firmaba y se presentaba en $0, y solo se arreglaba con
+     * una corrección (revisión 2026-09-28). Devuelve el motivo, o null si se
+     * puede firmar. Solo mira el ICA: una retención de un mes sin retenciones
+     * sí puede ir sin actividades.
+     */
+    private function _icaSinContenido($conSql)
+    {
+        if ($this->_moduloFirma() !== 'ICA') { return null; }
+        $rol = $this->_rolFirmante();
+        if ($rol === 'rit') { return null; }
+
+        $id = (int) preg_replace('/[^0-9]/', '', $_POST['numero_declaracion'] ?? $_POST['id_declaracion'] ?? '');
+        if ($id <= 0) { return null; }   // el número inválido lo dicen las demás validaciones
+
+        // dia_IdDeclaracion es el dec_Id, igual que el número con que firma el ICA.
+        $f = $conSql->obnerFila($conSql->consultar(
+            "SELECT COUNT(*) AS n FROM ind_declaraciones_ica_actividades WHERE dia_IdDeclaracion = ?",
+            [$id]
+        ));
+        return ((int) ($f['n'] ?? 0) > 0)
+            ? null
+            : 'La declaración no tiene actividades guardadas. Ábrala, liquídela y guárdela antes de firmarla.';
     }
 
     /**
@@ -691,6 +755,30 @@ class FirmasAPI
 
         $modulo = $this->_moduloFirma();
 
+        // Antes de gastar el código: una ICA que nunca se guardó no se firma.
+        $sinContenido = $this->_icaSinContenido($conSql);
+        if ($sinContenido !== null) {
+            echo json_encode(['ok' => 0, 'mensaje' => $sinContenido]);
+            return;
+        }
+
+        // La unicidad es por (declaración, rol, MÓDULO): el declarante y el
+        // contador firman la misma declaración sin pisarse, y la retención
+        // 2026000001 no es la declaración de ICA 2026000001. Va ANTES de gastar
+        // el código: si ya estaba firmada (otra pestaña, otra persona), el
+        // código se perdía y había que pedir otro para nada.
+        $stmtCheck = $conSql->consultar(
+            "SELECT fd_Id FROM firmas_declaraciones
+             WHERE fd_NumeroDeclaracion = ? AND fd_Rol = ? AND fd_Modulo = ?",
+            [$numeroDeclaracion, $rol, $modulo]
+        );
+        $existe = $conSql->obnerFila($stmtCheck);
+
+        if ($existe && !$esRefirma) {
+            echo json_encode(['ok' => 0, 'mensaje' => 'Esta declaración ya fue firmada anteriormente']);
+            return;
+        }
+
         // El codigo se valida y se consume aqui, no en una llamada aparte.
         // Vale tambien para refirmar: refirmar es volver a firmar.
         // El rol lleva el modulo dentro: ver _rolCodigo().
@@ -740,38 +828,28 @@ class FirmasAPI
             $email  = $destino['email'];
         }
 
-        // La unicidad es por (declaración, rol, MÓDULO): el declarante y el
-        // contador firman la misma declaración sin pisarse, y la retención
-        // 2026000001 no es la declaración de ICA 2026000001.
-        $stmtCheck = $conSql->consultar(
-            "SELECT fd_Id FROM firmas_declaraciones
-             WHERE fd_NumeroDeclaracion = ? AND fd_Rol = ? AND fd_Modulo = ?",
-            [$numeroDeclaracion, $rol, $modulo]
-        );
-        $existe = $conSql->obnerFila($stmtCheck);
-
-        if ($existe && !$esRefirma) {
-            header('Content-type: application/json');
-            echo json_encode(['ok' => 0, 'mensaje' => 'Esta declaración ya fue firmada anteriormente']);
-            return;
-        }
+        // La hora de la firma es la de Colombia, calculada aqui: GETDATE() -y el
+        // valor por defecto de fd_FechaHora- es el reloj del servidor SQL, que no
+        // tiene por que estar en Colombia (en local esta en UTC, y el sello del
+        // PDF salia cinco horas adelantado). Solo se usa para mostrarla.
+        $ahora = (new \DateTime('now', new \DateTimeZone('America/Bogota')))->format('Y-m-d H:i:s');
 
         if ($existe && $esRefirma) {
             $conSql->consultar(
                 "UPDATE firmas_declaraciones
                  SET fd_IdUsuario = ?, fd_NombreUsuario = ?, fd_EmailUsuario = ?,
-                     fd_FechaHora = GETDATE()
+                     fd_FechaHora = ?
                  WHERE fd_Id = ?",
-                [$idUsuario, $nombre, $email, intval($existe['fd_Id'])]
+                [$idUsuario, $nombre, $email, $ahora, intval($existe['fd_Id'])]
             );
             $msg = 'Declaración refirmada correctamente';
         } else {
             $conSql->consultar(
                 "INSERT INTO firmas_declaraciones
                     (fd_NumeroDeclaracion, fd_IdUsuario, fd_NombreUsuario, fd_EmailUsuario,
-                     fd_Rol, fd_Modulo)
-                 VALUES (?, ?, ?, ?, ?, ?)",
-                [$numeroDeclaracion, $idUsuario, $nombre, $email, $rol, $modulo]
+                     fd_Rol, fd_Modulo, fd_FechaHora)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [$numeroDeclaracion, $idUsuario, $nombre, $email, $rol, $modulo, $ahora]
             );
             $msg = $rol === 'contador'
                  ? 'Declaración firmada por el contador / revisor fiscal'
@@ -832,7 +910,7 @@ class FirmasAPI
     // HELPERS
     // ════════════════════════════════════════════════════════════════════
 
-    private function _enviarCodigo($email, $nombre, $codigo)
+    private function _enviarCodigo($email, $nombre, $codigo, $queSeFirma = null)
     {
         require_once SERVER . '/business/php_mailer/Exception.php';
         require_once SERVER . '/business/php_mailer/PHPMailer.php';
@@ -851,10 +929,23 @@ class FirmasAPI
             $mail->Port      = $cfg['smtp_port'];
             $mail->CharSet   = 'UTF-8';
 
-            $mail->setFrom($cfg['smtp_user'], $cfg['from_name']);
+            // El remitente es el municipio de ESTE servidor (config.municipio.php):
+            // config.php trae 'Alcaldía de paipa' fijo y los cuatro municipios
+            // firmaban sus correos como Paipa.
+            $remitente = defined('MUNICIPIO_NOMBRE') ? MUNICIPIO_NOMBRE : $cfg['from_name'];
+
+            $mail->setFrom($cfg['smtp_user'], $remitente);
             $mail->addAddress($email, $nombre);
             $mail->isHTML(true);
-            $mail->Subject = $cfg['otp_subject'] . ' - ICA';
+            // Qué se firma, en el asunto y en el cuerpo: con varias pendientes,
+            // los correos eran idénticos (ver _queSeFirma).
+            $mail->Subject = $cfg['otp_subject'] . ' - ' . ($queSeFirma['corto'] ?? 'ICA');
+
+            $nombreHtml = htmlspecialchars((string) $nombre, ENT_QUOTES, 'UTF-8');
+            $lineaQue   = $queSeFirma
+                ? "<p>Es para firmar <strong>" . htmlspecialchars($queSeFirma['largo'], ENT_QUOTES, 'UTF-8') . "</strong>.</p>"
+                : '';
+            $remitenteHtml = htmlspecialchars((string) $remitente, ENT_QUOTES, 'UTF-8');
 
             // Correo LEAN para mejorar la ENTREGA, sobre todo a Hotmail/Outlook,
             // que filtra con dureza el correo automatico: SIN imagen embebida
@@ -864,7 +955,8 @@ class FirmasAPI
             $mail->Body = "
                 <div style='font-family:Arial,sans-serif;max-width:480px;margin:auto;'>
                     <h3 style='color:#1a73e8;'>Firma Digital - Industria y Comercio</h3>
-                    <p>Hola <strong>{$nombre}</strong>,</p>
+                    <p>Hola <strong>{$nombreHtml}</strong>,</p>
+                    {$lineaQue}
                     <p>Tu código de verificación es:</p>
                     <div style='font-size:36px;font-weight:bold;letter-spacing:10px;
                                 text-align:center;padding:20px;background:#f1f3f4;
@@ -872,15 +964,16 @@ class FirmasAPI
                     <p style='color:#666;'>Este código expira en <strong>10 minutos</strong>.</p>
                     <p style='color:#999;font-size:12px;'>Si no solicitaste este código, ignora este mensaje.</p>
                     <hr>
-                    <p style='color:#999;font-size:11px;'>{$cfg['from_name']} · Industria y Comercio</p>
+                    <p style='color:#999;font-size:11px;'>{$remitenteHtml} · Industria y Comercio</p>
                 </div>
             ";
             $mail->AltBody = "Firma Digital - Industria y Comercio\n\n"
                 . "Hola {$nombre},\n\n"
+                . ($queSeFirma ? "Es para firmar {$queSeFirma['largo']}.\n\n" : '')
                 . "Tu codigo de verificacion es: {$codigo}\n"
                 . "Este codigo expira en 10 minutos.\n\n"
                 . "Si no solicitaste este codigo, ignora este mensaje.\n"
-                . "{$cfg['from_name']} - Industria y Comercio";
+                . "{$remitente} - Industria y Comercio";
             $mail->send();
             return true;
         } catch (\Exception $e) {
@@ -1105,8 +1198,25 @@ class FirmasAPI
         echo json_encode([
             'ok'      => 1,
             'mensaje' => 'RIT firmado correctamente',
-            'nombre'  => $usuario['usu_Nombre'] ?? '',
+            'nombre'  => $this->_nombreFirmaRit($conSql, $idContribuyente, $usuario['usu_Nombre'] ?? ''),
         ]);
+    }
+
+    /**
+     * El nombre que va con la firma del RIT: el del REPRESENTANTE, como lo
+     * estampa el PDF en la casilla 30 (ritActualizado.php). La pantalla mostraba
+     * el de la cuenta que firmó -la razón social, o "administrador" si firmaba
+     * la Alcaldía por el contribuyente- y el PDF otro. Sin representante, la
+     * cuenta, igual que el PDF.
+     */
+    private function _nombreFirmaRit($conSql, $idContribuyente, $nombreCuenta)
+    {
+        $c = $conSql->obnerFila($conSql->consultar(
+            "SELECT ind_Nombre_representante FROM ind_contribuyentes WHERE ind_Id = ?",
+            [(int) $idContribuyente]
+        ));
+        $rep = trim((string) ($c['ind_Nombre_representante'] ?? ''));
+        return $rep !== '' ? $rep : (string) $nombreCuenta;
     }
 
     /**
@@ -1129,10 +1239,11 @@ class FirmasAPI
         include_once SERVER . '/business/class.ritFirma.php';
         $estado = \erpsoftsas\RitFirma::firmaVigente($conSql, $permiso['id']);
 
-        $fmt = function ($f) {
+        $idContribuyente = $permiso['id'];
+        $fmt = function ($f) use ($conSql, $idContribuyente) {
             if (!$f) { return null; }
             return [
-                'nombre' => $f['rif_NombreUsuario'],
+                'nombre' => $this->_nombreFirmaRit($conSql, $idContribuyente, $f['rif_NombreUsuario']),
                 'fecha'  => ($f['rif_FechaHora'] instanceof \DateTime)
                                 ? $f['rif_FechaHora']->format('Y-m-d H:i:s')
                                 : (string) $f['rif_FechaHora'],

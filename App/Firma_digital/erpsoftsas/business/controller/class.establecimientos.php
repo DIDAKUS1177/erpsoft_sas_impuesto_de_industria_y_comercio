@@ -14,10 +14,24 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
     private $_ok;
     private $_mensaje;
 
-    public static function run() 
+    public static function run()
     {
         $_obj = new self();
         $_obj->_funcion = isset($_POST['funcion']) ? $_POST['funcion'] : null;
+
+        /*
+         * Sin sesion no hay nada que hacer aqui, y hay que DECIRLO. Antes la
+         * consulta de la lista, sin sesion, caia en "No se pudo establecer de
+         * que contribuyente son los establecimientos" y la pantalla pintaba la
+         * tabla vacia sin aviso: parecia que el contribuyente no tenia locales.
+         * Con sinSesion, dist/menu.php lleva al login con un aviso.
+         */
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+        if (empty($_SESSION['id_usuario'])) {
+            header('Content-type: application/json');
+            echo json_encode(["ok" => 0, "mensaje" => "Debe iniciar sesión.", "datos" => [], "sinSesion" => 1]);
+            return;
+        }
 
         try {
             //$con = \ConexionMysqlUsuariosCentral\ConexionSQL::getInstance();
@@ -67,12 +81,25 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
         } catch (\erpsoftsas\EstablecimientosException $e) {
             //$con->rollback();
             $arrRespu = array(
-                "ok"      => $e->getCode(), 
-                "mensaje" => "Error: " . $e->getMessage(), 
+                "ok"      => $e->getCode(),
+                "mensaje" => "Error: " . $e->getMessage(),
                 "datos"   => ""
             );
             header('Content-type: application/json');
             echo json_encode($arrRespu);
+        } catch (\Throwable $e) {
+            // Cualquier otro error (de la base, casi siempre) salia como un 500
+            // con el cuerpo vacio y la pantalla solo decia "Error de conexion",
+            // sin que nadie supiera que el establecimiento NO se guardo. El
+            // detalle va al log; a la pantalla, un aviso que se entiende.
+            error_log('[establecimientos] funcion ' . ($_POST['funcion'] ?? '?') . ': ' . $e->getMessage());
+            header('Content-type: application/json');
+            echo json_encode(array(
+                "ok"      => 0,
+                "mensaje" => "No se pudo completar la operación con el establecimiento. "
+                           . "Revise los datos e intente de nuevo; si el problema sigue, avise a soporte.",
+                "datos"   => ""
+            ));
         }
     }
 
@@ -132,6 +159,11 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
 
         self::_filtrarCese();
 
+        // Una fecha vacia al crear quedaba como 1900-01-01 (SQL Server convierte
+        // asi la cadena vacia) y al editar el formulario mostraba "01/01/1900".
+        // Editar ya lo prevenia; crear no. Con NULL el DAO ni la escribe.
+        self::_fechasVaciasANulo();
+
         $_obj = new \erpsoftsas\DAO_Establecimientos();
 
         foreach ($_POST as $campo => $valor) {
@@ -162,13 +194,14 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
             if (!$_obj->guardar()) {
                 $this->_ok = 0;
                 $this->_mensaje = $_obj->getMysqlError();
+                $return = false;
             } else {
-                $id = $_obj->get_est_Id(); 
+                $id = $_obj->get_est_Id();
 
                 // GUARDAR ACTIVIDADES
                 if(isset($_POST['actividades'])){
                     $actividades = json_decode($_POST['actividades'], true);
-                    foreach($actividades as $a){
+                    foreach((array) $actividades as $a){
 
                         $_objAct = new \erpsoftsas\DAO_ActividadEstablecimiento();
 
@@ -181,8 +214,11 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
 
                 $this->_ok = 1;
                 $this->_mensaje = "Establecimiento agregado correctamente. ID = $id";
+                $return = true;
             }
-            $return= $_obj->guardar();
+            // Aqui habia un segundo $_obj->guardar() (un UPDATE repetido del
+            // recien creado, que corria incluso si el primero fallaba). Editar
+            // ya se habia quitado el suyo; crear lo conservaba.
         }
         return $return;
     }

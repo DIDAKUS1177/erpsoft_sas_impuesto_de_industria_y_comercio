@@ -170,10 +170,21 @@ if ($modulo === 'ica') {
     ));
     $anioIca = (int) ($ica['dec_AnioDeclaracion'] ?? 0);
     if ($ica && \erpsoftsas\VencimientoICA::vencida($anioIca)) {
+        /*
+         * Obligatorios solo para el CONTRIBUYENTE, como en el recibo de pago
+         * (extensiones/reciboPago.php): la Alcaldía los escribe si aplican y
+         * puede dejarlos en 0. Aquí se le exigían también a ella, así que el
+         * mismo funcionario podía sacar el recibo sin intereses pero no cobrar
+         * por PSE sin inventarse una cifra (revisión 2026-09-28).
+         */
+        $esAlcaldia = in_array((int) ($_SESSION['id_Rol'] ?? 0), [1, 2], true);
         $mora = [
             'limite' => date('d/m/Y', strtotime(\erpsoftsas\VencimientoICA::fechaLimite($anioIca))),
             'dias'   => \erpsoftsas\VencimientoICA::diasDeMora($anioIca, \erpsoftsas\VencimientoICA::hoy()),
-            'exige'  => \erpsoftsas\VencimientoICA::exigeIntereses($anioIca, $ica['dec_ValorConcepto16'] ?? 0),
+            'exige'  => !$esAlcaldia
+                        && \erpsoftsas\VencimientoICA::exigeIntereses($anioIca, $ica['dec_ValorConcepto16'] ?? 0),
+            // Para la ayuda de la casilla: ya trae intereses en el renglón 37.
+            'trae'   => (float) ($ica['dec_ValorConcepto16'] ?? 0) > 0,
         ];
     }
 }
@@ -208,8 +219,9 @@ ob_start();
     <input id="intereses" name="intereses" form="formPago" inputmode="numeric" autocomplete="off"
            value="<?= $mora['exige'] ? '' : '0' ?>" placeholder="Escriba el valor"<?= $mora['exige'] ? ' required' : '' ?>>
     <small>La declaración venció el <?= htmlspecialchars($mora['limite']) ?>: se paga con los intereses de mora
-      de <?= (int) $mora['dias'] ?> día<?= (int) $mora['dias'] === 1 ? '' : 's' ?>. En pesos, sin decimales.<?php if (!$mora['exige']): ?>
-      La declaración ya trae intereses; escriba solo lo que falte (o 0).<?php else: ?> Si no sabe cuánto son,
+      de <?= (int) $mora['dias'] ?> día<?= (int) $mora['dias'] === 1 ? '' : 's' ?>. En pesos, sin decimales.<?php if ($mora['trae']): ?>
+      La declaración ya trae intereses; escriba solo lo que falte (o 0).<?php elseif (!$mora['exige']): ?>
+      Déjelo en 0 si no aplica.<?php else: ?> Si no sabe cuánto son,
       comuníquese con <?= htmlspecialchars($muni) ?>.<?php endif; ?></small>
   </div>
 <?php endif; ?>
