@@ -83,9 +83,29 @@ if (!$row || empty($row['pse_req'])) {
             $estado   = $info['estado'];
             $fechaIso = $info['fecha'] ?? '';
 
+            // Aprobado por el banco NO es lo mismo que registrado: un borrador
+            // no se marca pagado (PagoDeclaracion::registrar exige presentada).
+            // Solo pasa con sesiones creadas antes de esa regla; decir "Pago
+            // aprobado. Gracias." ahí dejaba el pago sin registrar y sin rastro.
+            $registrada = true;
             if ($info['aprobado']) {
+                $filaPago = $con->obnerFila($con->consultar(
+                    "SELECT ISNULL({$m['pagado']}, 0) AS pagado FROM {$m['tabla']} WHERE {$m['pk']} = ?",
+                    [$id]
+                ));
+                $registrada = ((int) ($filaPago['pagado'] ?? 0) === 1);
+                if (!$registrada) {
+                    error_log('[pse retorno] ' . $m['clave'] . ' ' . $id . ': el banco aprobó la sesión '
+                            . $row['pse_req'] . ' pero la declaración no quedó pagada (no está presentada).');
+                }
+            }
+
+            if ($info['aprobado'] && $registrada) {
                 $aprobado = true;
                 $mensaje = 'Pago aprobado. Gracias.';
+            } elseif ($info['aprobado']) {
+                $mensaje = 'El banco aprobó el pago, pero la declaración no está presentada y no se pudo '
+                         . 'registrar. Comuníquese con ' . $muni . ' con el número de referencia.';
             } elseif ($info['estado'] === 'PENDING') {
                 $mensaje = 'El pago quedó en proceso. En cuanto el banco confirme, se actualizará automáticamente (puede tardar unos minutos).';
             } else {

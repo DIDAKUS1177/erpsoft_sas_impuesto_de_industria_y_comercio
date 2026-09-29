@@ -1776,11 +1776,18 @@ private function _presentarDeclaracion(){
      * (microservicios/firmas/api.php, _icaSinContenido, con el mismo conteo);
      * aqui se exige tambien, porque hay declaraciones que se firmaron antes de
      * esa regla y porque presentar es el acto que cuenta.
+     *
+     * El mensaje dice el camino que de verdad funciona: "Editar" abre la
+     * declaracion con las actividades del contribuyente cuando no tiene
+     * ninguna guardada (EditarDeclaracion.abrir, core/declaraciones.ui.js);
+     * antes la abria con la tabla vacia y "ábrala, liquídela y guárdela" no
+     * llevaba a ningun lado (segunda revision 2026-09-28).
      */
     if ((int) ($decl['n_actividades'] ?? 0) === 0) {
         $this->_ok = 0;
-        $this->_mensaje = 'La declaración no tiene actividades guardadas. '
-                        . 'Ábrala, liquídela y guárdela antes de presentarla.';
+        $this->_mensaje = 'La declaración no tiene actividades guardadas. Ábrala con "Editar" '
+                        . '(si está firmada, se le quitan las firmas), escriba la base de cada actividad, '
+                        . 'pulse "Guardar" y fírmela antes de presentarla.';
         return ['codigo' => 'SIN_ACTIVIDADES'];
     }
 
@@ -1884,6 +1891,39 @@ private function _revertirABorrador(){
         return [];
     }
 
+    /*
+     * PRIMERO EL ESTADO, Y SOLO SI SIGUE SIN PRESENTAR (segunda revision
+     * 2026-09-28).
+     *
+     * La consulta de arriba y lo que sigue no son un solo paso: si alguien
+     * presentaba la declaracion entre los dos (otra pestaña, el contador), se
+     * le borraban las firmas y el UPDATE sin condicion le quitaba el estado y
+     * la fecha de presentacion. Una declaracion ya presentada ante el
+     * municipio volvia a borrador. Ahora el UPDATE solo toca la fila si sigue
+     * sin presentar, y las firmas solo se borran si lo hizo.
+     */
+    $cambio = $con->obnerFila($con->consultar(
+        "SET NOCOUNT ON;
+         UPDATE ind_declaraciones_ica
+            SET dec_Estado = NULL, dec_FechaPresentacion = NULL
+          WHERE dec_Id = ? AND ISNULL(dec_Estado, 0) <> 2;
+         SELECT @@ROWCOUNT AS n;",
+        [(int) $idDeclaracion]
+    ));
+
+    if ((int) ($cambio['n'] ?? 0) === 0) {
+        $sigue = $con->obnerFila($con->consultar(
+            "SELECT dec_Id FROM ind_declaraciones_ica WHERE dec_Id = ?",
+            [(int) $idDeclaracion]
+        ));
+        $this->_ok = 0;
+        $this->_mensaje = $sigue
+            ? "La declaración se acaba de presentar: ya no se puede editar. "
+              . "Debe generar una declaración de corrección."
+            : "La declaración no existe";
+        return [];
+    }
+
     // Se borran TODAS las firmas de la declaracion (declarante y, cuando
     // exista, contador/revisor): si el contenido cambia, ninguna sigue
     // acreditando lo que se firmo.
@@ -1901,13 +1941,6 @@ private function _revertirABorrador(){
                   SELECT CAST(dec_NumeroDeclaracion AS VARCHAR(30)) FROM ind_declaraciones_ica
                    WHERE dec_Id = ? AND dec_NumeroDeclaracion IS NOT NULL)",
         [(int) $idDeclaracion, (int) $idDeclaracion]
-    );
-
-    $con->consultar(
-        "UPDATE ind_declaraciones_ica
-         SET dec_Estado = NULL, dec_FechaPresentacion = NULL
-         WHERE dec_Id = ?",
-        [$idDeclaracion]
     );
 
     $this->_ok = 1;

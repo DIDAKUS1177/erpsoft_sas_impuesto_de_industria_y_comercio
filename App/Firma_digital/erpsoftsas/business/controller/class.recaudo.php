@@ -72,6 +72,8 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
                 'ok' => 0,
                 'mensaje' => 'Solo la Alcaldía puede cargar archivos de recaudo.',
                 'datos' => [],
+                // Sesión vencida: dist/menu.php lleva al login con un aviso.
+                'sinSesion' => empty($_SESSION['id_usuario']) ? 1 : 0,
             ]);
             return;
         }
@@ -181,65 +183,107 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
             return [];
         }
 
-        $hash = hash_file('sha256', $ruta);
-        if ($con->obnerFila($con->consultar(
-                "SELECT arc_Id FROM ind_archivos_asobancaria WHERE arc_Hash = ?", [$hash]))) {
+        // Sin fecha de pago no hay con qué reconocer un pago ya aplicado (ver
+        // _contarAplicados): se pide otro archivo en vez de aplicar a ciegas.
+        $fechaPago = \erpsoftsas\RecaudoAsobancaria::fechaAIso($lectura['encabezado']['fecha']);
+        if ($fechaPago === null) {
             $this->_ok = 0;
-            $this->_mensaje = 'Este archivo ya fue aplicado antes. No se hizo nada.';
+            $this->_mensaje = 'El archivo no trae una fecha de pago válida en el encabezado. Pida uno nuevo al banco.';
             return [];
         }
 
-        $analisis    = $this->_analizar($con, $lectura);
-        $fechaPago   = \erpsoftsas\RecaudoAsobancaria::fechaAIso($lectura['encabezado']['fecha']);
-        $idBanco     = $analisis['banco']['id'] ?? null;
-        $nombreBanco = $analisis['banco']['nombre'] ?? '';
+        $hash = hash_file('sha256', $ruta);
 
         /*
-         * El pago lo registra PagoDeclaracion, que es el unico sitio que toca
-         * esas columnas. Antes este UPDATE llenaba cuatro y el de PSE cinco, y
-         * dos no las llenaba nadie: la misma declaracion quedaba con datos
-         * distintos segun por donde entrara la plata.
-         *
-         * Aqui SI se manda la fecha de pago: la del archivo del banco es la de
-         * ventanilla, que puede ser de dias atras. dec_FechaRealPago guarda
-         * aparte cuando se cargo el archivo.
+         * TODO O NADA, Y DE A UNO. Aplicar un archivo y asignar a mano (función
+         * 4) comparten un candado, así que dos funcionarios no aplican el mismo
+         * pago a la vez; y todo va en una transacción: si algo falla a mitad,
+         * no queda la mitad de los pagos aplicada ni el archivo sin registrar
+         * (reintentarlo lo habría vuelto a leer como nuevo).
          */
-        $aplicados = 0;
-        foreach ($analisis['aplicables'] as $item) {
-            $marcada = \erpsoftsas\PagoDeclaracion::registrar($con, $item['id'], [
-                'valor'     => $item['valor'],
-                'banco'     => $nombreBanco,
-                'via'       => \erpsoftsas\PagoDeclaracion::VIA_RECAUDO,
-                'fechaPago' => $fechaPago,
-            ], \erpsoftsas\PseModulo::get($item['modulo']));
-            if ($marcada) { $aplicados++; }
-        }
+        try {
+            $con->begin();
 
-        $con->consultar(
-            "INSERT INTO ind_archivos_asobancaria
-                (arc_IdUsuario, arc_Nombre, arc_Ruta, arc_Hash, arc_IdBanco, arc_FechaPago,
-                 arc_TotalRegistros, arc_TotalAplicados, arc_TotalYaPagados, arc_TotalFallidos,
-                 arc_ValorControl, arc_ValorSumado, arc_RegistrosControl, arc_Descripcion)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            [
-                (int) $_SESSION['id_usuario'],
-                $_POST['nombre'] ?? $nombreEnDisco,
-                $nombreEnDisco,
-                $hash,
-                $idBanco,
-                $fechaPago,
-                $lectura['sumas']['registros'],
-                $aplicados,
-                count($analisis['yaPagadas']),
-                // No aplicados: sin declaración, sin presentar y para revisar a mano.
-                count($analisis['sinDeclaracion']) + count($analisis['valorNoCuadra'])
-                    + count($analisis['sinPresentar']) + count($analisis['revisar']),
-                $lectura['control']['valor'],
-                $lectura['sumas']['valor'],
-                $lectura['control']['registros'],
-                $this->_resumenTexto($analisis, $aplicados),
-            ]
-        );
+            if (!$this->_candado($con)) {
+                $con->rollback();
+                $this->_ok = 0;
+                $this->_mensaje = 'Otra persona está aplicando pagos en este momento. Intente de nuevo en un minuto.';
+                return [];
+            }
+
+            if ($con->obnerFila($con->consultar(
+                    "SELECT arc_Id FROM ind_archivos_asobancaria WHERE arc_Hash = ?", [$hash]))) {
+                $con->rollback();
+                $this->_ok = 0;
+                $this->_mensaje = 'Este archivo ya fue aplicado antes. No se hizo nada. '
+                                . 'Lo que quedó pendiente se asigna desde la tabla.';
+                return ['yaAplicado' => 1];
+            }
+
+            // Dentro del candado: lo que se aplica es lo que hay en la base AHORA.
+            $analisis    = $this->_analizar($con, $lectura);
+            $idBanco     = $analisis['banco']['id'] ?? null;
+            $nombreBanco = $analisis['banco']['nombre'] ?? '';
+
+            /*
+             * El pago lo registra PagoDeclaracion, que es el unico sitio que toca
+             * esas columnas. Antes este UPDATE llenaba cuatro y el de PSE cinco, y
+             * dos no las llenaba nadie: la misma declaracion quedaba con datos
+             * distintos segun por donde entrara la plata.
+             *
+             * Aqui SI se manda la fecha de pago: la del archivo del banco es la de
+             * ventanilla, que puede ser de dias atras. dec_FechaRealPago guarda
+             * aparte cuando se cargo el archivo.
+             */
+            $aplicados = 0;
+            foreach ($analisis['aplicables'] as $k => $item) {
+                $marcada = \erpsoftsas\PagoDeclaracion::registrar($con, $item['id'], [
+                    'valor'     => $item['valor'],
+                    'banco'     => $nombreBanco,
+                    'via'       => \erpsoftsas\PagoDeclaracion::VIA_RECAUDO,
+                    'fechaPago' => $fechaPago,
+                ], \erpsoftsas\PseModulo::get($item['modulo']));
+                // La pantalla marca "Aplicado" solo lo que de verdad quedo; lo
+                // demas conserva su boton para asignarlo a mano.
+                $analisis['aplicables'][$k]['aplicado'] = $marcada ? 1 : 0;
+                if ($marcada) { $aplicados++; }
+            }
+
+            $con->consultar(
+                "INSERT INTO ind_archivos_asobancaria
+                    (arc_IdUsuario, arc_Nombre, arc_Ruta, arc_Hash, arc_IdBanco, arc_FechaPago,
+                     arc_TotalRegistros, arc_TotalAplicados, arc_TotalYaPagados, arc_TotalFallidos,
+                     arc_ValorControl, arc_ValorSumado, arc_RegistrosControl, arc_Descripcion)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                [
+                    (int) $_SESSION['id_usuario'],
+                    $_POST['nombre'] ?? $nombreEnDisco,
+                    $nombreEnDisco,
+                    $hash,
+                    $idBanco,
+                    $fechaPago,
+                    $lectura['sumas']['registros'],
+                    $aplicados,
+                    count($analisis['yaPagadas']),
+                    // No aplicados: sin declaración, sin presentar y para revisar a mano.
+                    count($analisis['sinDeclaracion']) + count($analisis['valorNoCuadra'])
+                        + count($analisis['sinPresentar']) + count($analisis['revisar']),
+                    $lectura['control']['valor'],
+                    $lectura['sumas']['valor'],
+                    $lectura['control']['registros'],
+                    $this->_resumenTexto($analisis, $aplicados),
+                ]
+            );
+
+            $con->commit();
+
+        } catch (\Throwable $e) {
+            try { $con->rollback(); } catch (\Throwable $e2) { /* ya cerrada */ }
+            error_log('[recaudo] no se pudo aplicar ' . $nombreEnDisco . ': ' . $e->getMessage());
+            $this->_ok = 0;
+            $this->_mensaje = 'No se pudo aplicar el archivo: no quedó ningún pago registrado. Intente de nuevo.';
+            return [];
+        }
 
         $this->_ok = 1;
         $this->_mensaje = "Se aplicaron $aplicados pagos.";
@@ -280,36 +324,85 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
          * Antes solo se buscaba en el ICA: un pago de retención se tomaba por el
          * de la ICA ajena con ese número, o no se registraba nunca.
          */
+        $fechaArchivo = \erpsoftsas\RecaudoAsobancaria::fechaAIso($lectura['encabezado']['fecha'] ?? '');
+        $vistas   = [];   // "referencia|valor" => líneas de este archivo con ese pago
+        $destinos = [];   // "modulo:id" => ya la paga una línea anterior de este archivo
+
         foreach ($lectura['detalles'] as $d) {
 
             $ref = $d['referencia'];
             if ($ref === '') { $sinDeclaracion[] = ['referencia' => '(vacía)', 'valor' => $d['valor']]; continue; }
 
             $candidatas = $this->_candidatas($con, $ref);
+
+            /*
+             * EL MISMO PAGO NO SE APLICA DOS VECES. Si el banco reenvía el
+             * archivo, o se descarga otra vez del portal (otro hash), sus pagos
+             * ya están aplicados: mismo número, mismo valor, misma fecha, por
+             * recaudo. Se cuentan las líneas de este archivo con ese pago y las
+             * declaraciones que ya lo tienen; las que sobran, ya están. Sin
+             * esto, con la ICA de ese número ya pagada, el pago repetido caía en
+             * la retención homónima de otro contribuyente.
+             */
+            $clavePago = $ref . '|' . number_format((float) $d['valor'], 2, '.', '');
+            $vistas[$clavePago] = ($vistas[$clavePago] ?? 0) + 1;
+            if ($fechaArchivo !== null
+                && $vistas[$clavePago] <= $this->_contarAplicados($candidatas, $d['valor'], $fechaArchivo)) {
+                $yaPagadas[] = ['referencia' => $ref, 'valor' => $d['valor'], 'etiqueta' => 'este mismo pago ya estaba aplicado'];
+                continue;
+            }
+
             $pendientes = array_values(array_filter($candidatas, function ($c) {
                 return $c['presentada'] && !$c['pagada'];
             }));
+            $pagadas = array_values(array_filter($candidatas, function ($c) { return $c['pagada']; }));
 
-            if (count($pendientes) === 1) {
+            /*
+             * Se aplica solo lo inequívoco: UNA pendiente, ninguna homónima ya
+             * pagada y ninguna otra línea de este archivo pagándole a la misma.
+             * Con una homónima pagada puede ser el pago repetido de esa, y con
+             * dos líneas para la misma declaración, un pago doble: en los dos
+             * casos decide la Alcaldía con el comprobante (función 4).
+             */
+            if (count($pendientes) === 1 && !$pagadas) {
                 $c = $pendientes[0];
-                $aplicables[] = [
-                    'modulo'     => $c['modulo'],
-                    'etiqueta'   => $c['etiqueta'],
-                    'id'         => $c['id'],
+                $destino = $c['modulo'] . ':' . $c['id'];
+                if (!isset($destinos[$destino])) {
+                    $destinos[$destino] = true;
+                    $aplicables[] = [
+                        'modulo'        => $c['modulo'],
+                        'etiqueta'      => $c['etiqueta'],
+                        'id'            => $c['id'],
+                        'referencia'    => $ref,
+                        'valor'         => $d['valor'],
+                        'presentada'    => true,
+                        'contribuyente' => $c['contribuyente'],
+                        'documento'     => $c['documento'],
+                        'total'         => $c['total'],
+                    ];
+                    continue;
+                }
+                $revisar[] = [
                     'referencia' => $ref,
                     'valor'      => $d['valor'],
-                    'presentada' => true,
+                    'motivo'     => 'Otra línea de este archivo ya paga esa declaración: puede ser un pago repetido. '
+                                  . 'Revíselo con el comprobante del banco.',
+                    'candidatas' => $pendientes,
                 ];
                 continue;
             }
 
-            if (count($pendientes) > 1) {
+            if ($pendientes) {
                 $revisar[] = [
                     'referencia' => $ref,
                     'valor'      => $d['valor'],
-                    'motivo'     => 'El número es de ' . count($pendientes) . ' declaraciones presentadas sin pagar ('
-                                  . implode(', ', array_map(function ($c) { return $c['etiqueta']; }, $pendientes))
-                                  . '): no se sabe a cuál corresponde el pago.',
+                    'motivo'     => count($pendientes) > 1
+                        ? 'El número es de ' . count($pendientes) . ' declaraciones presentadas sin pagar ('
+                          . implode(', ', array_map(function ($c) { return $c['etiqueta']; }, $pendientes))
+                          . '): no se sabe a cuál corresponde el pago.'
+                        : 'El número también es de una declaración que ya estaba pagada ('
+                          . implode(', ', array_map(function ($c) { return $c['etiqueta']; }, $pagadas))
+                          . '): puede ser su pago repetido. Revíselo con el comprobante del banco.',
                     'candidatas' => $pendientes,
                 ];
                 continue;
@@ -321,7 +414,6 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
             }
 
             // Ninguna pendiente: o ya estaban pagadas, o no se han presentado.
-            $pagadas = array_values(array_filter($candidatas, function ($c) { return $c['pagada']; }));
             if ($pagadas) {
                 $yaPagadas[] = ['referencia' => $ref, 'valor' => $d['valor'],
                                 'etiqueta' => implode(', ', array_map(function ($c) { return $c['etiqueta']; }, $pagadas))];
@@ -380,10 +472,53 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
         return ['ica' => 'ICA', 'reteica' => 'retención', 'autorreteica' => 'autorretención'][$clave] ?? $clave;
     }
 
+    private $_tablas = [];
+
+    /** ¿Existe la tabla? Se pregunta una vez por petición: un archivo trae
+     *  cientos de líneas y cada una busca en los tres módulos. */
     private function _existeTabla($con, $tabla)
     {
-        $hay = $con->obnerFila($con->consultar("SELECT OBJECT_ID(?, 'U') AS o", ['dbo.' . $tabla]));
-        return !empty($hay['o']);
+        if (!array_key_exists($tabla, $this->_tablas)) {
+            $hay = $con->obnerFila($con->consultar("SELECT OBJECT_ID(?, 'U') AS o", ['dbo.' . $tabla]));
+            $this->_tablas[$tabla] = !empty($hay['o']);
+        }
+        return $this->_tablas[$tabla];
+    }
+
+    /**
+     * Un solo recaudo a la vez: aplicar un archivo y asignar a mano toman este
+     * candado dentro de su transacción (se suelta con el commit o el rollback).
+     * Sin él, dos funcionarios asignando la misma línea a la vez pasaban los
+     * dos la cuenta de "ya aplicado". false si no se consiguió en 20 segundos.
+     */
+    private function _candado($con)
+    {
+        $f = $con->obnerFila($con->consultar(
+            "SET NOCOUNT ON;
+             DECLARE @r INT;
+             EXEC @r = sp_getapplock @Resource = 'erp_recaudo_bancario', @LockMode = 'Exclusive',
+                                     @LockOwner = 'Transaction', @LockTimeout = 20000;
+             SELECT @r AS r;"
+        ));
+        return isset($f['r']) && (int) $f['r'] >= 0;
+    }
+
+    /**
+     * Cuántas declaraciones con ese número ya tienen ESE pago aplicado por
+     * recaudo: mismo valor y misma fecha de pago. Es lo que dice que una línea
+     * del archivo ya se aplicó (reenvío del banco, archivo descargado otra vez,
+     * o asignada a mano).
+     */
+    private function _contarAplicados(array $candidatas, $valor, $fecha)
+    {
+        $n = 0;
+        foreach ($candidatas as $c) {
+            if ($c['pagada'] && $c['ruta'] === \erpsoftsas\PagoDeclaracion::VIA_RECAUDO
+                && abs($c['valorPago'] - (float) $valor) < 0.005 && $c['fechaPago'] === $fecha) {
+                $n++;
+            }
+        }
+        return $n;
     }
 
     /**
@@ -401,6 +536,8 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
             $stmt = $con->consultar(
                 "SELECT d.{$m['pk']} AS id, d.{$m['estado']} AS estado,
                         ISNULL(d.{$m['pagado']}, 0) AS pagado, d.{$m['valor']} AS total,
+                        d.{$p}_RutaPago AS ruta, ISNULL(d.{$p}_ValorPago, 0) AS valorPago,
+                        CONVERT(VARCHAR(10), d.{$p}_FechaPago, 23) AS fechaPago,
                         LTRIM(RTRIM(CONCAT(c.ind_PrimerNombre, ' ', c.ind_SegundoNombre, ' ',
                                            c.ind_PrimerApellido, ' ', c.ind_SegundoApellido))) AS contribuyente,
                         c.ind_NumeroIdentificacion AS documento
@@ -419,6 +556,10 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
                     'total'         => (float) $f['total'],
                     'contribuyente' => preg_replace('/\s+/', ' ', (string) $f['contribuyente']),
                     'documento'     => (string) $f['documento'],
+                    // Para reconocer un pago ya aplicado (_contarAplicados).
+                    'ruta'          => (string) $f['ruta'],
+                    'valorPago'     => (float) $f['valorPago'],
+                    'fechaPago'     => (string) $f['fechaPago'],
                 ];
             }
         }
@@ -426,7 +567,11 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
     }
 
     /* ====================================================================
-       FUNCION 4 — asignar a mano un pago "para revisar"
+       FUNCION 4 — asignar a mano un pago que quedó pendiente
+
+       Los de "Revisar a mano", y los que al volver a cargar un archivo ya
+       aplicado salen como aplicables (se presentó la declaración después, o el
+       archivo se aplicó con la versión que solo miraba el ICA).
 
        Solo sobre un archivo YA APLICADO: si se asignara antes, al aplicar el
        archivo la otra candidata quedaria sola y se le aplicaria el mismo pago.
@@ -457,19 +602,6 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
             return [];
         }
 
-        $archivo = $con->obnerFila($con->consultar(
-            "SELECT a.arc_Id, b.ban_Nombre
-               FROM ind_archivos_asobancaria a
-               LEFT JOIN ind_bancos b ON b.ban_Id = a.arc_IdBanco
-              WHERE a.arc_Hash = ?",
-            [hash_file('sha256', $ruta)]
-        ));
-        if (!$archivo) {
-            $this->_ok = 0;
-            $this->_mensaje = 'Primero aplique el archivo; después se asignan a mano los pagos que quedaron para revisar.';
-            return [];
-        }
-
         $lectura = \erpsoftsas\RecaudoAsobancaria::leer($ruta);
         if (!$lectura['ok']) {
             $this->_ok = 0;
@@ -477,6 +609,11 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
             return [];
         }
         $fechaPago = \erpsoftsas\RecaudoAsobancaria::fechaAIso($lectura['encabezado']['fecha']);
+        if ($fechaPago === null) {
+            $this->_ok = 0;
+            $this->_mensaje = 'El archivo no trae una fecha de pago válida en el encabezado. Pida uno nuevo al banco.';
+            return [];
+        }
 
         $lineas = 0;
         foreach ($lectura['detalles'] as $d) {
@@ -488,60 +625,86 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
             return [];
         }
 
-        $yaAplicados = 0;
-        foreach (\erpsoftsas\PseModulo::claves() as $k) {
-            $mm = \erpsoftsas\PseModulo::get($k);
-            if (!$this->_existeTabla($con, $mm['tabla'])) { continue; }
-            $pp = $mm['prefijo'];
-            $f = $con->obnerFila($con->consultar(
-                "SELECT COUNT(*) AS n FROM {$mm['tabla']}
-                  WHERE {$mm['numero']} = ? AND ISNULL({$pp}_Pagado, 0) = 1
-                    AND {$pp}_RutaPago = ? AND ABS(ISNULL({$pp}_ValorPago, 0) - ?) < 0.005
-                    AND CAST({$pp}_FechaPago AS DATE) = ?",
-                [$ref, \erpsoftsas\PagoDeclaracion::VIA_RECAUDO, $valor, $fechaPago]
-            ));
-            $yaAplicados += (int) ($f['n'] ?? 0);
-        }
-        if ($yaAplicados >= $lineas) {
-            $this->_ok = 0;
-            $this->_mensaje = 'Ese pago ya se aplicó. No se hizo nada.';
-            return [];
-        }
-
         $m = \erpsoftsas\PseModulo::get($clave);
-        $dec = $con->obnerFila($con->consultar(
-            "SELECT {$m['pk']} AS id FROM {$m['tabla']}
-              WHERE {$m['pk']} = ? AND {$m['numero']} = ?
-                AND {$m['estado']} = 2 AND ISNULL({$m['pagado']}, 0) = 0",
-            [$id, $ref]
-        ));
-        if (!$dec) {
+
+        // Contar, comprobar y registrar bajo el MISMO candado que "Aplicar":
+        // dos funcionarios a la vez no pasan los dos la cuenta de "ya aplicado".
+        try {
+            $con->begin();
+
+            if (!$this->_candado($con)) {
+                $con->rollback();
+                $this->_ok = 0;
+                $this->_mensaje = 'Otra persona está aplicando pagos en este momento. Intente de nuevo en un minuto.';
+                return [];
+            }
+
+            $archivo = $con->obnerFila($con->consultar(
+                "SELECT a.arc_Id, b.ban_Nombre
+                   FROM ind_archivos_asobancaria a
+                   LEFT JOIN ind_bancos b ON b.ban_Id = a.arc_IdBanco
+                  WHERE a.arc_Hash = ?",
+                [hash_file('sha256', $ruta)]
+            ));
+            if (!$archivo) {
+                $con->rollback();
+                $this->_ok = 0;
+                $this->_mensaje = 'Primero aplique el archivo; después se asignan a mano los pagos que quedaron pendientes.';
+                return [];
+            }
+
+            if ($this->_contarAplicados($this->_candidatas($con, $ref), $valor, $fechaPago) >= $lineas) {
+                $con->rollback();
+                $this->_ok = 0;
+                $this->_mensaje = 'Ese pago ya se aplicó. No se hizo nada.';
+                return [];
+            }
+
+            $dec = $con->obnerFila($con->consultar(
+                "SELECT {$m['pk']} AS id FROM {$m['tabla']}
+                  WHERE {$m['pk']} = ? AND {$m['numero']} = ?
+                    AND {$m['estado']} = 2 AND ISNULL({$m['pagado']}, 0) = 0",
+                [$id, $ref]
+            ));
+            if (!$dec) {
+                $con->rollback();
+                $this->_ok = 0;
+                $this->_mensaje = 'Esa declaración ya no está presentada y sin pagar. Vuelva a cargar el archivo para ver el estado actual.';
+                return [];
+            }
+
+            $marcada = \erpsoftsas\PagoDeclaracion::registrar($con, $id, [
+                'valor'     => $valor,
+                'banco'     => (string) ($archivo['ban_Nombre'] ?? ''),
+                'via'       => \erpsoftsas\PagoDeclaracion::VIA_RECAUDO,
+                'fechaPago' => $fechaPago,
+            ], $m);
+            if (!$marcada) {
+                $con->rollback();
+                $this->_ok = 0;
+                $this->_mensaje = 'No se pudo marcar como pagada. Vuelva a cargar el archivo para ver el estado actual.';
+                return [];
+            }
+
+            // Queda en el historial del archivo: quién lo asignó y a qué.
+            $con->consultar(
+                "UPDATE ind_archivos_asobancaria
+                    SET arc_TotalAplicados = arc_TotalAplicados + 1,
+                        arc_TotalFallidos  = CASE WHEN arc_TotalFallidos > 0 THEN arc_TotalFallidos - 1 ELSE 0 END,
+                        arc_Descripcion    = CONCAT(arc_Descripcion, N' | A mano: ', ?, N' a ', ?, N' (usuario ', ?, N')')
+                  WHERE arc_Id = ?",
+                [$ref, self::_etiqueta($clave), (int) $_SESSION['id_usuario'], (int) $archivo['arc_Id']]
+            );
+
+            $con->commit();
+
+        } catch (\Throwable $e) {
+            try { $con->rollback(); } catch (\Throwable $e2) { /* ya cerrada */ }
+            error_log('[recaudo] no se pudo asignar ' . $ref . ': ' . $e->getMessage());
             $this->_ok = 0;
-            $this->_mensaje = 'Esa declaración ya no está presentada y sin pagar. Vuelva a cargar el archivo para ver el estado actual.';
+            $this->_mensaje = 'No se pudo aplicar el pago: no quedó ningún cambio. Intente de nuevo.';
             return [];
         }
-
-        $marcada = \erpsoftsas\PagoDeclaracion::registrar($con, $id, [
-            'valor'     => $valor,
-            'banco'     => (string) ($archivo['ban_Nombre'] ?? ''),
-            'via'       => \erpsoftsas\PagoDeclaracion::VIA_RECAUDO,
-            'fechaPago' => $fechaPago,
-        ], $m);
-        if (!$marcada) {
-            $this->_ok = 0;
-            $this->_mensaje = 'No se pudo marcar como pagada: otra persona la marcó al mismo tiempo. Vuelva a cargar el archivo.';
-            return [];
-        }
-
-        // Queda en el historial del archivo: quién lo asignó y a qué.
-        $con->consultar(
-            "UPDATE ind_archivos_asobancaria
-                SET arc_TotalAplicados = arc_TotalAplicados + 1,
-                    arc_TotalFallidos  = CASE WHEN arc_TotalFallidos > 0 THEN arc_TotalFallidos - 1 ELSE 0 END,
-                    arc_Descripcion    = CONCAT(arc_Descripcion, N' | A mano: ', ?, N' a ', ?, N' (usuario ', ?, N')')
-              WHERE arc_Id = ?",
-            [$ref, self::_etiqueta($clave), (int) $_SESSION['id_usuario'], (int) $archivo['arc_Id']]
-        );
 
         $this->_ok = 1;
         $this->_mensaje = 'Pago aplicado a la ' . self::_etiqueta($clave) . ' N° ' . $ref . '.';

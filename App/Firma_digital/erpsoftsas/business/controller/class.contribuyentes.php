@@ -315,14 +315,24 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         return ['valores' => $valores];
     }
 
-    /** Otro contribuyente (distinto de $excepto) con ese tipo y numero, o null. */
-    private static function _documentoRepetido($con, $tipo, $numero, $excepto = 0)
+    /**
+     * Otro contribuyente (distinto de $excepto) con ese NUMERO de documento, sea
+     * del tipo que sea, o null.
+     *
+     * Por numero y no por tipo y numero: todo el sistema ata la cuenta de acceso
+     * a su contribuyente solo por el numero (DAO_Usuario, el login,
+     * _contribuyenteDeLaSesion, la API de firmas, la creacion de cuentas). Una
+     * C.C. 1052400237 y un NIT 1052400237 serian dos contribuyentes para una
+     * misma cuenta, que quedaria atada al de menor ind_Id: lo que la Alcaldia
+     * gestionara en el otro no le apareceria nunca.
+     */
+    private static function _documentoRepetido($con, $numero, $excepto = 0)
     {
         $fila = $con->obnerFila($con->consultar(
             "SELECT TOP 1 ind_Id FROM ind_contribuyentes
-              WHERE ind_IdTipoDocumento = ? AND ind_NumeroIdentificacion = ? AND ind_Id <> ?
+              WHERE ind_NumeroIdentificacion = ? AND ind_Id <> ?
               ORDER BY ind_Id",
-            [(int) $tipo, (int) $numero, (int) $excepto]
+            [(int) $numero, (int) $excepto]
         ));
         return $fila ? (int) $fila['ind_Id'] : null;
     }
@@ -342,10 +352,10 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         }
         $v = $leido['valores'];
 
-        $repetido = self::_documentoRepetido($con, $v['ind_IdTipoDocumento'], $v['ind_NumeroIdentificacion']);
+        $repetido = self::_documentoRepetido($con, $v['ind_NumeroIdentificacion']);
         if ($repetido !== null) {
             $this->_ok = 0;
-            $this->_mensaje = 'Ya existe un contribuyente con ese tipo y número de documento. '
+            $this->_mensaje = 'Ya existe un contribuyente con ese número de documento. '
                             . 'Búsquelo en esta pantalla y use "Gestionar" en vez de crear otro.';
             return ['repetido' => $repetido];
         }
@@ -391,7 +401,7 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
 
         $idContribuyente = (int) ($_POST['ind_Id'] ?? 0);
         $actual = $idContribuyente > 0 ? $con->obnerFila($con->consultar(
-            "SELECT ind_IdTipoDocumento, ind_NumeroIdentificacion, ind_Persona
+            "SELECT ind_IdTipoDocumento, ind_NumeroIdentificacion, ind_Persona, ind_Email
                FROM ind_contribuyentes WHERE ind_Id = ?",
             [$idContribuyente]
         )) : null;
@@ -417,11 +427,31 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         $cambiaDocumento = $tipo !== (int) $actual['ind_IdTipoDocumento']
                         || $numero !== (int) $actual['ind_NumeroIdentificacion'];
 
-        // Solo si el documento CAMBIA: los que ya estaban repetidos (24 y 29) se
-        // pueden seguir editando sin tocar su documento.
-        if ($cambiaDocumento && self::_documentoRepetido($con, $tipo, $numero, $idContribuyente) !== null) {
+        // Solo si el documento CAMBIA (numero o tipo): los que ya estaban
+        // repetidos (24 y 29) se pueden seguir editando sin tocar su documento.
+        // Cambiar solo el tipo tambien se revisa: con otro registro del mismo
+        // numero, el cambio no deshace la ambiguedad, la disfraza.
+        if ($cambiaDocumento && self::_documentoRepetido($con, $numero, $idContribuyente) !== null) {
             $this->_ok = 0;
-            $this->_mensaje = 'Ya existe otro contribuyente con ese tipo y número de documento.';
+            $this->_mensaje = 'Ya existe otro contribuyente con ese número de documento.';
+            return [];
+        }
+
+        /*
+         * El correo, con la MISMA regla del RIT (cliente, 2026-08-26): el de la
+         * cuenta y el del contribuyente son uno, y no se repite entre
+         * contribuyentes. Por aqui (Editar y la ventana "Informacion del
+         * Contribuyente") se podia poner el correo de otro y la cuenta se quedaba
+         * con el viejo, asi que el codigo de firma seguia yendo alla. Solo si
+         * CAMBIA: un repetido de antes no le bloquea a nadie el resto de la ficha.
+         */
+        $correoNuevo  = array_key_exists('ind_Email', $v) ? trim((string) ($v['ind_Email'] ?? '')) : '';
+        $cambiaCorreo = $correoNuevo !== ''
+            && mb_strtolower($correoNuevo) !== mb_strtolower(trim((string) $actual['ind_Email']));
+        if ($cambiaCorreo && self::_correoDeOtro($con, $idContribuyente, $numero, $correoNuevo)) {
+            $this->_ok = 0;
+            $this->_mensaje = 'El correo "' . $correoNuevo . '" ya está registrado por otro '
+                            . 'contribuyente. Cada correo puede pertenecer a uno solo.';
             return [];
         }
 
@@ -459,6 +489,11 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         $this->_ok = 1;
         $this->_mensaje = "Contribuyente ID $idContribuyente editado correctamente";
 
+        // El correo nuevo pasa tambien a su cuenta de acceso (una sola; si no se
+        // puede, se avisa). El aviso va aparte en los datos para las pantallas
+        // que muestran su propio texto de exito.
+        $aviso = $cambiaCorreo ? trim(self::_sincronizarCorreoCuenta($con, $idContribuyente, $correoNuevo)) : '';
+
         /*
          * La cuenta de acceso se enlaza al contribuyente por el NUMERO de
          * documento (conf_usuarios.usu_NumeroDocumento). Si se corrige el numero
@@ -472,13 +507,17 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
                 [(string) $actual['ind_NumeroIdentificacion']]
             ));
             if ((int) ($cuentas['n'] ?? 0) > 0) {
-                $this->_mensaje .= '. Ojo: hay una cuenta de acceso con el documento anterior ('
-                                 . $actual['ind_NumeroIdentificacion'] . '); corrija también su documento en '
-                                 . 'Usuarios, o esa persona no verá su RIT.';
+                $aviso = trim($aviso . ' Ojo: hay una cuenta de acceso con el documento anterior ('
+                       . $actual['ind_NumeroIdentificacion'] . '); corrija también su documento en '
+                       . 'Usuarios, o esa persona no verá su RIT.');
             }
         }
 
-        return ['ind_Id' => $idContribuyente];
+        if ($aviso !== '') {
+            $this->_mensaje .= '. ' . $aviso;
+        }
+
+        return ['ind_Id' => $idContribuyente, 'aviso' => $aviso];
     }
 
     /**
@@ -937,16 +976,20 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             $fila[$nombreFormulario] = $fila[$columnaReal] ?? null;
         }
 
-        // Punto 10: la pantalla avisa cuando el RIT nunca se ha guardado.
-        //
-        // Hasta el 2026-09-28 aqui se marcaba ind_RIT_FechaCreacion con solo
-        // ABRIR el RIT, y el PDF usaba esa fecha para decidir entre inscripcion y
-        // actualizacion: como el boton de descarga esta en esta misma pantalla,
-        // todo PDF salia "Actualizacion" -incluida la inscripcion de alguien
-        // nuevo- mientras la pantalla decia "Inscripcion". Ahora la fecha se pone
-        // al primer GUARDADO (_guardarRIT) y la opcion de uso sale, en los dos
-        // lados, de si el RIT se ha firmado alguna vez. Consultar ya no escribe.
-        $fila['rit_sin_guardar'] = empty($fila['ind_RIT_FechaCreacion']) ? 1 : 0;
+        // Punto 10: el RIT se da por inicializado en el primer ingreso. No se
+        // crea nada nuevo -el contribuyente ya existe desde la inscripcion-,
+        // solo se deja constancia de cuando el sistema lo abrio por primera
+        // vez, para poder auditarlo y para no repetirlo.
+        if (empty($fila['ind_RIT_FechaCreacion'])) {
+            $con->consultar(
+                "UPDATE ind_contribuyentes
+                    SET ind_RIT_FechaCreacion = GETDATE()
+                  WHERE ind_Id = ? AND ind_RIT_FechaCreacion IS NULL",
+                [$idContribuyente]
+            );
+            $fila['ind_RIT_FechaCreacion']  = date('Y-m-d H:i:s');
+            $fila['rit_recien_inicializado'] = 1;
+        }
 
         // Las fechas salen como DateTime del driver y asi no le sirven a un
         // <input type="date">.
@@ -1290,90 +1333,60 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
              * formulario a quien lo padece.
              */
             $actual = $con->obnerFila($con->consultar(
-                "SELECT ind_Email FROM ind_contribuyentes WHERE ind_Id = ?",
+                "SELECT ind_Email, ind_NumeroIdentificacion FROM ind_contribuyentes WHERE ind_Id = ?",
                 [$idContribuyente]
             ));
             $sinCambio = $actual
                 && mb_strtolower(trim((string) $actual['ind_Email'])) === mb_strtolower($correo);
 
-            if ($correo !== '' && !$sinCambio) {
-                /*
-                 * "De otro" se mide por DOCUMENTO, no por fila.
-                 *
-                 * El documento es quien es el contribuyente; la fila es solo
-                 * donde quedo escrito. En esta base hay un documento con DOS
-                 * registros de contribuyente -la misma persona, inscrita dos
-                 * veces-, y comparando por ind_Id el segundo registro le daria
-                 * "ese correo ya es de otro" a la persona sobre si misma.
-                 *
-                 * Justo lo contrario de lo que pidio el cliente, que fue que el
-                 * correo de la cuenta y el del RIT SEAN el mismo. Del lado de
-                 * conf_usuarios ya se comparaba por documento; faltaba igualar
-                 * el otro lado.
-                 *
-                 * El documento vacio no agrupa: sin el, dos registros sueltos
-                 * pasarian por la misma persona sin serlo.
-                 */
-                $ajeno = $con->obnerFila($con->consultar(
-                    "DECLARE @doc VARCHAR(50) =
-                         (SELECT LTRIM(RTRIM(ISNULL(ind_NumeroIdentificacion, '')))
-                            FROM ind_contribuyentes WHERE ind_Id = ?);
-
-                     SELECT TOP 1 1 AS x FROM conf_usuarios u
-                      WHERE u.usu_Correo = ?
-                        AND (@doc = '' OR LTRIM(RTRIM(ISNULL(u.usu_NumeroDocumento, ''))) <> @doc)
-                     UNION ALL
-                     SELECT TOP 1 1 FROM ind_contribuyentes c
-                      WHERE c.ind_Email = ?
-                        AND c.ind_Id <> ?
-                        AND (@doc = '' OR LTRIM(RTRIM(ISNULL(c.ind_NumeroIdentificacion, ''))) <> @doc)",
-                    [$idContribuyente, $correo, $correo, $idContribuyente]
-                ));
-
-                if ($ajeno) {
-                    $this->_ok = 0;
-                    $this->_mensaje = 'El correo "' . $correo . '" ya está registrado por otro '
-                                    . 'contribuyente. Cada correo puede pertenecer a uno solo.';
-                    return [];
-                }
+            if ($correo !== '' && !$sinCambio
+                && self::_correoDeOtro($con, $idContribuyente, $actual['ind_NumeroIdentificacion'] ?? '', $correo)) {
+                $this->_ok = 0;
+                $this->_mensaje = 'El correo "' . $correo . '" ya está registrado por otro '
+                                . 'contribuyente. Cada correo puede pertenecer a uno solo.';
+                return [];
             }
         }
 
         $valores[] = $idContribuyente;
 
         /*
-         * LAS ACTIVIDADES VIAJAN CON EL RIT (revision 2026-09-28).
+         * LAS ACTIVIDADES VIAJAN CON EL RIT, COMO CAMBIOS (revision 2026-09-28).
          *
          * Iban solo por "Guardar actividades" (funcion 8). Quien agregaba
          * actividades y pulsaba Guardar veia "RIT actualizado" y las perdia: no se
-         * mandaban, y la pantalla se repintaba con las de la base. La pantalla
-         * manda ahora actividadesEnviadas = 1 con la lista (vacia si las quito
-         * todas), y se reemplazan aqui, con la MISMA regla de obligatorios de
-         * arriba. Sin la bandera no se tocan: una llamada que no las trae (las
-         * pruebas, otra pantalla) no las borra.
+         * mandaban, y la pantalla se repintaba con las de la base. Ahora viajan
+         * con Guardar, con la MISMA regla de obligatorios de arriba.
+         *
+         * Pero viajan como CAMBIOS: las que el usuario agrego y las que quito
+         * desde que cargo la tabla (_cambiosActividades), no la lista entera. La
+         * primera version de este arreglo mandaba la lista y el servidor borraba
+         * todas y las volvia a crear, y eso tenia costos que no se veian:
+         *   - El PDF de retencion toma como actividad PRINCIPAL la de menor atc_Id
+         *     (pdfRetenciones.php). Recrearlas en el orden de la pantalla (por
+         *     codigo) cambiaba la principal y la secundaria con CUALQUIER Guardar
+         *     del RIT, hasta al reimprimir retenciones ya presentadas. En local,
+         *     el contribuyente 32 pasaba de 301 a 201.
+         *   - Se perdian atc_Anio y la fecha de creacion de cada fila.
+         *   - Una pestaña abierta desde antes borraba la actividad que la Alcaldia
+         *     hubiera agregado en otra, con solo guardar un telefono.
+         * Con cambios, lo que no se toco conserva su fila (id, año y fecha), lo
+         * nuevo queda al final y lo que otra pestaña agrego sigue ahi.
          */
-        $conActividades = !empty($_POST['actividadesEnviadas']);
-        $actividades    = $conActividades
-            ? self::_actividadesValidas($con, (array) ($_POST['actividades'] ?? []))
-            : [];
+        $cambiosActividades = self::_cambiosActividades($con);
 
         // Datos y actividades juntos: o queda el RIT entero, o nada.
         try {
             $con->begin();
 
-            // ind_RIT_FechaCreacion: la del PRIMER guardado (antes se ponia con
-            // solo abrir la pantalla; ver _consultarRIT).
             $con->consultar(
                 "UPDATE ind_contribuyentes SET " . implode(', ', $sets) . ",
-                        ind_FechaActualizacion = GETDATE(),
-                        ind_RIT_FechaCreacion = COALESCE(ind_RIT_FechaCreacion, GETDATE())
+                        ind_FechaActualizacion = GETDATE()
                   WHERE ind_Id = ?",
                 $valores
             );
 
-            if ($conActividades) {
-                self::_reemplazarActividades($con, $idContribuyente, $actividades);
-            }
+            self::_aplicarCambiosActividades($con, $idContribuyente, $cambiosActividades);
 
             $con->commit();
         } catch (\Throwable $e) {
@@ -1387,69 +1400,14 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
 
         self::_completarDV($con, $idContribuyente);
 
-        /*
-         * Y se sincroniza con la cuenta de acceso, para que sean el mismo.
-         *
-         * SE SINCRONIZA UNA CUENTA, NO TODAS LAS DEL DOCUMENTO
-         *
-         * El cruce natural es por numero de documento, pero un documento puede
-         * tener mas de una cuenta -en esta base, el 1052400237 tiene dos-. El
-         * UPDATE por documento les ponia el MISMO correo a todas, y eso ahora
-         * es imposible: desde la migracion 022 hay un indice unico sobre
-         * usu_Correo. El motor rechazaba el UPDATE y, de paso, se llevaba por
-         * delante el guardado del RIT entero.
-         *
-         * Con dos cuentas no hay forma honesta de adivinar cual es "la" cuenta
-         * del contribuyente, y elegir mal seria mandarle el codigo de firma al
-         * buzon equivocado. Asi que se sincroniza solo cuando hay UNA, y
-         * cuando no, se dice. La anomalia de fondo -dos cuentas para un mismo
-         * documento- la resuelve la Alcaldia, no este UPDATE.
-         *
-         * Que la sincronizacion falle nunca tumba el guardado: lo escrito en
-         * el RIT es valido y ya esta grabado. Pero se AVISA, porque callarlo
-         * dejaria el codigo de firma yendo al correo viejo sin que se sepa.
-         */
+        // Y se sincroniza con la cuenta de acceso, para que sean el mismo (ver
+        // _sincronizarCorreoCuenta: una sola cuenta, y si no se puede, se avisa).
         $avisoSincronizacion = '';
 
         if (array_key_exists('ind_Email', $_POST) && trim((string) $_POST['ind_Email']) !== '') {
-            $correoNuevo = trim((string) $_POST['ind_Email']);
-
-            try {
-                $cuentas = [];
-                $stmt = $con->consultar(
-                    "SELECT u.usu_Id
-                       FROM conf_usuarios u
-                       INNER JOIN ind_contribuyentes c
-                               ON c.ind_NumeroIdentificacion = u.usu_NumeroDocumento
-                      WHERE c.ind_Id = ?",
-                    [$idContribuyente]
-                );
-                while ($f = $con->obnerFila($stmt)) { $cuentas[] = (int) $f['usu_Id']; }
-
-                if (count($cuentas) === 1) {
-                    $con->consultar(
-                        "UPDATE conf_usuarios
-                            SET usu_Correo = ?, usu_FechaActualizacion = GETDATE()
-                          WHERE usu_Id = ?",
-                        [$correoNuevo, $cuentas[0]]
-                    );
-                } elseif (count($cuentas) > 1) {
-                    $avisoSincronizacion = ' Ojo: este documento tiene más de una cuenta de '
-                        . 'acceso, así que el correo no se copió a ninguna para no elegir mal. '
-                        . 'La Alcaldía debe dejar una sola cuenta por contribuyente.';
-                }
-                // Sin cuentas no hay nada que sincronizar y no es un problema:
-                // la Alcaldia inscribe contribuyentes que aun no tienen usuario.
-
-            } catch (\Throwable $e) {
-                $avisoSincronizacion = ' El correo del RIT se guardó, pero no se pudo poner '
-                    . 'también en la cuenta de acceso porque ya pertenece a otra. Avise a la '
-                    . 'Alcaldía: hasta que se resuelva, el código de firma seguirá llegando '
-                    . 'al correo anterior de la cuenta.';
-
-                error_log('[contribuyentes] no se pudo sincronizar usu_Correo del contribuyente '
-                          . $idContribuyente . ': ' . $e->getMessage());
-            }
+            $avisoSincronizacion = self::_sincronizarCorreoCuenta(
+                $con, $idContribuyente, trim((string) $_POST['ind_Email'])
+            );
         }
 
         $this->_ok = 1;
@@ -1461,6 +1419,104 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
     }
 
     /**
+     * ¿El correo ya es de OTRO contribuyente (o de la cuenta de otro)? Lo usan el
+     * RIT y la ficha de Contribuyentes (Editar y la ventana "Informacion del
+     * Contribuyente"), porque la regla del cliente es una sola (2026-08-26):
+     * el correo de la cuenta y el del contribuyente son el mismo, y no se repite.
+     *
+     * "De otro" se mide por DOCUMENTO, no por fila. El documento es quien es el
+     * contribuyente; la fila es solo donde quedo escrito. En esta base hay un
+     * documento con DOS registros de contribuyente -la misma persona, inscrita
+     * dos veces-, y comparando por ind_Id el segundo registro le daria "ese
+     * correo ya es de otro" a la persona sobre si misma. Justo lo contrario de lo
+     * que pidio el cliente. Del lado de conf_usuarios ya se comparaba por
+     * documento; faltaba igualar el otro lado.
+     *
+     * El documento vacio no agrupa: sin el, dos registros sueltos pasarian por la
+     * misma persona sin serlo. $documento es el que tendra el contribuyente al
+     * guardar (en Editar puede cambiar en el mismo guardado).
+     */
+    private static function _correoDeOtro($con, $idContribuyente, $documento, $correo)
+    {
+        $fila = $con->obnerFila($con->consultar(
+            "DECLARE @doc VARCHAR(50) = LTRIM(RTRIM(ISNULL(?, '')));
+
+             SELECT TOP 1 1 AS x FROM conf_usuarios u
+              WHERE u.usu_Correo = ?
+                AND (@doc = '' OR LTRIM(RTRIM(ISNULL(u.usu_NumeroDocumento, ''))) <> @doc)
+             UNION ALL
+             SELECT TOP 1 1 FROM ind_contribuyentes c
+              WHERE c.ind_Email = ?
+                AND c.ind_Id <> ?
+                AND (@doc = '' OR LTRIM(RTRIM(ISNULL(c.ind_NumeroIdentificacion, ''))) <> @doc)",
+            [(string) $documento, $correo, $correo, (int) $idContribuyente]
+        ));
+        return (bool) $fila;
+    }
+
+    /**
+     * Copia el correo del contribuyente a su cuenta de acceso. Devuelve el aviso
+     * que hay que añadir al mensaje ('' si no hay nada que decir).
+     *
+     * SE SINCRONIZA UNA CUENTA, NO TODAS LAS DEL DOCUMENTO
+     *
+     * El cruce natural es por numero de documento, pero un documento puede tener
+     * mas de una cuenta -en esta base, el 1052400237 tiene dos-. El UPDATE por
+     * documento les ponia el MISMO correo a todas, y eso ahora es imposible:
+     * desde la migracion 022 hay un indice unico sobre usu_Correo. El motor
+     * rechazaba el UPDATE y, de paso, se llevaba por delante el guardado entero.
+     *
+     * Con dos cuentas no hay forma honesta de adivinar cual es "la" cuenta del
+     * contribuyente, y elegir mal seria mandarle el codigo de firma al buzon
+     * equivocado. Asi que se sincroniza solo cuando hay UNA, y cuando no, se
+     * dice. La anomalia de fondo -dos cuentas para un mismo documento- la
+     * resuelve la Alcaldia, no este UPDATE. Sin cuentas no hay nada que
+     * sincronizar y no es un problema: la Alcaldia inscribe contribuyentes que
+     * aun no tienen usuario.
+     *
+     * Que la sincronizacion falle nunca tumba el guardado: lo escrito es valido y
+     * ya esta grabado. Pero se AVISA, porque callarlo dejaria el codigo de firma
+     * yendo al correo viejo sin que se sepa.
+     */
+    private static function _sincronizarCorreoCuenta($con, $idContribuyente, $correo)
+    {
+        try {
+            $cuentas = [];
+            $stmt = $con->consultar(
+                "SELECT u.usu_Id
+                   FROM conf_usuarios u
+                   INNER JOIN ind_contribuyentes c
+                           ON c.ind_NumeroIdentificacion = u.usu_NumeroDocumento
+                  WHERE c.ind_Id = ?",
+                [(int) $idContribuyente]
+            );
+            while ($f = $con->obnerFila($stmt)) { $cuentas[] = (int) $f['usu_Id']; }
+
+            if (count($cuentas) === 1) {
+                $con->consultar(
+                    "UPDATE conf_usuarios
+                        SET usu_Correo = ?, usu_FechaActualizacion = GETDATE()
+                      WHERE usu_Id = ?",
+                    [$correo, $cuentas[0]]
+                );
+            } elseif (count($cuentas) > 1) {
+                return ' Ojo: este documento tiene más de una cuenta de '
+                     . 'acceso, así que el correo no se copió a ninguna para no elegir mal. '
+                     . 'La Alcaldía debe dejar una sola cuenta por contribuyente.';
+            }
+            return '';
+
+        } catch (\Throwable $e) {
+            error_log('[contribuyentes] no se pudo sincronizar usu_Correo del contribuyente '
+                      . $idContribuyente . ': ' . $e->getMessage());
+
+            return ' El correo se guardó, pero no se pudo poner también en la cuenta de '
+                 . 'acceso porque ya pertenece a otra. Avise a la Alcaldía: hasta que se '
+                 . 'resuelva, el código de firma seguirá llegando al correo anterior de la cuenta.';
+        }
+    }
+
+    /**
      * Punto 11 (reunion 2026-08-18): las actividades economicas las registra el
      * contribuyente desde su RIT.
      *
@@ -1469,9 +1525,9 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
      * ind_actividad_contribuyente, que es donde el negocio ya las usaba: la
      * declaracion es una por contribuyente y agrega por codigo CIIU.
      *
-     * Se reemplaza el juego completo en una sola pasada (ver
-     * _reemplazarActividades). Desde el 2026-09-28 lo normal es que viajen con
-     * Guardar (funcion 7); esta funcion queda por compatibilidad.
+     * Desde el 2026-09-28 lo normal es que viajen con Guardar (funcion 7); esta
+     * funcion queda por compatibilidad, y aplica CAMBIOS igual que Guardar (ver
+     * _aplicarCambiosActividades): nunca borra y recrea el juego completo.
      */
     protected function _guardarActividadesRIT()
     {
@@ -1506,11 +1562,15 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             return ['faltan' => $faltan];
         }
 
-        $limpias = self::_actividadesValidas($con, (array) ($_POST['actividades'] ?? []));
+        // Cambios (como Guardar) o, a la manera vieja, la lista completa: esa se
+        // convierte en cambios contra lo guardado, para no recrear las filas.
+        $cambios = (array_key_exists('actividadesAgregadas', $_POST) || array_key_exists('actividadesQuitadas', $_POST))
+            ? self::_cambiosActividades($con)
+            : self::_cambiosDesdeLista($con, $idContribuyente, (array) ($_POST['actividades'] ?? []));
 
         try {
             $con->begin();
-            self::_reemplazarActividades($con, $idContribuyente, $limpias);
+            self::_aplicarCambiosActividades($con, $idContribuyente, $cambios);
             $con->commit();
         } catch (\Throwable $e) {
             try { $con->rollback(); } catch (\Throwable $e2) { /* ya no habia transaccion */ }
@@ -1518,11 +1578,11 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         }
 
         $this->_ok = 1;
-        $this->_mensaje = count($limpias)
+        $this->_mensaje = ($cambios['agregar'] || $cambios['quitar'])
             ? 'Actividades económicas actualizadas'
-            : 'Se retiraron todas las actividades';
+            : 'No hubo cambios en las actividades';
 
-        return ['guardadas' => count($limpias)];
+        return ['agregadas' => count($cambios['agregar']), 'quitadas' => count($cambios['quitar'])];
     }
 
     /**
@@ -1545,25 +1605,86 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
     }
 
     /**
-     * Reemplaza el juego completo de actividades del contribuyente. Ya no hay que
-     * acotar por año: desde la migracion 007 son sus actividades VIGENTES (sin
-     * año) y el historico por periodo lo guarda cada declaracion. Quien llama
-     * abre la transaccion: un DELETE que corre y un INSERT que falla dejaba al
-     * contribuyente sin actividades.
+     * Los cambios de actividades que manda la pantalla del RIT: las que el
+     * usuario AGREGO y las que QUITO desde que cargo la tabla
+     * (actividadesAgregadas / actividadesQuitadas). Sin ninguna de las dos no hay
+     * cambios, y eso es lo que manda una pantalla en la que no se tocaron.
+     *
+     * Las agregadas pasan por el catalogo (_actividadesValidas). Un id que llegue
+     * en las dos listas se ignora: no se sabe cual de las dos quiso el usuario.
+     *
+     * @return array{agregar:int[], quitar:int[]}
      */
-    private static function _reemplazarActividades($con, $idContribuyente, array $ids)
+    private static function _cambiosActividades($con)
     {
-        $con->consultar(
-            "DELETE FROM ind_actividad_contribuyente WHERE atc_IdContribuyente = ?",
+        $agregar = self::_actividadesValidas($con, (array) ($_POST['actividadesAgregadas'] ?? []));
+
+        $quitar = [];
+        foreach ((array) ($_POST['actividadesQuitadas'] ?? []) as $id) {
+            $id = (int) $id;
+            if ($id > 0 && !in_array($id, $quitar, true)) { $quitar[] = $id; }
+        }
+
+        $ambas = array_intersect($agregar, $quitar);
+        return [
+            'agregar' => array_values(array_diff($agregar, $ambas)),
+            'quitar'  => array_values(array_diff($quitar, $ambas)),
+        ];
+    }
+
+    /**
+     * Una lista COMPLETA (la forma vieja de la funcion 8) convertida en cambios
+     * contra lo que ya esta guardado, para aplicarla sin recrear las filas.
+     *
+     * @return array{agregar:int[], quitar:int[]}
+     */
+    private static function _cambiosDesdeLista($con, $idContribuyente, array $lista)
+    {
+        $deseadas = self::_actividadesValidas($con, $lista);
+
+        $guardadas = [];
+        $stmt = $con->consultar(
+            "SELECT atc_IdCodigoActividad FROM ind_actividad_contribuyente
+              WHERE atc_IdContribuyente = ? ORDER BY atc_Id",
             [(int) $idContribuyente]
         );
+        while ($f = $con->obnerFila($stmt)) { $guardadas[] = (int) $f['atc_IdCodigoActividad']; }
 
-        foreach ($ids as $id) {
+        return [
+            'agregar' => array_values(array_diff($deseadas, $guardadas)),
+            'quitar'  => array_values(array_diff($guardadas, $deseadas)),
+        ];
+    }
+
+    /**
+     * Aplica los cambios SIN tocar lo demas: borra solo las quitadas y agrega al
+     * FINAL las nuevas que no esten ya. Las filas que siguen conservan su atc_Id,
+     * su atc_Anio y su fecha de creacion, y con el id el orden: la retencion toma
+     * como principal la de menor atc_Id (ver _guardarRIT).
+     *
+     * Quien llama abre la transaccion. El NOT EXISTS con UPDLOCK/HOLDLOCK cubre
+     * que otra pestaña la agregue en el mismo instante: el indice unico por
+     * (contribuyente, actividad) haria fallar el guardado entero.
+     */
+    private static function _aplicarCambiosActividades($con, $idContribuyente, array $cambios)
+    {
+        $idContribuyente = (int) $idContribuyente;
+
+        foreach ($cambios['quitar'] as $id) {
             $con->consultar(
-                "INSERT INTO ind_actividad_contribuyente
-                     (atc_IdContribuyente, atc_IdCodigoActividad)
-                 VALUES (?, ?)",
-                [(int) $idContribuyente, (int) $id]
+                "DELETE FROM ind_actividad_contribuyente
+                  WHERE atc_IdContribuyente = ? AND atc_IdCodigoActividad = ?",
+                [$idContribuyente, (int) $id]
+            );
+        }
+
+        foreach ($cambios['agregar'] as $id) {
+            $con->consultar(
+                "INSERT INTO ind_actividad_contribuyente (atc_IdContribuyente, atc_IdCodigoActividad)
+                 SELECT ?, ?
+                  WHERE NOT EXISTS (SELECT 1 FROM ind_actividad_contribuyente WITH (UPDLOCK, HOLDLOCK)
+                                     WHERE atc_IdContribuyente = ? AND atc_IdCodigoActividad = ?)",
+                [$idContribuyente, (int) $id, $idContribuyente, (int) $id]
             );
         }
     }

@@ -760,7 +760,7 @@ var Retenciones = (function () {
             // (la Alcaldía la retiró): se conserva, para que Guardar no la
             // borre sin que nadie lo note.
             if (sel && !esta) {
-                html += '<option value="' + sel + '" selected>'
+                html += '<option value="' + sel + '" data-tarifa="' + (Number(a.tarifa) || 0) + '" selected>'
                       + escapar((a.codigo || '') + ' — ' + (a.descripcion || '')) + '</option>';
             }
             return html;
@@ -1008,7 +1008,10 @@ var Retenciones = (function () {
         $('#tablaActividades').on('change', '.js-actividad', function () {
             var id = $(this).val(), $fila = $(this).closest('tr');
             var act = catalogo.filter(function (a) { return a.id == id; })[0];
-            $fila.find('.js-tarifa').text(act ? ((act.tarifa * 1000).toFixed(1)) : '0.0');
+            // La actividad guardada que ya no esta en el catalogo lleva su
+            // tarifa en la opcion: sin esto, volver a elegirla la mostraba en 0.
+            var tarifa = act ? act.tarifa : (parseFloat($(this).find('option:selected').data('tarifa')) || 0);
+            $fila.find('.js-tarifa').text((tarifa * 1000).toFixed(1));
             recalcularEnVivo();
         });
 
@@ -1160,11 +1163,25 @@ var Retenciones = (function () {
         function guardar(alTerminar) {
             if (guardando) { return; }
             guardando = true;
+
+            // Mientras viaja, el formulario no se edita: lo que se escribiera
+            // en ese rato no iba en el envio y se perdia al repintar con la
+            // respuesta, sin aviso. Al volver, pintarFormulario rehace los
+            // campos; si falla, se sueltan los mismos que se trabaron aqui.
+            var $trabados = $('#panelFormulario').find('input, select')
+                .filter(':not([disabled]):not([readonly])');
+            $trabados.filter('input').prop('readonly', true);
+            $trabados.filter('select').prop('disabled', true);
+
             pedir(cfg, 4, recoger(), function (r) {
                 abierta = r.datos;
                 pintarFormulario();
                 if (alTerminar) { alTerminar(r); }
-            }).always(function () { guardando = false; });
+            }).always(function () {
+                guardando = false;
+                $trabados.filter('input').prop('readonly', false);
+                $trabados.filter('select').prop('disabled', false);
+            });
         }
 
         /* Una fila con base pero sin actividad elegida se descartaba en
@@ -1284,8 +1301,11 @@ var Retenciones = (function () {
                     var falta = r.datos && r.datos.falta;
 
                     if (falta !== 'declarante' && falta !== 'contador') {
-                        // Cualquier otro rechazo se muestra tal cual.
+                        // Cualquier otro rechazo se muestra tal cual, y el
+                        // listado se refresca: si al recalcular cambio la
+                        // liquidacion, el servidor quito las firmas.
                         Swal.fire('Atención', r.mensaje || 'No se pudo presentar.', 'warning');
+                        listarBorradores();
                         return;
                     }
 

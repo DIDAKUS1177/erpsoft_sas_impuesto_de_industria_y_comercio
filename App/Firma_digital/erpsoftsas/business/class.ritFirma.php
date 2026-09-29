@@ -24,11 +24,12 @@ namespace erpsoftsas;
  * una firma y no un adorno.
  *
  * El hash cubre EXACTAMENTE lo que el formulario imprime -datos del
- * contribuyente, actividades y, del establecimiento, lo que sale en el papel
- * (lugarImpreso)-, ni mas ni menos. De mas, invalidaria firmas por cambios que
- * el papel no muestra; de menos, dejaria pasar cambios visibles sin volver a
- * firmar. Ver VERSION y VERSIONES_ACEPTADAS para como convive con las firmas
- * hechas con la formula anterior.
+ * contribuyente, actividades, lo que sale del establecimiento en el papel
+ * (lugarImpreso y personasImpresas) y la linea de documentos adjuntos
+ * (documentosImpresos)-, ni mas ni menos. De mas, invalidaria firmas por
+ * cambios que el papel no muestra; de menos, dejaria pasar cambios visibles sin
+ * volver a firmar. Ver VERSION y VERSIONES_ACEPTADAS para como convive con las
+ * firmas hechas con la formula anterior.
  */
 class RitFirma
 {
@@ -43,7 +44,10 @@ class RitFirma
      * sin que nada impreso hubiera cambiado. La v4 cubre lo que el papel si
      * muestra del establecimiento (lugarImpreso: direccion y telefono de la
      * actividad, y la matricula y fechas cuando el contribuyente no tiene las
-     * suyas) y deja fuera el resto.
+     * suyas; personasImpresas: representante, contador y revisor del local
+     * cuando el contribuyente no tiene los suyos) y deja fuera el resto. Y cubre
+     * tambien la linea "Documentos adjuntos" (documentosImpresos), que la v3 no
+     * tenia: cambiar un soporte cambiaba el papel sin tocar la firma.
      */
     const VERSION = 'v4';
 
@@ -302,7 +306,13 @@ class RitFirma
     /**
      * Formula v4 (2026-09-28): los mismos datos del contribuyente y las mismas
      * actividades que la v3, pero del establecimiento solo lo que el formulario
-     * imprime (lugarImpreso), no la lista entera que ya no sale en el papel.
+     * imprime (lugarImpreso y personasImpresas), no la lista entera que ya no
+     * sale en el papel, y ademas la linea de documentos adjuntos
+     * (documentosImpresos). Todo tal como lo pinta extensiones/ritActualizado.php,
+     * que usa estas mismas funciones.
+     *
+     * Hasta que haya firmas v4 en produccion se puede ajustar; desde entonces,
+     * cualquier cambio de QUE se firma es una v5 (y la v4 se congela como la v3).
      */
     private static function _datosV4($con, $idContribuyente)
     {
@@ -347,9 +357,19 @@ class RitFirma
             $datos['actividades'][] = (string) $a['atc_IdCodigoActividad'];
         }
 
+        $establecimiento = self::filaEstablecimientoImpreso($con, $idContribuyente);
+
         $datos['lugar'] = array_map(
             [self::class, '_texto'],
-            self::lugarImpreso($fila, self::filaEstablecimientoImpreso($con, $idContribuyente))
+            self::lugarImpreso($fila, $establecimiento)
+        );
+        $datos['personas'] = array_map(
+            [self::class, '_texto'],
+            self::personasImpresas($fila, $establecimiento)
+        );
+        $datos['documentos'] = array_map(
+            [self::class, '_texto'],
+            self::documentosImpresos($con, $idContribuyente)
         );
 
         return $datos;
@@ -373,16 +393,20 @@ class RitFirma
         return $fila ? (int) $fila['est_Id'] : null;
     }
 
-    /** Columnas de ese establecimiento que el formulario imprime, o null. */
+    /**
+     * La fila de ese establecimiento, o null. Con * y no con una lista de
+     * columnas, igual que el e.* del PDF: los est_* de representante, contador y
+     * revisor vienen del esquema original, ninguna migracion los crea, y una base
+     * a la que le faltara alguno haria fallar aqui la firma entera, mientras el
+     * PDF solo lo dejaria en blanco.
+     */
     private static function filaEstablecimientoImpreso($con, $idContribuyente)
     {
         $idEst = self::establecimientoImpreso($con, $idContribuyente);
         if ($idEst === null) { return null; }
 
         return $con->obnerFila($con->consultar(
-            'SELECT est_Nombre, est_Direccion, est_Telefono, est_Matricula,
-                    est_Fecha_matricula, est_Fecha_inicio
-               FROM ind_establecimientos WHERE est_Id = ?',
+            'SELECT * FROM ind_establecimientos WHERE est_Id = ?',
             [$idEst]
         )) ?: null;
     }
@@ -423,6 +447,72 @@ class RitFirma
             'direccion_actividad' => trim((string) ($e['est_Direccion'] ?? '')) !== ''
                 ? (string) $e['est_Direccion'] : (string) ($c['ind_Direccion'] ?? ''),
         ];
+    }
+
+    /**
+     * Representante, contador y revisor tal como los imprime el formulario (sin
+     * escapar): el del contribuyente y, si esta vacio, el del establecimiento
+     * impreso, que es donde quedaron en las bases de antes de la migracion 003
+     * (en local, los contribuyentes 29, 31 y 32 tienen contador solo en el
+     * local). Es la misma regla ind_X ?: est_X que tenia el PDF; vive aqui para
+     * que la huella v4 cubra lo que de verdad sale en el papel: con solo los
+     * ind_*, cambiar el contador del local cambiaba lo impreso sin tocar la firma.
+     */
+    public static function personasImpresas(array $c, ?array $e)
+    {
+        $e = $e ?: [];
+        $impreso = function ($delContribuyente, $delLocal) use ($c, $e) {
+            return (string) (($c[$delContribuyente] ?? null) ?: ($e[$delLocal] ?? ''));
+        };
+
+        return [
+            'representante'       => $impreso('ind_Nombre_representante', 'est_Nombre_representante'),
+            'cc_representante'    => $impreso('ind_Cedula_representante', 'est_Cedula_representante'),
+            'email_representante' => $impreso('ind_Email_representante',  'est_Email_representante'),
+            'contador_nombre'     => $impreso('ind_NombreContador',       'est_Nombre_contador'),
+            'contador_cc'         => $impreso('ind_CedulaContador',       'est_Cedula_contador'),
+            'contador_tp'         => $impreso('ind_TarjetaProfContador',  'est_Tarjeta_profesional'),
+            'revisor_nombre'      => $impreso('ind_NombreRevisor',        'est_Nombre_revisor'),
+            'revisor_cc'          => $impreso('ind_CedulaRevisor',        'est_Cedula_revisor'),
+            'revisor_tp'          => $impreso('ind_TarjetaProfRevisor',   'est_Tarjeta_profesional_revisor'),
+        ];
+    }
+
+    /**
+     * La linea "Documentos adjuntos" del formulario, un elemento por soporte
+     * vigente ("RUT: rut_2026.pdf"), en el orden en que se imprime. El PDF los
+     * une con " · " y escribe "Ninguno" si no hay. Se imprime para que en
+     * ventanilla se sepa que se aporto (cliente, 2026-09-01); por eso entra en la
+     * huella v4: cambiar o quitar un soporte cambia el papel.
+     *
+     * @return string[]
+     */
+    public static function documentosImpresos($con, $idContribuyente)
+    {
+        $etiquetas = [
+            'rut'      => 'RUT',
+            'camara'   => 'Camara de comercio',
+            'cedula'   => 'Documento de identificacion',
+            'usosuelo' => 'Uso de suelo',
+            'cese'     => 'Cese',
+            'otro'     => 'Otro',
+        ];
+
+        $lista = [];
+        $st = $con->consultar(
+            "SELECT anx_Tipo, anx_NombreOriginal
+               FROM ind_establecimiento_anexos
+              WHERE anx_IdContribuyente = ?
+                AND anx_Activo = 1
+              ORDER BY anx_Id",
+            [(int) $idContribuyente]
+        );
+        while ($fa = $con->obnerFila($st)) {
+            $tipo = strtolower(trim((string) $fa['anx_Tipo']));
+            $lista[] = ($etiquetas[$tipo] ?? ($fa['anx_Tipo'] ?: 'Documento'))
+                     . ': ' . $fa['anx_NombreOriginal'];
+        }
+        return $lista;
     }
 
     /**

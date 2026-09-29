@@ -243,9 +243,32 @@ $no_declaracion_corrige  = htmlspecialchars(trim((string) ($row['dec_Declaracion
 $chk_correccion          = $no_declaracion_corrige !== '';
 $chk_declaracion_inicial = !$chk_correccion;
 $chk_solo_pago           = false;
-$fecha_declaracion       = $row['dec_FechaDeclaracion'] instanceof DateTime
-    ? $row['dec_FechaDeclaracion']->format('d/m/Y')
-    : (string)($row['dec_FechaDeclaracion'] ?? '');
+
+/*
+ * La "Fecha" de esa fila es la de PRESENTACION de la declaracion que se
+ * corrige, como "FECHA DE PRESENTACIÓN DECLARACIÓN A CORREGIR" en
+ * declaracion.php, y se busca igual que alla. Aqui se imprimia la fecha de la
+ * propia correccion (dec_FechaDeclaracion), asi que los dos documentos de la
+ * misma correccion no coincidian (segunda revision 2026-09-28). En una
+ * declaracion inicial va vacia, como en declaracion.php.
+ */
+$fecha_corrige = '';
+$corrige       = trim((string) ($row['dec_DeclaracionCorrige'] ?? ''));
+if ($corrige !== '') {
+    $corregida = $con->obnerFila($con->consultar(
+        "SELECT TOP 1 dec_FechaPresentacion FROM ind_declaraciones_ica
+          WHERE dec_IdContribuyente = ?
+            AND (dec_NumeroDeclaracion = ? OR (dec_NumeroDeclaracion IS NULL AND dec_Id = ?))
+          ORDER BY dec_Id",
+        [$row['dec_IdContribuyente'], $corrige, $corrige]
+    ));
+    $fp = $corregida['dec_FechaPresentacion'] ?? null;
+    if ($fp instanceof DateTime) {
+        $fecha_corrige = $fp->format('d/m/Y');
+    } elseif (is_string($fp) && trim($fp) !== '') {
+        $fecha_corrige = date('d/m/Y', strtotime($fp));
+    }
+}
 
 /* ============================================================
    VARIABLES – DATOS CONTRIBUYENTE (BLOQUE 1–6)
@@ -512,7 +535,7 @@ IMPUESTO DE INDUSTRIA Y COMERCIO
 <td width="18%">Declaración que corrige No.</td>
 <td width="10%">' . $no_declaracion_corrige . '</td>
 <td width="15%">Fecha</td>
-<td width="14%">' . $fecha_declaracion . '</td>
+<td width="14%">' . htmlspecialchars($fecha_corrige) . '</td>
 </tr>
 
 </table>

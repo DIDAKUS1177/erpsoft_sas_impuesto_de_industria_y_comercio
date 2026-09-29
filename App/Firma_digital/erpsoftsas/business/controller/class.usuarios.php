@@ -84,9 +84,163 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
         return $a !== '' && $a === $b;
     }
 
+    /** Tipos de documento que existen en el sistema: 1 C.C., 3 C.E., 4 pasaporte, 5 NIT. */
+    const TIPOS_DOCUMENTO = [1, 3, 4, 5];
+
+    /**
+     * Lee y valida los datos de una cuenta. Crear y editar usan la MISMA regla
+     * (revision 2026-09-28): antes cada uno validaba distinto, y por Editar se
+     * colaba lo que Crear rechazaba.
+     *
+     * $esAlcaldia: las cuentas de la Alcaldia (roles 1 y 2) no llevan
+     * contribuyente, asi que el documento es opcional y solo cuentan los largos
+     * de la cuenta; las demas crean o usan un contribuyente y tienen que caber
+     * tambien en sus columnas.
+     *
+     * @return array los datos normalizados, o ['error' => mensaje]
+     */
+    private static function _leerCuenta($esAlcaldia)
+    {
+        $texto = function ($campo) { return trim((string) ($_POST[$campo] ?? '')); };
+
+        $c = [
+            'nombres'       => $texto('nombres'),
+            'apellidos'     => $texto('apellidos'),
+            'direccion'     => $texto('direccion'),
+            'email'         => $texto('email'),
+            'usuario'       => $texto('usuario'),
+            'documento'     => $texto('numeroDocumento'),
+            'tipoDocumento' => (int) $texto('idTipoDocumento'),
+            'tipoPersona'   => (int) $texto('tipoPersona'),
+            // Municipio de residencia: lo pide la inscripcion publica (index.php).
+            // Sin el, 0 = "sin escoger": el RIT no deja guardarse hasta que se
+            // elija. Antes caia en 1 (Tunja), que es justo el "municipio de
+            // registro carga mal" del punto 5.
+            'idCiudad'      => ctype_digit($texto('idCiudad')) ? (int) $texto('idCiudad') : 0,
+            // El telefono se guarda solo con sus digitos: "310 123 4567",
+            // "310-123-4567" y "+57 3101234567" son el mismo numero, y la columna
+            // del contribuyente es bigint. Vacio se admite (en Usuarios no es
+            // obligatorio).
+            'telefono'      => preg_replace('/\D/', '', (string) ($_POST['telefono'] ?? '')),
+        ];
+
+        if ($c['telefono'] !== '' && (strlen($c['telefono']) < 7 || strlen($c['telefono']) > 15)) {
+            return ['error' => 'El teléfono debe tener entre 7 y 15 dígitos.'];
+        }
+
+        /*
+         * El documento, si viene, SOLO con digitos y para CUALQUIER rol. La
+         * columna de la cuenta es texto, pero DAO_Usuario la cruza con
+         * ind_NumeroIdentificacion (INT) en la subconsulta usu_idContibuyente, y
+         * SQL Server convierte el texto a INT: un "1.5" o un "1e5" (un input
+         * type=number los acepta) hacia fallar esa consulta, y con ella el
+         * listado ENTERO de Usuarios. El tope es el del INT (2.147.483.647). Sin
+         * documento solo pueden quedar las cuentas de la Alcaldia.
+         */
+        $documentoValido = ctype_digit($c['documento']) && strlen($c['documento']) <= 10
+            && (float) $c['documento'] <= 2147483647 && (int) $c['documento'] > 0;
+        if (($c['documento'] !== '' || !$esAlcaldia) && !$documentoValido) {
+            return ['error' => 'Escriba el número de documento solo con números: sin puntos, sin guion y sin el dígito de verificación.'];
+        }
+
+        // El tipo, obligatorio con documento o con contribuyente, y solo los que
+        // existen en el sistema: el 2 ("Tarjeta de identidad") lo ofrecia esta
+        // pantalla, pero el RIT, los PDF y Contribuyentes no lo conocen.
+        if (($c['documento'] !== '' || !$esAlcaldia || $c['tipoDocumento'] !== 0)
+            && !in_array($c['tipoDocumento'], self::TIPOS_DOCUMENTO, true)) {
+            return ['error' => 'Elija el tipo de documento (C.C., C.E., pasaporte o NIT).'];
+        }
+
+        // Tipo de persona: el que se escogio; si no, sale del documento (NIT es
+        // juridica), como hasta ahora.
+        if (!in_array($c['tipoPersona'], [1, 2], true)) {
+            $c['tipoPersona'] = ($c['tipoDocumento'] === 5) ? 2 : 1;
+        }
+        // La razon social de una juridica va ENTERA en el primer nombre del
+        // contribuyente. Si en la pantalla quedo partida entre "Nombres" y
+        // "Apellidos", se une: antes los apellidos se descartaban sin decir nada.
+        $c['razon'] = trim($c['nombres'] . ' ' . $c['apellidos']);
+
+        /*
+         * Largos. La cuenta admite 500 caracteres (el usuario, 100), pero el
+         * contribuyente guarda los nombres en varchar(100) y la direccion en
+         * varchar(200): pasarse era un error de la base y un "No se pudo
+         * completar el registro" que no decia que campo. Se avisa por campo, como
+         * en la ficha de Contribuyentes (_leerFicha).
+         */
+        $largos = [
+            ['nombres', 'los nombres', 500], ['apellidos', 'los apellidos', 500],
+            ['direccion', 'la dirección', 500], ['email', 'el correo', 500],
+            ['usuario', 'el usuario', 100],
+        ];
+        if (!$esAlcaldia) {
+            if ($c['tipoPersona'] === 2) {
+                $largos[] = ['razon', 'la razón social (nombres y apellidos juntos)', 100];
+            } else {
+                $largos[] = ['nombres', 'los nombres', 100];
+                $largos[] = ['apellidos', 'los apellidos', 100];
+            }
+            $largos[] = ['direccion', 'la dirección', 200];
+        }
+        foreach ($largos as list($campo, $rotulo, $maximo)) {
+            if (mb_strlen($c[$campo]) > $maximo) {
+                return ['error' => 'El texto de ' . $rotulo . ' no puede pasar de ' . $maximo . ' caracteres.'];
+            }
+        }
+
+        return $c;
+    }
+
+    /**
+     * El contribuyente de una cuenta de contribuyente: si no hay ninguno con su
+     * documento, se crea. Corre DENTRO de la transaccion de quien llama (crear o
+     * editar la cuenta): quedan los dos o ninguno.
+     *
+     * Lo que la pantalla de Usuarios no pide se deduce: el DV sale del NIT, el
+     * tipo de persona del documento si no se escogio (_leerCuenta), y el
+     * municipio queda en 0, que el RIT trata como "sin escoger" y obliga a
+     * llenar antes de guardar. Es mejor que el 1 (Tunja) que se ponia a ciegas.
+     *
+     * @return bool true si lo creo
+     */
+    private static function _asegurarContribuyente($con, array $c)
+    {
+        // Mismo criterio que el enlace cuenta-contribuyente del resto del
+        // sistema: por numero de documento. Si ya existe, no se duplica.
+        $existe = $con->obnerFila($con->consultar(
+            "SELECT TOP 1 ind_Id FROM ind_contribuyentes
+              WHERE ind_NumeroIdentificacion = ? ORDER BY ind_Id",
+            [(int) $c['documento']]
+        ));
+        if ($existe) { return false; }
+
+        $juridica = ($c['tipoPersona'] === 2);
+        // Con NIT el DV se calcula aqui (el que llegue del navegador no decide);
+        // sin NIT el sistema no usa DV y la columna guarda 0.
+        $dv = ($c['tipoDocumento'] === 5) ? \erpsoftsas\DAO_Contribuyentes::digitoVerificacion($c['documento']) : 0;
+
+        $con->consultar(
+            "INSERT INTO ind_contribuyentes
+                 (ind_NumeroIdentificacion, ind_IdTipoDocumento, ind_DV, ind_PrimerNombre,
+                  ind_PrimerApellido, ind_Direccion, ind_Telefono, ind_Email,
+                  ind_Persona, ind_IdCiudad, ind_Estado)
+             VALUES (?, ?, ?, ?, NULLIF(?, ''), ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, 1)",
+            [
+                (int) $c['documento'], $c['tipoDocumento'], $dv,
+                // Persona juridica: la razon social entera (ver _leerCuenta) y
+                // sin apellidos.
+                $juridica ? $c['razon'] : $c['nombres'],
+                $juridica ? '' : $c['apellidos'],
+                $c['direccion'], $c['telefono'], $c['email'],
+                $c['tipoPersona'], $c['idCiudad'],
+            ]
+        );
+        return true;
+    }
+
     /**
     *** Realiza el proceso de Crear Usuarios.
-    **/  
+    **/
     protected function _agregarUsuario() {
 
         /*
@@ -98,64 +252,40 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
          * la pantalla de Usuarios nunca manda-, la cuenta ya existia, la
          * respuesta era un 500 vacio y el RIT de esa persona decia "Su usuario
          * no esta asociado a un contribuyente": sin salida. Al reintentar,
-         * "Email duplicado". Ahora se valida antes y lo demas va en una sola
-         * transaccion.
+         * "Email duplicado". Ahora se valida antes (_leerCuenta) y lo demas va en
+         * una sola transaccion (_asegurarContribuyente).
          *
          * Los roles de la Alcaldia (1 administrador, 2 funcionario) NO reciben
          * contribuyente: no son contribuyentes, y el que se les creaba quedaba en
          * el padron como uno mas (asi aparecio el contribuyente con el documento
-         * del administrador). Para los demas, lo que la pantalla de Usuarios no
-         * pide se deduce: el DV sale del NIT, el tipo de persona del tipo de
-         * documento, y el municipio queda en 0, que el RIT trata como "sin
-         * escoger" y obliga a llenar antes de guardar. Es mejor que el 1 (Tunja)
-         * que se ponia a ciegas.
+         * del administrador).
          */
-        $rolNuevo     = (int) ($_POST['id_rol'] ?? 0);
-        $esAlcaldia   = in_array($rolNuevo, [1, 2], true);
-        $documento    = trim((string) ($_POST['numeroDocumento'] ?? ''));
-        $tipoDocumento = (int) ($_POST['idTipoDocumento'] ?? 0);
+        $rolNuevo   = (int) ($_POST['id_rol'] ?? 0);
+        $esAlcaldia = in_array($rolNuevo, [1, 2], true);
 
-        // El telefono se guarda solo con sus digitos: "310 123 4567", "310-123-4567"
-        // y "+57 3101234567" son el mismo numero, y la columna del contribuyente
-        // es bigint. Vacio se admite (en Usuarios no es obligatorio).
-        $telefono = preg_replace('/\D/', '', (string) ($_POST['telefono'] ?? ''));
-        if ($telefono !== '' && (strlen($telefono) < 7 || strlen($telefono) > 15)) {
+        $c = self::_leerCuenta($esAlcaldia);
+        if (isset($c['error'])) {
             $this->_ok = 0;
-            $this->_mensaje = 'El teléfono debe tener entre 7 y 15 dígitos.';
+            $this->_mensaje = $c['error'];
             return false;
         }
-
-        if (!$esAlcaldia) {
-            // La columna del documento del contribuyente es INT: sin puntos, sin
-            // guion ni DV, y hasta 2.147.483.647. Un documento que no cabe hacia
-            // fallar el INSERT del contribuyente con la cuenta ya creada.
-            if ($documento === '' || !ctype_digit($documento) || strlen($documento) > 10
-                || (float) $documento > 2147483647 || (int) $documento <= 0) {
-                $this->_ok = 0;
-                $this->_mensaje = 'Escriba el número de documento solo con números: sin puntos, sin guion y sin el dígito de verificación.';
-                return false;
-            }
-            if ($tipoDocumento < 1 || $tipoDocumento > 5) {
-                $this->_ok = 0;
-                $this->_mensaje = 'Elija el tipo de documento.';
-                return false;
-            }
-        }
+        $documento = $c['documento'];
 
         $_objUsuario = new \erpsoftsas\DAO_Usuario();
-        $_objUsuario->set_usu_Nombres($_POST['nombres']);
-        $_objUsuario->set_usu_Apellidos($_POST['apellidos']);
-        $_objUsuario->set_usu_Telefono($telefono);
-        $_objUsuario->set_usu_Direccion($_POST['direccion']);
-        $_objUsuario->set_usu_IdTipoDocumento($_POST['idTipoDocumento']);
+        $_objUsuario->set_usu_Nombres($c['nombres']);
+        $_objUsuario->set_usu_Apellidos($c['apellidos']);
+        $_objUsuario->set_usu_Telefono($c['telefono']);
+        $_objUsuario->set_usu_Direccion($c['direccion']);
+        // Sin tipo (una cuenta de la Alcaldia sin documento) la columna queda NULL.
+        $_objUsuario->set_usu_IdTipoDocumento($c['tipoDocumento'] ?: null);
         $_objUsuario->set_usu_NumeroDocumento($documento);
-        $_objUsuario->set_usu_Correo($_POST['email']);
-        $_objUsuario->set_usu_Password($_POST['clave']);
-        $_objUsuario->set_usu_Rol($_POST['id_rol']);
-        $_objUsuario->set_usu_Usuario($_POST['usuario']);
+        $_objUsuario->set_usu_Correo($c['email']);
+        $_objUsuario->set_usu_Password($_POST['clave'] ?? '');
+        $_objUsuario->set_usu_Rol($rolNuevo);
+        $_objUsuario->set_usu_Usuario($c['usuario']);
 
         $_objUsuario->set_usu_Estado(1);
-      
+
         //Valida los campos que no pueden Duplicarsen en la BD.
         //$nomUsurio= $this->_listarUsuarios(0);
         // 🔹 Usa el nuevo método genérico del DAO
@@ -163,7 +293,7 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
         $longitud = count($nomUsurio);
         $nomduplicado=0;
 
-        for($i=0; $i<$longitud; $i++){  
+        for($i=0; $i<$longitud; $i++){
             // El correo se compara SIN distinguir mayusculas ni espacios.
             //
             // Con == a secas, "Cristian@x.com" y "cristian@x.com" son distintos
@@ -177,7 +307,7 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
             }
             // Un documento vacio (se admite para cuentas de la Alcaldia) no
             // choca con otro vacio: no identifica a nadie.
-            if($documento !== '' && $nomUsurio[$i]['usu_NumeroDocumento'] == $_objUsuario->get_usu_NumeroDocumento()){
+            if(self::_mismoDocumento($nomUsurio[$i]['usu_NumeroDocumento'], $documento)){
                $nomduplicado=2;
                 break;
             }
@@ -213,49 +343,7 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
             }
 
             if (!$esAlcaldia) {
-                // Mismo criterio que el enlace cuenta-contribuyente del resto del
-                // sistema: por numero de documento. Si ya existe, no se duplica.
-                $existe = $con->obnerFila($con->consultar(
-                    "SELECT TOP 1 ind_Id FROM ind_contribuyentes
-                      WHERE ind_NumeroIdentificacion = ? ORDER BY ind_Id",
-                    [(int) $documento]
-                ));
-
-                if (!$existe) {
-                    $tipoPersona = (int) ($_POST['tipoPersona'] ?? 0);
-                    if (!in_array($tipoPersona, [1, 2], true)) {
-                        $tipoPersona = ($tipoDocumento === 5) ? 2 : 1;
-                    }
-                    // Con NIT el DV se calcula aqui (el que llegue del navegador no
-                    // decide); sin NIT el sistema no usa DV y la columna guarda 0.
-                    $dv = ($tipoDocumento === 5) ? \erpsoftsas\DAO_Contribuyentes::digitoVerificacion($documento) : 0;
-
-                    // Municipio de residencia: lo pide la inscripcion publica
-                    // (index.php). Sin el, 0 = "sin escoger": el RIT no deja
-                    // guardarse hasta que se elija. Antes caia en 1 (Tunja), que
-                    // es justo el "municipio de registro carga mal" del punto 5.
-                    $idCiudad = (isset($_POST['idCiudad']) && ctype_digit((string) $_POST['idCiudad']))
-                        ? (int) $_POST['idCiudad'] : 0;
-
-                    $con->consultar(
-                        "INSERT INTO ind_contribuyentes
-                             (ind_NumeroIdentificacion, ind_IdTipoDocumento, ind_DV, ind_PrimerNombre,
-                              ind_PrimerApellido, ind_Direccion, ind_Telefono, ind_Email,
-                              ind_Persona, ind_IdCiudad, ind_Estado)
-                         VALUES (?, ?, ?, ?, NULLIF(?, ''), ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, 1)",
-                        [
-                            (int) $documento, $tipoDocumento, $dv,
-                            trim((string) ($_POST['nombres'] ?? '')),
-                            // Una persona juridica no tiene apellidos: su razon
-                            // social va entera en el primer nombre.
-                            $tipoPersona === 2 ? '' : trim((string) ($_POST['apellidos'] ?? '')),
-                            trim((string) ($_POST['direccion'] ?? '')),
-                            $telefono,
-                            trim((string) ($_POST['email'] ?? '')),
-                            $tipoPersona, $idCiudad,
-                        ]
-                    );
-                }
+                self::_asegurarContribuyente($con, $c);
             }
 
             $con->commit();
@@ -278,32 +366,86 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
         // de la cuenta recien creada, que ademas corria fuera de todo control.
         return true;
     }
-    
+
+    /**
+     * Dos documentos son el mismo si los dos traen algo y valen lo mismo.
+     *
+     * Vacio nunca es repetido: las cuentas de la Alcaldia pueden no tener
+     * documento, y dos de ellas no son la misma persona. Con == a secas, una
+     * vieja con NULL "chocaba" con cualquier otra vacia (null == '' es true en
+     * PHP 8) y editarla decia "Ya existe un usuario con la misma
+     * identificacion". Se compara como numero, igual que el enlace con el
+     * contribuyente (INT): "0123" y "123" son el mismo.
+     */
+    private static function _mismoDocumento($a, $b)
+    {
+        $a = trim((string) $a);
+        $b = trim((string) $b);
+
+        return $a !== '' && $b !== '' && $a == $b;
+    }
+
     /**
     *** Realiza el proceso de Editar usuarios.
-    **/  
+    **/
     protected function _editarUsuario() {
-        
+
+        /*
+         * EDITAR CON LA MISMA REGLA DE CREAR (revision 2026-09-28).
+         *
+         * - El documento se compara con los demas solo si viene (_mismoDocumento):
+         *   dos cuentas de la Alcaldia sin documento chocaban entre si.
+         * - Documento, tipo, telefono y largos, con la regla de crear (_leerCuenta).
+         * - Pasar una cuenta de la Alcaldia a un rol de contribuyente le crea su
+         *   contribuyente en la misma transaccion (_asegurarContribuyente). Antes
+         *   quedaba sin el: entraba al RIT y leia "Su usuario no esta asociado a
+         *   un contribuyente". Se crea en vez de rechazar el cambio porque una
+         *   cuenta hecha con el rol equivocado no tiene otra salida: las cuentas
+         *   no se borran, solo se inactivan.
+         * - Se guardaba DOS veces (un segundo guardar() al final, fuera de todo
+         *   control), igual que pasaba al crear.
+         */
+
+        // Va al WHERE del DAO sin comillas: siempre entero.
+        $id = (int) ($_POST['id'] ?? 0);
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        if ($id <= 0 || !$con->obnerFila($con->consultar("SELECT usu_Id FROM conf_usuarios WHERE usu_Id = ?", [$id]))) {
+            $this->_ok = 0;
+            $this->_mensaje = 'La cuenta que se quiere editar no existe.';
+            return false;
+        }
+
+        $rolNuevo   = (int) ($_POST['id_rol'] ?? 0);
+        $esAlcaldia = in_array($rolNuevo, [1, 2], true);
+
+        $c = self::_leerCuenta($esAlcaldia);
+        if (isset($c['error'])) {
+            $this->_ok = 0;
+            $this->_mensaje = $c['error'];
+            return false;
+        }
+
         $_objUsuario = new \erpsoftsas\DAO_Usuario();
-        $_objUsuario->set_usu_Id($_POST['id']);
-        $_objUsuario->set_usu_Nombres($_POST['nombres']);
-        $_objUsuario->set_usu_Apellidos($_POST['apellidos']);
-        $_objUsuario->set_usu_Telefono($_POST['telefono']);
-        $_objUsuario->set_usu_Direccion($_POST['direccion']);
-        $_objUsuario->set_usu_Usuario($_POST['usuario']);
-        $_objUsuario->set_usu_NumeroDocumento($_POST['numeroDocumento']);
-        $_objUsuario->set_usu_IdTipoDocumento($_POST['idTipoDocumento']);
-        $_objUsuario->set_usu_Correo($_POST['email']);
-        $_objUsuario->set_usu_Password($_POST['clave']);
-        $_objUsuario->set_usu_Rol($_POST['id_rol']);
+        $_objUsuario->set_usu_Id($id);
+        $_objUsuario->set_usu_Nombres($c['nombres']);
+        $_objUsuario->set_usu_Apellidos($c['apellidos']);
+        $_objUsuario->set_usu_Telefono($c['telefono']);
+        $_objUsuario->set_usu_Direccion($c['direccion']);
+        $_objUsuario->set_usu_Usuario($c['usuario']);
+        $_objUsuario->set_usu_NumeroDocumento($c['documento']);
+        $_objUsuario->set_usu_IdTipoDocumento($c['tipoDocumento'] ?: null);
+        $_objUsuario->set_usu_Correo($c['email']);
+        // Vacia no se toca: el DAO solo guarda la clave si trae algo.
+        $_objUsuario->set_usu_Password($_POST['clave'] ?? '');
+        $_objUsuario->set_usu_Rol($rolNuevo);
 
         //Valida los campos que no pueden Duplicarsen en la BD.
         //$nomUsurio= $this->_listarUsuarios($_objUsuario->get_usu_Id());
-        $nomUsurio = $_objUsuario->listarRegistros($_objUsuario->get_usu_Id());
-        
+        $nomUsurio = $_objUsuario->listarRegistros($id);
+
         $longitud = count($nomUsurio);
         $nomduplicado=0;
-        for($i=0; $i<$longitud; $i++){  
+        for($i=0; $i<$longitud; $i++){
             // El correo se compara SIN distinguir mayusculas ni espacios.
             //
             // Con == a secas, "Cristian@x.com" y "cristian@x.com" son distintos
@@ -315,7 +457,7 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
                $nomduplicado=1;
                 break;
             }
-            if($nomUsurio[$i]['usu_NumeroDocumento'] == $_objUsuario->get_usu_NumeroDocumento()){
+            if(self::_mismoDocumento($nomUsurio[$i]['usu_NumeroDocumento'], $c['documento'])){
                $nomduplicado=2;
                 break;
             }
@@ -328,29 +470,48 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
         if($nomduplicado == 1){
             $this->_ok = 2;
             $this->_mensaje = 'Ya existe un usuario con el mismo email';
-            $return= false; 
+            return false;
         }else if($nomduplicado == 2){
             $this->_ok = 3;
             $this->_mensaje = 'Ya existe un usuario con la misma identificación';
-            $return= false;   
+            return false;
         }else if($nomduplicado == 3){
             $this->_ok = 4;
             $this->_mensaje = 'Ya existe un usuario con el mismo Usuario';
-            $return= false;   
-        }else{
-            if(!$_objUsuario->guardar()){
-                $this->_ok = 0;
-                $this->_mensaje = $_objUsuario->getMysqlError();
-            }else{
-                $id = $_objUsuario->get_usu_Id();
-                //$_objlogs = new logs();
-                //$_objlogs->_insertLogs($id,1,2,8);
-                $this->_ok = 1;
-                $this->_mensaje = "Datos ingresados correctamente";
-            }
-            $return= $_objUsuario->guardar();
+            return false;
         }
-        return $return;
+
+        $creado = false;
+        try {
+            $con->begin();
+
+            if (!$_objUsuario->guardar()) {
+                throw new \Exception('No se pudo guardar la cuenta: ' . $_objUsuario->getMysqlError());
+            }
+
+            if (!$esAlcaldia) {
+                $creado = self::_asegurarContribuyente($con, $c);
+            }
+
+            $con->commit();
+
+        } catch (\Throwable $e) {
+            try { $con->rollback(); } catch (\Throwable $e2) { /* ya no habia transaccion */ }
+            error_log('[usuarios] no se edito la cuenta ' . $id . ': ' . $e->getMessage());
+            $this->_ok = 0;
+            $this->_mensaje = 'No se pudo actualizar la cuenta y no quedó nada a medias. Revise los datos '
+                            . 'e intente de nuevo; si el problema sigue, comuníquese con la Secretaría de Hacienda.';
+            return false;
+        }
+
+        //$_objlogs = new logs();
+        //$_objlogs->_insertLogs($id,1,2,8);
+        $this->_ok = 1;
+        $this->_mensaje = $creado
+            ? 'Datos ingresados correctamente. Se creó también su registro de contribuyente: el municipio y lo demás se completan en su RIT.'
+            : 'Datos ingresados correctamente';
+
+        return ['contribuyenteCreado' => $creado ? 1 : 0];
     }
     
     /**

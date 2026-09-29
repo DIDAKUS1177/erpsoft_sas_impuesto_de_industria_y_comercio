@@ -26,6 +26,7 @@ class Usuario {
             $("#clave").removeAttr('style');
             $("#usu_Clave").attr('required', true);
             $("#formCrearUsuario").trigger("reset");
+            usuario.aplicarTipoPersona('');
             $("#btnCrearUsuario").empty();
             $("#btnCrearUsuario").append(
                 '<span class="ti-plus"></span>' +
@@ -221,6 +222,10 @@ class Usuario {
                             $("#usu_Cajas").val(datos.strIdCaja);
                             $("#IdUsuarioCaja").val(datos.strIdUsuarioCaja);
                         }
+                        // La cuenta no guarda el tipo de persona: solo sirve si al
+                        // guardar hay que crearle el contribuyente.
+                        $("#usu_IdTipoPersona").val('');
+                        usuario.aplicarTipoPersona('');
                         $("#clave").attr('style', 'display:none');
                         $("#usu_Clave").removeAttr('required');
                         $("#usu_Clave").val('');
@@ -268,11 +273,13 @@ class Usuario {
 
         var sede = $("#usu_Sede").val();
         var caja = $("#usu_Cajas").val();
+        var tipoPersona = $("#usu_IdTipoPersona").val();
 
         $.ajax({
             url: '../business/controller/class.usuarios.php',
-            data: { funcion: 1, numeroDocumento: documento, 
+            data: { funcion: 1, numeroDocumento: documento,
                     nombres: nombres, apellidos: apellidos, telefono: telefono, direccion: direccion, idTipoDocumento: idTipoDocumento,
+                    tipoPersona: tipoPersona,
                     email: mail, id_rol: rol, clave: clave, usuario: usu, sede: sede, caja: caja},
             dataType: "json",
             type: "POST",
@@ -420,11 +427,13 @@ class Usuario {
         var sede = $("#usu_Sede").val();
         var caja = $("#usu_Cajas").val();
         var IdUsuarioCaja = $("#IdUsuarioCaja").val();
+        var tipoPersona = $("#usu_IdTipoPersona").val();
 
         $.ajax({
             url: '../business/controller/class.usuarios.php',
             data: { funcion: 2, id: id, numeroDocumento: documento, IdUsuarioCaja: IdUsuarioCaja,
                     nombres: nombres, apellidos: apellidos, telefono: telefono, direccion: direccion, idTipoDocumento: idTipoDocumento,
+                    tipoPersona: tipoPersona,
                     email: mail, clave: clave, id_rol: rol, usuario: usu, sede: sede, caja: caja },
             dataType: "json",
             type: "POST",
@@ -436,10 +445,14 @@ class Usuario {
                     $("#formCrearUsuario").trigger("reset");
                     $("#modal-Usuario").modal('hide');
                     usuario.getUsuarios();
+                    // Pasar una cuenta de la Alcaldía a un rol de contribuyente le
+                    // crea su contribuyente: se dice, porque su RIT queda por llenar.
+                    var creado = arr.datos && arr.datos.contribuyenteCreado == 1;
                     swal({
                         type: 'success',
                         title: 'Usuario actualizado',
-                        text: 'Usuario actualizado exitosamente',
+                        text: 'Usuario actualizado exitosamente'
+                            + (creado ? '. Se creó también su registro de contribuyente: el municipio y lo demás se completan en su RIT.' : ''),
                     });
                 } else if (arr.ok == 2) {
                     swal({
@@ -545,6 +558,20 @@ class Usuario {
 
 
     /**
+     * Persona jurídica: la razón social va entera en "Nombres" y no hay
+     * apellidos, igual que en la inscripción pública (login.js). Natural o sin
+     * escoger: nombres y apellidos. Si una razón social llega partida en los dos
+     * campos, el servidor la une (antes descartaba los apellidos).
+     */
+    aplicarTipoPersona(valor) {
+        var juridica = String(valor) === '2';
+        $("#labelUsuNombres").text(juridica ? '* Razón social' : '* Nombres');
+        $("#grupoUsuApellidos").toggle(!juridica);
+        $("#usu_Apellidos").prop('required', !juridica);
+        if (juridica) { $("#usu_Apellidos").val(''); }
+    }
+
+    /**
      * UsuarioActivo: Método para activar el menú y facilitar
      * la navegación al usuario permitendole saber en
      * que lugar esta
@@ -560,6 +587,10 @@ class Usuario {
 }
 
 const usuario = new Usuario();
+
+$(document).on('change', '#usu_IdTipoPersona', function () {
+    usuario.aplicarTipoPersona($(this).val());
+});
 
 usuario.getUsuarios();
 usuario.getRoles();

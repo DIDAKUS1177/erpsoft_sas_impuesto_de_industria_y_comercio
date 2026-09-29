@@ -1846,6 +1846,11 @@ actualizarDeclaracionIca(valor, numeroCampo){
                 $('#rit_ind_Autorizacion').prop('checked', String(d.ind_Autorizacion) === '1');
 
                 establecimientos.pintarActividadesRIT(d.actividades || []);
+                // Las que había en la base al cargar: Guardar manda solo lo que
+                // cambió respecto a esto (ver guardarRIT).
+                establecimientos._actividadesCargadas = (d.actividades || []).map(function (a) {
+                    return String(a.atc_IdCodigoActividad);
+                });
                 establecimientos.prepararEditorActividades();
 
                 // La descarga del certificado vive ahora aqui y va por
@@ -1867,17 +1872,13 @@ actualizarDeclaracionIca(valor, numeroCampo){
                     );
                 }
 
-                // Punto 10: se avisa mientras el RIT no se haya guardado nunca
-                // (la fecha la pone el primer guardado, ya no el solo abrir).
+                // Punto 10: el RIT queda inicializado en el primer ingreso, sin
+                // que nadie tenga que crearlo.
                 $('#ritEstadoCarga').text(
-                    d.rit_sin_guardar == 1
-                        ? 'Este RIT todavía no se ha guardado. Complete los datos y pulse Guardar.'
+                    d.rit_recien_inicializado == 1
+                        ? 'Registro creado en este ingreso. Complete los datos y guarde.'
                         : 'Última actualización: ' + (d.ind_FechaActualizacion || 'sin registro')
                 );
-
-                // El cese pudo cambiar la opción de uso; con la firma ya
-                // consultada se repinta (si no, lo hace consultarFirmaRIT).
-                if (establecimientos._firmaRIT) { establecimientos.pintarOpcionUso(); }
             },
             error: function () {
                 $('#ritEstadoCarga').text('No se pudo cargar el RIT. Intenta de nuevo.');
@@ -2366,8 +2367,8 @@ actualizarDeclaracionIca(valor, numeroCampo){
      * Huella de lo que está en pantalla y se guarda con "Guardar": los campos con
      * name (los ocultos se llenan al guardar, por eso se miran sus casillas), las
      * casillas de régimen, responsabilidades y banderas, y las actividades.
-     * Fuera quedan el cese (tiene su botón propio) y los documentos (se guardan
-     * al cargarlos).
+     * Fuera quedan el cese (tiene su botón y su huella propios, _huellaCese) y
+     * los documentos (se guardan al cargarlos).
      */
     _huella() {
         var partes = [];
@@ -2385,14 +2386,64 @@ actualizarDeclaracionIca(valor, numeroCampo){
         return partes.join('|');
     }
 
-    /** La pantalla quedó igual a lo guardado (al cargar, y justo después de guardar). */
+    /**
+     * Huella del cese de actividades. Va aparte porque se guarda con su propio
+     * botón ("Guardar cese") y NO viaja con Guardar: sus campos ni siquiera
+     * tienen name. Sin esta huella, quien escribía un cese y pulsaba "Firmar RIT"
+     * firmaba sin el cese, y la recarga de después borraba lo escrito.
+     */
+    _huellaCese() {
+        var valores = this._valoresCese();
+        return Object.keys(valores).map(function (id) { return id + '=' + valores[id]; }).join('|');
+    }
+
+    /** Lo que hay escrito en los campos del cese, por id. */
+    _valoresCese() {
+        var valores = {};
+        ['rit_est_Fecha_cierre', 'rit_est_Causal', 'rit_est_Observacion_cierre'].forEach(function (id) {
+            var v = $('#' + id).val();
+            valores[id] = (v == null) ? '' : String(v);
+        });
+        return valores;
+    }
+
+    /** Vuelve a poner en los campos del cese lo que devolvió _valoresCese(). */
+    _ponerValoresCese(valores) {
+        Object.keys(valores || {}).forEach(function (id) { $('#' + id).val(valores[id]); });
+    }
+
+    /** La pantalla quedó igual a lo guardado (al cargar): el RIT y el cese. */
     _marcarGuardado() {
+        this._marcarRitGuardado();
+        this._marcarCeseGuardado();
+    }
+
+    /** Lo del botón Guardar quedó guardado (el cese va por su lado). */
+    _marcarRitGuardado() {
         this._huellaGuardada = this._huella();
     }
 
-    /** ¿Hay algo en pantalla que no está guardado? Sin carga previa, no se sabe: no. */
+    /** El cese quedó guardado ("Guardar cese"). */
+    _marcarCeseGuardado() {
+        this._huellaCeseGuardada = this._huellaCese();
+    }
+
+    /**
+     * Qué hay en pantalla sin guardar, por separado para lo que guarda "Guardar"
+     * (rit) y lo que guarda "Guardar cese" (cese): cada uno pide su botón. Sin
+     * carga previa no se sabe: nada.
+     */
+    _cambiosPendientes() {
+        return {
+            rit:  typeof this._huellaGuardada === 'string' && this._huella() !== this._huellaGuardada,
+            cese: typeof this._huellaCeseGuardada === 'string' && this._huellaCese() !== this._huellaCeseGuardada
+        };
+    }
+
+    /** ¿Hay algo en pantalla que no está guardado, en el RIT o en el cese? */
     hayCambiosSinGuardar() {
-        return typeof this._huellaGuardada === 'string' && this._huella() !== this._huellaGuardada;
+        var p = this._cambiosPendientes();
+        return p.rit || p.cese;
     }
 
     /**
@@ -2468,27 +2519,10 @@ actualizarDeclaracionIca(valor, numeroCampo){
      * cambios, o sea que la inscripcion ya ocurrio.
      */
     pintarOpcionUso(estadoFirma) {
-        // Una sola regla, la misma de extensiones/ritActualizado.php (revisión
-        // 2026-09-28): inscripción mientras el RIT nunca se haya firmado,
-        // actualización desde la primera firma, y el cese del contribuyente manda
-        // sobre las dos. Antes el PDF miraba otra cosa y salían distintos.
-        const firma = estadoFirma || this._firmaRIT;
-        const yaFormalizado = firma &&
-            (String(firma.firmado) === '1' || !!firma.desactualizada);
+        const yaFormalizado = estadoFirma &&
+            (String(estadoFirma.firmado) === '1' || !!estadoFirma.desactualizada);
 
-        const conCese = this._rit && this._fechaCese(this._rit) !== '';
-
-        $('#rit_OpcionUso').val(conCese ? 'Cese de actividades'
-                                        : (yaFormalizado ? 'Actualización' : 'Inscripción'));
-    }
-
-    /** Fecha de cese del contribuyente como AAAA-MM-DD, o '' (1900-01-01 es "vacío"). */
-    _fechaCese(d) {
-        var f = d ? d.ind_FechaCese : null;
-        if (!f) { return ''; }
-        var texto = (typeof f === 'string') ? f.substring(0, 10)
-                  : (f.date ? String(f.date).substring(0, 10) : '');
-        return texto.indexOf('1900-01-01') === 0 ? '' : texto;
+        $('#rit_OpcionUso').val(yaFormalizado ? 'Actualización' : 'Inscripción');
     }
 
     consultarFirmaRIT() {
@@ -2615,8 +2649,29 @@ actualizarDeclaracionIca(valor, numeroCampo){
          * firmaba lo anterior; la pantalla quedaba bloqueada mostrando lo nuevo y
          * el PDF traía lo viejo con el sello. Con cambios pendientes no se firma:
          * se ofrece guardar, y el aviso de "RIT actualizado" trae "Firmar ahora".
+         *
+         * El cese va primero y con su propio botón: "Guardar" no lo incluye, así
+         * que ofrecer "Guardar ahora" por un cese pendiente lo dejaría sin
+         * guardar y la recarga lo borraría.
          */
-        if (this.hayCambiosSinGuardar()) {
+        var pendientes = this._cambiosPendientes();
+        if (pendientes.cese) {
+            swal({
+                type: 'warning',
+                title: 'El cese no está guardado',
+                text: 'Escribió datos del cese de actividades que no se han guardado, y la firma '
+                    + 'ampara lo guardado. Guárdelos con "Guardar cese" (el botón Guardar del RIT '
+                    + 'no los incluye) y después firme.',
+                showCancelButton: true,
+                confirmButtonText: 'Guardar cese',
+                cancelButtonText: 'Cancelar'
+            }).then(function (r) {
+                if (r.value) { establecimientos.guardarCeseRIT(); }
+            });
+            return;
+        }
+
+        if (pendientes.rit) {
             swal({
                 type: 'warning',
                 title: 'Hay cambios sin guardar',
@@ -2715,7 +2770,13 @@ actualizarDeclaracionIca(valor, numeroCampo){
         // sqlsrv devuelve las fechas como objeto; el input date quiere
         // AAAA-MM-DD. Y hay filas con la centinela 1900-01-01, que es en lo que
         // SQL Server convierte una cadena vacia y significa "sin cese".
-        var texto = this._fechaCese(d);
+        var f = d.ind_FechaCese;
+        var texto = '';
+        if (f) {
+            texto = (typeof f === 'string') ? f.substring(0, 10)
+                  : (f.date ? String(f.date).substring(0, 10) : '');
+            if (texto.indexOf('1900-01-01') === 0) { texto = ''; }
+        }
 
         $('#rit_est_Fecha_cierre').val(texto);
         $('#rit_est_Causal').val(d.ind_CausalCese || '');
@@ -2761,14 +2822,14 @@ actualizarDeclaracionIca(valor, numeroCampo){
                     return;
                 }
                 swal({ type: 'success', title: 'Listo', text: resp.mensaje, timer: 2000 });
-                // La opción de uso depende del cese: se anota lo guardado para
-                // repintarla (el servidor limpia causal y observación sin fecha).
-                if (self._rit) {
-                    var fecha = $('#rit_est_Fecha_cierre').val();
-                    self._rit.ind_FechaCese = fecha || null;
-                    self._rit.ind_CausalCese = fecha ? $('#rit_est_Causal').val() : null;
-                    self._rit.ind_ObservacionCese = fecha ? $('#rit_est_Observacion_cierre').val() : null;
+                // Sin fecha, el servidor guarda el cese vacío entero (limpia
+                // causal y observación, _guardarCese): la pantalla muestra lo
+                // mismo, y eso queda como lo guardado para "Firmar".
+                if (!$('#rit_est_Fecha_cierre').val()) {
+                    $('#rit_est_Causal').val('');
+                    $('#rit_est_Observacion_cierre').val('');
                 }
+                self._marcarCeseGuardado();
                 // El cese entra en el hash del RIT: cambiarlo tumba la firma.
                 self.consultarFirmaRIT();
             },
@@ -2920,14 +2981,22 @@ actualizarDeclaracionIca(valor, numeroCampo){
         $boton.prop('disabled', true);
 
         /*
-         * Las actividades viajan CON el RIT (revisión 2026-09-28): el servidor
-         * las reemplaza en la misma transacción y con la misma regla de
-         * obligatorios. La bandera distingue "las quitó todas" (lista vacía, que
-         * $.param ni siquiera manda) de "esta petición no trae actividades".
+         * Las actividades viajan CON el RIT (revisión 2026-09-28), en la misma
+         * transacción y con la misma regla de obligatorios, pero solo lo que
+         * CAMBIÓ desde que se cargó la tabla: las agregadas y las quitadas. Con
+         * la lista entera el servidor las recreaba todas, y eso cambiaba la
+         * actividad principal de la retención (la de menor id) y borraba lo que
+         * la Alcaldía hubiera agregado en otra pestaña. Sin cambios no viaja
+         * ninguna de las dos, y el servidor no toca las actividades.
          */
-        var datos = $('#formRIT').serialize() + '&funcion=7&actividadesEnviadas=1';
-        var ids = establecimientos._actividadesEnPantalla();
-        if (ids.length) { datos += '&' + $.param({ actividades: ids }); }
+        var cargadas   = (establecimientos._actividadesCargadas || []).map(String);
+        var enPantalla = establecimientos._actividadesEnPantalla().map(String);
+        var agregadas  = enPantalla.filter(function (id) { return cargadas.indexOf(id) === -1; });
+        var quitadas   = cargadas.filter(function (id) { return enPantalla.indexOf(id) === -1; });
+
+        var datos = $('#formRIT').serialize() + '&funcion=7';
+        if (agregadas.length) { datos += '&' + $.param({ actividadesAgregadas: agregadas }); }
+        if (quitadas.length)  { datos += '&' + $.param({ actividadesQuitadas: quitadas }); }
 
         $.ajax({
             url: '../business/controller/class.contribuyentes.php',
@@ -2950,9 +3019,14 @@ actualizarDeclaracionIca(valor, numeroCampo){
 
                 // Lo que se ve es lo que quedó guardado. La recarga de abajo
                 // vuelve a tomar la huella al terminar; esto cubre el rato
-                // intermedio.
-                establecimientos._marcarGuardado();
+                // intermedio. El cese no: no viaja con este botón.
+                establecimientos._marcarRitGuardado();
                 establecimientos.consultarFirmaRIT();
+
+                // Un cese escrito y no guardado se perdería con la recarga: se
+                // anota para devolverlo a la pantalla (sigue pendiente) y avisarlo.
+                var ceseEscrito = establecimientos._cambiosPendientes().cese
+                    ? establecimientos._valoresCese() : null;
 
                 /*
                  * Guardar es solo la mitad. Cualquier cambio invalida la firma
@@ -2966,10 +3040,16 @@ actualizarDeclaracionIca(valor, numeroCampo){
                  * ahora" no encuentra diferencias que no son cambios.
                  */
                 establecimientos.cargarRIT(function () {
+                    var avisoCese = '';
+                    if (ceseEscrito) {
+                        establecimientos._ponerValoresCese(ceseEscrito);
+                        avisoCese = ' El cese que escribió no se guarda con este botón: sigue en '
+                                  + 'pantalla, guárdelo con "Guardar cese".';
+                    }
                     swal({
                         type: 'success',
                         title: 'RIT actualizado',
-                        text: (resp.mensaje || '') + ' Para que quede en firme debe firmarlo.',
+                        text: (resp.mensaje || '') + ' Para que quede en firme debe firmarlo.' + avisoCese,
                         showCancelButton: true,
                         confirmButtonText: 'Firmar ahora',
                         cancelButtonText: 'Más tarde'

@@ -1891,35 +1891,14 @@ $("#btnGenerarOficial").off("click").on("click", function () {
         return;
     }
 
-    let totales = {
-        dec_TotalIngresos: establecimientos.numero($('[data-campo="ingresos_total_pais"]').val()),
-        dec_IngresosFueraMunicipio: establecimientos.numero($('[data-campo="menos_fuera_municipio"]').val()),
-        dec_IngresosDevoluciones: establecimientos.numero($('[data-campo="devoluciones"]').val()),
-        dec_IngresosExportaciones: establecimientos.numero($('[data-campo="exportaciones"]').val()),
-        dec_IngresosVentas: establecimientos.numero($('[data-campo="venta_activos"]').val()),
-        dec_IngresosActividades: establecimientos.numero($('[data-campo="actividades_excluidas"]').val()),
-        dec_IngresosOtrasActividades: establecimientos.numero($('[data-campo="otras_exentas"]').val()),
-        dec_BaseGravable: establecimientos.numero($('[data-campo="ingresos_gravables"]').val()),
-
-        dec_CapacidadInstalada: establecimientos.numero($('[data-campo="capacidad_instalada"]').val()),
-        dec_ValorImpuesto: establecimientos.numero($('[data-campo="valor_impuesto"]').val())
-
-    };
-
+    // La misma lectura del formulario que "Liquidar" y el recalculo de un
+    // renglon (FormularioDeclaracion, core/declaraciones.ui.js): Guardar era el
+    // ultimo camino con su propia copia (segunda revision 2026-09-28). Manda
+    // lo mismo campo por campo -los diez renglones existen en esta pantalla y
+    // establecimientos.numero() es NumerosCOP.aCifra()-.
+    let totales = FormularioDeclaracion.totales();
     let idDeclaracion = $("#numDeclaracion").val();
-    let actividades = [];
-
-    $("#tbodyActividades tr").each(function(){
-
-        actividades.push({
-            dia_IdDeclaracion: idDeclaracion,
-            dia_IdActividad: $(this).find(".actividad-id").val(),
-            dia_BaseGravable: establecimientos.numero($(this).find(".base-gravable").val()),
-            dia_Tarifa: parseFloat($(this).find(".tarifa").val()) || 0,
-            dia_ValorImpuesto: establecimientos.numero($(this).find(".impuesto").val())
-        });
-
-    });
+    let actividades = FormularioDeclaracion.actividades();
 
     
     let anio  = $("#anioDeclaracion").val();

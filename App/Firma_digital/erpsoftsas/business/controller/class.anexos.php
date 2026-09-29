@@ -80,11 +80,18 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
                     throw new \erpsoftsas\AnexosException("Función no válida", 0);
             }
 
+            // Un rechazo por sesion vencida sale como "No tiene permiso para
+            // cargar archivos en este registro" (_puedeOperar no distingue): con
+            // sinSesion, dist/menu.php lleva al login con aviso, como en
+            // contribuyentes y establecimientos.
+            if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+
             header('Content-type: application/json');
             echo json_encode([
-                "ok"      => $_obj->_ok,
-                "mensaje" => $_obj->_mensaje,
-                "datos"   => $respuesta,
+                "ok"        => $_obj->_ok,
+                "mensaje"   => $_obj->_mensaje,
+                "datos"     => $respuesta,
+                "sinSesion" => (empty($_obj->_ok) && empty($_SESSION['id_usuario'])) ? 1 : 0,
             ]);
 
         } catch (\erpsoftsas\AnexosException $e) {

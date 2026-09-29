@@ -314,10 +314,13 @@ class Establecimientos {
             data: formData,
             success: function (arr) {
                 if (arr.ok == 1) {
+                    // El aviso del servidor (p. ej. que el correo no se pudo copiar
+                    // a la cuenta de acceso) no se calla: el código de firma va ahí.
+                    var aviso = (arr.datos && arr.datos.aviso) ? ' ' + arr.datos.aviso : '';
                     swal({
-                        type: 'success',
+                        type: aviso ? 'warning' : 'success',
                         title: 'Guardado',
-                        text: 'La información del contribuyente se actualizó correctamente.',
+                        text: 'La información del contribuyente se actualizó correctamente.' + aviso,
                     });
                     $("#modal-InfoContribuyente").modal('hide');
                     // La lista muestra el nombre del dueño de cada local.

@@ -261,7 +261,13 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
      * el valor exacto, que es el unico del que se puede derivar cualquiera de
      * los dos despues.
      */
-    protected function _liquidar($con, $id)
+    /**
+     * @param bool $estricto Si una formula falla, relanza el error en vez de
+     *        anotarlo y seguir. Lo usan Guardar y Presentar: dentro de su
+     *        transaccion, seguir con una casilla sin recalcular era decir
+     *        "guardada y liquidada" -o presentar- con una cifra vieja.
+     */
+    protected function _liquidar($con, $id, $estricto = false)
     {
         $id = (int) $id;
 
@@ -337,6 +343,7 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
             } catch (\Throwable $e) {
                 error_log('[' . $this->modulo . '] formula del renglon '
                         . $r['ren_Codigo'] . ' fallo: ' . $e->getMessage());
+                if ($estricto) { throw $e; }
             }
         }
 
@@ -733,7 +740,9 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
         /* Un borrador SIN firmas se pone al dia antes de mostrarlo (en
            autorretencion: las actividades que el RIT gano despues de crearlo).
            Con firmas no se toca: lo firmado tiene que seguir siendo lo guardado. */
-        if ($this->_esBorrador($fila)) {
+        if ($this->_esBorrador($fila) && empty($fila[$this->c('Corrige')])) {
+            // Una correccion no: arranca de lo que se declaro en la original, y
+            // traerle actividades nuevas del RIT la haria decir otra cosa.
             $firmas = $this->_firmasDeFila($fila);
             if (!$firmas['declarante'] && !$firmas['contador']) {
                 $this->_completarBorrador($con, $fila);
@@ -904,10 +913,10 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
         $firmasQuitadas = 0;
 
         /* TODO O NADA. Si algo falla a medio camino (una cifra que desborda la
-           columna, por ejemplo), sin transaccion quedaban las actividades
-           borradas y las firmas sobre un contenido distinto. */
-        $con->begin();
+           columna, o una formula rota), sin transaccion quedaban las
+           actividades borradas y las firmas sobre un contenido distinto. */
         try {
+            $con->begin();
 
             /* 1. Los renglones que escribe el usuario.
                   SOLO los marcados manuales en el catalogo: si se aceptara
@@ -943,8 +952,8 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
                 (isset($_POST['actividades']) && is_array($_POST['actividades'])) ? $_POST['actividades'] : []
             );
 
-            /* 3. Recalcular. */
-            $this->_liquidar($con, $id);
+            /* 3. Recalcular. Estricto: una formula que falla deshace todo. */
+            $this->_liquidar($con, $id, true);
 
             /* 4. Si lo firmado ya no es lo guardado, las firmas se quitan, como
                   al editar una firmada en el ICA. Seguian ahi y se presentaba
@@ -974,7 +983,15 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
         }
 
         $_POST['id'] = $id;
-        $respuesta = $this->_abrir();
+        try {
+            $respuesta = $this->_abrir();
+        } catch (\Throwable $e) {
+            // Lo guardado YA quedo (commit hecho): solo fallo volver a leerlo.
+            error_log('[' . $this->modulo . '] guardada ' . $id . ', pero no se pudo reabrir: ' . $e->getMessage());
+            $this->_ok = 0;
+            $this->_mensaje = 'La declaración se guardó, pero no se pudo volver a mostrar. Recargue la pantalla.';
+            return [];
+        }
         $respuesta['firmasQuitadas'] = $firmasQuitadas;
 
         $this->_ok = 1;
@@ -1162,22 +1179,58 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
             return ['falta' => 'contador'];
         }
 
-        // Se liquida otra vez ANTES de cerrar: lo que se presenta tiene que
-        // ser lo que sale de los datos guardados, no lo que quedo en pantalla.
-        $this->_liquidar($con, $id);
+        /*
+         * Se liquida otra vez ANTES de cerrar: lo que se presenta tiene que
+         * ser lo que sale de los datos guardados, no lo que quedo en pantalla.
+         *
+         * Y lo recalculado tiene que ser LO FIRMADO. Si al recalcular cambia
+         * algo -una formula, o el catalogo de renglones de un año que entro
+         * despues de firmar-, las firmas ya no amparan lo que se va a
+         * presentar: se quitan, no se presenta y se pide revisar y firmar de
+         * nuevo. Antes se presentaba igual, con las firmas sobre otras cifras.
+         * Todo en una transaccion: o se presenta tal cual se firmo, o no.
+         */
+        try {
+            $con->begin();
 
-        // La hora de Colombia, calculada aqui. GETDATE() es el reloj del
-        // servidor SQL, que no tiene por que estar en Colombia (en local esta
-        // en UTC: una presentada a las 8 p. m. salia fechada al dia siguiente).
-        $ahora = (new \DateTime('now', new \DateTimeZone('America/Bogota')))->format('Y-m-d H:i:s');
+            $antes = $this->_huella($con, $id);
+            $this->_liquidar($con, $id, true);
 
-        $con->consultar(
-            "UPDATE {$this->tabla}
-                SET {$this->c('Estado')} = 2,
-                    {$this->c('FechaPresentacion')} = ?
-              WHERE {$this->pk()} = ?",
-            [$ahora, $id]
-        );
+            if ($this->_huella($con, $id) !== $antes) {
+                $con->consultar(
+                    "DELETE FROM firmas_declaraciones WHERE fd_NumeroDeclaracion = ? AND fd_Modulo = ?",
+                    [(string) $numero, $this->modulo]
+                );
+                $con->commit();
+                $this->_ok = 0;
+                $this->_mensaje = 'Al recalcularla, la liquidación cambió y ya no es la que se firmó: '
+                                . 'se quitaron las firmas. Revise la declaración y fírmela de nuevo.';
+                return ['recalculada' => 1];
+            }
+
+            // La hora de Colombia, calculada aqui. GETDATE() es el reloj del
+            // servidor SQL, que no tiene por que estar en Colombia (en local esta
+            // en UTC: una presentada a las 8 p. m. salia fechada al dia siguiente).
+            $ahora = (new \DateTime('now', new \DateTimeZone('America/Bogota')))->format('Y-m-d H:i:s');
+
+            $con->consultar(
+                "UPDATE {$this->tabla}
+                    SET {$this->c('Estado')} = 2,
+                        {$this->c('FechaPresentacion')} = ?
+                  WHERE {$this->pk()} = ?",
+                [$ahora, $id]
+            );
+
+            $con->commit();
+
+        } catch (\Throwable $e) {
+            try { $con->rollback(); } catch (\Throwable $e2) { /* ya cerrada */ }
+            error_log('[' . $this->modulo . '] no se pudo presentar ' . $id . ': ' . $e->getMessage());
+            $this->_ok = 0;
+            $this->_mensaje = 'No se pudo presentar la declaración: no quedó ningún cambio. '
+                            . 'Intente de nuevo; si persiste, avise a la Alcaldía.';
+            return [];
+        }
 
         $this->_ok = 1;
         $this->_mensaje = 'Declaración presentada correctamente';

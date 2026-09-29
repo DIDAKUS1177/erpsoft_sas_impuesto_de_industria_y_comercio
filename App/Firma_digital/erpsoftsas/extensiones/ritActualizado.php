@@ -253,21 +253,18 @@ $row = $con->obnerFila($con->consultar($sql, [$idEstablecimiento, $idContribuyen
  * que llevaba tiempo en el sistema pero sin firmar seguia saliendo como
  * inscripcion.
  *
- * Esa correccion miraba ind_RIT_FechaCreacion, pero la pantalla la llenaba con
- * solo ABRIR el RIT, y el boton de descarga esta en esa pantalla: TODO PDF salia
- * "Actualizacion", la inscripcion de alguien nuevo incluida, mientras la
- * pantalla decia "Inscripcion" (revision 2026-09-28).
- *
- * Regla unica desde el 2026-09-28, la misma en pantalla (icaWebRit.js,
- * pintarOpcionUso) y aqui: INSCRIPCION mientras el RIT nunca se haya firmado;
- * desde la primera firma, ACTUALIZACION. Una firma "desactualizada" cuenta:
- * hubo firma, luego la inscripcion ya ocurrio. OJO: contradice lo que se anoto
- * el 2026-08-26 para contribuyentes antiguos que aun no firman (saldran
- * "Inscripcion"); si el cliente lo confirma asi, queda; si no, hay que cambiar
- * la regla en los DOS sitios.
+ * Ahora se mira si el RIT ya EXISTE -ind_RIT_FechaCreacion, que se llena la
+ * primera vez que se diligencia-, que es lo que distingue inscribirse de
+ * reportar una novedad. La firma se sigue teniendo en cuenta como respaldo:
+ * un RIT firmado esta creado por definicion, aunque la fecha no se hubiera
+ * registrado en su momento.
  */
 $previo = $con->obnerFila($con->consultar(
-    "SELECT TOP 1 1 AS x FROM ind_rit_firmas WHERE rif_IdContribuyente = ?",
+    "SELECT TOP 1 1 AS x
+       FROM ind_contribuyentes c
+      WHERE c.ind_Id = ?
+        AND (c.ind_RIT_FechaCreacion IS NOT NULL
+             OR EXISTS (SELECT 1 FROM ind_rit_firmas f WHERE f.rif_IdContribuyente = c.ind_Id))",
     [$idContribuyente]
 ));
 $ritYaFormalizado = (bool) $previo;
@@ -426,33 +423,12 @@ $esc = function ($v) {
    Se listan solo los vigentes (anx_Activo = 1). Se imprime el tipo y el nombre
    del archivo, no la ruta: la ruta no le sirve a nadie en un papel y ademas
    revela como se guardan.
+
+   La lista sale de RitFirma::documentosImpresos, la misma que cubre la huella
+   de la firma (v4): cambiar un soporte cambia el papel y la firma no puede
+   seguir estampada como si nada.
    --------------------------------------------------------------------------- */
-$anexosTexto = '';
-
-$resAnexos = $con->consultar(
-    "SELECT anx_Tipo, anx_NombreOriginal
-       FROM ind_establecimiento_anexos
-      WHERE anx_IdContribuyente = ?
-        AND anx_Activo = 1
-      ORDER BY anx_Id",
-    [(int) $row['ind_Id']]
-);
-
-$etiquetasAnexo = [
-    'rut'      => 'RUT',
-    'camara'   => 'Camara de comercio',
-    'cedula'   => 'Documento de identificacion',
-    'usosuelo' => 'Uso de suelo',
-    'cese'     => 'Cese',
-    'otro'     => 'Otro',
-];
-
-$listaAnexos = [];
-while ($fa = $con->obnerFila($resAnexos)) {
-    $tipo = strtolower(trim((string) $fa['anx_Tipo']));
-    $listaAnexos[] = ($etiquetasAnexo[$tipo] ?? ($fa['anx_Tipo'] ?: 'Documento'))
-                   . ': ' . $fa['anx_NombreOriginal'];
-}
+$listaAnexos = \erpsoftsas\RitFirma::documentosImpresos($con, (int) $row['ind_Id']);
 
 $anexosTexto = $listaAnexos ? $esc(implode(' · ', $listaAnexos)) : 'Ninguno';
 
@@ -487,6 +463,10 @@ if ($usuarioTramite['nombre'] === '' && !empty($firmaRit['rif_NombreUsuario'])) 
 // huella de la firma (RitFirma v4), para que lo impreso y lo firmado no puedan
 // diferir. $row trae juntas las columnas ind_* y est_*.
 $lugar = \erpsoftsas\RitFirma::lugarImpreso($row, $row);
+
+// Representante, contador y revisor: los del contribuyente y, si faltan, los del
+// establecimiento (regla ind_X ?: est_X). De la misma funcion que la huella v4.
+$personas = \erpsoftsas\RitFirma::personasImpresas($row, $row);
 
 $d = [
 
@@ -619,14 +599,15 @@ $d = [
 'direccion_actividad' => $esc($lugar['direccion_actividad']),
 
 // REPRESENTANTE
-'representante' => $esc($row['ind_Nombre_representante'] ?: $row['est_Nombre_representante']),
+'representante' => $esc($personas['representante']),
 // Los tres campos de abajo solo leian la columna legacy est_*, nunca su
 // equivalente ind_* -que es el que _guardarRIT() (class.contribuyentes.php)
 // SI actualiza-. Cualquier correccion de cedula/correo del representante
 // hecha desde el RIT nunca se veia reflejada en el certificado. Mismo
-// patron ind_X ?: est_X que ya se aplicaba en 'representante'.
-'cc_representante' => $esc($row['ind_Cedula_representante'] ?: $row['est_Cedula_representante']),
-'email_representante' => $esc($row['ind_Email_representante'] ?: $row['est_Email_representante']),
+// patron ind_X ?: est_X que ya se aplicaba en 'representante' (hoy en
+// RitFirma::personasImpresas).
+'cc_representante' => $esc($personas['cc_representante']),
+'email_representante' => $esc($personas['email_representante']),
 
 /*
  * QUIEN TRAMITA EL RIT (casilla 31).
@@ -660,14 +641,16 @@ $d = [
 // migracion_2026-08_contribuyente.sql BLOQUE 4 (2026-08-04). La migracion
 // 003 habia creado un juego paralelo con otro nombre; se corrigio para usar
 // estos (ver el propio archivo de esa migracion).
-'contador_nombre' => $esc($row['ind_NombreContador'] ?: $row['est_Nombre_contador']),
-'contador_cc' => $esc($row['ind_CedulaContador'] ?: $row['est_Cedula_contador']),
-'contador_tp' => $esc($row['ind_TarjetaProfContador'] ?: $row['est_Tarjeta_profesional']),
+// El respaldo al establecimiento (ind_X ?: est_X) vive en
+// RitFirma::personasImpresas, para que la huella v4 cubra lo impreso.
+'contador_nombre' => $esc($personas['contador_nombre']),
+'contador_cc' => $esc($personas['contador_cc']),
+'contador_tp' => $esc($personas['contador_tp']),
 
 // REVISOR
-'revisor_nombre' => $esc($row['ind_NombreRevisor'] ?: $row['est_Nombre_revisor']),
-'revisor_cc' => $esc($row['ind_CedulaRevisor'] ?: $row['est_Cedula_revisor']),
-'revisor_tp' => $esc($row['ind_TarjetaProfRevisor'] ?: $row['est_Tarjeta_profesional_revisor']),
+'revisor_nombre' => $esc($personas['revisor_nombre']),
+'revisor_cc' => $esc($personas['revisor_cc']),
+'revisor_tp' => $esc($personas['revisor_tp']),
 
 // CATASTRAL
 'codigo_catastral' => $esc($row['est_Codigo_catastral']),

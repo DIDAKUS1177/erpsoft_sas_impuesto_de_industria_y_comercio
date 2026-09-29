@@ -476,18 +476,22 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', 'vendors/
 							<input type="text" class="form-control" id="usu_DV" disabled>
 						</div>
 							
+						<!-- Los maxlength son los del contribuyente que se crea con la cuenta
+						     (nombres y apellidos varchar 100, dirección 200): pasarse daba un
+						     "No se pudo completar el registro" sin decir qué campo. El servidor
+						     lo vuelve a comprobar y dice cuál (class.usuarios.php, _leerCuenta). -->
 						<div class="form-group col-md-8" id="grupoNombres">
 							<label id="labelNombres">* Nombres</label>
-							<input type="text" class="form-control" id="usu_Nombres" required>
+							<input type="text" class="form-control" id="usu_Nombres" required maxlength="100">
 						</div>
 						<div class="form-group col-md-6"  id="grupoApellidos">
 							<label>* Apellidos</label>
-							<input type="text" class="form-control" id="usu_Apellidos" required>
+							<input type="text" class="form-control" id="usu_Apellidos" required maxlength="100">
 						</div>
 
 						<div class="form-group col-md-6">
 							<label>* Correo</label>
-							<input type="email" class="form-control" id="usu_Correo" required>
+							<input type="email" class="form-control" id="usu_Correo" required maxlength="250">
 						</div>
 						<div class="form-group col-md-6">
 							<label>* Telefono</label>
@@ -499,7 +503,7 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', 'vendors/
 
 						<div class="form-group col-md-8">
 							<label>* Dirección</label>
-							<input type="text" class="form-control" id="usu_Direccion" required>
+							<input type="text" class="form-control" id="usu_Direccion" required maxlength="200">
 						</div>
 
 						<!-- usu_IdCiudad: municipio de RESIDENCIA del contribuyente. Antes este
@@ -517,7 +521,7 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', 'vendors/
 
 						<div class="form-group col-md-4">
 							<label>* Usuario</label>
-							<input type="text" class="form-control" id="usu_Usuario" required>
+							<input type="text" class="form-control" id="usu_Usuario" required maxlength="100">
 						</div>	
 						<div class="form-group col-md-4">
 							<label>* Clave</label>

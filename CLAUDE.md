@@ -1415,6 +1415,43 @@ Pruebas: `probar_ica_revision.php` (49 casos) y `probar_ica_ui.test.js` (16,
 Prueba: `probar_rit_revision.php` (53 casos; `foto30.php` guarda y restaura el
 contribuyente 30).
 
+### Segunda revisión del 2026-09-28 (antes de desplegar; va en un commit aparte)
+
+Cinco revisores nuevos sobre 1111587. Lo corregido:
+- **Recaudo**: "Aplicar" registra también un archivo cuyos pagos son todos para
+  revisar; un pago ya aplicado (mismo número, valor y fecha) no se vuelve a
+  aplicar si el banco reenvía el archivo; con una homónima ya pagada o dos
+  líneas para la misma declaración va a "Revisar a mano"; aplicar y asignar van
+  en transacción con `sp_getapplock`; fecha de encabezado inválida se rechaza;
+  al volver a cargar un archivo aplicado, lo pendiente se asigna fila por fila.
+- **Retenciones**: "Presentar" compara la huella antes y después de recalcular
+  (si cambió, quita las firmas y no presenta), `_liquidar` estricto dentro de las
+  transacciones, la corrección no se completa con el RIT, formulario de solo
+  lectura mientras guarda.
+- **ICA**: borrador sin actividades carga las del contribuyente al abrir; el
+  motivo de los botones en gris se ve al pulsarlos; `_revertirABorrador` no
+  toca una recién presentada; fecha de la corregida en liquidacion.php; Guardar
+  usa `FormularioDeclaracion`.
+- **RIT**: las actividades viajan como altas y bajas (no se reescriben: la
+  principal no cambia y una pestaña vieja no borra lo de otra); la regla de
+  Inscripción/Actualización VOLVIÓ a la de 34713e0 (pedido del cliente del 25 y
+  26 de agosto); documento repetido por número sin importar el tipo; la huella
+  v4 cubre contador/revisor/representante con respaldo del local y la línea de
+  documentos; el cese cuenta como cambio sin guardar; correo único y copiado a la
+  cuenta también en Contribuyentes y Establecimientos.
+- **Usuarios**: documento vacío no es "repetido", solo dígitos; cambiar a rol de
+  contribuyente crea su contribuyente; tipo de persona en la pantalla; sin tipo 2;
+  largos validados en la inscripción.
+- **Sesión**: el aviso de sesión vencida se instala sobre `XMLHttpRequest` al
+  cargar `menu.php` (en `window.load` llegaba tarde) y redirige solo a los 6 s.
+- PSE: el retorno no dice "aprobado" si el pago no quedó registrado; el webhook
+  deja rastro de las sesiones de borradores.
+Pruebas: recaudo 15, retenciones 41, ICA 59 (+34 de pantalla), RIT 90.
+
+Quedan para decidir: quitar las firmas de retenciones no presentadas hechas con
+la versión anterior; la seguridad de `class.usuarios.php` (funciones 2 y 3 sin
+sesión, inscripción pública que acepta `id_rol=1`).
+
 ### Pendientes
 
 - **Migración 036** (fórmulas del ICA del año vigente): aplicarla en Paipa y

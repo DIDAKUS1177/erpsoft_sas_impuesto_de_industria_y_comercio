@@ -97,6 +97,14 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 		color:#adb5bd !important; background:#f4f5f6 !important; border-color:#e6e8ea !important;
 		cursor: not-allowed; pointer-events: none; box-shadow: none; filter: none; transform: none;
 	}
+	/*
+	 * Gris CON MOTIVO (data-motivo): sigue en gris y sin su accion, pero recibe
+	 * el puntero para decir POR QUE -el tooltip al pasar y un aviso al pulsar
+	 * (DeclaracionesUI.mostrarMotivo)-. Con pointer-events:none el motivo que
+	 * traia el title no se veia nunca (segunda revision 2026-09-28). Las grises
+	 * sin motivo quedan como estaban.
+	 */
+	.acc-card.acc-off[data-motivo] { pointer-events: auto; cursor: help; }
 
 	/* Hover a color pleno para el que va a pulsar (el activo, no el gris). */
 	.acc-card.acc-info:hover      { background:#0b7285; color:#fff; border-color:#0b7285; }
@@ -975,43 +983,67 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
      * Ahora cualquier respuesta que lo diga -o que traiga sinSesion = 1, como
      * contribuyentes y establecimientos- lleva al login con un aviso.
      *
-     * Va en window.load por lo mismo que el ajaxError de más abajo (el jQuery que
-     * hace las peticiones se carga al final de la página), pero con bandera PROPIA:
-     * __erpRedAjax también la pone declaraciones.ui.js, y en esas pantallas -el
-     * RIT entre ellas- este aviso no se habría registrado.
+     * Se instala YA, sobre XMLHttpRequest, y no en window.load con jQuery: las
+     * pantallas piden sus datos en cuanto carga su script (Establecimientos, por
+     * ejemplo), antes del load, y esa primera respuesta sin sesión se perdía.
+     * El aviso redirige solo a los pocos segundos: si otra pantalla abre su
+     * propio swal encima, el de sesión se reemplazaba y el usuario quedaba ahí.
      */
-    window.addEventListener('load', function () {
-        if (window.__erpSesionAjax || typeof jQuery === 'undefined') { return; }
-        window.__erpSesionAjax = true;
+    (function () {
+        if (window.__erpSesionXhr || !window.XMLHttpRequest) { return; }
+        window.__erpSesionXhr = true;
 
         var avisado = false;
-        jQuery(document).ajaxSuccess(function (event, jqxhr, settings, datos) {
-            if (avisado || !datos || typeof datos !== 'object') { return; }
-            var sinSesion = datos.sinSesion == 1
-                || /debe iniciar sesi[oó]n|sesi[oó]n no v[aá]lida/i.test(String(datos.mensaje || ''));
-            if (!sinSesion) { return; }
-            avisado = true;
 
-            var alLogin = function () {
-                try { localStorage.clear(); } catch (e) { /* navegador sin almacenamiento */ }
-                window.location = '../index.php';
+        function alLogin() {
+            try { localStorage.clear(); } catch (e) { /* navegador sin almacenamiento */ }
+            window.location = '../index.php';
+        }
+
+        function avisar() {
+            if (avisado) { return; }
+            avisado = true;
+            // Pase lo que pase con el aviso, en 6 segundos va al login.
+            setTimeout(alLogin, 6000);
+            var mostrar = function () {
+                if (typeof swal === 'function') {
+                    swal({
+                        type: 'warning',
+                        title: 'Su sesión terminó',
+                        text: 'La sesión se cierra sola tras un tiempo sin actividad. Ingrese de nuevo '
+                            + 'para continuar; lo que no alcanzó a guardar tendrá que escribirlo otra vez.',
+                        confirmButtonText: 'Ir al inicio de sesión',
+                        allowOutsideClick: false,
+                        allowEscapeKey: false
+                    }).then(alLogin, alLogin);
+                } else {
+                    alert('Su sesión terminó. Ingrese de nuevo para continuar.');
+                    alLogin();
+                }
             };
-            if (typeof swal === 'function') {
-                swal({
-                    type: 'warning',
-                    title: 'Su sesión terminó',
-                    text: 'La sesión se cierra sola tras un tiempo sin actividad. Ingrese de nuevo '
-                        + 'para continuar; lo que no alcanzó a guardar tendrá que escribirlo otra vez.',
-                    confirmButtonText: 'Ir al inicio de sesión',
-                    allowOutsideClick: false,
-                    allowEscapeKey: false
-                }).then(alLogin, alLogin);
-            } else {
-                alert('Su sesión terminó. Ingrese de nuevo para continuar.');
-                alLogin();
-            }
-        });
-    });
+            // swal se carga al final de la página: si todavía no está, se espera.
+            if (document.readyState === 'complete') { mostrar(); }
+            else { window.addEventListener('load', mostrar); }
+        }
+
+        var enviarOriginal = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.send = function () {
+            this.addEventListener('load', function () {
+                if (avisado) { return; }
+                var texto = '';
+                try { texto = String(this.responseText || ''); } catch (e) { return; }  // respuestas binarias
+                if (texto.charAt(0) !== '{' || texto.length > 20000) { return; }
+                var datos;
+                try { datos = JSON.parse(texto); } catch (e) { return; }
+                if (!datos || typeof datos !== 'object') { return; }
+                if (datos.sinSesion == 1
+                    || /debe iniciar sesi[oó]n|sesi[oó]n no v[aá]lida/i.test(String(datos.mensaje || ''))) {
+                    avisar();
+                }
+            });
+            return enviarOriginal.apply(this, arguments);
+        };
+    })();
 
     /* ===== Mostrar / ocultar el menú lateral en escritorio =====
        El menú arranca desplegado; si el usuario lo oculta se recuerda.

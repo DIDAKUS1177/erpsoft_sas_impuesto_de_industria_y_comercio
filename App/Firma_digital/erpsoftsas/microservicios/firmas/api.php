@@ -1216,7 +1216,21 @@ class FirmasAPI
             [(int) $idContribuyente]
         ));
         $rep = trim((string) ($c['ind_Nombre_representante'] ?? ''));
-        return $rep !== '' ? $rep : (string) $nombreCuenta;
+        if ($rep !== '') { return $rep; }
+
+        // Mismo respaldo que el PDF: el representante del establecimiento que
+        // imprime el formulario (el activo más antiguo), y solo después la cuenta.
+        include_once SERVER . '/business/class.ritFirma.php';
+        $idEst = \erpsoftsas\RitFirma::establecimientoImpreso($conSql, $idContribuyente);
+        if ($idEst !== null) {
+            $e = $conSql->obnerFila($conSql->consultar(
+                "SELECT est_Nombre_representante FROM ind_establecimientos WHERE est_Id = ?",
+                [$idEst]
+            ));
+            $repEst = trim((string) ($e['est_Nombre_representante'] ?? ''));
+            if ($repEst !== '') { return $repEst; }
+        }
+        return (string) $nombreCuenta;
     }
 
     /**

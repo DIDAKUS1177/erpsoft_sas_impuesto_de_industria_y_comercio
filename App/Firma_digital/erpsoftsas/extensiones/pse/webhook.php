@@ -98,6 +98,9 @@ try {
         // Si la sesion SI es suya -solo pudo nacer antes de que crearSesion.php
         // exigiera la presentacion- se deja tal cual, para conciliarla a mano.
         if ((int) ($f['row']['estado'] ?? 0) !== 2) {
+            // Que quede rastro: si el banco la aprobó, hay plata sin registrar.
+            error_log('[pse webhook] requestId ' . $requestId . ': ' . $f['m']['clave'] . ' ' . $f['row']['id']
+                    . ' no está presentada; no se registra el pago (estado del banco: ' . $info['estado'] . ').');
             continue;
         }
 

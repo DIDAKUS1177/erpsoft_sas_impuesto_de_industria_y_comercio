@@ -6,7 +6,7 @@
 <html>
 <head>
 	<meta charset="utf-8">
-	<title>Recaudo ICA | ERPSOFTSAS</title>
+	<title>Recaudo | ERPSOFTSAS</title>
 
 	<meta http-equiv="X-UA-Compatible" content="IE=edge">
 	<meta http-equiv="Expires" content="0">
@@ -33,7 +33,7 @@
 
 			<div class="card-box mb-30">
 				<div class="pd-20">
-					<h4 class="h4 mb-1">Recaudo ICA</h4>
+					<h4 class="h4 mb-1">Recaudo</h4>
 					<small class="text-muted">
 						Archivo de recaudo que entrega la entidad financiera con los pagos hechos en ventanilla.
 					</small>
@@ -130,10 +130,12 @@
 								</table>
 							</div>
 						</div>
-						<!-- Retención y autorretención numeran igual que el ICA (2026000001
-						     existe en los tres) y sus recibos llevan el mismo EAN. Un número
-						     que también es de una retención o autorretención presentada sin
-						     pagar no se aplica: se lista aquí (ver class.recaudo.php). -->
+						<!-- ICA, retención y autorretención numeran igual (2026000001 existe
+						     en los tres) y sus recibos llevan el mismo EAN. Lo que no es
+						     inequívoco -dos declaraciones pendientes con ese número, una ya
+						     pagada, o dos líneas para la misma- no se aplica solo: se lista
+						     aquí y se asigna a mano después de aplicar (class.recaudo.php,
+						     función 4). -->
 						<div class="tab-pane fade" id="tabRevisar">
 							<div class="alert alert-warning mb-3" style="font-size:13px;">
 								Estos pagos <b>no se aplicaron</b>. El número de referencia es de más de

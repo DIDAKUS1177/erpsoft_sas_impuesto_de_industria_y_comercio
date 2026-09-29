@@ -96,13 +96,13 @@
 								<div class="col-sm-12 col-md-6">
 									<div class="row" >
 										<div class="form-group" style="width: 95%">
-											<label>* Nombres</label>
+											<label id="labelUsuNombres">* Nombres</label>
 											<input type="text" class="form-control" id="usu_Nombres" name="usu_Nombres"
 												maxlength="100" placeholder="Nombres Completos" title='Ingrese Nombres Completos' required>
-										</div>	
-									</div>	
+										</div>
+									</div>
 								</div>
-								<div class="col-sm-12 col-md-6">
+								<div class="col-sm-12 col-md-6" id="grupoUsuApellidos">
 									<div class="row" >
 										<div class="form-group" style="width: 95%">
 											<label>* Apellidos</label>
@@ -124,9 +124,28 @@
 									<div class="row" >
 										<div class="form-group" style="width: 95%">
 											<label>Dirección</label>
+											<!-- 200: lo que cabe en la dirección del contribuyente (varchar 200). -->
 											<input type="text" class="form-control" id="usu_Direccion" name="usu_Direccion"
-												maxlength="250" placeholder="Dirección" title='Ingrese Dirección de Residencia'>
+												maxlength="200" placeholder="Dirección" title='Ingrese Dirección de Residencia'>
 										</div>	
+									</div>
+								</div>
+
+								<!-- Tipo de persona: lo usa el contribuyente que se crea con las
+								     cuentas de contribuyente (no con las de la Alcaldía). Antes no se
+								     pedía: con NIT salía siempre jurídica y los apellidos se perdían.
+								     Sin escoger, el servidor lo deduce del documento (NIT = jurídica). -->
+								<div class="col-sm-12 col-md-6">
+									<div class="row" >
+										<div class="form-group" style="width: 95%">
+											<label>Tipo de persona</label>
+											<select class="form-control" style="width: 100%;"
+												id="usu_IdTipoPersona" name="usu_IdTipoPersona">
+												<option value="">Según el documento</option>
+												<option value="1">Natural</option>
+												<option value="2">Jurídica</option>
+											</select>
+										</div>
 									</div>
 								</div>
 
@@ -134,16 +153,17 @@
 									<div class="row" >
 										<div class="form-group" style="width: 95%">
 											<label>* Tipo Documento</label>
+											<!-- Los del sistema: el 2 (Tarjeta de Identidad) no existe en el
+											     RIT, los PDF ni Contribuyentes, y el servidor ya no lo acepta. -->
 											<select class="form-control" style="width: 100%;"
 												id="usu_IdTipoDocumento" name="usu_IdTipoDocumento" required>
 												<option value="">Seleccione Tipo Documento</option>
 												<option value="1">Cédula de Ciudadanía</option>
-												<option value="2">Tarjeta de Identidad</option>
 												<option value="3">Cédula de Extranjería</option>
 												<option value="4">Pasaporte</option>
 												<option value="5">NIT</option>
 											</select>
-										</div>	
+										</div>
 									</div>
 								</div>
 
@@ -151,10 +171,12 @@
 									<div class="row" >
 										<div class="form-group" style="width: 95%">
 											<label>Documento</label>
-											<input type="number" class="form-control" id="usu_Documento" name="usu_Documento"
-												maxlength="12" placeholder="Documento"  title='Ingrese Documento de Identificación'>
-										</div>	
-									</div>	
+											<!-- Texto con teclado numérico y no type=number: ese acepta "1.5" o
+											     "1e5", y un documento así rompía el listado entero de Usuarios. -->
+											<input type="text" class="form-control" id="usu_Documento" name="usu_Documento"
+												inputmode="numeric" maxlength="10" placeholder="Solo números, sin DV"  title='Ingrese Documento de Identificación'>
+										</div>
+									</div>
 								</div>
 								
 								<div class="col-sm-12 col-md-6">

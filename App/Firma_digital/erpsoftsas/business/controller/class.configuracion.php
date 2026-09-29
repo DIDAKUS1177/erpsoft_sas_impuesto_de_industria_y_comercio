@@ -73,7 +73,11 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
             echo json_encode([
                 'ok' => 0,
                 'mensaje' => 'Solo la Alcaldía puede ver o cambiar la configuración.',
-                'datos' => []
+                'datos' => [],
+                // Si el rechazo es porque la sesion vencio, dist/menu.php lleva al
+                // login con aviso (como en contribuyentes y establecimientos) en
+                // vez de dejar la pantalla diciendo que "solo la Alcaldia puede".
+                'sinSesion' => empty($_SESSION['id_usuario']) ? 1 : 0
             ]);
             return;
         }

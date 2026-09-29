@@ -4,6 +4,11 @@
  * El flujo es de DOS pasos a proposito: primero se revisa el archivo y se
  * muestra que va a pasar, y solo entonces se habilita "Aplicar". Marcar
  * declaraciones como pagadas es irreversible en la practica.
+ *
+ * Despues de aplicar, lo que no se pudo aplicar solo (un numero que es de dos
+ * declaraciones pendientes, o de una ya pagada) se asigna a mano, fila por
+ * fila, con el comprobante del banco (funcion 4). Para volver otro dia sobre lo
+ * pendiente se carga de nuevo el mismo archivo.
  */
 
 var RUTA_RECAUDO = '../business/controller/class.recaudo.php';
@@ -12,11 +17,15 @@ var RUTA_RECAUDO = '../business/controller/class.recaudo.php';
 var archivoRevisado = null;
 var nombreOriginal  = null;
 
-/** El archivo en disco sobre el que se asignan a mano los pagos "para revisar",
- *  y si ya se aplicó (solo entonces se puede: ver class.recaudo.php, función 4). */
-var archivoEnDisco   = null;
-var archivoAplicado  = false;
-var revisarActual    = [];
+/** El archivo en disco sobre el que se asignan a mano los pagos pendientes, y
+ *  si ya se aplico (solo entonces se puede: ver class.recaudo.php, funcion 4). */
+var archivoEnDisco  = null;
+var archivoAplicado = false;
+
+/** Las dos tablas que pueden llevar boton de asignar. Cada fila se marca por
+ *  su posicion: dos lineas con la misma referencia y el mismo valor son dos
+ *  pagos, y asignar una no debe dar por asignada la otra. */
+var listas = { aplicables: [], revisar: [] };
 
 function escapar(v) {
     if (v === null || v === undefined) { return ''; }
@@ -41,6 +50,14 @@ function pintarFilas(idCuerpo, lista, columnas, vacio) {
     $('#' + idCuerpo).html(filas);
 }
 
+/** Boton para asignar a mano la fila i de una lista a la candidata c. */
+function botonAsignar(lista, i, c, cand) {
+    return '<button type="button" class="btn btn-sm btn-outline-primary mb-1 js-asignar"'
+         + ' data-lista="' + lista + '" data-i="' + i + '" data-c="' + c + '">'
+         + 'Aplicar a ' + escapar(cand.etiqueta) + ': ' + escapar(cand.contribuyente || cand.documento || '')
+         + ' (total ' + pesos(cand.total) + ')</button>';
+}
+
 function pintarResumen(d) {
 
     var avisos = '';
@@ -53,9 +70,10 @@ function pintarResumen(d) {
     }
 
     if (d.yaSubido) {
-        avisos += '<div class="alert alert-danger py-2 mb-2">' +
-                  'Este archivo <b>ya se cargó</b> el ' + escapar(d.yaSubido.fecha) +
-                  ' como «' + escapar(d.yaSubido.nombre) + '». Aplicarlo otra vez no hará nada.</div>';
+        avisos += '<div class="alert alert-info py-2 mb-2">' +
+                  'Este archivo <b>ya se aplicó</b> el ' + escapar(d.yaSubido.fecha) +
+                  ' como «' + escapar(d.yaSubido.nombre) + '». No se vuelve a aplicar: lo que quedó ' +
+                  'pendiente se asigna fila por fila en las tablas de abajo.</div>';
     }
 
     var banco = (d.banco && d.banco.nombre) ? d.banco.nombre : ('código ' + escapar(d.banco ? d.banco.codigo : '?'));
@@ -70,25 +88,21 @@ function pintarResumen(d) {
         '</div>' +
         '<div class="row mt-3">' +
             '<div class="col-md-3"><small class="text-muted d-block">Registros</small><b>' + d.sumas.registros + '</b></div>' +
-            '<div class="col-md-3"><small class="text-muted d-block">Se van a aplicar</small><b class="text-success">' + (d.aplicables || []).length + '</b></div>' +
+            '<div class="col-md-3"><small class="text-muted d-block">' + (d.yaSubido ? 'Por asignar a mano' : 'Se van a aplicar') +
+                '</small><b class="text-success">' + (d.aplicables || []).length + '</b></div>' +
             '<div class="col-md-3"><small class="text-muted d-block">Ya estaban pagadas</small><b>' + (d.yaPagadas || []).length + '</b></div>' +
             '<div class="col-md-3"><small class="text-muted d-block">Sin declaración</small><b class="text-danger">' + (d.sinDeclaracion || []).length + '</b></div>' +
         '</div>' +
         '<div class="row mt-3">' +
             '<div class="col-md-3"><small class="text-muted d-block">Sin presentar (no se aplican)</small><b class="text-danger">' + (d.sinPresentar || []).length + '</b></div>' +
-            '<div class="col-md-3"><small class="text-muted d-block">Revisar a mano (no se aplican)</small><b class="text-danger">' + (d.revisar || []).length + '</b></div>' +
+            '<div class="col-md-3"><small class="text-muted d-block">Revisar a mano (no se aplican solos)</small><b class="text-danger">' + (d.revisar || []).length + '</b></div>' +
         '</div>'
     );
 
-    // Aqui ya solo pueden entrar declaraciones presentadas: el servidor manda
-    // las demas a sinPresentar y no las aplica. La columna se conserva porque
-    // el usuario pidio ver el estado, pero deja de ser una advertencia.
-    // Los tres módulos numeran igual: se dice a cuál va cada pago.
-    pintarFilas('tbodyAplicables', d.aplicables, [
-        function (x) { return escapar(x.referencia); },
-        function (x) { return pesos(x.valor); },
-        function (x) { return '<span class="text-success">' + escapar(x.etiqueta || 'ICA') + ', presentada</span>'; }
-    ], 'Ninguna declaración quedará marcada como pagada con este archivo.');
+    listas.aplicables = d.aplicables || [];
+    listas.revisar    = d.revisar || [];
+    pintarAplicables();
+    pintarRevisar();
 
     pintarFilas('tbodyYaPagadas', d.yaPagadas, [
         function (x) { return escapar(x.referencia) + (x.etiqueta ? ' <small class="text-muted">(' + escapar(x.etiqueta) + ')</small>' : ''); },
@@ -102,22 +116,43 @@ function pintarResumen(d) {
 
     // Pagos que el banco reporta contra una declaracion que existe pero NO
     // esta presentada. No se aplican -ver la nota larga en class.recaudo.php-
-    // y quedan listados para conciliacion manual.
+    // y quedan listados para conciliacion manual. Se dice de que modulo son:
+    // los tres numeran igual.
     pintarFilas('tbodySinPresentar', d.sinPresentar, [
-        function (x) { return escapar(x.referencia); },
+        function (x) { return escapar(x.referencia) + (x.etiqueta ? ' <small class="text-muted">(' + escapar(x.etiqueta) + ')</small>' : ''); },
         function (x) { return pesos(x.valor); }
     ], 'Ninguna: todos los pagos del archivo corresponden a declaraciones presentadas.');
-
-    // Referencias que son de dos o más declaraciones pendientes: se asignan a
-    // mano, con las candidatas a la vista.
-    revisarActual = d.revisar || [];
-    pintarRevisar();
 
     $('#cajaResumen').show();
 }
 
+/*
+ * Los que se aplican solos. Solo tienen boton cuando el archivo YA se aplico y
+ * se volvio a cargar: un pago que ahora es inequivoco (la declaracion se
+ * presento despues, o el archivo se aplico con la version que solo miraba el
+ * ICA) ya no puede pasar por "Aplicar", que no repite un archivo; se asigna
+ * aqui. El servidor impide aplicarlo dos veces.
+ */
+function pintarAplicables() {
+    pintarFilas('tbodyAplicables', listas.aplicables, [
+        function (x) { return escapar(x.referencia); },
+        function (x) { return pesos(x.valor); },
+        function (x, i) {
+            if (x.asignada) {
+                return '<span class="text-success">Aplicado a la ' + escapar(x.asignada) + '</span>';
+            }
+            var texto = escapar(x.etiqueta || 'ICA') + (x.contribuyente ? ': ' + escapar(x.contribuyente) : '');
+            if (archivoAplicado) {
+                return botonAsignar('aplicables', i, 0, x);
+            }
+            return '<span class="text-success">' + texto + '</span>';
+        }
+    ], 'Ninguna declaración quedará marcada como pagada con este archivo.');
+}
+
+// Los que no se aplican solos: se asignan a mano, con las candidatas a la vista.
 function pintarRevisar() {
-    pintarFilas('tbodyRevisar', revisarActual, [
+    pintarFilas('tbodyRevisar', listas.revisar, [
         function (x) { return escapar(x.referencia); },
         function (x) { return pesos(x.valor); },
         function (x) { return escapar(x.motivo); },
@@ -128,48 +163,47 @@ function pintarRevisar() {
             if (!archivoAplicado) {
                 return '<span class="text-muted">Aplique primero el archivo; después podrá asignarlo aquí.</span>';
             }
-            return (x.candidatas || []).map(function (c) {
-                return '<button type="button" class="btn btn-sm btn-outline-primary mb-1 js-asignar"'
-                     + ' data-ref="' + escapar(x.referencia) + '" data-valor="' + escapar(x.valor) + '"'
-                     + ' data-modulo="' + escapar(c.modulo) + '" data-id="' + escapar(c.id) + '">'
-                     + 'Aplicar a ' + escapar(c.etiqueta) + ': ' + escapar(c.contribuyente || c.documento || '')
-                     + ' (total ' + pesos(c.total) + ')</button>';
+            return (x.candidatas || []).map(function (c, ci) {
+                return botonAsignar('revisar', i, ci, c);
             }).join('<br>');
         }
     ], 'Ninguna.');
 }
 
-// Asignar a mano un pago "para revisar" a la declaración que se elija.
-$('#tbodyRevisar').on('click', '.js-asignar', function () {
-    var $b = $(this);
-    var dato = { ref: String($b.data('ref')), valor: $b.data('valor'), modulo: $b.data('modulo'), id: $b.data('id') };
+// Asignar a mano un pago pendiente a la declaración que se elija.
+$('#tbodyRevisar, #tbodyAplicables').on('click', '.js-asignar', function () {
+    var $b    = $(this);
+    var lista = String($b.data('lista'));
+    var fila  = (listas[lista] || [])[Number($b.data('i'))];
+    if (!fila) { return; }
+    var cand  = (lista === 'aplicables') ? fila : (fila.candidatas || [])[Number($b.data('c'))];
+    if (!cand) { return; }
+
     swal({
         title: '¿Aplicar este pago?',
-        text: 'La referencia ' + dato.ref + ' por ' + pesos(dato.valor) + ' quedará como pago de esta '
-            + 'declaración. Hágalo solo si el comprobante del banco lo confirma.',
+        text: 'La referencia ' + fila.referencia + ' por ' + pesos(fila.valor) + ' quedará como pago de la '
+            + cand.etiqueta + ' de ' + (cand.contribuyente || cand.documento || 'este contribuyente')
+            + '. Hágalo solo si el comprobante del banco lo confirma.',
         type: 'warning', showCancelButton: true,
         confirmButtonText: 'Sí, aplicar', cancelButtonText: 'Cancelar'
     }).then(function (res) {
         if (!res.value) { return; }
-        $('#tbodyRevisar .js-asignar').prop('disabled', true);
+        $('.js-asignar').prop('disabled', true);
         $.ajax({
             url: RUTA_RECAUDO, type: 'POST', dataType: 'json',
-            data: { funcion: 4, archivo: archivoEnDisco, referencia: dato.ref, valor: dato.valor,
-                    modulo: dato.modulo, id: dato.id },
+            data: { funcion: 4, archivo: archivoEnDisco, referencia: fila.referencia, valor: fila.valor,
+                    modulo: cand.modulo, id: cand.id },
             success: function (r) {
                 if (r.ok == 1) {
-                    revisarActual.forEach(function (x) {
-                        if (String(x.referencia) === dato.ref && Number(x.valor) === Number(dato.valor) && !x.asignada) {
-                            var c = (x.candidatas || []).filter(function (k) { return k.modulo === dato.modulo; })[0];
-                            x.asignada = c ? c.etiqueta : dato.modulo;
-                        }
-                    });
+                    fila.asignada = cand.etiqueta;
                     cargarHistorial();
                 }
+                pintarAplicables();
                 pintarRevisar();
                 swal({ type: r.ok == 1 ? 'success' : 'warning', title: r.ok == 1 ? 'Listo' : 'No se aplicó', text: r.mensaje || '' });
             },
             error: function () {
+                pintarAplicables();
                 pintarRevisar();
                 swal({ type: 'error', title: 'Error', text: 'No se pudo aplicar el pago. Intente de nuevo.' });
             }
@@ -232,11 +266,13 @@ $('#btnPrevisualizar').on('click', function () {
             nombreOriginal  = r.datos.archivo.nombre;
             archivoEnDisco  = r.datos.archivo.ruta;
             // Un archivo ya aplicado (se vuelve a cargar para asignar lo que
-            // quedó por revisar) permite asignar a mano de una vez.
+            // quedó pendiente) permite asignar a mano de una vez.
             archivoAplicado = !!r.datos.yaSubido;
             pintarResumen(r.datos);
-            // Sin nada que aplicar, el boton sigue bloqueado.
-            $('#btnAplicar').prop('disabled', (r.datos.aplicables || []).length === 0);
+            // "Aplicar" también registra un archivo cuyos pagos son todos para
+            // revisar: sin eso, esos pagos no se podían asignar nunca.
+            var pendientes = (r.datos.aplicables || []).length + (r.datos.revisar || []).length;
+            $('#btnAplicar').prop('disabled', !!r.datos.yaSubido || pendientes === 0);
         },
         error: function () {
             $('#loading').hide();
@@ -251,7 +287,9 @@ $('#btnAplicar').on('click', function () {
 
     swal({
         title: '¿Aplicar los pagos?',
-        text: 'Las declaraciones del listado quedarán marcadas como pagadas.',
+        text: listas.aplicables.length
+            ? 'Las declaraciones de "Se van a aplicar" quedarán marcadas como pagadas. Los de "Revisar a mano" se asignan después, uno por uno.'
+            : 'Ningún pago se aplica solo: el archivo queda registrado y los de "Revisar a mano" se asignan después, uno por uno.',
         type: 'warning',
         showCancelButton: true,
         confirmButtonText: 'Sí, aplicar',
@@ -266,19 +304,33 @@ $('#btnAplicar').on('click', function () {
             data: { funcion: 2, archivo: archivoRevisado, nombre: nombreOriginal },
             success: function (r) {
                 $('#loading').hide();
+                if (r.ok == 1) {
+                    $('#btnAplicar').prop('disabled', true);
+                    archivoRevisado = null;
+                    archivoAplicado = true;
+                    // Lo que devolvio el servidor, analizado dentro del candado:
+                    // los que quedaron aplicados se marcan; si alguno no se pudo
+                    // (lo pago otra via en ese instante), queda con su boton.
+                    listas.aplicables = (r.datos.aplicables || []).map(function (x) {
+                        if (x.aplicado) { x.asignada = x.etiqueta; }
+                        return x;
+                    });
+                    listas.revisar = r.datos.revisar || [];
+                    pintarAplicables();
+                    pintarRevisar();
+                    cargarHistorial();
+                } else if (r.datos && r.datos.yaAplicado) {
+                    // Ya estaba aplicado: lo pendiente se asigna desde las tablas.
+                    $('#btnAplicar').prop('disabled', true);
+                    archivoAplicado = true;
+                    pintarAplicables();
+                    pintarRevisar();
+                }
                 swal({
                     type: (r.ok == 1) ? 'success' : 'warning',
                     title: (r.ok == 1) ? 'Listo' : 'No se aplicó',
                     text: r.mensaje || ''
                 });
-                if (r.ok == 1) {
-                    $('#btnAplicar').prop('disabled', true);
-                    archivoRevisado = null;
-                    // Ya aplicado: los que quedaron "para revisar" se pueden asignar.
-                    archivoAplicado = true;
-                    pintarRevisar();
-                    cargarHistorial();
-                }
             },
             error: function () {
                 $('#loading').hide();
@@ -291,6 +343,7 @@ $('#btnAplicar').on('click', function () {
 $('#btnRefrescarHistorial').on('click', cargarHistorial);
 
 $(document).ready(function () {
-    $('#headerPageTitle').text('Recaudo ICA');
+    // Recaudo de los tres módulos (ICA, retención y autorretención), no solo ICA.
+    $('#headerPageTitle').text('Recaudo');
     cargarHistorial();
 });

@@ -52,18 +52,61 @@ var DeclaracionesUI = (function () {
      *   o.title   tooltip (se conserva el de antes)
      *   o.onclick JS a ejecutar   (excluyente con o.href)
      *   o.href    enlace directo   + o.target opcional
-     *   o.off     true = tarjeta gris, sin click
+     *   o.off     true = tarjeta gris, sin la accion
+     *   o.motivo  (con o.off) POR QUE esta en gris; tambien es su tooltip
      */
     function accBtn(o) {
         var cls = 'acc-card acc-' + o.tipo + (o.off ? ' acc-off' : '');
-        var ini = o.off
-            ? '<a href="#" aria-disabled="true" tabindex="-1"'
-            : (o.href
+        var ini;
+        if (o.off && o.motivo) {
+            /*
+             * GRIS CON MOTIVO (segunda revision 2026-09-28). El motivo iba solo
+             * en el title, y la regla .acc-off de dist/menu.php le quita el
+             * puntero a la tarjeta (pointer-events:none): el tooltip no salia
+             * nunca y el boton no decia por que estaba en gris. Con data-motivo
+             * la tarjeta recibe el puntero (ver menu.php) y al pulsarla lo
+             * explica; la accion sigue sin ofrecerse. Sin tabindex="-1", para
+             * que el motivo tambien llegue con el teclado.
+             */
+            ini = '<a href="#" role="button" aria-disabled="true" data-motivo="' + atributo(o.motivo) + '"'
+                + ' onclick="DeclaracionesUI.mostrarMotivo(this); return false;"';
+        } else if (o.off) {
+            ini = '<a href="#" aria-disabled="true" tabindex="-1"';
+        } else {
+            ini = o.href
                 ? '<a href="' + o.href + '"' + (o.target ? ' target="' + o.target + '"' : '')
-                : '<a href="javascript:void(0);" onclick="' + o.onclick + '"');
-        return ini + ' class="' + cls + '" title="' + o.title + '">' +
+                : '<a href="javascript:void(0);" onclick="' + o.onclick + '"';
+        }
+        var titulo = (o.off && o.motivo) ? atributo(o.motivo) : o.title;
+        return ini + ' class="' + cls + '" title="' + titulo + '">' +
                '<i class="fa ' + o.icono + '"></i>' +
                '<span class="acc-lbl">' + o.texto + '</span></a>';
+    }
+
+    /** Texto para ir DENTRO de un atributo HTML ("...") sin romperlo. */
+    function atributo(t) {
+        return String(t === null || t === undefined ? '' : t)
+            .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    /**
+     * Dice por que una tarjeta esta en gris (la que trae data-motivo, ver
+     * accBtn). getAttribute devuelve el texto ya sin escapar, y swal lo pinta
+     * como texto, no como HTML.
+     */
+    function mostrarMotivo(el) {
+        var motivo = (el && el.getAttribute) ? (el.getAttribute('data-motivo') || '') : '';
+        var etiqueta = (el && el.querySelector) ? el.querySelector('.acc-lbl') : null;
+        var accion = etiqueta ? String(etiqueta.textContent || '').trim() : '';
+        if (motivo && typeof swal === 'function') {
+            swal({
+                type: 'info',
+                title: accion ? '«' + accion + '» todavía no está disponible' : 'Todavía no está disponible',
+                text: motivo
+            });
+        }
+        return false;
     }
 
     function envolverAcciones(html) {
@@ -101,8 +144,14 @@ var DeclaracionesUI = (function () {
          */
         var sinGuardar = (d.n_actividades !== undefined && d.n_actividades !== null
                           && Number(d.n_actividades) === 0);
-        // Sin comillas dobles: el texto va dentro del atributo title="...".
-        var MOTIVO_SIN_GUARDAR = 'Primero ábrala con Editar, liquídela y pulse Guardar: todavía no tiene actividades guardadas';
+        // "Editar" ya carga las actividades del contribuyente cuando la
+        // declaracion no tiene ninguna guardada (ver EditarDeclaracion.abrir):
+        // antes la abria con la tabla vacia y este camino no llevaba a nada.
+        var MOTIVO_SIN_GUARDAR = 'Todavía no tiene actividades guardadas: ábrala con Editar, '
+                               + 'escriba la base de cada actividad y pulse Guardar.';
+        var MOTIVO_SIN_GUARDAR_FIRMADA = 'Todavía no tiene actividades guardadas: ábrala con Editar '
+                               + '(se le quitan las firmas), escriba la base de cada actividad, '
+                               + 'pulse Guardar y vuelva a firmarla.';
 
         if (clave === 'borrador') {
             return envolverAcciones(
@@ -110,7 +159,7 @@ var DeclaracionesUI = (function () {
                          onclick: objJs + '.editarDeclaracion(' + d.dec_Id + ')' }) +
                 (sinGuardar
                     ? accBtn({ tipo: 'secondary', icono: 'fa-pencil-square-o', texto: 'Firmar',
-                               title: MOTIVO_SIN_GUARDAR, off: true })
+                               motivo: MOTIVO_SIN_GUARDAR, off: true })
                     : accBtn({ tipo: 'secondary', icono: 'fa-pencil-square-o', texto: 'Firmar', title: 'Firmar',
                                onclick: objJs + '.abrirFirmaDigital(' + d.dec_Id + ', ' + d.dec_IdEstablecimiento + ')' })) +
                 descargar +
@@ -133,11 +182,11 @@ var DeclaracionesUI = (function () {
             if (sinGuardar) {
                 if (clave === 'pendienteCont') {
                     acciones += accBtn({ tipo: 'info', icono: 'fa-pencil-square-o', texto: 'Firmar contador',
-                                         title: MOTIVO_SIN_GUARDAR, off: true });
+                                         motivo: MOTIVO_SIN_GUARDAR_FIRMADA, off: true });
                 }
                 return envolverAcciones(acciones +
                        accBtn({ tipo: 'success', icono: 'fa-paper-plane', texto: 'Presentar',
-                                title: MOTIVO_SIN_GUARDAR, off: true }));
+                                motivo: MOTIVO_SIN_GUARDAR_FIRMADA, off: true }));
             }
 
             if (clave === 'pendienteCont') {
@@ -178,7 +227,7 @@ var DeclaracionesUI = (function () {
                     // Sin correo registrado no hay a donde mandar el codigo:
                     // se dice que falta el dato en vez de fallar al pulsar.
                     acciones += accBtn({ tipo: 'success', icono: 'fa-paper-plane', texto: 'Presentar',
-                                         title: 'Registre el correo del contador o revisor fiscal en el RIT antes de presentar',
+                                         motivo: 'Registre el correo del contador o revisor fiscal en el RIT antes de presentar',
                                          off: true });
                 }
                 return envolverAcciones(acciones);
@@ -414,6 +463,7 @@ var DeclaracionesUI = (function () {
     return {
         nombreMes: nombreMes,
         htmlAcciones: htmlAcciones,
+        mostrarMotivo: mostrarMotivo,
         estado: estado,
         chipEstado: chipEstado,
         resumenDeclaracion: resumenDeclaracion,
@@ -886,6 +936,95 @@ var FormularioDeclaracion = {
             $sel.append($('<option>').val('').text('Seleccione…'));
         }
         $('#grupoDeclaracionCorrige').toggle(!!corrige);
+    },
+
+    /**
+     * Una fila de la tabla de actividades, la misma para las GUARDADAS y para
+     * las que se cargan del contribuyente con base 0. El codigo y el nombre
+     * vienen del catalogo y se escapan; nota es HTML armado aqui.
+     *
+     * @param {{id, codigo, nombre, nota, base, tarifa, impuesto}} a
+     */
+    filaActividad: function (a) {
+        var html = function (t) {
+            return String(t === null || t === undefined ? '' : t)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        };
+        return '<tr>' +
+                   '<td>' + html(a.codigo) + ' - ' + html(a.nombre) + (a.nota || '') +
+                       '<input type="hidden" class="actividad-id" value="' + html(a.id) + '"></td>' +
+                   '<td><input type="text" class="form-control base-gravable" value="' + html(a.base) + '"></td>' +
+                   '<td><input type="text" class="form-control tarifa" value="' + html(a.tarifa) + '" readonly></td>' +
+                   '<td><input type="text" class="form-control impuesto" readonly value="' + html(a.impuesto) + '"></td>' +
+               '</tr>';
+    },
+
+    /**
+     * Pone en la tabla las actividades del CONTRIBUYENTE con base 0 (funcion
+     * 12: la misma lista con que nace la declaracion en "Crear Declaración").
+     *
+     * EL BORRADOR SIN ACTIVIDADES ERA UN CALLEJON SIN SALIDA (segunda revision
+     * 2026-09-28). Crear no guarda actividades: se guardan con "Guardar". Un
+     * borrador que se cerro sin guardar -hay decenas-, la correccion de una
+     * declaracion que no tenia ninguna, o una firmada sin actividades a la que
+     * "Editar" le quita las firmas, se abrian con la tabla VACIA: sin filas no
+     * se guarda ("No hay actividades para guardar"), y sin guardar no se firma
+     * ni se presenta. El aviso decia "ábrala, liquídela y guárdela", pero al
+     * abrirla no habia con que. Vive aqui, y no en icaWebPresentar.js
+     * (cargarActividadesContribuyente), porque Consultar -donde se editan las
+     * correcciones- no tiene esa funcion.
+     *
+     * @param {number|string} idContribuyente dec_IdContribuyente de la declaracion
+     * @param {string} numero el #numDeclaracion abierto al pedirlas: si la
+     *        respuesta llega con otra declaracion ya abierta, no se pinta encima.
+     */
+    cargarActividadesContribuyente: function (idContribuyente, numero) {
+        $.ajax({
+            url: '../business/controller/class.declaracionesICA.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { funcion: 12, dec_IdContribuyente: idContribuyente },
+            success: function (arr) {
+                if (String($('#numDeclaracion').val()) !== String(numero)) { return; }
+
+                var $tbody = $('#tbodyActividades').empty();
+
+                // Sin actividades en el RIT no hay con que declarar: se dice,
+                // porque es lo que hay que registrar primero.
+                if (!arr || arr.ok != 1) {
+                    swal({
+                        type: 'warning',
+                        title: 'Sin actividades',
+                        text: (arr && arr.mensaje) || 'El contribuyente no tiene actividades económicas registradas.'
+                    });
+                    return;
+                }
+
+                (arr.datos || []).forEach(function (a) {
+                    // En cuantos locales del contribuyente aplica (informativo),
+                    // como al crear.
+                    var locales = Number(a.n_establecimientos) > 1
+                        ? ' <small class="text-muted">(' + Number(a.n_establecimientos) + ' establecimientos)</small>'
+                        : '';
+                    $tbody.append(FormularioDeclaracion.filaActividad({
+                        id: a.ace_IdCodigoActividad, codigo: a.acc_Codigo, nombre: a.acc_Nombre, nota: locales,
+                        base: '0', tarifa: a.acc_Tarifa, impuesto: '0'
+                    }));
+                });
+
+                if (typeof establecimientos !== 'undefined' && establecimientos.calcularTotalesActividades) {
+                    establecimientos.calcularTotalesActividades();
+                }
+            },
+            error: function (xhr) {
+                console.error('Actividades del contribuyente:', xhr && xhr.responseText);
+                swal({
+                    type: 'error',
+                    title: 'No se pudieron cargar las actividades',
+                    text: 'Cierre la declaración y vuelva a abrirla; si persiste, avise a soporte.'
+                });
+            }
+        });
     }
 };
 
@@ -948,7 +1087,7 @@ var EditarDeclaracion = (function () {
                 }
 
                 var d = resp.datos.declaracion;
-                var actividades = resp.datos.actividades;
+                var actividades = resp.datos.actividades || [];
 
                 /*
                  * En blanco ANTES de rellenar, no despues.
@@ -1084,19 +1223,26 @@ var EditarDeclaracion = (function () {
                         ? establecimientos.formatearCOP
                         : function (n) { return n; };
 
-                    $tbody.append(
-                        '<tr>' +
-                            '<td>' + a.acc_Codigo + ' - ' + a.acc_Nombre +
-                                '<input type="hidden" class="actividad-id" value="' + a.dia_IdActividad + '"></td>' +
-                            '<td><input type="text" class="form-control base-gravable" value="' + fmt(base) + '"></td>' +
-                            '<td><input type="text" class="form-control tarifa" value="' + a.dia_Tarifa + '" readonly></td>' +
-                            '<td><input type="text" class="form-control impuesto" readonly value="' + fmt(impuesto) + '"></td>' +
-                        '</tr>'
-                    );
+                    $tbody.append(FormularioDeclaracion.filaActividad({
+                        id: a.dia_IdActividad, codigo: a.acc_Codigo, nombre: a.acc_Nombre,
+                        base: fmt(base), tarifa: a.dia_Tarifa, impuesto: fmt(impuesto)
+                    }));
                 });
 
                 if (typeof establecimientos !== 'undefined' && establecimientos.calcularTotalesActividades) {
                     establecimientos.calcularTotalesActividades();
+                }
+
+                /*
+                 * Ninguna guardada: las del contribuyente con base 0, como al
+                 * crearla. Sin esto se abria con la tabla vacia y no habia forma
+                 * de guardarla, ni por lo tanto de firmarla o presentarla (ver
+                 * FormularioDeclaracion.cargarActividadesContribuyente). Nunca en
+                 * una presentada, que no se edita.
+                 */
+                if (actividades.length === 0 && Number(d.dec_Estado) !== 2) {
+                    FormularioDeclaracion.cargarActividadesContribuyente(
+                        d.dec_IdContribuyente, $('#numDeclaracion').val());
                 }
 
                 $('#btnGenerarOficial, #btnLiquidar').prop('disabled', false);
@@ -1107,6 +1253,14 @@ var EditarDeclaracion = (function () {
                 $('#stepperDeclaracion').html(DeclaracionesUI.stepperHtml(d));
 
                 $('#modal-CrearDeclaracion').modal({ backdrop: 'static', keyboard: false });
+            },
+            error: function (xhr) {
+                console.error('Abrir para editar:', xhr && xhr.responseText);
+                swal({
+                    type: 'error',
+                    title: 'No se pudo abrir para editar',
+                    text: 'Intente de nuevo; si persiste, avise a soporte.'
+                });
             }
         });
     }
