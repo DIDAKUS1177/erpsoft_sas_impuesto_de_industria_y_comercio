@@ -1448,9 +1448,30 @@ Cinco revisores nuevos sobre 1111587. Lo corregido:
   deja rastro de las sesiones de borradores.
 Pruebas: recaudo 15, retenciones 41, ICA 59 (+34 de pantalla), RIT 90.
 
-Quedan para decidir: quitar las firmas de retenciones no presentadas hechas con
-la versión anterior; la seguridad de `class.usuarios.php` (funciones 2 y 3 sin
-sesión, inscripción pública que acepta `id_rol=1`).
+Quitar las firmas de retenciones no presentadas hechas con la versión anterior:
+Diego decidió que no hace falta.
+
+### Seguridad de `class.usuarios.php` (2026-09-28, después de fd1298f)
+
+La verificación de sesión estaba comentada: sin iniciar sesión se podía listar
+todas las cuentas con su clave cifrada (SHA1 sin sal), editar cualquiera,
+inactivarlas e inscribirse como administrador mandando `id_rol=1`. Ahora, en
+`run()`:
+- 1 crear: pública, pero sin el permiso de Usuarios el rol se fuerza a 4.
+- 2 editar y 4 inactivar: rol 1, o un rol con el botón 26 en `conf_permisos`
+  (la misma regla con la que el menú deja entrar a usuario.php).
+- 3 consultar: cuenta de la Alcaldía (1, 2) o con ese permiso; Dependencias la
+  usa para los responsables. Nunca devuelve `usu_Password`.
+- 5 recuperar: pública. 6 cambiar clave: la de la SESIÓN, no la de `usu_Id`.
+- Solo el rol 1 crea, edita o inactiva cuentas de administrador; nadie se
+  inactiva a sí mismo; id y estado de la función 4 solo como dígitos / 0-1.
+- Respuesta rechazada con `sinSesion` (1 si no hay sesión), para el aviso de
+  dist/menu.php.
+Pruebas: `probar_usuarios_seguridad.php` 44/44 (sin sesión, rol 4, rol 2 con y
+sin permiso, rol 1, inyecciones, la base queda igual) y en el navegador:
+Usuarios (crear, abrir, editar, inactivar, activar), Dependencias con rol 1 y 2,
+cambiar clave desde el menú, sesión vencida e inscripción pública. Las demás
+suites siguen en verde.
 
 ### Pendientes
 

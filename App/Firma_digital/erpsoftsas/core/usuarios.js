@@ -386,7 +386,7 @@ class Usuario {
                                 swal({
                                     type: 'success',
                                     title: 'Usuario actualizado',
-                                    text: 'Uusario actualizado exitosamente',
+                                    text: 'Usuario actualizado exitosamente',
                                 });
                             } else {
                                 swal({

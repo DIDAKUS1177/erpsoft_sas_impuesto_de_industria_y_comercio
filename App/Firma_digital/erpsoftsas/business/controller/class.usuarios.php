@@ -16,8 +16,47 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
         //\erpsoftsas\SesionUsuario::verificarSesion();
         
         $_obj = new self();
-        $_obj->_funcion = $_POST['funcion'];
-        
+        $_obj->_funcion = $_POST['funcion'] ?? null;
+
+        /*
+         * QUIEN PUEDE LLAMAR CADA FUNCION (revision de seguridad 2026-09-28).
+         *
+         * La verificacion de sesion estaba comentada: sin iniciar sesion se
+         * podia listar todas las cuentas (con la clave cifrada), editar la de
+         * cualquiera, inactivarlas, e inscribirse como administrador mandando
+         * id_rol=1. Ahora:
+         *   1 crear       publica (inscripcion), pero sin permiso de Usuarios el
+         *                 rol se fuerza a contribuyente (4).
+         *   2 editar      permiso de Usuarios (el mismo boton 26 del menu).
+         *   3 consultar   cuenta de la Alcaldia (1, 2) o permiso de Usuarios:
+         *                 Dependencias lista los responsables.
+         *   4 inactivar   permiso de Usuarios.
+         *   5 recuperar   publica (olvide mi contrasena).
+         *   6 cambiar     la propia clave, con sesion.
+         * Solo el administrador (rol 1) da o toca cuentas de administrador.
+         */
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+        $funcion = (int) $_obj->_funcion;
+        $negado  = null;
+        if (in_array($funcion, [2, 4], true) && !self::_puedeGestionar()) {
+            $negado = 'No tiene permiso para administrar usuarios.';
+        } elseif ($funcion === 3 && !self::_esAlcaldia() && !self::_puedeGestionar()) {
+            $negado = 'No tiene permiso para consultar usuarios.';
+        } elseif ($funcion === 6 && self::_idSesion() <= 0) {
+            $negado = 'Debe iniciar sesión.';
+        }
+        if ($negado !== null) {
+            header('Content-type: application/json');
+            echo json_encode([
+                'ok' => 0,
+                'mensaje' => $negado,
+                'datos' => '',
+                // Sesion vencida: dist/menu.php lleva al login con un aviso.
+                'sinSesion' => self::_idSesion() > 0 ? 0 : 1,
+            ]);
+            return;
+        }
+
         try {
             //$con = \ConexionMysqlUsuariosCentral\ConexionSQL::getInstance();
             //$con->begin();
@@ -67,6 +106,46 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
                 "datos"   => ""
             ));
         }
+    }
+
+    /** Usuario de la sesion, o 0 sin sesion. */
+    private static function _idSesion()
+    {
+        return (int) ($_SESSION['id_usuario'] ?? 0);
+    }
+
+    private static function _rolSesion()
+    {
+        return self::_idSesion() > 0 ? (int) ($_SESSION['id_Rol'] ?? 0) : 0;
+    }
+
+    private static function _esAlcaldia()
+    {
+        return in_array(self::_rolSesion(), [1, 2], true);
+    }
+
+    /**
+     * Puede administrar usuarios: el administrador, o un rol con el permiso del
+     * boton "Usuarios" del menu (26). Es la misma regla con la que el menu deja
+     * entrar a usuario.php (core/menu.js -> class.permisos.php funcion 3).
+     */
+    private static function _puedeGestionar()
+    {
+        $rol = self::_rolSesion();
+        if ($rol === 1) { return true; }
+        if ($rol <= 0) { return false; }
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        return (bool) $con->obnerFila($con->consultar(
+            "SELECT TOP 1 1 AS x FROM conf_permisos WHERE per_IdRol = ? AND per_IdBoton = 26", [$rol]
+        ));
+    }
+
+    /** Rol actual de una cuenta, o 0 si no existe. */
+    private static function _rolDeCuenta($id)
+    {
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        $f = $con->obnerFila($con->consultar("SELECT usu_Rol AS r FROM conf_usuarios WHERE usu_Id = ?", [(int) $id]));
+        return $f ? (int) $f['r'] : 0;
     }
 
     /**
@@ -261,6 +340,15 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
          * del administrador).
          */
         $rolNuevo   = (int) ($_POST['id_rol'] ?? 0);
+        // La inscripcion publica (o quien no administra usuarios) solo crea
+        // contribuyentes, llegue el rol que llegue en la peticion.
+        if (!self::_puedeGestionar()) {
+            $rolNuevo = 4;
+        } elseif ($rolNuevo === 1 && self::_rolSesion() !== 1) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Solo un administrador puede crear cuentas de administrador.';
+            return false;
+        }
         $esAlcaldia = in_array($rolNuevo, [1, 2], true);
 
         $c = self::_leerCuenta($esAlcaldia);
@@ -416,6 +504,11 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
         }
 
         $rolNuevo   = (int) ($_POST['id_rol'] ?? 0);
+        if (self::_rolSesion() !== 1 && ($rolNuevo === 1 || self::_rolDeCuenta($id) === 1)) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Solo un administrador puede modificar cuentas de administrador.';
+            return false;
+        }
         $esAlcaldia = in_array($rolNuevo, [1, 2], true);
 
         $c = self::_leerCuenta($esAlcaldia);
@@ -547,13 +640,13 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
 
         if(isset($_POST['id'])){
             if (!empty($_POST['id']) || $_POST['id'] != NULL ) {
-                $_objUsu->set_usu_Id($_POST['id']);
+                $_objUsu->set_usu_Id((int) $_POST['id']);
             }    
         }
 
         if(isset($_POST['usu_Rol'])){
             if (!empty($_POST['usu_Rol']) || $_POST['usu_Rol'] != NULL ) {
-                $_objUsu->set_usu_Rol($_POST['usu_Rol']);
+                $_objUsu->set_usu_Rol((int) $_POST['usu_Rol']);
             }    
         }
         
@@ -563,12 +656,14 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
         if(is_array($arrUsuarios) && count($arrUsuarios)){
             $R = [];
             foreach($arrUsuarios as $obj){
-                $R[] = $obj->getArray();
-            }    
+                $fila = $obj->getArray();
+                unset($fila['usu_Password']);   // la clave (cifrada) no sale nunca
+                $R[] = $fila;
+            }
             $this->_ok = 1;
-            $this->_mensaje = "Usuarios listados con exito"; 
+            $this->_mensaje = "Usuarios listados con exito";
         }else{
-            $R=$_objUsu;
+            $R=[];
             $this->_ok = 0;
             $this->_mensaje = "No existen Usuarios";            
         }       
@@ -580,9 +675,32 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
     **/  
     protected function _inactivarUsuarios() {
 
+        // Van al WHERE / SET del DAO sin parametros: siempre enteros.
+        // Solo digitos: (int) de "0; UPDATE ..." daria 0 y se aceptaria.
+        $crudoId     = trim((string) ($_POST['id'] ?? ''));
+        $crudoEstado = trim((string) ($_POST['estado'] ?? ''));
+        $id     = ctype_digit($crudoId) ? (int) $crudoId : 0;
+        $estado = in_array($crudoEstado, ['0', '1'], true) ? (int) $crudoEstado : -1;
+        $rolCuenta = self::_rolDeCuenta($id);
+        if ($id <= 0 || $rolCuenta === 0 || !in_array($estado, [0, 1], true)) {
+            $this->_ok = 0;
+            $this->_mensaje = 'La cuenta no existe o el estado no es válido.';
+            return false;
+        }
+        if ($id === self::_idSesion() && $estado === 0) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No puede inactivar su propia cuenta.';
+            return false;
+        }
+        if ($rolCuenta === 1 && self::_rolSesion() !== 1) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Solo un administrador puede modificar cuentas de administrador.';
+            return false;
+        }
+
         $_objUsuario = new \erpsoftsas\DAO_Usuario();
-        $_objUsuario->set_usu_Id($_POST['id']);
-        $_objUsuario->set_usu_Estado($_POST['estado']);
+        $_objUsuario->set_usu_Id($id);
+        $_objUsuario->set_usu_Estado($estado);
         
         if(!$_objUsuario->guardar()){
             $this->_ok = 0;
@@ -594,7 +712,9 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
             $this->_ok = 1;
             $this->_mensaje = "Usuario Activado/inactivado correctamente";
         }
-        return $_objUsuario->getArray();
+        $fila = $_objUsuario->getArray();
+        unset($fila['usu_Password']);
+        return $fila;
     }
 
 
@@ -629,7 +749,9 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
     **/
     protected function _cambiarClave() {
 
-        $idUsuario = isset($_POST['usu_Id']) ? (int) $_POST['usu_Id'] : 0;
+        // La cuenta es la de la sesion: con el usu_Id de la peticion se podia
+        // probar claves de otra cuenta.
+        $idUsuario = self::_idSesion();
         $claveActual = $_POST['claveActual'] ?? '';
         $claveNueva = $_POST['claveNueva'] ?? '';
 
