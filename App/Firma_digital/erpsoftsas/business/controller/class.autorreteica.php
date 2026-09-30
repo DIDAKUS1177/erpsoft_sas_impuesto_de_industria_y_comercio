@@ -147,6 +147,35 @@ class ControladorAutorreteica extends \erpsoftsas\ControladorRetencion
     protected function _columnasFirmadas() { return ['aut_ImpuestoEnergia']; }
 
     /**
+     * "La suma de ingresos gravados debe ser igual a la casilla 13 INGRESOS
+     * NETOS GRAVADOS" (formato del cliente, DECLARACION DE AUTORRETENCION DE
+     * ICA.docx). No se comprobaba: se podia presentar descuadrada. Se compara
+     * en pesos (diferencias de centavos no cuentan).
+     */
+    protected function _descuadre($con, $id)
+    {
+        $f = $con->obnerFila($con->consultar(
+            "SELECT ISNULL(a.aut_ValorConcepto13, 0) AS casilla13,
+                    (SELECT ISNULL(SUM(x.aua_IngresosGravados), 0)
+                       FROM ind_autorreteica_actividades x
+                      WHERE x.aua_IdAutorreteica = a.aut_Id AND x.aua_Activo = 1) AS suma
+               FROM ind_autorreteica a
+              WHERE a.aut_Id = ?",
+            [(int) $id]
+        ));
+        if (!$f) { return null; }
+
+        $casilla13 = round((float) $f['casilla13']);
+        $suma      = round((float) $f['suma']);
+        if ($casilla13 === $suma) { return null; }
+
+        $pesos = function ($v) { return '$' . number_format($v, 0, ',', '.'); };
+        return 'La suma de los ingresos gravados de las actividades (' . $pesos($suma) . ') '
+             . 'debe ser igual a la casilla 13, ingresos netos gravados (' . $pesos($casilla13) . '). '
+             . 'Revise las casillas 9 a 12 o los ingresos de cada actividad.';
+    }
+
+    /**
      * La correccion arranca con lo que decia la original, y la energia no es
      * un renglon: el motor copia los renglones manuales y las actividades, asi
      * que sin esto la correccion nacia con energia en 0 y la casilla 15 se

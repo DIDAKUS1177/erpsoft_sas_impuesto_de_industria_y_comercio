@@ -19,6 +19,22 @@ class ControladorGrupoTarifa extends \erpsoftsas\Cabecera
         // Obtenemos el número de función que indica la operación a ejecutar
         $_obj->_funcion = isset($_POST['funcion']) ? $_POST['funcion'] : null;
 
+        /*
+         * Sesion y permisos (panel de Roles, 2026-09-29). Este controlador no
+         * pedia NADA: sin iniciar sesion se podia crear, editar o inactivar
+         * grupos tarifarios. Consultar pide sesion (el contribuyente usa el
+         * catalogo al declarar); crear, editar e inactivar, su interruptor.
+         */
+        include_once SERVER . '/business/class.permisosRol.php';
+        if (\erpsoftsas\PermisosRol::idUsuario() <= 0) {
+            \erpsoftsas\PermisosRol::negar('Debe iniciar sesión.');
+            return;
+        }
+        if (in_array((int) $_obj->_funcion, [1, 2, 4], true) && !\erpsoftsas\PermisosRol::tiene('parametros.grupos')) {
+            \erpsoftsas\PermisosRol::negar(\erpsoftsas\PermisosRol::mensaje('parametros.grupos'));
+            return;
+        }
+
         try {
             // Iniciamos la transacción (adaptar a tu clase de conexión)
             //$con = \ConexionMysqlUsuariosCentral\ConexionSQL::getInstance();

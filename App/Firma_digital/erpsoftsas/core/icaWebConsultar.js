@@ -549,7 +549,7 @@ consultarDeclaraciones(idEstablecimiento, idContribuyente) {
     establecimientos._idContribuyenteActual = idContribuyente || null;
 
     $("#tbodyDeclaraciones").html(
-        '<tr><td colspan="8">' +
+        '<tr><td colspan="9">' +
             '<div class="estado-vacio">' +
                 '<div class="ev-icono"><i class="fa fa-spinner fa-spin"></i></div>' +
                 '<div class="ev-titulo">Cargando declaraciones...</div>' +
@@ -574,7 +574,7 @@ consultarDeclaraciones(idEstablecimiento, idContribuyente) {
                 $('#filtroAnioDecl').html('<option value="">Todos los años</option>');
                 $('#conteoDeclaraciones').text('');
                 $("#tbodyDeclaraciones").html(
-                    '<tr><td colspan="8">' +
+                    '<tr><td colspan="9">' +
                         '<div class="estado-vacio">' +
                             '<div class="ev-icono"><i class="fa fa-file-text-o"></i></div>' +
                             '<div class="ev-titulo">Aún no hay declaraciones presentadas</div>' +
@@ -638,7 +638,7 @@ pintarDeclaracionesFiltradas() {
 
     if (filtradas.length === 0) {
         $("#tbodyDeclaraciones").html(
-            '<tr><td colspan="8">' +
+            '<tr><td colspan="9">' +
                 '<div class="estado-vacio">' +
                     '<div class="ev-icono"><i class="fa fa-filter"></i></div>' +
                     '<div class="ev-titulo">Ninguna declaración coincide con el filtro</div>' +
@@ -677,6 +677,7 @@ pintarDeclaracionesFiltradas() {
                 '<td>' + d.dec_AnioDeclaracion + '</td>' +
                 '<td>' + DeclaracionesUI.nombreMes(d.dec_MesDeclaracion) + '</td>' +
                 '<td>' + numero + '</td>' +
+                '<td>' + DeclaracionesUI.tipoDeclaracion(d, todas) + '</td>' +
                 '<td>' + DeclaracionesUI.chipEstado(d) + '</td>' +
                 '<td>' + fechaPago + '</td>' +
                 '<td>' + banco + '</td>' +

@@ -91,7 +91,7 @@ class Establecimientos {
      * que despues el servidor le va a descartar sin avisar.
      */
     aplicarPermisosCese() {
-        var esAdmin = String(idRol) === '1';
+        var esAdmin = this.puede('alcaldia.establecimientos.cerrar');
 
         $('#est_Fecha_cierre, #est_Resolucion_cierre, #est_Observacion_cierre')
             .prop('readonly', !esAdmin);
@@ -282,7 +282,9 @@ class Establecimientos {
      * eso esa casilla y la del DV no llevan name (no viajan al guardar).
      */
     modoInfoContribuyente() {
-        var alcaldia = establecimientos.esAlcaldia();
+        // "Crear y editar contribuyentes" del panel de Roles (el servidor,
+        // class.contribuyentes.php funcion 2, exige lo mismo).
+        var alcaldia = establecimientos.puede('alcaldia.contribuyentes.editar');
         var $form = $('#formInfoContribuyente');
 
         $form.find('input:not([type=hidden])').prop('readonly', !alcaldia).toggleClass('campo-bloqueado', !alcaldia);
@@ -303,7 +305,7 @@ class Establecimientos {
     guardarInformacionContribuyente() {
         // El botón no se le muestra al contribuyente (modoInfoContribuyente); si
         // aun así llega aquí -Enter en una casilla-, no se envía nada.
-        if (!establecimientos.esAlcaldia()) { return; }
+        if (!establecimientos.puede('alcaldia.contribuyentes.editar')) { return; }
 
         var formData = $("#formInfoContribuyente").serialize() + "&funcion=2";
 
@@ -373,14 +375,24 @@ class Establecimientos {
        que va a rebotar.
        ===================================================================== */
 
-    /** Roles 1 y 2. Solo para la pantalla: quien decide es el servidor. */
-    esAlcaldia() {
-        return ['1', '2'].indexOf(String(idRol)) !== -1;
+    /**
+     * ¿El rol tiene este interruptor del panel de Roles? (core/Permisos.js).
+     * Solo para la pantalla: quien decide es el servidor.
+     */
+    puede(clave) {
+        return typeof erpPuede !== 'function' || erpPuede(clave);
     }
 
-    /** "Cierre de establecimiento" solo para la Alcaldía, y nunca al crear. */
+    /** Rol de la Alcaldía (tipo de rol). Solo para la pantalla. */
+    esAlcaldia() {
+        return typeof ErpPermisos !== 'undefined' && ErpPermisos.hay()
+            ? ErpPermisos.esAlcaldia()
+            : ['1', '2'].indexOf(String(idRol)) !== -1;
+    }
+
+    /** "Cierre de establecimiento" solo para quien cierra, y nunca al crear. */
     ajustarOpcionCierre(esNuevo) {
-        var ofrecer = !esNuevo && this.esAlcaldia();
+        var ofrecer = !esNuevo && this.puede('alcaldia.establecimientos.cerrar');
         $('#est_OpcionUso option[value="3"]').prop('disabled', !ofrecer).toggle(ofrecer);
     }
 
@@ -391,11 +403,14 @@ class Establecimientos {
      */
     bloquearSiEstaCerrado(d) {
         var cerrado = !!d && Number(d.est_Activo) !== 1;
-        establecimientos._cerrado = cerrado;
+        // Sin "Crear y editar establecimientos" (panel de Roles) se abre igual
+        // que un cerrado: solo para consultar. El servidor igual rechaza guardar.
+        var soloConsulta = cerrado || !establecimientos.puede('establecimientos.editar');
+        establecimientos._cerrado = soloConsulta;
 
         $('#formCrearEstablecimientos').find('input, select, textarea')
-            .not('[type=hidden]').prop('disabled', cerrado);
-        $('#anexoArchivo').closest('.row').toggle(!cerrado);
+            .not('[type=hidden]').prop('disabled', soloConsulta);
+        $('#anexoArchivo').closest('.row').toggle(!soloConsulta);
         $('#bloqueBotonCerrar').hide();
 
         if (!cerrado) {
@@ -410,7 +425,7 @@ class Establecimientos {
             '<b>Establecimiento cerrado' + (fecha ? ' el ' + fecha.split('-').reverse().join('/') : '') + '.</b> ' +
             (nota ? 'Observación del cierre: ' + establecimientos.escapeHtml(nota) + '. ' : '') +
             'Se muestra solo para consulta. ' +
-            (String(idRol) === '1'
+            (establecimientos.puede('alcaldia.establecimientos.reabrir')
                 ? 'Si se cerró por error, puede reabrirlo desde la lista con "Reabrir".'
                 : 'Si se cerró por error, solo el administrador puede reabrirlo.')
         ).show();
@@ -419,7 +434,8 @@ class Establecimientos {
     /** "Cerrar establecimiento" aparece con "Cierre" elegido y al menos un soporte cargado. */
     mostrarBotonCerrar(haySoporte) {
         var esCierre = String($('#est_OpcionUso').val()) === '3';
-        $('#bloqueBotonCerrar').toggle(esCierre && !!haySoporte && !establecimientos._cerrado && this.esAlcaldia());
+        $('#bloqueBotonCerrar').toggle(esCierre && !!haySoporte && !establecimientos._cerrado
+                                       && this.puede('alcaldia.establecimientos.cerrar'));
     }
 
     cerrarEstablecimiento() {
@@ -600,18 +616,24 @@ class Establecimientos {
                               'onclick="establecimientos.editarEstablecimiento(' + dep.est_Id + ')">' +
                               '<i class="fa fa-eye"></i>' +
                           '</button>' +
-                          (String(idRol) === '1'
+                          (establecimientos.puede('alcaldia.establecimientos.reabrir')
                               ? '<button type="button" class="btn btn-outline-success btn-sm ml-1" ' +
                                     'data-toggle="tooltip" title="Reabrir (cerrado por error)" ' +
                                     'onclick="establecimientos.reabrirEstablecimiento(' + dep.est_Id + ')">' +
                                     '<i class="fa fa-undo"></i>' +
                                 '</button>'
                               : '')
-                        : '<button type="button" class="btn btn-warning btn-sm" ' +
-                              'data-toggle="tooltip" title="Editar establecimiento" ' +
-                              'onclick="establecimientos.editarEstablecimiento(' + dep.est_Id + ')">' +
-                              '<i class="fa fa-pencil"></i>' +
-                          '</button>') +
+                        : (establecimientos.puede('establecimientos.editar')
+                            ? '<button type="button" class="btn btn-warning btn-sm" ' +
+                                  'data-toggle="tooltip" title="Editar establecimiento" ' +
+                                  'onclick="establecimientos.editarEstablecimiento(' + dep.est_Id + ')">' +
+                                  '<i class="fa fa-pencil"></i>' +
+                              '</button>'
+                            : '<button type="button" class="btn btn-info btn-sm" ' +
+                                  'data-toggle="tooltip" title="Ver establecimiento" ' +
+                                  'onclick="establecimientos.editarEstablecimiento(' + dep.est_Id + ')">' +
+                                  '<i class="fa fa-eye"></i>' +
+                              '</button>')) +
 
                     soporteRit +
                     '</td>'+

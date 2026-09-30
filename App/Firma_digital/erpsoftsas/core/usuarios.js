@@ -83,17 +83,24 @@ class Usuario {
                     correo +
                     '</td>' +
                     '<td>' +
-                    usu.usu_NombreRol +
+                    // El nombre del rol lo escribe quien crea el rol (panel de Roles):
+                    // va como texto.
+                    $('<div>').text(usu.usu_NombreRol == null ? '' : usu.usu_NombreRol).html() +
                     '</td>' +
 
                     '<td align="center">' +
-                    '<button type="button" class="btn btn-social-icon btn-warning " data-toggle="tooltip" title="Editar Usuario" style="margin-right:5px" onclick="javascript:usuario.getUsuarioById(' + usu.usu_Id + ')">' +
-                    '<i class="dw dw-edit2"></i>' +
-                    '</button>' +
+                    // Cada boton, solo con su interruptor del panel de Roles.
+                    ((typeof erpPuede !== 'function' || erpPuede('usuarios.editar'))
+                        ? '<button type="button" class="btn btn-social-icon btn-warning " data-toggle="tooltip" title="Editar Usuario" style="margin-right:5px" onclick="javascript:usuario.getUsuarioById(' + usu.usu_Id + ')">' +
+                          '<i class="dw dw-edit2"></i>' +
+                          '</button>'
+                        : '') +
 
-                    '<button type="button" class="btn btn-social-icon ' + clase + ' " data-toggle="tooltip" title="' + titulo + '"  onclick="javascript:usuario.cambiarEstado(' + usu.usu_Id + ',' + usu.usu_Estado + ')">' +
-                    '<i class="' + icono + '"></i>' +
-                    '</button>' +
+                    ((typeof erpPuede !== 'function' || erpPuede('usuarios.estado'))
+                        ? '<button type="button" class="btn btn-social-icon ' + clase + ' " data-toggle="tooltip" title="' + titulo + '"  onclick="javascript:usuario.cambiarEstado(' + usu.usu_Id + ',' + usu.usu_Estado + ')">' +
+                          '<i class="' + icono + '"></i>' +
+                          '</button>'
+                        : '') +
                     '</td>' +
 
                     '</tr>'
@@ -291,10 +298,12 @@ class Usuario {
                     $("#formCrearUsuario").trigger("reset");
                     $("#modal-Usuario").modal('hide');
                     usuario.getUsuarios();
+                    // Un rol sin permisos no puede ingresar: se dice al crear.
+                    var aviso = arr.datos && arr.datos.aviso;
                     swal({
-                        type: 'success',
+                        type: aviso ? 'warning' : 'success',
                         title: 'Usuario creado',
-                        text: 'Usuario creado exitosamente',
+                        text: aviso ? 'Usuario creado. ' + aviso : 'Usuario creado exitosamente',
                     });
                 } else if (arr.ok == 2) {
                     swal({
@@ -448,11 +457,13 @@ class Usuario {
                     // Pasar una cuenta de la Alcaldía a un rol de contribuyente le
                     // crea su contribuyente: se dice, porque su RIT queda por llenar.
                     var creado = arr.datos && arr.datos.contribuyenteCreado == 1;
+                    var aviso = arr.datos && arr.datos.aviso;
                     swal({
-                        type: 'success',
+                        type: aviso ? 'warning' : 'success',
                         title: 'Usuario actualizado',
                         text: 'Usuario actualizado exitosamente'
-                            + (creado ? '. Se creó también su registro de contribuyente: el municipio y lo demás se completan en su RIT.' : ''),
+                            + (creado ? '. Se creó también su registro de contribuyente: el municipio y lo demás se completan en su RIT.' : '')
+                            + (aviso ? '. ' + aviso : ''),
                     });
                 } else if (arr.ok == 2) {
                     swal({
@@ -512,8 +523,9 @@ class Usuario {
                 $('#wrapper').removeClass('body-load');
                 if (arr.ok == 1) {
 
+                    // El nombre lo escribe quien crea el rol: como texto, nunca HTML.
                     $.each(arr.datos, function(k, v) {
-                        $("#usu_Rol").append('<option value="' + v['rol_Id'] + '">' + v['rol_Nombre'] + '</option>');
+                        $("#usu_Rol").append($('<option>').val(v['rol_Id']).text(v['rol_Nombre'] == null ? '' : v['rol_Nombre']));
                     });
 
                 } else {

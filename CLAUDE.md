@@ -122,9 +122,8 @@ integración de pago PSE (PlacetoPay).
 Pendiente / conocido: el conteo de "No. establecimientos" del formulario debería
 filtrar solo los de Paipa (`est_Local_municipio`), pero ese campo nunca se captura en
 el RIT (está comentado en el JS) — hasta que se capture, cuenta todos los
-establecimientos del contribuyente. El sistema de roles/permisos (`conf_rol`,
-`conf_permisos`, pantalla `dist/rol.php`) ya existe en el código pero no está
-configurado a fondo para este cliente.
+establecimientos del contribuyente. Roles y permisos: ver "Roles y permisos por
+acción (2026-09-29)" (interruptores por acción que el servidor hace cumplir).
 
 ## Código de barras (declaracion.php / liquidacion.php)
 
@@ -1473,6 +1472,218 @@ Usuarios (crear, abrir, editar, inactivar, activar), Dependencias con rol 1 y 2,
 cambiar clave desde el menú, sesión vencida e inscripción pública. Las demás
 suites siguen en verde.
 
+### Auditoría de lo pedido por el cliente (2026-09-28, después de 084d0dd)
+
+Se contrastaron ~105 pedidos (sugerencias ica diego, REVISIÓN CAMBIOS ICA WEB
+v1/v2, cotización, REVISIÓN ICA WEB, Preguntas ICA Web, retros por mensaje) con
+el código. Ocho arreglos (`probar_auditoria.php`, 50 casos):
+- **Opción de uso del RIT: UNA regla** (`RitFirma::opcionDeUso`), la usan la
+  pantalla (función 10 de la API, `opcionUso`) y el PDF. Cese si hay fecha de
+  cese; Actualización si hay firma de otra versión (o la última quedó vencida) o
+  si el contribuyente tiene declaraciones presentadas en cualquier módulo; si no,
+  Inscripción. `ind_RIT_FechaCreacion` ya NO decide: se marca al abrir el RIT y
+  con ella nadie salía como inscripción en papel.
+- **Cese del RIT** (función 21): fecha válida, no futura (Bogotá) y constancia
+  `cese` del contribuyente cargada; solo rol 1 (la pantalla ya no se lo ofrece al
+  rol 2). La constancia la sube/quita solo el rol 1, y no la última con el cese
+  vigente (`class.anexos.php`).
+- **Huella del RIT v5** = v4 + consorcio/patrimonio autónomo (que ahora salen en
+  el PDF); v4 y v3 quedan congeladas y aceptadas.
+- "Uso de suelo" fuera de la lista de documentos del RIT (respuesta 8 del cliente).
+- ICA: el anticipo cruzado del año anterior se pinta al crear (antes 0, y Guardar
+  lo borraba); casilla 38 con piso en 0 (**migración 037**); tipo de sanción
+  guardado y marcado en declaracion.php y liquidacion.php (**migración 038**).
+- Autorretención: suma de ingresos gravados = casilla 13 (`_descuadre`), al
+  guardar y al presentar.
+- PDF de retención y autorretención: leyenda "DECLARO QUE…"; retención con
+  ciudad y departamento (sin número, para no mover la numeración de su hoja).
+- Archivo mayor que `post_max_size`: mensaje de tamaño, no "Función no válida";
+  el RIT revisa los 10 MB antes de subir. Ayuda de Descargar sin "SIN FIRMAR".
+Aplicar 037 y 038 en Paipa y Guateque al desplegar.
+
+Lo que depende del cliente (no se tocó): calendario de vencimientos de retención
+y autorretención, reunión de la corrección, lista CIIU (Jennifer), permisos del
+rol 2 y cuenta del director, actividades de retención (solo comerciales y de
+servicios o todas), casilla 16 de autorretención editable y exención de avisos,
+split comercial/servicios, régimen 1 o varias por grupo, texto de autorización y
+términos, establecimiento fijo en Paipa.
+
+### Cambios finales del cliente (2026-09-29, "Cambios finales solicitados por cliente.pdf")
+
+- **Cuentas que se creaban y no entraban**: (1) claves con ñ/tilde: el DAO
+  guardaba `HASHBYTES('SHA1', '...')` sobre VARCHAR (Windows-1252 en
+  Modern_Spanish_CI_AS) y el login compara `sha1()` de PHP (UTF-8). Ahora el DAO
+  guarda `DAOGeneral::hashClave` (sha1 UTF-8 en mayúsculas; igual para ASCII) y el
+  login, si no entra, prueba `hashClaveAnterior` (Windows-1252) y le actualiza la
+  huella; `_cambiarClave` acepta las dos. (2) Rol sin permisos (hoy "Internos
+  Alcaldía"): el login lo corta; al crear/editar la cuenta se avisa y el login
+  dice por qué. El login ya no devuelve `usu_Password`.
+- **Contribuyentes y Establecimientos del municipio paginados en el servidor**
+  (`business/class.paginacion.php`, `core/paginador.js`): 5/10/20/50/100, páginas,
+  total y total de registrados. Sin botón "Inactivar" en Contribuyentes.
+- **NIT repetido**: la revisión existía desde 1111587; se agregó el candado
+  `sp_getapplock 'erp_contribuyente_documento'` en Contribuyentes (función 1) y en
+  `_asegurarContribuyente` (cuentas): tres pedidos simultáneos dejan uno.
+- RIT: "Ver" de la constancia en el bloque del cese.
+- `globals.php`: `MUNICIPIO_DEPARTAMENTO` por defecto "Boyacá" (el config de
+  producción de Paipa no lo trae y el campo del establecimiento salía vacío).
+- ICA PDF: casilla 35 sin "Sin Pago"; sin código de barras (vencida):
+  "DECLARACIÓN PRESENTADA SIN PAGO / PARA PAGO EN BANCOS GENERE EL RECIBO DE
+  PAGO / O PÁGUELA POR PSE" (declaracion.php y liquidacion.php).
+- Recibo de pago: una sola línea de intereses (el renglón de intereses de la
+  declaración —ICA 16, retención 16, autorretención 21— se suma a los del recibo
+  en "INTERESES DE MORA AL …"; el SUBTOTAL va sin él; el total no cambia) y
+  "Páguese en: BANCOS: …" del parámetro `RECIBO_BANCOS` (**migración 039**; nace
+  con los bancos de Paipa solo donde `RECAUDO_EAN` = 7709998161047).
+- Columna "Tipo de declaración" (Inicial / Corrección de la N° X; en la original
+  "En corrección: N° X" o "Corregida por la N° X") en Presentar y Consultar del ICA
+  y en Consultar de retención y autorretención.
+- Retención PDF: sin la fila "ACTIVIDAD SECUNDARIA"; "No. ESTABLEC." pasa a la
+  casilla 5.
+Pruebas: `probar_cambios_finales.php` 36/36 (incluye la concurrencia del NIT).
+El error al "Actualizar" un establecimiento en producción (no se reproducía en
+local) quedó explicado en el log de PHP de Paipa: `Memory limit of 10240 KB
+exceeded for buffered query` en `SELECT * FROM ind_establecimientos WHERE est_Id
+<> N`. Crear y editar buscaban el código repetido trayendo TODOS los
+establecimientos (`DAO::listarRegistros`) y el driver de SQL Server corta un
+resultado con búfer de más de 10 MB (en local hay 12 locales). Ahora se pregunta
+solo por ese código (`_codigoRepetido`); Usuarios hacía lo mismo con todas las
+cuentas para el correo, el documento y el usuario (`_cuentaRepetida`). Ya nadie
+llama a `listarRegistros`. Como red de seguridad, `globals.php` sube
+`sqlsrv.ClientBufferMaxKBSize` a 32 MB. Prueba: `probar_repetidos.php` (7).
+El log de producción se lee en Plesk > Registros del dominio, dejando solo
+"php error"; el mensaje de la excepción trae la consulta completa ("Más >>").
+
+### Roles y permisos por acción (2026-09-29, panel de Roles)
+
+Pedido del cliente: el administrador arma cada rol con **interruptores, uno por
+acción** ("ver declaraciones", "firmar", "presentar"...), agrupados como el menú,
+y el sistema los hace cumplir. Antes el servidor decidía por el NÚMERO del rol
+("1 o 2 es la Alcaldía", "1 es el administrador") y los permisos de
+`conf_permisos` solo los miraba el menú: un rol nuevo no funcionaba aunque tuviera
+todo marcado, y `class.rol.php`/`class.permisos.php` ni pedían sesión (cualquiera
+podía crear roles o reescribirles los permisos).
+
+- **Migración 040**: `conf_rol.rol_Tipo` (ADMINISTRADOR / ALCALDIA /
+  CONTRIBUYENTE / EXTERNO), `mod_Clave`/`subMod_Clave` y el catálogo de **46
+  claves** en 9 grupos (alcaldia.*, parametros.*, rit.*, establecimientos.*,
+  ica.*, reteica.*, autorreteica.*, usuarios.*/roles.*, predial.consultar).
+  Traduce los botones viejos a claves (1641 → rit.* e ica.*, 1640 →
+  establecimientos.*, etc.): el rol 4 queda con 24, el 3 con predial, **el 2 con
+  ninguna** (ya no tenía filas).
+- **`business/class.permisosRol.php`** es LA pregunta del servidor:
+  `tiene('ica.firmar')`, `esAlcaldia()`, `gestionaOtros()` (Alcaldía +
+  "Gestionar a un contribuyente": trabaja sobre cualquiera; los demás, solo sobre
+  el contribuyente de su documento), `esAdministrador()`. **El Administrador tiene
+  TODO, siempre**: no se le pueden quitar permisos, ni renombrar, ni inactivar.
+  Las secciones de la Alcaldía (alcaldia., parametros., usuarios., roles.) solo
+  cuentan en un rol de tipo Alcaldía. Un rol inactivo no puede nada.
+  `requisitos()` / `completarRequisitos()`: cada permiso arrastra lo que necesita
+  (firmar → ver; cerrar establecimientos → gestionar + editar establecimientos);
+  el panel los prende solo y el servidor los completa al guardar.
+- **Sin la 040** (código desplegado antes de correrla) cae a lo de antes por
+  número de rol (`_comoAntes`), pero un rol sin ninguna fila en `conf_permisos`
+  no puede nada (el rol 2 antes ni entraba). Probado forzando el catálogo
+  ausente (`probar_sin_040.php`).
+- **Cada controlador** pide su clave: contribuyentes, establecimientos (cerrar
+  23, reabrir 24, cese 21), ICA, retención/autorretención, anexos, recaudo,
+  configuración, API de firmas, PDF (declaración, RIT, retenciones), recibo, PSE,
+  usuarios, parámetros (actividades/conceptos/grupos no pedían ni sesión) y paz y
+  salvo. La negación dice qué falta: "Su rol no tiene permiso para esta acción
+  («Firmar declaraciones» en Declaración de ICA). Pídaselo al administrador."
+- **No escalar** (`puedeEntregarRol`): nadie cambia su propio rol ni los permisos
+  de su rol; quien no es administrador solo modifica o entrega roles de la
+  Alcaldía cuyos permisos ya tiene, y solo les prende lo que él tiene. Los roles de
+  contribuyente se arman libres (solo trabajan sobre lo suyo).
+- **Panel** (`dist/rol.php` + `core/rol.js`, reescritos; `class.rol.php`
+  funciones 1–6): lista con tipo, cuentas, "N de 46" y aviso si no tiene
+  ninguno; crear/editar con tipo (no se cambia el tipo de un rol con cuentas; no
+  se inactiva con cuentas activas); interruptores por grupo con "Todo", prender
+  y apagar todo, contador, "Cambios sin guardar", eco de lo que se arrastró. Guardar
+  borra TODAS las filas del rol (también los botones viejos) y deja solo las claves.
+  `class.permisos.php` funciones 1/4/5 (el borrado del panel viejo) ya no hacen
+  nada; la 6 da los permisos de la sesión.
+- **Pantalla**: el login guarda `localStorage.erpPermisos` (`PermisosRol::
+  paraPantalla`) y lleva al contribuyente a su RIT; `core/Permisos.js` da
+  `erpPuede('clave')` (varias con espacio = alguna) y traduce los botones viejos
+  (`getPermisos(idRol, 311)`) según la pantalla; si no hay permisos guardados los
+  pide EN ESPERA antes de que corran los scripts (si llegaban después, el RIT
+  escondía Guardar y Firmar). El menú usa `data-permiso` (y `data-contribuyente`
+  para el bloque del contribuyente) en vez de `menu_<boton>`; cada pantalla
+  refresca los permisos al cargar (si el administrador cambió el rol, se ve al
+  cambiar de pantalla) y **la guardia de página** saca a Inicio con aviso a quien
+  entra por la dirección a algo que no tiene. Los botones de cada pantalla (ICA,
+  retenciones, RIT, establecimientos, contribuyentes, recaudo, parámetros,
+  usuarios) salen solo con su interruptor; "Crear ..." con `data-permiso-crear`.
+- **"Gestionando a" ya no es solo del rol 1**: cualquier rol de la Alcaldía con
+  "Gestionar a un contribuyente". "Gestionar" abre la primera pantalla del
+  contribuyente que el rol puede usar (`menu.pantallaDelContribuyente`).
+- Pruebas: `probar_permisos.php` (113: cada interruptor apagado rechaza y
+  prendido pasa, en todos los controladores, PDF, recibo y PSE; contribuyente y
+  administrador como antes; tipo de rol; rol inactivo; panel; no escalar; login),
+  `probar_sin_040.php` (4). Las suites que usaban el rol 2 como "la Alcaldía con
+  todo" (`probar_segunda`, `probar_intereses`, `probar_todo`) le prenden sus
+  interruptores durante la prueba con `rol2_temporal.php` y los quitan al salir.
+- **Al desplegar: migración 040** en Paipa y Guateque (con 037, 038 y 039). Luego
+  el administrador arma el rol 2 ("Internos Alcaldía") en el panel: hoy no tiene
+  ningún interruptor, así que sus cuentas siguen sin poder entrar. Hasta
+  confirmar el despliegue, no guardar los roles 3 y 4 en el panel: guardar borra
+  sus botones viejos y volver al código anterior los dejaría sin permisos.
+
+**Revisión antes de subir (4 revisores en paralelo, mismo día).** Lo corregido:
+- **La cuenta se relee en cada petición** (`PermisosRol::_cuenta`): rol y estado
+  salen de `conf_usuarios`, no del login. Inactivar una cuenta la saca en la
+  siguiente acción (se borra la identidad de la sesión) y cambiarle el rol vale
+  de inmediato. Por eso las pruebas ya no pueden simular "rol 2 con el usuario 1":
+  `cuentaTemporal($rol)` de `rol2_temporal.php` da una cuenta real.
+- **Roles distintos de 1–4**: la 040 deduce el tipo por los botones que tenían
+  (1639/1645/26/11–15 → Alcaldía; 1640/41/43/44 → contribuyentes; solo 1035 →
+  consulta externa; ninguno → Alcaldía) y completa los requisitos (paso 4b). Sin
+  la 040, un rol desconocido trabaja como contribuyente (antes solo el 1 y el 2
+  eran de la Alcaldía). `hayCatalogo()` exige la 040 REGISTRADA: una corrida a
+  medias no deja a todos sin permisos.
+- **Rol inactivo**: el panel y la regla de no escalar leen lo guardado
+  (`clavesGuardadas`); antes salía en blanco y guardarlo lo borraba.
+- **Rol 4** (el de las inscripciones): su tipo no cambia y no se inactiva.
+  Cambiar el tipo de otro rol quita sus secciones de la Alcaldía si deja de
+  serlo, y quien no es administrador no lo vuelve de la Alcaldía sin tener sus
+  permisos. Guardar sin la lista de permisos (o con JSON roto) ya no lo vacía.
+  Nombres y descripciones de rol sin `<` ni `>`; el selector de Usuarios y los
+  avisos del panel los escapan (con un nombre con HTML se ejecutaba código en la
+  sesión del administrador).
+- **Usuarios**: listar cuentas pide "Ver usuarios" (antes bastaba ser de la
+  Alcaldía); nadie cambia su propio rol, tampoco el administrador; correo,
+  documento y usuario repetidos se revisan otra vez DENTRO de la transacción,
+  con el candado de documentos, que ahora comprueba que se obtuvo (también en
+  Contribuyentes).
+- **Corregir** arrastra "Crear y editar borradores" (la corrección se edita).
+- **Anexos**: el tipo se normaliza una vez (con espacios de relleno un
+  contribuyente colaba una constancia de cese); `anexo.php` pide el "ver" de ese
+  documento. **ICA función 5**: solo actividades de un establecimiento propio.
+  **API de firmas**: 2 a 6 y 8 (sin uso en pantalla, sin sesión ni dueño)
+  contestan "Función no válida".
+- **Pantalla**: la función nueva del RIT tapaba `aplicarPermisosRIT` (la que suelta
+  contador y revisor para el contribuyente): ahora es `aplicarPermisosDelRol`.
+  "Firmar ahora" solo con "Firmar el RIT"; "Ver" de la constancia abre la más
+  reciente; el "Todo" del grupo cuenta lo que se puede mover; no se mueven
+  interruptores mientras guarda; "Gestionando a" no queda colgado; una sola
+  redirección cuando la pantalla no es para el rol; el login avisa si falla.
+- **039**: los bancos de Paipa solo en `erpsofts_ind_comercio_paip` (el EAN de
+  Paipa lo siembra la 009 en toda base nueva: Guateque habría quedado con las
+  cuentas de Paipa). **037**: si queda un concepto 20 sin piso en cero, error
+  visible y sin registrar (el aplicador no muestra los PRINT).
+- **PDF ICA**: "Otra" sanción recortada a 40 caracteres (más larga sacaba el
+  código de barras del papel; la casilla ahora tiene `maxlength` 40); vencida con
+  $0, "SIN VALOR A PAGAR" en vez de mandar al recibo.
+- **Login**: si no se puede actualizar la huella vieja de la clave, entra igual.
+Pruebas nuevas: `probar_permisos.php` (130), `probar_migraciones_040.php` (16:
+roles de otros números, requisitos, 039 fuera de Paipa y 037 que avisa).
+Quedan para el cliente: la regla de cuadre de la autorretención también frena
+"Liquidar" un borrador a medias; "Crear y editar contribuyentes" permite cambiar
+el documento (que es lo que une la cuenta con el contribuyente). Y
+`BD/Datos Usuario.txt`, con usuarios y claves en texto plano, está en el
+repositorio y en la carpeta publicada: conviene quitarlo.
+
 ### Pendientes
 
 - **Migración 036** (fórmulas del ICA del año vigente): aplicarla en Paipa y
@@ -1480,12 +1691,9 @@ suites siguen en verde.
   todo sigue igual en 2026, pero desde el 1 de enero de 2027 el ICA liquidaría
   en $0.
 - **Decisiones del cliente que dejó la revisión del 2026-09-28**:
-  - El **rol 2** ("Internos Alcaldía") no puede entrar: no tiene ni un permiso
-    en `conf_permisos` y el login lo corta. Para que funcione: cargarle permisos
-    (¿cuáles?), permisos 312/313 de Contribuyentes → 1639, crear el submódulo 45
-    (Municipio y bancos, permiso 1645), la barra "Gestionando a" también para el
-    rol 2, y el cese del contribuyente (la pantalla lo deja a 1 y 2, el servidor
-    solo a 1).
+  - El **rol 2** ("Internos Alcaldía") no puede entrar: no tiene ningún
+    interruptor. Desde el panel de Roles (2026-09-29) el administrador se los
+    prende él mismo; falta saber cuáles quiere el cliente.
   - "Inactivar" un contribuyente no bloquea nada (`ind_Estado` no lo lee nadie).
   - Contribuyentes y cuentas repetidos que ya existen (en local: contribuyentes
     24 y 29, cuentas 17 y 1020): cuál queda.

@@ -31,7 +31,11 @@ var EstablecimientosTodos = (function () {
         var activo = f.est_Activo == 1;
         var tieneDueno = !!f.est_IdContribuyente;
 
-        var gestionar = tieneDueno
+        // "Gestionar a un contribuyente" del panel de Roles: sin el, el
+        // directorio es solo de consulta.
+        var puedeGestionar = (typeof erpPuede !== 'function' || erpPuede('alcaldia.contribuyentes.gestionar'));
+        var gestionar = !puedeGestionar ? ''
+            : tieneDueno
             ? '<button type="button" class="acc-card acc-primary js-gestionar-dueno" title="Trabajar como el dueño de este establecimiento" '
                 + 'data-id="' + esc(f.est_IdContribuyente) + '" '
                 + 'data-doc="' + esc(f.ind_NumeroIdentificacion) + '" '
@@ -56,8 +60,8 @@ var EstablecimientosTodos = (function () {
         $('#tablaEstablecimientos').DataTable().destroy();
         $('#bodyEstablecimientos').html(filas.map(fila).join(''));
 
-        // Sin buscador, paginación ni contador de DataTables: busca el servidor y
-        // nunca llegan más de 20 filas. order [] respeta el orden del servidor.
+        // Sin buscador, paginación ni contador de DataTables: busca y pagina el
+        // servidor (core/paginador.js). order [] respeta el orden del servidor.
         $('#tablaEstablecimientos').DataTable({
             scrollCollapse: true,
             autoWidth: false,
@@ -71,31 +75,32 @@ var EstablecimientosTodos = (function () {
         });
     }
 
-    /** Texto bajo el buscador: cuántos resultados hay y si conviene afinar. */
-    function textoEstado(consulta, cantidad, hayMas) {
-        if (!consulta) {
-            if (hayMas) {
-                return 'Estos son los 20 registrados más recientemente. Escribe para buscar entre todos.';
-            }
-            if (!cantidad) { return 'Aún no hay establecimientos registrados.'; }
-            return cantidad === 1 ? '1 establecimiento registrado.' : cantidad + ' establecimientos registrados.';
-        }
-        if (!cantidad) { return 'Ningún establecimiento coincide con «' + consulta + '».'; }
-        if (hayMas) {
-            return 'Se muestran los primeros 20 resultados para «' + consulta + '». Escribe más datos para afinar.';
-        }
-        return (cantidad === 1 ? '1 resultado' : cantidad + ' resultados') + ' para «' + consulta + '».';
+    /** Texto bajo el buscador (el detalle de páginas lo da el paginador). */
+    function textoEstado(consulta, total) {
+        total = parseInt(total, 10) || 0;
+        if (!consulta) { return 'Registrados más recientemente primero. Escribe para buscar por nombre, dirección o documento.'; }
+        if (!total) { return 'Ningún establecimiento coincide con «' + consulta + '».'; }
+        return (total === 1 ? '1 resultado' : total.toLocaleString('es-CO') + ' resultados') + ' para «' + consulta + '».';
     }
 
-    function buscar() {
+    // Paginado en el servidor: cambiar de página o de tamaño vuelve a pedir con
+    // el mismo texto buscado.
+    var paginador = Paginador.crear('#paginacionEstablecimientos', {
+        nombre: ['establecimiento', 'establecimientos'],
+        alCambiar: function () { buscar(true); }
+    });
+
+    function buscar(mismaPagina) {
         var consulta = ($('#buscarEstablecimiento').val() || '').trim();
         var miTurno = ++turno;
+        // Una búsqueda nueva empieza en la página 1; cambiar de página no.
+        var pedido = paginador.pedido(mismaPagina !== true);
 
         $('#estadoBusqueda').text('Buscando…');
 
         $.ajax({
             url: '../business/controller/class.establecimientos.php',
-            data: { funcion: 22, buscar: consulta },
+            data: { funcion: 22, buscar: consulta, pagina: pedido.pagina, porPagina: pedido.porPagina },
             dataType: 'json',
             type: 'POST',
             success: function (arr) {
@@ -104,11 +109,13 @@ var EstablecimientosTodos = (function () {
 
                 if (arr.ok != 1 || !arr.datos || !arr.datos.filas) {
                     pintar([]);
+                    paginador.pintar({}, consulta);
                     $('#estadoBusqueda').text(arr.mensaje || 'No se pudo buscar. Intenta de nuevo.');
                     return;
                 }
                 pintar(arr.datos.filas);
-                $('#estadoBusqueda').text(textoEstado(consulta, arr.datos.filas.length, arr.datos.hayMas));
+                paginador.pintar(arr.datos, consulta);
+                $('#estadoBusqueda').text(textoEstado(consulta, arr.datos.total));
             },
             error: function () {
                 if (miTurno !== turno) { return; }
@@ -126,7 +133,7 @@ var EstablecimientosTodos = (function () {
     // Busca mientras se escribe, con una pausa corta; Enter busca de una.
     $(document).on('input', '#buscarEstablecimiento', function () {
         clearTimeout(espera);
-        espera = setTimeout(buscar, 300);
+        espera = setTimeout(function () { buscar(); }, 300);
     });
     $(document).on('keydown', '#buscarEstablecimiento', function (e) {
         if (e.key === 'Enter') {
@@ -139,12 +146,25 @@ var EstablecimientosTodos = (function () {
     // Gestionar: el dueño queda como contribuyente activo y se abren SUS
     // establecimientos (los datos van por data-* por si el nombre trae comillas).
     $(document).on('click', '.js-gestionar-dueno', function () {
+        // Sus establecimientos, o la primera pantalla del contribuyente que el
+        // rol puede usar (interruptores del panel de Roles).
+        var destino = (typeof menu !== 'undefined' && menu.pantallaDelContribuyente)
+            ? menu.pantallaDelContribuyente('establecimientos.php') : 'establecimientos.php';
+        if (!destino) {
+            swal({
+                type: 'warning',
+                title: 'Sin secciones del contribuyente',
+                text: 'Su rol puede gestionar contribuyentes, pero no tiene permiso en ninguna de sus secciones '
+                    + '(RIT, establecimientos o declaraciones). Pídaselo al administrador.'
+            });
+            return;
+        }
         ContribActivo.fijar({
             id: String($(this).data('id')),
             doc: String($(this).data('doc') || ''),
             nombre: $(this).data('nombre') || ''
         });
-        window.location = 'establecimientos.php';
+        window.location = destino;
     });
 
     $(function () {

@@ -31,6 +31,11 @@ $contribuyente = $con->obnerFila($con->consultar(
 ));
 if (!$contribuyente) { $contribuyente = []; }
 
+/* Ciudad y departamento del retenedor, como en la autorretencion y en la hoja
+   del formato del cliente que los trae ("4. CIUDAD / 5. DEPARTAMENTO"). Se
+   imprimen sin numero para no descuadrar la numeracion de esta hoja. */
+$ubic = pdfret_ciudadDepto($con, $contribuyente['ind_IdCiudad'] ?? 0);
+
 /* Datos del RIT que pide el FORMATO COMPLETO del cliente (nombre del
    establecimiento, actividad economica principal y secundaria con su codigo,
    numero de establecimientos y regimen). No se capturan en la retencion: salen
@@ -131,7 +136,7 @@ $html = '
 
 <table border="1" cellpadding="2" width="100%">
 <tr bgcolor="#e1dada">
-    <td width="5%" rowspan="10" bgcolor="#e1dada"></td>
+    <td width="5%" rowspan="9" bgcolor="#e1dada"></td>
     <td width="20%"><b>FORMULARIO ÚNICO</b></td>
     <td width="15%"><b>VIGENCIA FISCAL</b></td>
     <td width="15%" align="center">' . (int) $row['ret_Anio'] . '</td>
@@ -165,7 +170,9 @@ $html = '
 </tr>
 <tr>
     <td width="35%"><b>5. RAZÓN COMERCIAL / NOMBRE DEL ESTABLECIMIENTO</b></td>
-    <td width="60%">' . htmlspecialchars($perfil['establecimiento']) . '</td>
+    <td width="40%">' . htmlspecialchars($perfil['establecimiento']) . '</td>
+    <td width="13%"><b>No. ESTABLEC.</b></td>
+    <td width="7%" align="center">' . (int) $perfil['num_establec'] . '</td>
 </tr>
 <tr>
     <td width="35%"><b>6. ACTIVIDAD ECONÓMICA PRINCIPAL</b></td>
@@ -174,18 +181,14 @@ $html = '
     <td width="7%" align="center">' . htmlspecialchars($perfil['act_principal']['codigo']) . '</td>
 </tr>
 <tr>
-    <td width="26%"><b>ACTIVIDAD SECUNDARIA</b></td>
-    <td width="34%">' . htmlspecialchars($perfil['act_secundaria']['nombre']) . '</td>
-    <td width="7%"><b>CÓD.</b></td>
-    <td width="8%" align="center">' . htmlspecialchars($perfil['act_secundaria']['codigo']) . '</td>
-    <td width="13%"><b>No. ESTABLEC.</b></td>
-    <td width="7%" align="center">' . (int) $perfil['num_establec'] . '</td>
-</tr>
-<tr>
-    <td width="14%"><b>7. DIRECCIÓN</b></td>
-    <td width="42%">' . htmlspecialchars((string) ($contribuyente['ind_Direccion'] ?? '')) . '</td>
-    <td width="15%"><b>8. TELÉFONO</b></td>
-    <td width="24%">' . htmlspecialchars((string) ($contribuyente['ind_Telefono'] ?? '')) . '</td>
+    <td width="11%"><b>7. DIRECCIÓN</b></td>
+    <td width="26%">' . htmlspecialchars((string) ($contribuyente['ind_Direccion'] ?? '')) . '</td>
+    <td width="7%"><b>CIUDAD</b></td>
+    <td width="13%">' . htmlspecialchars($ubic['ciudad']) . '</td>
+    <td width="6%"><b>DPTO.</b></td>
+    <td width="10%">' . htmlspecialchars($ubic['departamento']) . '</td>
+    <td width="10%"><b>8. TELÉFONO</b></td>
+    <td width="12%">' . htmlspecialchars((string) ($contribuyente['ind_Telefono'] ?? '')) . '</td>
 </tr>
 <tr>
     <td width="9%"><b>PERÍODO</b></td>

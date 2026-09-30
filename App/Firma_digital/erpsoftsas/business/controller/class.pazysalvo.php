@@ -52,6 +52,14 @@ class ControladorPazYSalvo extends \erpsoftsas\Cabecera {
         $_obj = new self();
         $_obj->_funcion = $_POST['funcion'] ?? $_GET['funcion'] ?? null;
 
+        // Sesion y "Consultar paz y salvo" (panel de Roles, 2026-09-29): antes
+        // cualquiera, sin sesion, consultaba predios y generaba certificados.
+        include_once SERVER . '/business/class.permisosRol.php';
+        if (!\erpsoftsas\PermisosRol::tiene('predial.consultar')) {
+            \erpsoftsas\PermisosRol::negar(\erpsoftsas\PermisosRol::mensaje('predial.consultar'));
+            return;
+        }
+
         try {
             //$con = \ConexionMysqlUsuariosCentral\ConexionSQL::getInstance();
             //$con->begin();

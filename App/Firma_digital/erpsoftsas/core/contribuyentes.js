@@ -76,11 +76,8 @@ class Contribuyentes {
         $("#contribuyentesRegistrados").DataTable().destroy();
         $("#bodyContribuyentesRegistrados").empty();
         for (let dep of arrFilter) {
-            // El botón dice la ACCIÓN que hace, no el estado actual: antes un
-            // chulo verde en un contribuyente activo era el botón de inactivarlo.
-            var estado = dep.ind_Estado == 1
-                ? { tipo: 'danger',  icono: 'fa-ban',   texto: 'Inactivar', titulo: 'Inactivar contribuyente' }
-                : { tipo: 'success', icono: 'fa-check', texto: 'Activar',   titulo: 'Activar contribuyente' };
+            // Sin "Inactivar" (cliente, 2026-09-29): no bloqueaba nada -ind_Estado
+            // no lo lee nadie- y el cese del contribuyente se registra en el RIT.
 
             // Nombre para mostrar: en persona juridica el apellido va vacio y la
             // razon social esta en ind_PrimerNombre, asi que el trim lo resuelve.
@@ -110,20 +107,25 @@ class Contribuyentes {
                     '<td align="center"><div class="acc-cards">' +
                     // Acción principal: gestionar (trabajar como este contribuyente).
                     // Datos por data-* para no romper el JS con nombres que traigan comillas.
-                    '<button type="button" class="acc-card acc-primary js-gestionar" title="Trabajar como este contribuyente" ' +
+                    // Cada tarjeta, solo con su interruptor del panel de Roles.
+                    ((typeof erpPuede !== 'function' || erpPuede('alcaldia.contribuyentes.gestionar'))
+                    ? '<button type="button" class="acc-card acc-primary js-gestionar" title="Trabajar como este contribuyente" ' +
                         'data-id="' + dep.ind_Id + '" ' +
                         'data-doc="' + contribuyentes.esc(dep.ind_NumeroIdentificacion) + '" ' +
                         'data-nombre="' + contribuyentes.esc(nombre) + '">' +
-                    '<i class="fa fa-briefcase"></i><span class="acc-lbl">Gestionar</span>' +
-                    '</button>' +
+                      '<i class="fa fa-briefcase"></i><span class="acc-lbl">Gestionar</span>' +
+                      '</button>'
+                    : '') +
 
-                    '<button type="button" class="acc-card acc-warning" title="Editar datos básicos" onclick="contribuyentes.getContribuyentesById(' + dep.ind_Id + ')">' +
-                    '<i class="fa fa-pencil"></i><span class="acc-lbl">Editar</span>' +
-                    '</button>' +
-
-                    '<button type="button" class="acc-card acc-' + estado.tipo + '" title="' + estado.titulo + '" onclick="contribuyentes.cambiarEstado(' + dep.ind_Id + ',' + dep.ind_Estado + ')">' +
-                    '<i class="fa ' + estado.icono + '"></i><span class="acc-lbl">' + estado.texto + '</span>' +
-                    '</button>' +
+                    ((typeof erpPuede !== 'function' || erpPuede('alcaldia.contribuyentes.editar'))
+                    ? '<button type="button" class="acc-card acc-warning" title="Editar datos básicos" onclick="contribuyentes.getContribuyentesById(' + dep.ind_Id + ')">' +
+                      '<i class="fa fa-pencil"></i><span class="acc-lbl">Editar</span>' +
+                      '</button>'
+                    : '') +
+                    // Sin ninguna de las dos, la columna no queda vacia.
+                    ((typeof erpPuede === 'function' && !erpPuede('alcaldia.contribuyentes.gestionar alcaldia.contribuyentes.editar'))
+                    ? '<span class="text-muted small">Solo consulta</span>'
+                    : '') +
                     '</div></td>' +
                     '</tr>'
                 );
@@ -137,8 +139,8 @@ class Contribuyentes {
      * propiedad DataTable() a la tabla de Dependencia
      */
     init_table() {
-        // Sin buscador, paginación ni contador propios de DataTables: la búsqueda
-        // la hace el servidor (ver buscar()) y nunca llegan más de 20 filas.
+        // Sin buscador, paginación ni contador propios de DataTables: busca y
+        // pagina el servidor (ver buscar() y core/paginador.js).
         // order [] respeta el orden en que las manda el servidor.
         $('.data-table').DataTable({
             scrollCollapse: true,
@@ -189,18 +191,20 @@ class Contribuyentes {
      * filtraba aquí. Sin texto trae los registrados más recientemente.
      * @param texto opcional: si llega, se escribe en el buscador y se busca eso.
      */
-    buscar(texto) {
+    buscar(texto, mismaPagina) {
 
         if (typeof texto === 'string') { $('#buscarContribuyente').val(texto); }
 
         var consulta = ($('#buscarContribuyente').val() || '').trim();
         var turno = ++contribuyentes._turno;
+        // Una búsqueda nueva empieza en la página 1; cambiar de página no.
+        var pedido = contribuyentes.paginador.pedido(!mismaPagina);
 
         $('#estadoBusqueda').text('Buscando…');
 
         $.ajax({
             url: '../business/controller/class.contribuyentes.php',
-            data: { funcion: 5, buscar: consulta },
+            data: { funcion: 5, buscar: consulta, pagina: pedido.pagina, porPagina: pedido.porPagina },
             dataType: "json",
             type: "POST",
             success: function(arr) {
@@ -209,14 +213,14 @@ class Contribuyentes {
 
                 if (arr.ok != 1 || !arr.datos || !arr.datos.filas) {
                     contribuyentes.draw_table_documents([]);
+                    contribuyentes.paginador.pintar({}, consulta);
                     $('#estadoBusqueda').text(arr.mensaje || 'No se pudo buscar. Intenta de nuevo.');
                     return;
                 }
 
                 contribuyentes.draw_table_documents(arr.datos.filas);
-                $('#estadoBusqueda').text(
-                    contribuyentes.textoEstado(consulta, arr.datos.filas.length, arr.datos.hayMas)
-                );
+                contribuyentes.paginador.pintar(arr.datos, consulta);
+                $('#estadoBusqueda').text(contribuyentes.textoEstado(consulta, arr.datos.total));
             },
             error: function(XMLHttpRequest, textStatus, errorThrown) {
                 if (turno !== contribuyentes._turno) { return; }
@@ -226,22 +230,12 @@ class Contribuyentes {
         });
     }
 
-    /** Texto bajo el buscador: cuántos resultados hay y si conviene afinar. */
-    textoEstado(consulta, cantidad, hayMas) {
-        if (!consulta) {
-            if (hayMas) {
-                return 'Estos son los 20 registrados más recientemente. Escribe para buscar entre todos.';
-            }
-            if (!cantidad) { return 'Aún no hay contribuyentes registrados.'; }
-            return cantidad === 1 ? '1 contribuyente registrado.' : cantidad + ' contribuyentes registrados.';
-        }
-        if (!cantidad) {
-            return 'Ningún contribuyente coincide con «' + consulta + '».';
-        }
-        if (hayMas) {
-            return 'Se muestran los primeros 20 resultados para «' + consulta + '». Escribe más datos para afinar.';
-        }
-        return (cantidad === 1 ? '1 resultado' : cantidad + ' resultados') + ' para «' + consulta + '».';
+    /** Texto bajo el buscador (el detalle de páginas lo da el paginador). */
+    textoEstado(consulta, total) {
+        total = parseInt(total, 10) || 0;
+        if (!consulta) { return 'Registrados más recientemente primero. Escribe para buscar por documento o nombre.'; }
+        if (!total) { return 'Ningún contribuyente coincide con «' + consulta + '».'; }
+        return (total === 1 ? '1 resultado' : total.toLocaleString('es-CO') + ' resultados') + ' para «' + consulta + '».';
     }
 
     /**
@@ -693,13 +687,33 @@ class Contribuyentes {
      * que quedan con datos del anterior.
      */
     gestionar(id, doc, nombre) {
+        // El RIT, o la primera pantalla del contribuyente que su rol puede usar
+        // (interruptores del panel de Roles).
+        var destino = (typeof menu !== 'undefined' && menu.pantallaDelContribuyente)
+            ? menu.pantallaDelContribuyente('icaWebRit.php') : 'icaWebRit.php';
+        if (!destino) {
+            swal({
+            type: 'warning',
+            title: 'Sin secciones del contribuyente',
+            text: 'Su rol puede gestionar contribuyentes, pero no tiene permiso en ninguna de sus secciones '
+                + '(RIT, establecimientos o declaraciones). Pídaselo al administrador.'
+        });
+            return;
+        }
         ContribActivo.fijar({ id: String(id), doc: String(doc || ''), nombre: nombre || '' });
-        window.location = 'icaWebRit.php';
+        window.location = destino;
     }
 
 }
 
 const contribuyentes = new Contribuyentes();
+
+// Paginado en el servidor (core/paginador.js): cambiar de página o de tamaño
+// vuelve a pedir con el mismo texto buscado.
+contribuyentes.paginador = Paginador.crear('#paginacionContribuyentes', {
+    nombre: ['contribuyente', 'contribuyentes'],
+    alCambiar: function () { contribuyentes.buscar(undefined, true); }
+});
 
 // El nombre puede traer comillas: se pasa por data-* y se lee aquí, no por onclick.
 $(document).on('click', '.js-gestionar', function () {

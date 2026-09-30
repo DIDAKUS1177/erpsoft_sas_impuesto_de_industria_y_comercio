@@ -4,6 +4,7 @@ include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/DAO/DAO_Usuario.php';
 include_once SERVER . '/business/DAO/DAO_Contribuyentes.php';
 include_once SERVER . '/business/class.sessions.php';
+include_once SERVER . '/business/class.permisosRol.php';
 include_once SERVER.'/business/controller/class.logs.php';
 
 class ControladorUsuarios extends \erpsoftsas\Cabecera {
@@ -25,12 +26,14 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
          * podia listar todas las cuentas (con la clave cifrada), editar la de
          * cualquiera, inactivarlas, e inscribirse como administrador mandando
          * id_rol=1. Ahora:
-         *   1 crear       publica (inscripcion), pero sin permiso de Usuarios el
-         *                 rol se fuerza a contribuyente (4).
-         *   2 editar      permiso de Usuarios (el mismo boton 26 del menu).
-         *   3 consultar   cuenta de la Alcaldia (1, 2) o permiso de Usuarios:
-         *                 Dependencias lista los responsables.
-         *   4 inactivar   permiso de Usuarios.
+         *   1 crear       publica (inscripcion), pero sin "Crear y editar
+         *                 usuarios" el rol se fuerza a contribuyente (4).
+         *   2 editar      "Crear y editar usuarios".
+         *   3 consultar   un rol de la Alcaldia o "Ver usuarios": Dependencias
+         *                 lista los responsables.
+         *   4 inactivar   "Activar e inactivar usuarios".
+         * (Interruptores del panel de Roles desde el 2026-09-29; antes, el
+         * boton 26 del menu y los roles 1 y 2 por numero.)
          *   5 recuperar   publica (olvide mi contrasena).
          *   6 cambiar     la propia clave, con sesion.
          * Solo el administrador (rol 1) da o toca cuentas de administrador.
@@ -38,10 +41,15 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
         if (session_status() === PHP_SESSION_NONE) { @session_start(); }
         $funcion = (int) $_obj->_funcion;
         $negado  = null;
-        if (in_array($funcion, [2, 4], true) && !self::_puedeGestionar()) {
-            $negado = 'No tiene permiso para administrar usuarios.';
-        } elseif ($funcion === 3 && !self::_esAlcaldia() && !self::_puedeGestionar()) {
-            $negado = 'No tiene permiso para consultar usuarios.';
+        if ($funcion === 2 && !\erpsoftsas\PermisosRol::tiene('usuarios.editar')) {
+            $negado = self::_idSesion() > 0 ? \erpsoftsas\PermisosRol::mensaje('usuarios.editar') : 'No tiene permiso para administrar usuarios.';
+        } elseif ($funcion === 4 && !\erpsoftsas\PermisosRol::tiene('usuarios.estado')) {
+            $negado = self::_idSesion() > 0 ? \erpsoftsas\PermisosRol::mensaje('usuarios.estado') : 'No tiene permiso para administrar usuarios.';
+        } elseif ($funcion === 3 && !\erpsoftsas\PermisosRol::tieneAlguno(['usuarios.ver', 'usuarios.editar'])) {
+            // Antes bastaba ser de la Alcaldia (la pantalla vieja de Dependencias,
+            // que el menu ya no ofrece): una cuenta sin interruptores, o de un rol
+            // inactivo, bajaba todas las cuentas con documento, correo y telefono.
+            $negado = self::_idSesion() > 0 ? \erpsoftsas\PermisosRol::mensaje('usuarios.ver') : 'No tiene permiso para consultar usuarios.';
         } elseif ($funcion === 6 && self::_idSesion() <= 0) {
             $negado = 'Debe iniciar sesión.';
         }
@@ -119,9 +127,10 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
         return self::_idSesion() > 0 ? (int) ($_SESSION['id_Rol'] ?? 0) : 0;
     }
 
+    /** Rol de la Alcaldia (tipo de rol, migracion 040; sin ella, 1 y 2). */
     private static function _esAlcaldia()
     {
-        return in_array(self::_rolSesion(), [1, 2], true);
+        return \erpsoftsas\PermisosRol::esAlcaldia();
     }
 
     /**
@@ -131,13 +140,78 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
      */
     private static function _puedeGestionar()
     {
-        $rol = self::_rolSesion();
-        if ($rol === 1) { return true; }
-        if ($rol <= 0) { return false; }
+        // "Crear y editar usuarios" del panel de Roles (antes, el boton 26).
+        return \erpsoftsas\PermisosRol::tiene('usuarios.editar');
+    }
+
+    /**
+     * Aviso si el rol no tiene NINGUN permiso cargado (conf_permisos): el login
+     * no deja entrar a esas cuentas ("El sistema no pudo cargar los
+     * privilegios"). Pasaba con "Internos Alcaldia" (rol 2), que el cliente
+     * todavia no ha configurado: la cuenta se creaba bien y despues no podia
+     * ingresar. No se bloquea -la Alcaldia puede dejar las cuentas listas-, se
+     * dice. El administrador (rol 1) entra siempre.
+     */
+    private static function _avisoRolSinPermisos($rol)
+    {
+        $rol = (int) $rol;
+        if (\erpsoftsas\PermisosRol::esAdministrador($rol)) { return ''; }
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
-        return (bool) $con->obnerFila($con->consultar(
-            "SELECT TOP 1 1 AS x FROM conf_permisos WHERE per_IdRol = ? AND per_IdBoton = 26", [$rol]
+        if (\erpsoftsas\PermisosRol::hayCatalogo()) {
+            // Lo mismo que mira el login: que el rol tenga algun interruptor
+            // prendido (y que este activo).
+            if (\erpsoftsas\PermisosRol::claves($rol)) { return ''; }
+        } else {
+            $hay = $con->obnerFila($con->consultar(
+                "SELECT TOP 1 1 AS x FROM conf_permisos WHERE per_IdRol = ?", [$rol]
+            ));
+            if ($hay) { return ''; }
+        }
+        $nombre = $con->obnerFila($con->consultar("SELECT rol_Nombre AS n FROM conf_rol WHERE rol_Id = ?", [$rol]));
+        return 'El rol «' . trim((string) ($nombre['n'] ?? $rol)) . '» todavía no tiene permisos asignados: '
+             . 'esta cuenta no podrá ingresar hasta que se le asignen en Usuarios y roles > Roles.';
+    }
+
+    /** Respuesta de "ya existe" para _cuentaRepetida (1 correo, 2 documento, 3 usuario). */
+    private function _avisarRepetida($cual)
+    {
+        $mensajes = [
+            1 => [2, 'Ya existe un usuario con el mismo email'],
+            2 => [3, 'Ya existe un usuario con la misma identificación'],
+            3 => [4, 'Ya existe un usuario con el mismo Usuario'],
+        ];
+        [$this->_ok, $this->_mensaje] = $mensajes[$cual] ?? [0, 'Ya existe una cuenta con esos datos'];
+        return false;
+    }
+
+    /**
+     * El candado de los documentos (el mismo de la creacion en Contribuyentes),
+     * hasta el fin de la transaccion de quien llama. Si no se obtiene en 15 s,
+     * excepcion: seguir sin el permitiria repetidos.
+     */
+    private static function _candadoDocumento($con)
+    {
+        $f = $con->obnerFila($con->consultar(
+            "SET NOCOUNT ON; DECLARE @r INT;
+             EXEC @r = sp_getapplock @Resource = 'erp_contribuyente_documento', @LockMode = 'Exclusive',
+                                     @LockOwner = 'Transaction', @LockTimeout = 15000;
+             SELECT @r AS r;"
         ));
+        if (!$f || (int) $f['r'] < 0) {
+            throw new \RuntimeException('No se obtuvo el candado de documentos (' . ($f['r'] ?? 'sin respuesta') . ')');
+        }
+    }
+
+    /** Mensaje si el rol no existe o esta inactivo; null si sirve. */
+    private static function _rolNoValido($rol)
+    {
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        $f = $con->obnerFila($con->consultar(
+            "SELECT rol_Estado AS e FROM conf_rol WHERE rol_Id = ?", [(int) $rol]
+        ));
+        if (!$f) { return 'Escoja un rol válido.'; }
+        if ((int) $f['e'] !== 1) { return 'Ese rol está inactivo: actívelo en Roles o escoja otro.'; }
+        return null;
     }
 
     /** Rol actual de una cuenta, o 0 si no existe. */
@@ -284,9 +358,14 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
      */
     private static function _asegurarContribuyente($con, array $c)
     {
+        // El mismo candado que la creacion en Contribuyentes (dura hasta el fin
+        // de la transaccion de quien llama): dos pedidos a la vez no crean dos
+        // contribuyentes con el mismo documento.
+        self::_candadoDocumento($con);
+
         // Mismo criterio que el enlace cuenta-contribuyente del resto del
         // sistema: por numero de documento. Si ya existe, no se duplica.
-        $existe = $con->obnerFila($con->consultar(
+        $existe= $con->obnerFila($con->consultar(
             "SELECT TOP 1 ind_Id FROM ind_contribuyentes
               WHERE ind_NumeroIdentificacion = ? ORDER BY ind_Id",
             [(int) $c['documento']]
@@ -344,12 +423,23 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
         // contribuyentes, llegue el rol que llegue en la peticion.
         if (!self::_puedeGestionar()) {
             $rolNuevo = 4;
-        } elseif ($rolNuevo === 1 && self::_rolSesion() !== 1) {
+        } elseif (\erpsoftsas\PermisosRol::esAdministrador($rolNuevo) && !\erpsoftsas\PermisosRol::esAdministrador()) {
             $this->_ok = 0;
             $this->_mensaje = 'Solo un administrador puede crear cuentas de administrador.';
             return false;
+        } elseif (!\erpsoftsas\PermisosRol::puedeEntregarRol($rolNuevo)) {
+            // Sin esto, "Crear y editar usuarios" bastaba para hacerse una
+            // cuenta con un rol de la Alcaldia mas poderoso que el propio.
+            $this->_ok = 0;
+            $this->_mensaje = 'Ese rol tiene permisos que el suyo no tiene: solo el administrador puede asignarlo.';
+            return false;
+        } elseif (($errorRol = self::_rolNoValido($rolNuevo)) !== null) {
+            $this->_ok = 0;
+            $this->_mensaje = $errorRol;
+            return false;
         }
-        $esAlcaldia = in_array($rolNuevo, [1, 2], true);
+        // Las cuentas de la Alcaldia no reciben contribuyente (tipo de rol).
+        $esAlcaldia = \erpsoftsas\PermisosRol::esAlcaldia($rolNuevo);
 
         $c = self::_leerCuenta($esAlcaldia);
         if (isset($c['error'])) {
@@ -374,50 +464,11 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
 
         $_objUsuario->set_usu_Estado(1);
 
-        //Valida los campos que no pueden Duplicarsen en la BD.
-        //$nomUsurio= $this->_listarUsuarios(0);
-        // 🔹 Usa el nuevo método genérico del DAO
-        $nomUsurio = $_objUsuario->listarRegistros(0);
-        $longitud = count($nomUsurio);
-        $nomduplicado=0;
+        // Correo, documento y usuario no se repiten (ver _cuentaRepetida).
+        $nomduplicado = self::_cuentaRepetida($_objUsuario->get_usu_Correo(), $documento,
+                                              $_objUsuario->get_usu_Usuario(), 0);
 
-        for($i=0; $i<$longitud; $i++){
-            // El correo se compara SIN distinguir mayusculas ni espacios.
-            //
-            // Con == a secas, "Cristian@x.com" y "cristian@x.com" son distintos
-            // para PHP pero el MISMO para SQL Server, que compara sin distinguir
-            // mayusculas por su collation. O sea que esta comprobacion daba el
-            // visto bueno a un correo que la base considera repetido: bastaba
-            // cambiar una letra de caja para colar un duplicado.
-            if(self::_mismoCorreo($nomUsurio[$i]['usu_Correo'], $_objUsuario->get_usu_Correo())){
-               $nomduplicado=1;
-                break;
-            }
-            // Un documento vacio (se admite para cuentas de la Alcaldia) no
-            // choca con otro vacio: no identifica a nadie.
-            if(self::_mismoDocumento($nomUsurio[$i]['usu_NumeroDocumento'], $documento)){
-               $nomduplicado=2;
-                break;
-            }
-            if($nomUsurio[$i]['usu_Usuario'] == $_objUsuario->get_usu_Usuario()){
-                $nomduplicado=3;
-                 break;
-             }
-        }
-
-        if($nomduplicado == 1){
-            $this->_ok = 2;
-            $this->_mensaje = 'Ya existe un usuario con el mismo email';
-            return false;
-        }else if($nomduplicado == 2){
-            $this->_ok = 3;
-            $this->_mensaje = 'Ya existe un usuario con la misma identificación';
-            return false;
-        }else if($nomduplicado == 3){
-            $this->_ok = 4;
-            $this->_mensaje = 'Ya existe un usuario con el mismo Usuario';
-            return false;
-        }
+        if ($nomduplicado !== 0) { return $this->_avisarRepetida($nomduplicado); }
 
         // La cuenta (por el DAO: la clave se guarda con HASHBYTES, como la
         // compara el login) y el contribuyente (parametrizado), en la misma
@@ -425,6 +476,16 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
         try {
             $con->begin();
+
+            // Otra vez, ya con el candado: dos inscripciones a la vez con el
+            // mismo documento o correo pasaban las dos la revision de arriba.
+            self::_candadoDocumento($con);
+            $nomduplicado = self::_cuentaRepetida($_objUsuario->get_usu_Correo(), $documento,
+                                                  $_objUsuario->get_usu_Usuario(), 0);
+            if ($nomduplicado !== 0) {
+                $con->rollback();
+                return $this->_avisarRepetida($nomduplicado);
+            }
 
             if (!$_objUsuario->guardar()) {
                 throw new \Exception('No se pudo guardar la cuenta: ' . $_objUsuario->getMysqlError());
@@ -450,6 +511,12 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
         $this->_ok = 1;
         $this->_mensaje = "Datos ingresados correctamente";
 
+        $aviso = self::_avisoRolSinPermisos($rolNuevo);
+        if ($aviso !== '') {
+            $this->_mensaje .= '. ' . $aviso;
+            return ['aviso' => $aviso];
+        }
+
         // Antes aqui habia un segundo $_objUsuario->guardar(): un UPDATE repetido
         // de la cuenta recien creada, que ademas corria fuera de todo control.
         return true;
@@ -465,6 +532,48 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
      * identificacion". Se compara como numero, igual que el enlace con el
      * contribuyente (INT): "0123" y "123" son el mismo.
      */
+    /**
+     * ¿Otra cuenta ya usa este correo (1), documento (2) o usuario (3)? 0 si no.
+     *
+     * Antes se traian TODAS las cuentas (listarRegistros: SELECT * sin filtro)
+     * y se comparaban aqui. La lista crece con cada inscripcion, y el driver de
+     * SQL Server corta un resultado de mas de 10 MB ("Memory limit of 10240 KB
+     * exceeded for buffered query"): asi fallaba editar establecimientos en
+     * produccion (2026-09-29). Mismas reglas que _mismoCorreo (sin mayusculas
+     * ni espacios) y _mismoDocumento (vacio no choca; los digitos se comparan
+     * como numero, igual que el == de PHP).
+     */
+    private static function _cuentaRepetida($correo, $documento, $usuario, $excluirId)
+    {
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        $excluirId = (int) $excluirId;
+
+        $correo = mb_strtolower(trim((string) $correo));
+        if ($correo !== '' && $con->obnerFila($con->consultar(
+                "SELECT TOP 1 1 AS x FROM conf_usuarios WHERE LOWER(LTRIM(RTRIM(usu_Correo))) = ? AND usu_Id <> ?",
+                [$correo, $excluirId]))) {
+            return 1;
+        }
+
+        $documento = trim((string) $documento);
+        if ($documento !== '') {
+            $sql = (ctype_digit($documento) && strlen($documento) <= 30)
+                ? "SELECT TOP 1 1 AS x FROM conf_usuarios
+                    WHERE TRY_CONVERT(DECIMAL(38,0), LTRIM(RTRIM(usu_NumeroDocumento))) = CONVERT(DECIMAL(38,0), ?)
+                      AND usu_Id <> ?"
+                : "SELECT TOP 1 1 AS x FROM conf_usuarios WHERE LTRIM(RTRIM(usu_NumeroDocumento)) = ? AND usu_Id <> ?";
+            if ($con->obnerFila($con->consultar($sql, [$documento, $excluirId]))) { return 2; }
+        }
+
+        $usuario = trim((string) $usuario);
+        if ($usuario !== '' && $con->obnerFila($con->consultar(
+                "SELECT TOP 1 1 AS x FROM conf_usuarios WHERE usu_Usuario = ? AND usu_Id <> ?",
+                [$usuario, $excluirId]))) {
+            return 3;
+        }
+        return 0;
+    }
+
     private static function _mismoDocumento($a, $b)
     {
         $a = trim((string) $a);
@@ -504,12 +613,40 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
         }
 
         $rolNuevo   = (int) ($_POST['id_rol'] ?? 0);
-        if (self::_rolSesion() !== 1 && ($rolNuevo === 1 || self::_rolDeCuenta($id) === 1)) {
+        if (!\erpsoftsas\PermisosRol::esAdministrador()
+            && (\erpsoftsas\PermisosRol::esAdministrador($rolNuevo) || \erpsoftsas\PermisosRol::esAdministrador(self::_rolDeCuenta($id)))) {
             $this->_ok = 0;
             $this->_mensaje = 'Solo un administrador puede modificar cuentas de administrador.';
             return false;
         }
-        $esAlcaldia = in_array($rolNuevo, [1, 2], true);
+        // Sin escalar (panel de Roles, 2026-09-29): nadie se cambia su propio
+        // rol (tampoco el administrador: si es el unico, se quedaria por
+        // fuera), y quien no es administrador no toca cuentas ni entrega roles
+        // de la Alcaldia con permisos que el suyo no tiene.
+        if ($id === self::_idSesion() && $rolNuevo !== self::_rolDeCuenta($id)) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No puede cambiar el rol de su propia cuenta. Pídaselo a otro administrador.';
+            return false;
+        }
+        if (!\erpsoftsas\PermisosRol::esAdministrador()) {
+            $rolActual = self::_rolDeCuenta($id);
+            if (!\erpsoftsas\PermisosRol::puedeEntregarRol($rolActual)) {
+                $this->_ok = 0;
+                $this->_mensaje = 'Esa cuenta tiene un rol con permisos que el suyo no tiene: solo el administrador puede modificarla.';
+                return false;
+            }
+            if (!\erpsoftsas\PermisosRol::puedeEntregarRol($rolNuevo)) {
+                $this->_ok = 0;
+                $this->_mensaje = 'Ese rol tiene permisos que el suyo no tiene: solo el administrador puede asignarlo.';
+                return false;
+            }
+        }
+        if (($errorRol = self::_rolNoValido($rolNuevo)) !== null) {
+            $this->_ok = 0;
+            $this->_mensaje = $errorRol;
+            return false;
+        }
+        $esAlcaldia = \erpsoftsas\PermisosRol::esAlcaldia($rolNuevo);
 
         $c = self::_leerCuenta($esAlcaldia);
         if (isset($c['error'])) {
@@ -532,51 +669,23 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
         $_objUsuario->set_usu_Password($_POST['clave'] ?? '');
         $_objUsuario->set_usu_Rol($rolNuevo);
 
-        //Valida los campos que no pueden Duplicarsen en la BD.
-        //$nomUsurio= $this->_listarUsuarios($_objUsuario->get_usu_Id());
-        $nomUsurio = $_objUsuario->listarRegistros($id);
+        // Correo, documento y usuario no se repiten (ver _cuentaRepetida).
+        $nomduplicado = self::_cuentaRepetida($_objUsuario->get_usu_Correo(), $c['documento'],
+                                              $_objUsuario->get_usu_Usuario(), $id);
 
-        $longitud = count($nomUsurio);
-        $nomduplicado=0;
-        for($i=0; $i<$longitud; $i++){
-            // El correo se compara SIN distinguir mayusculas ni espacios.
-            //
-            // Con == a secas, "Cristian@x.com" y "cristian@x.com" son distintos
-            // para PHP pero el MISMO para SQL Server, que compara sin distinguir
-            // mayusculas por su collation. O sea que esta comprobacion daba el
-            // visto bueno a un correo que la base considera repetido: bastaba
-            // cambiar una letra de caja para colar un duplicado.
-            if(self::_mismoCorreo($nomUsurio[$i]['usu_Correo'], $_objUsuario->get_usu_Correo())){
-               $nomduplicado=1;
-                break;
-            }
-            if(self::_mismoDocumento($nomUsurio[$i]['usu_NumeroDocumento'], $c['documento'])){
-               $nomduplicado=2;
-                break;
-            }
-            if($nomUsurio[$i]['usu_Usuario'] == $_objUsuario->get_usu_Usuario()){
-                $nomduplicado=3;
-                 break;
-             }
-        }
-
-        if($nomduplicado == 1){
-            $this->_ok = 2;
-            $this->_mensaje = 'Ya existe un usuario con el mismo email';
-            return false;
-        }else if($nomduplicado == 2){
-            $this->_ok = 3;
-            $this->_mensaje = 'Ya existe un usuario con la misma identificación';
-            return false;
-        }else if($nomduplicado == 3){
-            $this->_ok = 4;
-            $this->_mensaje = 'Ya existe un usuario con el mismo Usuario';
-            return false;
-        }
+        if ($nomduplicado !== 0) { return $this->_avisarRepetida($nomduplicado); }
 
         $creado = false;
         try {
             $con->begin();
+
+            self::_candadoDocumento($con);
+            $nomduplicado = self::_cuentaRepetida($_objUsuario->get_usu_Correo(), $c['documento'],
+                                                  $_objUsuario->get_usu_Usuario(), $id);
+            if ($nomduplicado !== 0) {
+                $con->rollback();
+                return $this->_avisarRepetida($nomduplicado);
+            }
 
             if (!$_objUsuario->guardar()) {
                 throw new \Exception('No se pudo guardar la cuenta: ' . $_objUsuario->getMysqlError());
@@ -604,7 +713,10 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
             ? 'Datos ingresados correctamente. Se creó también su registro de contribuyente: el municipio y lo demás se completan en su RIT.'
             : 'Datos ingresados correctamente';
 
-        return ['contribuyenteCreado' => $creado ? 1 : 0];
+        $aviso = self::_avisoRolSinPermisos($rolNuevo);
+        if ($aviso !== '') { $this->_mensaje .= ' ' . $aviso; }
+
+        return ['contribuyenteCreado' => $creado ? 1 : 0, 'aviso' => $aviso];
     }
     
     /**
@@ -692,9 +804,14 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
             $this->_mensaje = 'No puede inactivar su propia cuenta.';
             return false;
         }
-        if ($rolCuenta === 1 && self::_rolSesion() !== 1) {
+        if (\erpsoftsas\PermisosRol::esAdministrador($rolCuenta) && !\erpsoftsas\PermisosRol::esAdministrador()) {
             $this->_ok = 0;
             $this->_mensaje = 'Solo un administrador puede modificar cuentas de administrador.';
+            return false;
+        }
+        if (!\erpsoftsas\PermisosRol::puedeEntregarRol($rolCuenta)) {
+            $this->_ok = 0;
+            $this->_mensaje = 'Esa cuenta tiene un rol con permisos que el suyo no tiene: solo el administrador puede modificarla.';
             return false;
         }
 
@@ -771,11 +888,17 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
             return false;
         }
 
-        // Verificar la clave actual (ver nota de clase sobre el hash).
-        $_objVerif = new \erpsoftsas\DAO_Usuario();
-        $_objVerif->set_usu_Id($idUsuario);
-        $_objVerif->set_usu_Password(sha1($claveActual));
-        $encontrado = $_objVerif->consultar();
+        // Verificar la clave actual con la misma huella del login; si la cuenta
+        // es de antes del 2026-09-29 y la clave tiene ñ o tildes, con la
+        // anterior (ver DAOGeneral::hashClave).
+        $encontrado = false;
+        foreach (array_unique([\erpsoftsas\DAOGeneral::hashClave($claveActual),
+                               \erpsoftsas\DAOGeneral::hashClaveAnterior($claveActual)]) as $huella) {
+            $_objVerif = new \erpsoftsas\DAO_Usuario();
+            $_objVerif->set_usu_Id($idUsuario);
+            $_objVerif->set_usu_Password($huella);
+            if ($_objVerif->consultar()) { $encontrado = true; break; }
+        }
 
         if (!$encontrado) {
             $this->_ok = 0;

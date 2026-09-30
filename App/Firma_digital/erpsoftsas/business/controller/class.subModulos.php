@@ -4,6 +4,7 @@ include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/DAO/DAO_SubModulos.php';
 include_once SERVER . '/business/class.sessions.php';
 include_once SERVER.'/business/controller/class.logs.php';
+include_once SERVER . '/business/class.permisosRol.php';
 
 class ControladorSubModulos extends \erpsoftsas\Cabecera {
 
@@ -12,8 +13,20 @@ class ControladorSubModulos extends \erpsoftsas\Cabecera {
     private $_mensaje;   
         
     public static function run() {
-        //\erpsoftsas\SesionUsuario::verificarSesion();
-        
+        /*
+         * Sesion y "Ver roles" (panel de Roles, 2026-09-29): antes no pedia
+         * nada. Solo queda la consulta (3); los permisos los define el
+         * sistema (migracion 040), no se crean ni se editan desde la pantalla.
+         */
+        if (!\erpsoftsas\PermisosRol::tiene('roles.ver')) {
+            \erpsoftsas\PermisosRol::negar(\erpsoftsas\PermisosRol::mensaje('roles.ver'));
+            return;
+        }
+        if ((int) ($_POST['funcion'] ?? 0) !== 3) {
+            \erpsoftsas\PermisosRol::negar('Función no válida.');
+            return;
+        }
+
         $_obj = new self();
         $_obj->_funcion = $_POST['funcion'];
         
@@ -199,15 +212,15 @@ class ControladorSubModulos extends \erpsoftsas\Cabecera {
         $_objSubModulos = new \erpsoftsas\DAO_SubModulos();
         if(isset($_POST['id_modulo'])){
             if (!empty($_POST['id_modulo']) || $_POST['id_modulo'] != NULL ) {
-                $_objSubModulos->set_subMod_IdModulo($_POST['id_modulo']);
+                $_objSubModulos->set_subMod_IdModulo((int) $_POST['id_modulo']);
             }    
         }
         if(isset($_POST['id'])){
             if (!empty($_POST['id']) || $_POST['id'] != NULL ) {
-                $_objSubModulos->set_subMod_Id($_POST['id']);
-            }    
+                $_objSubModulos->set_subMod_Id((int) $_POST['id']);
+            }
         }
-        
+
         $_objSubModulos->habilita1ResultadoEnArray();
         $arrSubModulos = $_objSubModulos->consultar();
        

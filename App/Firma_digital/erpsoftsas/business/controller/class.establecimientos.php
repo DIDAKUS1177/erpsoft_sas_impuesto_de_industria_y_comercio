@@ -33,6 +33,25 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
             return;
         }
 
+        // Permisos por accion (panel de Roles, 2026-09-29): cada funcion pide su
+        // interruptor. Trabajar sobre locales de OTRO contribuyente pide ademas
+        // "Gestionar a un contribuyente" (_puedeSobreEstablecimiento).
+        include_once SERVER . '/business/class.permisosRol.php';
+        $necesita = [
+            1  => 'establecimientos.editar',
+            2  => 'establecimientos.editar',
+            3  => 'establecimientos.ver',
+            4  => 'establecimientos.editar',
+            21 => 'alcaldia.cese',
+            22 => 'alcaldia.establecimientos.ver',
+            23 => 'alcaldia.establecimientos.cerrar',
+            24 => 'alcaldia.establecimientos.reabrir',
+        ][(int) ($_POST['funcion'] ?? 0)] ?? null;
+        if ($necesita !== null && !\erpsoftsas\PermisosRol::tiene($necesita)) {
+            \erpsoftsas\PermisosRol::negar(\erpsoftsas\PermisosRol::mensaje($necesita));
+            return;
+        }
+
         try {
             //$con = \ConexionMysqlUsuariosCentral\ConexionSQL::getInstance();
             //$con->begin();
@@ -139,9 +158,9 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
         // Para todo rol que no sea Alcaldia se fija al de la propia sesion.
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
         if (session_status() === PHP_SESSION_NONE) { @session_start(); }
-        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
 
-        if (!in_array($rol, [1, 2], true)) {
+        // Solo quien gestiona a otros escoge el dueño (antes: roles 1 y 2).
+        if (!\erpsoftsas\PermisosRol::gestionaOtros()) {
             $propio = self::_contribuyenteDeLaSesion($con);
             if (!$propio) {
                 $this->_ok = 0;
@@ -171,16 +190,8 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
             $_obj->$metodo($valor);
         }
 
-        $nomUsurio = $_obj->listarRegistros($_obj->get_est_Id());
-        $longitud = count($nomUsurio);
-        $nomduplicado=0;
-
-        for($i=0; $i<$longitud; $i++){
-            if($nomUsurio[$i]['est_Codigo'] == $_obj->get_est_Codigo()){
-               $nomduplicado=1;
-                break;
-            }
-        }
+        // Solo ese codigo, no la tabla entera (ver _codigoRepetido).
+        $nomduplicado = self::_codigoRepetido($_obj->get_est_Codigo(), $_obj->get_est_Id()) ? 1 : 0;
 
 
         $_obj->set_est_Estado(1);
@@ -287,8 +298,7 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
 
         // Tampoco puede reasignarse a otro dueño por la puerta de atras.
         if (session_status() === PHP_SESSION_NONE) { @session_start(); }
-        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
-        if (!in_array($rol, [1, 2], true)) {
+        if (!\erpsoftsas\PermisosRol::gestionaOtros()) {
             unset($_POST['est_IdContribuyente']);
         }
 
@@ -327,16 +337,8 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
             $_obj->$metodo($valor);
         }
 
-        $nomUsurio = $_obj->listarRegistros($_obj->get_est_Id());
-        $longitud = count($nomUsurio);
-        $nomduplicado=0;
-
-        for($i=0; $i<$longitud; $i++){
-            if($nomUsurio[$i]['est_Codigo'] == $_obj->get_est_Codigo()){
-               $nomduplicado=1;
-                break;
-            }
-        }
+        // Solo ese codigo, no la tabla entera (ver _codigoRepetido).
+        $nomduplicado = self::_codigoRepetido($_obj->get_est_Codigo(), $_obj->get_est_Id()) ? 1 : 0;
 
         if($nomduplicado == 1){
             $this->_ok = 2;
@@ -430,14 +432,16 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
     protected function _buscarEstablecimientos()
     {
         if (session_status() === PHP_SESSION_NONE) { @session_start(); }
-        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
-        if (empty($_SESSION['id_usuario']) || !in_array($rol, [1, 2], true)) {
+        if (empty($_SESSION['id_usuario']) || !\erpsoftsas\PermisosRol::tiene('alcaldia.establecimientos.ver')) {
             $this->_ok = 0;
             $this->_mensaje = 'No tiene permiso para ver todos los establecimientos.';
             return [];
         }
 
-        $limite   = 20;
+        // Paginado (cliente, 2026-09-29): de a 5, 10, 20, 50 o 100, con el total
+        // y cuantos hay registrados (class.paginacion.php).
+        include_once SERVER . '/business/class.paginacion.php';
+        [$pagina, $porPagina] = \erpsoftsas\Paginacion::leerPedido($_POST);
         $palabras = preg_split('/\s+/', trim((string) ($_POST['buscar'] ?? '')), -1, PREG_SPLIT_NO_EMPTY);
         $palabras = array_slice($palabras, 0, 5);
 
@@ -468,34 +472,26 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
         }
 
         $filtro = $condiciones ? 'WHERE ' . implode(' AND ', $condiciones) : '';
-        $orden  = $condiciones ? 'e.est_Nombre' : 'e.est_Id DESC';
+        // e.est_Id de desempate: con nombres repetidos el orden tiene que ser fijo.
+        $orden  = $condiciones ? 'e.est_Nombre, e.est_Id' : 'e.est_Id DESC';
 
-        $con  = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
-        // Se pide una fila de más solo para saber si quedaron resultados afuera.
-        $stmt = $con->consultar(
-            "SELECT TOP " . ($limite + 1) . "
-                    e.est_Id, e.est_Codigo, e.est_Nombre, e.est_Direccion, e.est_Activo,
-                    e.est_IdContribuyente, c.ind_NumeroIdentificacion,
-                    c.ind_PrimerNombre, c.ind_PrimerApellido
-               FROM ind_establecimientos e
-               LEFT JOIN ind_contribuyentes c ON c.ind_Id = e.est_IdContribuyente
-               $filtro
-              ORDER BY $orden",
-            $parametros
+        $con   = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        $desde = "FROM ind_establecimientos e
+                  LEFT JOIN ind_contribuyentes c ON c.ind_Id = e.est_IdContribuyente";
+        $datos = \erpsoftsas\Paginacion::consultar(
+            $con,
+            'e.est_Id, e.est_Codigo, e.est_Nombre, e.est_Direccion, e.est_Activo,
+             e.est_IdContribuyente, c.ind_NumeroIdentificacion,
+             c.ind_PrimerNombre, c.ind_PrimerApellido',
+            "$desde $filtro",
+            $parametros, $orden, $pagina, $porPagina
         );
-
-        $filas = [];
-        while ($f = $con->obnerFila($stmt)) {
-            $filas[] = $f;
-        }
+        $datos['totalGeneral'] = $condiciones ? \erpsoftsas\Paginacion::contar($con, $desde) : $datos['total'];
 
         $this->_ok = 1;
-        $this->_mensaje = $filas ? 'Establecimientos encontrados' : 'Sin resultados';
+        $this->_mensaje = $datos['filas'] ? 'Establecimientos encontrados' : 'Sin resultados';
 
-        return [
-            'filas'  => array_slice($filas, 0, $limite),
-            'hayMas' => count($filas) > $limite,
-        ];
+        return $datos;
     }
 
     /**
@@ -550,11 +546,10 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
         ];
     }
 
-    /** Rol 1 = Administrador en conf_rol, igual que en class.contribuyentes.php. */
+    /** El administrador (tipo de rol, migracion 040; sin ella, el rol 1). */
     private static function _esAdministrador()
     {
-        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
-        return isset($_SESSION['id_Rol']) && (int) $_SESSION['id_Rol'] === 1;
+        return \erpsoftsas\PermisosRol::esAdministrador();
     }
 
     /**
@@ -595,9 +590,10 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
             return [];
         }
 
-        // El cese lo registra la Alcaldia. El readonly de la pantalla no basta:
-        // se quita desde la consola del navegador.
-        if (!self::_esAdministrador()) {
+        // El cese lo registra quien tenga "Registrar el cese de actividades"
+        // (antes, solo el administrador; el administrador lo tiene siempre). El
+        // readonly de la pantalla no basta: se quita desde la consola.
+        if (!\erpsoftsas\PermisosRol::tiene('alcaldia.cese')) {
             $this->_ok = 0;
             $this->_mensaje = 'Solo la Alcaldía puede registrar el cese de actividades';
             return [];
@@ -616,6 +612,35 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
         if ($fecha === '') {
             $causal = '';
             $obs    = '';
+        } else {
+            // Las mismas reglas del cierre de un local (funcion 23), que el
+            // cliente pidio tambien aqui: fecha valida, hoy o anterior (nunca
+            // futura), y la constancia de cierre cargada -"Constancia de cierre
+            // (Cámara de comercio y/o Acta de liquidación)", revisiones del 21
+            // y 31 de agosto-. Antes se aceptaba cualquier fecha y sin soporte.
+            $f = \DateTime::createFromFormat('!Y-m-d', $fecha);
+            if (!$f || $f->format('Y-m-d') !== $fecha || $fecha < '1900-01-02') {
+                $this->_ok = 0;
+                $this->_mensaje = 'Revise la fecha de cese de actividades.';
+                return [];
+            }
+            date_default_timezone_set('America/Bogota');   // "hoy" es el de Colombia
+            if ($fecha > date('Y-m-d')) {
+                $this->_ok = 0;
+                $this->_mensaje = 'La fecha de cese de actividades no puede ser posterior a hoy.';
+                return [];
+            }
+            $soporte = $con->obnerFila($con->consultar(
+                "SELECT COUNT(*) AS n FROM ind_establecimiento_anexos
+                  WHERE anx_IdContribuyente = ? AND anx_IdEstablecimiento IS NULL
+                    AND anx_Tipo = 'cese' AND anx_Activo = 1",
+                [$idContribuyente]
+            ));
+            if ((int) ($soporte['n'] ?? 0) === 0) {
+                $this->_ok = 0;
+                $this->_mensaje = 'Cargue la constancia de cierre (cámara de comercio y/o acta de liquidación) antes de guardar el cese.';
+                return [];
+            }
         }
 
         $ok = $con->consultar(
@@ -718,6 +743,29 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
      *
      * Devuelve null si esta bien, o el mensaje de rechazo.
      */
+    /**
+     * ¿Otro establecimiento ya tiene este codigo?
+     *
+     * Antes se traian TODOS los establecimientos con todas sus columnas
+     * (listarRegistros: SELECT * sin filtro) y se comparaban aqui. En
+     * produccion ese resultado paso el limite del driver de SQL Server ("Memory
+     * limit of 10240 KB exceeded for buffered query", log de Paipa del
+     * 2026-09-29) y crear o actualizar un establecimiento fallaba: era el error
+     * de "Actualizar" que en local no se reproducia (aqui hay 12 locales).
+     * Ademas, con el codigo vacio (la columna admite NULL) cualquier otro local
+     * sin codigo contaba como "repetido". Ahora se pregunta solo por ese codigo.
+     */
+    private static function _codigoRepetido($codigo, $idExcluir)
+    {
+        $codigo = trim((string) $codigo);
+        if ($codigo === '' || !ctype_digit($codigo)) { return false; }
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        return (bool) $con->obnerFila($con->consultar(
+            "SELECT TOP 1 1 AS x FROM ind_establecimientos WHERE est_Codigo = ? AND est_Id <> ?",
+            [(int) $codigo, (int) $idExcluir]
+        ));
+    }
+
     private static function _validarCodigo()
     {
         if (!isset($_POST['est_Codigo'])) { return null; }
@@ -820,8 +868,8 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
         if (session_status() === PHP_SESSION_NONE) { @session_start(); }
         if (empty($_SESSION['id_usuario'])) { return false; }
 
-        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
-        if (in_array($rol, [1, 2], true)) { return true; }
+        // Cualquier local: quien gestiona a otros contribuyentes.
+        if (\erpsoftsas\PermisosRol::gestionaOtros()) { return true; }
 
         $propio = self::_contribuyenteDeLaSesion($con);
         if (!$propio) { return false; }
@@ -847,9 +895,8 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
         // no sea Alcaldia el filtro se fija aqui, en el servidor, pisando lo
         // que haya mandado el navegador.
         if (session_status() === PHP_SESSION_NONE) { @session_start(); }
-        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
 
-        if (!in_array($rol, [1, 2], true)) {
+        if (!\erpsoftsas\PermisosRol::gestionaOtros()) {
             $propio = self::_contribuyenteDeLaSesion($con);
             if (!$propio) {
                 $this->_ok = 0;
@@ -1040,8 +1087,8 @@ $sql = "
     {
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
-        $rol = self::_rolDeLaSesion();   // abre la sesión antes de leerla
-        if (empty($_SESSION['id_usuario']) || !in_array($rol, [1, 2], true)) {
+        self::_rolDeLaSesion();   // abre la sesión antes de leerla
+        if (empty($_SESSION['id_usuario']) || !\erpsoftsas\PermisosRol::tiene('alcaldia.establecimientos.cerrar')) {
             $this->_ok = 0;
             $this->_mensaje = 'Solo la Alcaldía puede cerrar un establecimiento.';
             return [];
@@ -1151,10 +1198,12 @@ $sql = "
     {
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
-        $rol = self::_rolDeLaSesion();   // abre la sesión antes de leerla
-        if (empty($_SESSION['id_usuario']) || $rol !== 1) {
+        self::_rolDeLaSesion();   // abre la sesión antes de leerla
+        // "Reabrir establecimientos cerrados" (antes solo el administrador, que
+        // lo sigue teniendo siempre).
+        if (empty($_SESSION['id_usuario']) || !\erpsoftsas\PermisosRol::tiene('alcaldia.establecimientos.reabrir')) {
             $this->_ok = 0;
-            $this->_mensaje = 'Solo el administrador puede reabrir un establecimiento cerrado.';
+            $this->_mensaje = 'Su rol no puede reabrir un establecimiento cerrado.';
             return [];
         }
 
@@ -1268,7 +1317,7 @@ $sql = "
         // _esAdministrador() en class.contribuyentes.php (rol 1 exacto, no
         // basta con estar logueado).
         if (session_status() === PHP_SESSION_NONE) { @session_start(); }
-        $esAdmin = isset($_SESSION['id_Rol']) && (int) $_SESSION['id_Rol'] === 1;
+        $esAdmin = \erpsoftsas\PermisosRol::esAdministrador();
         if (!$esAdmin) {
             $this->_ok = 0;
             $this->_mensaje = 'No tiene permiso para cambiar el correo de contador/revisor';

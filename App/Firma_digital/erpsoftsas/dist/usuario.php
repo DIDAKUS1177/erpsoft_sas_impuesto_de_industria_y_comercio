@@ -56,7 +56,7 @@
 			<div class="card-box mb-30" id="ltsRol">
 				<div class="pd-20 d-flex justify-content-between">
 					<h4 class="h4">Listado de Usuarios</h4>
-					<button type="button" class="btn btn-outline-success" onclick="usuario.crearUsuario()"><span class="ti-plus"></span> Crear Usuario</button>
+					<button type="button" class="btn btn-outline-success" onclick="usuario.crearUsuario()" data-permiso-crear="usuarios.editar"><span class="ti-plus"></span> Crear Usuario</button>
 				</div>
 				<div class="pb-20">
 				<table id="usuariosRegistrados" class="data-table table stripe hover nowrap">

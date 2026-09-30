@@ -4,6 +4,7 @@ include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/DAO/DAO_Modulos.php';
 include_once SERVER . '/business/class.sessions.php';
 include_once SERVER.'/business/controller/class.logs.php';
+include_once SERVER . '/business/class.permisosRol.php';
 
 class Modulos extends \erpsoftsas\Cabecera {
 
@@ -12,8 +13,20 @@ class Modulos extends \erpsoftsas\Cabecera {
     private $_mensaje;   
         
     public static function run() {
-        //\erpsoftsas\SesionUsuario::verificarSesion();
-        
+        /*
+         * Sesion y "Ver roles" (panel de Roles, 2026-09-29): antes no pedia
+         * nada. Solo queda la consulta (3); los grupos de permisos los define el
+         * sistema (migracion 040), no se crean ni se editan desde la pantalla.
+         */
+        if (!\erpsoftsas\PermisosRol::tiene('roles.ver')) {
+            \erpsoftsas\PermisosRol::negar(\erpsoftsas\PermisosRol::mensaje('roles.ver'));
+            return;
+        }
+        if ((int) ($_POST['funcion'] ?? 0) !== 3) {
+            \erpsoftsas\PermisosRol::negar('Función no válida.');
+            return;
+        }
+
         $_obj = new self();
         $_obj->_funcion = $_POST['funcion'];
         
@@ -56,12 +69,12 @@ class Modulos extends \erpsoftsas\Cabecera {
         $_objModulos = new \erpsoftsas\DAO_Modulos();
         if(isset($_POST['tipo_configuracion'])){
             if (!empty($_POST['tipo_configuracion']) || $_POST['tipo_configuracion'] != NULL ) {
-                $_objModulos->set_tipo_configuracion($_POST['tipo_configuracion']);
+                $_objModulos->set_tipo_configuracion((int) $_POST['tipo_configuracion']);
             }
         }
         if(isset($_POST['id'])){
             if (!empty($_POST['id']) || $_POST['id'] != NULL ) {
-                $_objModulos->set_tipo_configuracion($_POST['id']);
+                $_objModulos->set_tipo_configuracion((int) $_POST['id']);
             }
         }
         

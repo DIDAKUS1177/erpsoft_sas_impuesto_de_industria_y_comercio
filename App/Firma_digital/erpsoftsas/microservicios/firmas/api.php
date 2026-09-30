@@ -7,6 +7,8 @@ header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-W
 
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
+// Permisos del rol (panel de Roles): los usan run() y los chequeos de dueño.
+include_once SERVER . '/business/class.permisosRol.php';
 
 class FirmasAPI
 {
@@ -15,6 +17,42 @@ class FirmasAPI
     {
         $obj = new self();
         $funcion = isset($_POST['funcion']) ? intval($_POST['funcion']) : 0;
+
+        /*
+         * Permisos por accion (panel de Roles, 2026-09-29): pedir un codigo y
+         * firmar piden "Firmar" del modulo (o "Firmar el RIT"); consultar pide
+         * "Ver". El codigo sigue yendo al correo del representante legal o del
+         * contador: el permiso deja pedirlo, no firmar por otro.
+         */
+        include_once SERVER . '/business/class.permisosRol.php';
+        $prefijo = ['ICA' => 'ica', 'RETEICA' => 'reteica', 'AUTORRETEICA' => 'autorreteica'][
+            strtoupper(trim((string) ($_POST['modulo'] ?? 'ICA')))] ?? 'ica';
+        $clave = null;
+        if ($funcion === 1) {
+            $clave = strtolower(trim((string) ($_POST['rol'] ?? ''))) === 'rit' ? 'rit.firmar' : $prefijo . '.firmar';
+        } elseif ($funcion === 7) {
+            $clave = $prefijo . '.firmar';
+        } elseif ($funcion === 8) {
+            $clave = $prefijo . '.ver';
+        } elseif ($funcion === 9) {
+            $clave = 'rit.firmar';
+        } elseif ($funcion === 10) {
+            $clave = 'rit.ver';
+        }
+        if ($clave !== null && !\erpsoftsas\PermisosRol::tiene($clave)) {
+            \erpsoftsas\PermisosRol::negar(\erpsoftsas\PermisosRol::mensaje($clave));
+            return;
+        }
+        // Las pantallas solo usan 1, 7, 9 y 10. La 2 (verificar sin firmar), 3 y
+        // 5 (guardar firmas con el usuario que llegue en la peticion), 4 y 6
+        // (devolver firmas de cualquiera) y 8 (firmantes de cualquier numero)
+        // no pedian sesion ni dueño: se cierran (revision 2026-09-29).
+        if (in_array($funcion, [2, 3, 4, 5, 6, 8], true)) {
+            header('Content-Type: application/json');
+            echo json_encode(['ok' => 0, 'mensaje' => 'Función no válida.']);
+            return;
+        }
+
         switch ($funcion) {
             case 1:
                 $obj->_generarCodigo();
@@ -487,8 +525,8 @@ class FirmasAPI
     private function _puedeFirmar($conSql, $idContribuyente)
     {
         if (session_status() === PHP_SESSION_NONE) { @session_start(); }
-        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
-        if (in_array($rol, [1, 2], true)) { return true; }
+        // Por cualquier contribuyente: quien lo gestiona (antes roles 1 y 2).
+        if (\erpsoftsas\PermisosRol::gestionaOtros()) { return true; }
 
         $propio = $this->_contribuyenteDeLaSesion($conSql);
         return $propio && (int) $propio === (int) $idContribuyente;
@@ -1094,11 +1132,11 @@ class FirmasAPI
             return ['ok' => false, 'mensaje' => 'Sesión no válida. Vuelva a ingresar.'];
         }
 
-        $rolSesion = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
         $pedido    = (int) ($_POST['id_contribuyente'] ?? 0);
         $propio    = $this->_contribuyenteDeLaSesion($conSql);
 
-        if (in_array($rolSesion, [1, 2], true)) {
+        // El RIT de cualquiera: quien gestiona contribuyentes (antes roles 1 y 2).
+        if (\erpsoftsas\PermisosRol::gestionaOtros()) {
             $id = $pedido ?: $propio;
             if (!$id) { return ['ok' => false, 'mensaje' => 'No se indicó el contribuyente.']; }
             return ['ok' => true, 'id' => $id, 'usuario' => (int) $_SESSION['id_usuario']];
@@ -1271,6 +1309,8 @@ class FirmasAPI
             // Hubo firma, pero el RIT cambio despues: la pantalla lo dice en
             // vez de mostrar un "sin firmar" que pareceria que nunca se firmo.
             'desactualizada' => $fmt($estado['desactualizada']),
+            // La misma regla que el PDF (RitFirma::opcionDeUso).
+            'opcionUso'      => \erpsoftsas\RitFirma::opcionDeUso($conSql, $idContribuyente),
         ]);
     }
 

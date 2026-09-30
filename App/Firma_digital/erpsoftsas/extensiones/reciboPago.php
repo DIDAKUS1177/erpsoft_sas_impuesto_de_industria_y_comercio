@@ -38,6 +38,8 @@
 
 require_once __DIR__ . '/pdfRetenciones.php';
 include_once SERVER . '/business/class.vencimientoICA.php';
+include_once SERVER . '/business/class.parametros.php';
+include_once SERVER . '/business/class.permisosRol.php';
 
 // "Hoy" es el de Colombia (emisión y "pague antes de"): con el servidor en UTC,
 // desde las 7 p. m. el recibo salía con la fecha de mañana.
@@ -206,7 +208,9 @@ $m = $MODULOS[$modulo];
 $p = $m['prefijo'];
 
 $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
-$row = pdfret_filaAutorizada($con, $m['tabla'], $p, $_GET['id'] ?? 0);
+// "Recibo de pago y PSE" del modulo (panel de Roles, 2026-09-29).
+$row = pdfret_filaAutorizada($con, $m['tabla'], $p, $_GET['id'] ?? 0,
+                             ['ICA' => 'ica', 'RETEICA' => 'reteica', 'AUTORRETEICA' => 'autorreteica'][$modulo] . '.pagar');
 
 if ((int) ($row[$p . 'Estado'] ?? 0) !== 2) {
     recibo_salir('El recibo de pago se genera cuando la declaración ya está presentada.');
@@ -261,9 +265,10 @@ if ($modulo === 'ICA') {
         'INTERESES DE MORA'                  => 16,
     ];
     foreach ($mapa as $nombre => $columna) {
-        $conceptos[] = [$nombre, (float) ($row['dec_ValorConcepto' . $columna] ?? 0)];
+        $conceptos[] = [$nombre, (float) ($row['dec_ValorConcepto' . $columna] ?? 0), $columna];
     }
     $subtotal = (float) ($row['dec_ValorConcepto20'] ?? 0);
+    $renglonIntereses = 16;
 } else {
     $numero  = (string) ($row[$p . 'NumeroDeclaracion'] ?: $row[$p . 'Id']);
     $anio    = (int) $row[$p . 'Anio'];
@@ -289,9 +294,13 @@ if ($modulo === 'ICA') {
         $conceptos[] = [
             mb_strtoupper((string) $r['ren_Nombre'], 'UTF-8'),
             (float) ($row[$p . 'ValorConcepto' . (int) $r['ren_Codigo']] ?? 0),
+            (int) $r['ren_Codigo'],
         ];
     }
     $subtotal = (float) ($row[$p . 'ValorConcepto' . $renglonTotal] ?? 0);
+    // Intereses de la declaración: retención 16 (INTERESES MORATORIOS) y
+    // autorretención 21 (INTERESES).
+    $renglonIntereses = ($modulo === 'RETEICA') ? 16 : 21;
 }
 
 if ($subtotal <= 0) {
@@ -318,7 +327,9 @@ if ($icaAlDia) {
 $vence   = date('d/m/Y', strtotime($venceIso));
 $emision = date('d/m/Y');
 
-$esAlcaldia = in_array((int) ($_SESSION['id_Rol'] ?? 0), [1, 2], true);
+// Quien liquida intereses en el recibo ("Recibos con intereses de mora";
+// antes, los roles 1 y 2): escribe los intereses y puede dejarlos en 0.
+$esAlcaldia = \erpsoftsas\PermisosRol::tiene('alcaldia.recibo.intereses');
 
 $municipio  = 'MUNICIPIO DE ' . mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8');
 $ubicacion  = mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8') . ' - ' . mb_strtoupper(MUNICIPIO_DEPARTAMENTO, 'UTF-8');
@@ -477,12 +488,22 @@ $fila = function ($concepto, $valor, $estilo = '') use ($LINEA, $SUAVE) {
          . '<td width="28%" align="right" bgcolor="' . $SUAVE . '" style="' . $LINEA . $estilo . '">'
          . recibo_pesos($valor) . '</td></tr>';
 };
+/*
+ * UNA sola línea de intereses (cliente, 2026-09-29: "están repetidas las
+ * casillas de intereses"). Salían dos: el renglón de intereses de la
+ * declaración (el que liquidó el contribuyente al presentar) y la línea
+ * "INTERESES DE MORA AL <fecha>" del recibo. Ahora el renglón de la
+ * declaración no se lista, el SUBTOTAL va sin él y la única línea de intereses
+ * suma los dos. El TOTAL A PAGAR (y el código de barras) no cambia.
+ */
+$interesesDeclaracion = 0.0;
 $filas = '';
 foreach ($conceptos as $c) {
+    if (($c[2] ?? null) === $renglonIntereses) { $interesesDeclaracion += $c[1]; continue; }
     $filas .= $fila(recibo_h($c[0]), $c[1]);
 }
-$filas .= $fila('<b>SUBTOTAL</b>', $subtotal, 'font-weight:bold;')
-        . $fila('INTERESES DE MORA AL ' . recibo_h($vence), $intereses);
+$filas .= $fila('<b>SUBTOTAL</b>', $subtotal - $interesesDeclaracion, 'font-weight:bold;')
+        . $fila('INTERESES DE MORA AL ' . recibo_h($vence), $interesesDeclaracion + $intereses);
 
 $pdf->writeHTML(
     '<style> td { font-size: 7.5px; } </style>
@@ -495,6 +516,21 @@ $pdf->writeHTML(
     </table>',
     true, false, true, false, ''
 );
+
+/*
+ * Bancos autorizados (cliente, 2026-09-29): "Páguese en: BANCOS: ..." como en
+ * las demás facturas del municipio, con banco y número de cuenta. Salen del
+ * parámetro RECIBO_BANCOS (Municipio y bancos, migración 039), para que cada
+ * municipio tenga los suyos; vacío, no se imprime.
+ */
+$bancosRecibo = \erpsoftsas\Parametros::valorOConstante('RECIBO_BANCOS', 'MUNICIPIO_BANCOS_RECIBO');
+if ($bancosRecibo !== null) {
+    $pdf->writeHTML(
+        '<table cellpadding="2" width="100%"><tr><td style="font-size:7.5px; border: 0.3px solid #c3c8d0;">'
+        . '<b>Páguese en: BANCOS:</b> ' . recibo_h($bancosRecibo) . '</td></tr></table>',
+        true, false, true, false, ''
+    );
+}
 
 if ($liquidador !== '') {
     $pdf->SetFont('helvetica', '', 7.5);

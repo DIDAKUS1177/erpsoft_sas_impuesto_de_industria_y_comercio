@@ -1,4 +1,26 @@
 <?php
+
+/*
+ * Renglon 31: la opcion de sancion elegida sale marcada (migracion 038). Antes
+ * se imprimian las cuatro sin marcar ninguna, porque el tipo no se guardaba.
+ */
+if (!function_exists('textoSancionesRenglon31')) {
+    function textoSancionesRenglon31(array $fila, $separador) {
+        $tipo = strtolower(trim((string) ($fila['dec_TipoSancion'] ?? '')));
+        $opciones = ['extemporaneidad' => 'Extemporaneidad', 'correccion' => 'Corrección',
+                     'inexactitud' => 'Inexactitud', 'otra' => 'Otra'];
+        $partes = [];
+        foreach ($opciones as $clave => $nombre) {
+            $partes[] = ($tipo === $clave ? '(X) ' : '') . $nombre;
+        }
+        // Recortado: mas largo parte el renglon en dos y el codigo de barras
+        // se sale del papel (el formulario cierra a 0,3 mm del borde).
+        $cual = $tipo === 'otra'
+            ? htmlspecialchars(mb_strimwidth(trim((string) ($fila['dec_OtraSancion'] ?? '')), 0, 40, '...', 'UTF-8'), ENT_QUOTES, 'UTF-8')
+            : '';
+        return 'SANCIONES: ' . implode($separador, $partes) . ' ¿Cuál?' . ($cual !== '' ? ' ' . $cual : '');
+    }
+}
 require_once('tcpdf/tcpdf.php');
 require_once('tcpdf/tcpdf_barcodes_1d.php');
 
@@ -210,8 +232,11 @@ function _declaracionEsDeLaSesion($idDeclaracion, $con)
     if (session_status() === PHP_SESSION_NONE) { @session_start(); }
     if (empty($_SESSION['id_usuario'])) { return false; }
 
-    $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
-    if (in_array($rol, [1, 2], true)) { return true; }
+    // "Ver y descargar declaraciones" del ICA; la de cualquiera, quien gestiona
+    // contribuyentes (panel de Roles, 2026-09-29; antes roles 1 y 2).
+    include_once SERVER . '/business/class.permisosRol.php';
+    if (!\erpsoftsas\PermisosRol::tiene('ica.ver')) { return false; }
+    if (\erpsoftsas\PermisosRol::gestionaOtros()) { return true; }
 
     $propia = $con->obnerFila($con->consultar(
         "SELECT d.dec_Id
@@ -1169,7 +1194,7 @@ $html = '
 
 <tr>
 <td width="3%">31</td>
-<td width="72%"><b>SANCIONES: Extemporaneidad Corrección Inexactitud Otra ¿Cuál?</b></td>
+<td width="72%"><b>'.textoSancionesRenglon31($row, ' ').'</b></td>
 <td width="20%" align="right">'.$d['sanciones'].'</td>
 </tr>
 
@@ -1204,8 +1229,7 @@ $html = '
 <tr>
 <td width="5%" rowspan="4" bgcolor="#e1dada"></td>
 <td width="3%">35</td>
-<td width="52%"><b>VALOR A PAGAR Sin Pago</b></td>
-<td width="20%"><b>Sin Pago</b></td>
+<td width="72%"><b>VALOR A PAGAR</b></td>
 <td width="20%" align="right">'.$d['valor_pagar'].'</td>
 </tr>
 
@@ -1557,11 +1581,18 @@ if ($estaPresentada && !$estaVencida) {
         0, 0, 'C'
     );
 } elseif ($estaVencida) {
+    // Texto del cliente (2026-09-29). Tres renglones de 3,5 mm centrados en el
+    // recuadro del codigo de barras.
     $pdf->SetFont('helvetica', 'B', 7);
-    $pdf->SetXY($xBloque, $yBarcode + ($altoBarcode / 2) - 4);
-    $pdf->MultiCell($mitad, 4,
-        "DECLARACIÓN VENCIDA EL " . $d['fecha_max'] . "\n"
-        . "Para pagarla, genere el recibo de pago", 0, 'C');
+    $pdf->SetXY($xBloque, $yBarcode + ($altoBarcode / 2) - 5.25);
+    $pdf->MultiCell($mitad, 3.5,
+        // Sin valor a pagar (saldo a favor), el recibo y PSE la rechazan: no
+        // se les manda alla.
+        ((float) ($row['dec_ValorConcepto20'] ?? 0) > 0
+            ? "DECLARACIÓN PRESENTADA SIN PAGO\n"
+              . "PARA PAGO EN BANCOS GENERE EL RECIBO DE PAGO\n"
+              . "O PÁGUELA POR PSE"
+            : "DECLARACIÓN PRESENTADA\nSIN VALOR A PAGAR"), 0, 'C');
 } else {
     $pdf->SetFont('helvetica', 'I', 6);
     $pdf->SetXY($xBloque, $yBarcode + ($altoBarcode / 2) - 2);

@@ -1,4 +1,26 @@
 <?php
+
+/*
+ * Renglon 31: la opcion de sancion elegida sale marcada (migracion 038). Antes
+ * se imprimian las cuatro sin marcar ninguna, porque el tipo no se guardaba.
+ */
+if (!function_exists('textoSancionesRenglon31')) {
+    function textoSancionesRenglon31(array $fila, $separador) {
+        $tipo = strtolower(trim((string) ($fila['dec_TipoSancion'] ?? '')));
+        $opciones = ['extemporaneidad' => 'Extemporaneidad', 'correccion' => 'Corrección',
+                     'inexactitud' => 'Inexactitud', 'otra' => 'Otra'];
+        $partes = [];
+        foreach ($opciones as $clave => $nombre) {
+            $partes[] = ($tipo === $clave ? '(X) ' : '') . $nombre;
+        }
+        // Recortado: mas largo parte el renglon en dos y el codigo de barras
+        // se sale del papel (el formulario cierra a 0,3 mm del borde).
+        $cual = $tipo === 'otra'
+            ? htmlspecialchars(mb_strimwidth(trim((string) ($fila['dec_OtraSancion'] ?? '')), 0, 40, '...', 'UTF-8'), ENT_QUOTES, 'UTF-8')
+            : '';
+        return 'SANCIONES: ' . implode($separador, $partes) . ' ¿Cuál?' . ($cual !== '' ? ' ' . $cual : '');
+    }
+}
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
 include_once SERVER . '/business/class.codigoBarrasRecaudo.php';
@@ -86,8 +108,11 @@ function _liquidacionEsDeLaSesion($idDeclaracion, $con)
     if (session_status() === PHP_SESSION_NONE) { @session_start(); }
     if (empty($_SESSION['id_usuario'])) { return false; }
 
-    $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
-    if (in_array($rol, [1, 2], true)) { return true; }
+    // "Ver y descargar declaraciones" del ICA; la de cualquiera, quien gestiona
+    // contribuyentes (panel de Roles, 2026-09-29; antes roles 1 y 2).
+    include_once SERVER . '/business/class.permisosRol.php';
+    if (!\erpsoftsas\PermisosRol::tiene('ica.ver')) { return false; }
+    if (\erpsoftsas\PermisosRol::gestionaOtros()) { return true; }
 
     $propia = $con->obnerFila($con->consultar(
         "SELECT d.dec_Id
@@ -655,7 +680,7 @@ IMPUESTO DE INDUSTRIA Y COMERCIO
 <tr><td></td><td>27 MENOS RETENCIONES QUE LE PRACTICARON A FAVOR DE ESTE MUNICIPIO O DISTRITO EN ESTE PERÍODO</td><td align="right">' . moneyCol($vlr_27_menos_retenciones) . '</td></tr>
 <tr><td></td><td>28 MENOS ANTICIPO LIQUIDADO EN EL AÑO ANTERIOR</td><td align="right">' . moneyCol($vlr_28_menos_anticipo_anterior) . '</td></tr>
 <tr><td></td><td>29 ANTICIPO DEL AÑO SIGUIENTE, según el acuerdo municipal o distrital</td><td align="right">' . moneyCol($vlr_29_anticipo_anio_sgte) . '</td></tr>
-<tr><td>31</td><td>SANCIONES: Extemporaneidad&nbsp;&nbsp;&nbsp;Corrección&nbsp;&nbsp;&nbsp;Inexactitud&nbsp;&nbsp;&nbsp;Otra ¿Cuál?</td><td align="right">' . moneyCol($vlr_31_sanciones) . '</td></tr>
+<tr><td>31</td><td>' . textoSancionesRenglon31($row, '&nbsp;&nbsp;&nbsp;') . '</td><td align="right">' . moneyCol($vlr_31_sanciones) . '</td></tr>
 <tr><td>32</td><td>MENOS SALDO A FAVOR DEL PERÍODO ANTERIOR SIN SOLICITUD DE DEVOLUCIÓN O COMPENSACIÓN</td><td align="right">' . moneyCol($vlr_32_menos_saldo_favor_ant) . '</td></tr>
 <tr bgcolor="#cae6e7"><td>33</td><td><b>TOTAL SALDO A CARGO (Renglón 25-26-27-28-29+30+31-32)</b></td><td align="right"><b>' . moneyCol($vlr_33_total_saldo_cargo) . '</b></td></tr>
 <tr><td>35</td><td><b>VALOR A PAGAR</b></td><td align="right"><b>' . moneyCol($vlr_35_valor_a_pagar) . '</b></td></tr>
@@ -827,11 +852,17 @@ if ($estaPresentada && !$estaVencida) {
         0, 0, 'C'
     );
 } elseif ($estaVencida) {
+    // El mismo texto de la declaracion (cliente, 2026-09-29).
     $pdf->SetFont('helvetica', 'B', 6);
     $pdf->SetXY($xBloque, $yBarcode);
     $pdf->MultiCell($mitad, 3.5,
-        "DECLARACIÓN VENCIDA EL " . $fecha_max_presentacion . "\n"
-        . "Para pagarla, genere el recibo de pago", 0, 'C');
+        // Sin valor a pagar (saldo a favor), el recibo y PSE la rechazan: no
+        // se les manda alla.
+        ((float) ($row['dec_ValorConcepto20'] ?? 0) > 0
+            ? "DECLARACIÓN PRESENTADA SIN PAGO\n"
+              . "PARA PAGO EN BANCOS GENERE EL RECIBO DE PAGO\n"
+              . "O PÁGUELA POR PSE"
+            : "DECLARACIÓN PRESENTADA\nSIN VALOR A PAGAR"), 0, 'C');
 } else {
     $pdf->SetFont('helvetica', 'I', 6);
     $pdf->SetXY($xBloque, $yBarcode + ($altoBarcode / 2) - 2);

@@ -4,6 +4,7 @@ namespace erpsoftsas;
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/DAO/DAO_Contribuyentes.php';
 include_once SERVER . '/business/class.sessions.php';
+include_once SERVER . '/business/class.permisosRol.php';
 include_once SERVER . '/business/controller/class.logs.php';
 
 class ControladorContribuyentes extends \erpsoftsas\Cabecera 
@@ -50,14 +51,44 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
             return 'Debe iniciar sesión.';
         }
 
-        $rol     = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
         $funcion = (int) ($_POST['funcion'] ?? 0);
 
-        if (in_array($rol, [1, 2], true)) { return null; }
+        /*
+         * Permisos por accion (panel de Roles, 2026-09-29). Antes: roles 1 y 2
+         * podian todo y el resto solo su RIT. Ahora cada funcion pide su
+         * interruptor, y trabajar sobre OTRO contribuyente pide ademas
+         * "Gestionar a un contribuyente" (puedeOperarSobreContribuyente).
+         */
+        $necesita = [
+            1 => 'alcaldia.contribuyentes.editar',
+            2 => 'alcaldia.contribuyentes.editar',
+            4 => 'alcaldia.contribuyentes.editar',
+            5 => 'alcaldia.contribuyentes.ver',
+            6 => 'rit.ver',
+            7 => 'rit.editar',
+            8 => 'rit.editar',
+        ][$funcion] ?? null;
 
-        // 1 agregar · 2 editar · 4 inactivar · 5 buscar en todo el padron
+        if (\erpsoftsas\PermisosRol::esAlcaldia()) {
+            if ($funcion === 3) {
+                // La ficha: quien busca contribuyentes o quien trabaja como uno.
+                return \erpsoftsas\PermisosRol::tieneAlguno(['alcaldia.contribuyentes.ver', 'alcaldia.contribuyentes.gestionar'])
+                    ? null : \erpsoftsas\PermisosRol::mensaje('alcaldia.contribuyentes.ver');
+            }
+            if ($necesita !== null && !\erpsoftsas\PermisosRol::tiene($necesita)) {
+                return \erpsoftsas\PermisosRol::mensaje($necesita);
+            }
+            return null;
+        }
+
         if (in_array($funcion, [1, 2, 4, 5], true)) {
             return 'No tiene permiso sobre el registro de contribuyentes.';
+        }
+        if ($necesita !== null && !\erpsoftsas\PermisosRol::tiene($necesita)) {
+            return \erpsoftsas\PermisosRol::mensaje($necesita);
+        }
+        if ($funcion === 3 && !\erpsoftsas\PermisosRol::tieneAlguno(['rit.ver', 'establecimientos.ver', 'ica.ver', 'reteica.ver', 'autorreteica.ver'])) {
+            return \erpsoftsas\PermisosRol::mensaje('rit.ver');
         }
 
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
@@ -352,13 +383,38 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         }
         $v = $leido['valores'];
 
-        $repetido = self::_documentoRepetido($con, $v['ind_NumeroIdentificacion']);
-        if ($repetido !== null) {
-            $this->_ok = 0;
-            $this->_mensaje = 'Ya existe un contribuyente con ese número de documento. '
-                            . 'Búsquelo en esta pantalla y use "Gestionar" en vez de crear otro.';
-            return ['repetido' => $repetido];
-        }
+        /*
+         * Revisar y crear bajo el MISMO candado (cliente, 2026-09-29: "dejó
+         * repetir el NIT"). La revision ya existia desde el 28-09, pero sin
+         * candado dos pedidos al mismo tiempo -doble clic, o dos funcionarios
+         * con la misma ficha- pasaban los dos la revision antes de que el otro
+         * insertara. Lo usa tambien la creacion de cuentas (class.usuarios.php).
+         */
+        $con->begin();
+        try {
+            // Con su resultado: si no se obtiene (otro registro tarda mas de
+            // 15 s), no se sigue sin el.
+            $candado = $con->obnerFila($con->consultar(
+                "SET NOCOUNT ON; DECLARE @r INT;
+                 EXEC @r = sp_getapplock @Resource = 'erp_contribuyente_documento', @LockMode = 'Exclusive',
+                                         @LockOwner = 'Transaction', @LockTimeout = 15000;
+                 SELECT @r AS r;"
+            ));
+            if (!$candado || (int) $candado['r'] < 0) {
+                $con->rollback();
+                $this->_ok = 0;
+                $this->_mensaje = 'El sistema está registrando otro contribuyente en este momento. Intente de nuevo en unos segundos.';
+                return [];
+            }
+
+            $repetido = self::_documentoRepetido($con, $v['ind_NumeroIdentificacion']);
+            if ($repetido !== null) {
+                $con->rollback();
+                $this->_ok = 0;
+                $this->_mensaje = 'Ya existe un contribuyente con ese número de documento. '
+                                . 'Búsquelo en esta pantalla y use "Gestionar" en vez de crear otro.';
+                return ['repetido' => $repetido];
+            }
 
         // Persona juridica: sin segundo nombre ni apellidos (la razon social va
         // entera en el primer nombre), igual que en el RIT.
@@ -370,21 +426,26 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         $dv = ($v['ind_IdTipoDocumento'] === 5)
             ? \erpsoftsas\DAO_Contribuyentes::digitoVerificacion($v['ind_NumeroIdentificacion']) : 0;
 
-        $fila = $con->obnerFila($con->consultar(
-            "SET NOCOUNT ON;
-             INSERT INTO ind_contribuyentes
-                 (ind_NumeroIdentificacion, ind_DV, ind_IdTipoDocumento, ind_PrimerNombre, ind_SegundoNombre,
-                  ind_PrimerApellido, ind_SegundoApellido, ind_Direccion, ind_IdCiudad, ind_Persona,
-                  ind_IdRegimen, ind_Telefono, ind_Email, ind_Estado)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1);
-             SELECT CAST(SCOPE_IDENTITY() AS INT) AS id;",
-            [
-                $v['ind_NumeroIdentificacion'], $dv, $v['ind_IdTipoDocumento'], $v['ind_PrimerNombre'],
-                $v['ind_SegundoNombre'] ?? null, $v['ind_PrimerApellido'] ?? null, $v['ind_SegundoApellido'] ?? null,
-                $v['ind_Direccion'], $v['ind_IdCiudad'], $v['ind_Persona'],
-                $v['ind_IdRegimen'] ?? null, $v['ind_Telefono'] ?? null, $v['ind_Email'] ?? null,
-            ]
-        ));
+            $fila = $con->obnerFila($con->consultar(
+                "SET NOCOUNT ON;
+                 INSERT INTO ind_contribuyentes
+                     (ind_NumeroIdentificacion, ind_DV, ind_IdTipoDocumento, ind_PrimerNombre, ind_SegundoNombre,
+                      ind_PrimerApellido, ind_SegundoApellido, ind_Direccion, ind_IdCiudad, ind_Persona,
+                      ind_IdRegimen, ind_Telefono, ind_Email, ind_Estado)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1);
+                 SELECT CAST(SCOPE_IDENTITY() AS INT) AS id;",
+                [
+                    $v['ind_NumeroIdentificacion'], $dv, $v['ind_IdTipoDocumento'], $v['ind_PrimerNombre'],
+                    $v['ind_SegundoNombre'] ?? null, $v['ind_PrimerApellido'] ?? null, $v['ind_SegundoApellido'] ?? null,
+                    $v['ind_Direccion'], $v['ind_IdCiudad'], $v['ind_Persona'],
+                    $v['ind_IdRegimen'] ?? null, $v['ind_Telefono'] ?? null, $v['ind_Email'] ?? null,
+                ]
+            ));
+            $con->commit();
+        } catch (\Throwable $e) {
+            try { $con->rollback(); } catch (\Throwable $e2) { /* ya cerrada */ }
+            throw $e;
+        }
 
         $id = (int) ($fila['id'] ?? 0);
         $this->_ok = 1;
@@ -640,8 +701,12 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         // (a diferencia de _consultarRIT/_guardarRIT, que si usan '?'). Un
         // valor como "x%' OR ind_Id=30 --" devolvia filas de OTRO contribuyente:
         // inyeccion SQL clasica, confirmada con extraccion real de datos.
-        $limite   = 20;
-        $palabras = preg_split('/\s+/', trim((string) ($_POST['buscar'] ?? '')), -1, PREG_SPLIT_NO_EMPTY);
+        //
+        // Paginado (cliente, 2026-09-29): de a 5, 10, 20, 50 o 100, con el total
+        // y cuantos hay registrados (class.paginacion.php).
+        include_once SERVER . '/business/class.paginacion.php';
+        [$pagina, $porPagina] = \erpsoftsas\Paginacion::leerPedido($_POST);
+        $palabras= preg_split('/\s+/', trim((string) ($_POST['buscar'] ?? '')), -1, PREG_SPLIT_NO_EMPTY);
         $palabras = array_slice($palabras, 0, 5);
 
         $condiciones = [];
@@ -670,31 +735,25 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         }
 
         $filtro = $condiciones ? 'WHERE ' . implode(' AND ', $condiciones) : '';
-        $orden  = $condiciones ? 'ind_PrimerNombre, ind_PrimerApellido' : 'ind_Id DESC';
-
-        // Se pide una fila de más solo para saber si quedaron resultados afuera.
-        $sql = "SELECT TOP " . ($limite + 1) . "
-                       ind_Id, ind_NumeroIdentificacion, ind_PrimerNombre,
-                       ind_PrimerApellido, ind_Direccion, ind_Estado
-                  FROM ind_contribuyentes
-                  $filtro
-                 ORDER BY $orden";
+        // ind_Id de desempate: con nombres repetidos el orden tiene que ser fijo
+        // o una fila podria salir en dos paginas (o en ninguna).
+        $orden  = $condiciones ? 'ind_PrimerNombre, ind_PrimerApellido, ind_Id' : 'ind_Id DESC';
 
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
-        $id  = $con->consultar($sql, $parametros);
-
-        $filas = [];
-        while ($fila = $con->obnerFila($id)) {
-            $filas[] = $fila;
-        }
+        $datos = \erpsoftsas\Paginacion::consultar(
+            $con,
+            'ind_Id, ind_NumeroIdentificacion, ind_PrimerNombre, ind_PrimerApellido, ind_Direccion, ind_Estado',
+            "FROM ind_contribuyentes $filtro",
+            $parametros, $orden, $pagina, $porPagina
+        );
+        $datos['totalGeneral'] = $condiciones
+            ? \erpsoftsas\Paginacion::contar($con, 'FROM ind_contribuyentes')
+            : $datos['total'];
 
         $this->_ok = 1;
-        $this->_mensaje = $filas ? 'Contribuyentes encontrados' : 'Sin resultados';
+        $this->_mensaje = $datos['filas'] ? 'Contribuyentes encontrados' : 'Sin resultados';
 
-        return [
-            'filas'  => array_slice($filas, 0, $limite),
-            'hayMas' => count($filas) > $limite,
-        ];
+        return $datos;
     }
 
     /* ======================================================================
@@ -892,13 +951,8 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
 
     private static function _esAdministrador()
     {
-        // La sesion se abre en class.sessions.php, pero este controlador puede
-        // entrar sin que se haya llamado todavia. Sin este arranque, $_SESSION
-        // llega vacio y TODO el mundo pareceria no-administrador.
-        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
-
-        // Rol 1 = Administrador en conf_rol.
-        return isset($_SESSION['id_Rol']) && (int) $_SESSION['id_Rol'] === 1;
+        // El administrador (tipo de rol, migracion 040; sin ella, el rol 1).
+        return \erpsoftsas\PermisosRol::esAdministrador();
     }
 
     /**
@@ -922,8 +976,9 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
 
         if (empty($_SESSION['id_usuario'])) { return false; }
 
-        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
-        if (in_array($rol, [1, 2], true)) { return true; }
+        // Cualquier contribuyente: un rol de la Alcaldia con "Gestionar a un
+        // contribuyente" (antes: roles 1 y 2 por numero).
+        if (\erpsoftsas\PermisosRol::gestionaOtros()) { return true; }
 
         $propio = $con->obnerFila($con->consultar(
             "SELECT c.ind_Id

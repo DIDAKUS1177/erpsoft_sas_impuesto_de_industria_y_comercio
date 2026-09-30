@@ -257,8 +257,8 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 				     demás no lo ve (no tiene esos permisos). -->
 
 				<!-- CONTRIBUYENTES: antes en Administración ICA > Datos Básicos > Contribuyentes. -->
-				<li class="dropdown menu_1639" id="MContribuyentes">
-					<a id="ICA_Contribuyentes" onclick="menu.validarIngreso(1639,4)" class="dropdown-toggle no-arrow" style="cursor:pointer;" title="Buscar un contribuyente y gestionarlo">
+				<li class="dropdown" id="MContribuyentes" data-permiso="alcaldia.contribuyentes.ver">
+					<a id="ICA_Contribuyentes" onclick="menu.validarIngreso('alcaldia.contribuyentes.ver',4)" class="dropdown-toggle no-arrow" style="cursor:pointer;" title="Buscar un contribuyente y gestionarlo">
 						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
 						<span class="mtext">Contribuyentes</span>
 					</a>
@@ -267,15 +267,15 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 				<!-- ESTABLECIMIENTOS (todos los del municipio): directorio de la Alcaldía
 				     (retro cliente 2026-09-24). No reemplaza al "Establecimientos" del
 				     bloque del contribuyente gestionado, que es donde se editan. -->
-				<li class="dropdown menu_1639" id="MEstablecimientosTodos">
-					<a id="ICA_EstablecimientosTodos" onclick="menu.validarIngreso(1639,13)" class="dropdown-toggle no-arrow" style="cursor:pointer;" title="Todos los establecimientos del municipio">
+				<li class="dropdown" id="MEstablecimientosTodos" data-permiso="alcaldia.establecimientos.ver">
+					<a id="ICA_EstablecimientosTodos" onclick="menu.validarIngreso('alcaldia.establecimientos.ver',13)" class="dropdown-toggle no-arrow" style="cursor:pointer;" title="Todos los establecimientos del municipio">
 						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><line x1="9" y1="9" x2="9" y2="9.01"/><line x1="9" y1="13" x2="9" y2="13.01"/><line x1="9" y1="17" x2="9" y2="17.01"/><line x1="15" y1="9" x2="15" y2="9.01"/><line x1="15" y1="13" x2="15" y2="13.01"/><line x1="15" y1="17" x2="15" y2="17.01"/></svg></span>
 						<span class="mtext">Establecimientos</span>
 					</a>
 				</li>
 
-				<!-- Rótulo "Gestionando a X" del bloque del contribuyente. Sin clase menu_:
-				     solo lo muestra ContribActivo (rol 1, con alguien elegido). -->
+				<!-- Rótulo "Gestionando a X" del bloque del contribuyente. Sin data-permiso:
+				     solo lo muestra ContribActivo (quien gestiona, con alguien elegido). -->
 				<li class="menu-gestionando" id="MGestionando" style="display: none;">
 					<span class="menu-gestionando-titulo">Gestionando a</span>
 					<span class="menu-gestionando-nombre"></span>
@@ -284,17 +284,16 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 				<!-- RIT: el cliente pidio sacarlo de "Industria y Comercio" porque el
 				     Registro de Informacion Tributaria aplica a TODOS los modulos, no
 				     solo a ICA. Va de primero, justo despues de Inicio. -->
-				<!-- La clase menu_XXXX NO es decorativa: menu.js
-				     (mostrarMenuPorPermisos) arranca ocultando TODO el menu y
-				     solo vuelve a mostrar los <li> que tengan la clase
-				     menu_<idBoton> de un permiso activo del rol. Un item sin
-				     esa clase queda invisible para cualquier rol que no sea el
-				     administrador (rol 1), que se muestra entero por atajo.
-				     Por eso RIT y Establecimientos, que se agregaron como items
-				     de primer nivel en la Fase 4, no aparecian para el usuario
-				     externo aunque su rol SI tuviera los permisos 1641 y 1640. -->
-				<li class="dropdown menu_1641" id="MRIT">
-					<a id="ICAWeb_RIT" onclick="menu.validarIngreso(1641,101)" class="dropdown-toggle no-arrow" style="cursor:pointer;" title="Registro de Información Tributaria">
+				<!-- data-permiso NO es decorativo: menu.js (mostrarMenuPorPermisos)
+				     arranca ocultando TODO el menu y solo muestra los <li> cuyo
+				     interruptor (panel de Roles) tenga el rol; varios separados por
+				     espacio = "alguno". Un item sin data-permiso queda invisible
+				     (menos Inicio). data-contribuyente marca las pantallas de UN
+				     contribuyente: para la Alcaldia son las de quien gestiona y solo
+				     aparecen con alguien elegido (ContribActivo). Hasta el
+				     2026-09-29 eran clases menu_<boton> (1639, 1640, 1641...). -->
+				<li class="dropdown" id="MRIT" data-permiso="rit.ver" data-contribuyente>
+					<a id="ICAWeb_RIT" onclick="menu.validarIngreso('rit.ver',101)" class="dropdown-toggle no-arrow" style="cursor:pointer;" title="Registro de Información Tributaria">
 						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="7" y1="16" x2="13" y2="16"/></svg></span>
 						<!-- El nombre completo no cabe en el ancho del menu lateral y se
 						     veia cortado a la mitad ("Registro de Identificación Tri...").
@@ -324,20 +323,19 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 				  los tres sugiere que pertenecen solo a ese. Van arriba, junto al
 				  RIT, que es el otro dato transversal del contribuyente.
 
-				  Sigue con el permiso 1640: mover el elemento en el menu no cambia
-				  quien puede entrar. menu.js muestra `.menu_<boton>` y su
-				  `li.dropdown` contenedor, asi que como elemento de primer nivel
-				  la clase va en el propio <li>, igual que en el RIT.
+				  Mover el elemento en el menu no cambia quien puede entrar: lo
+				  decide su interruptor ("Ver establecimientos", data-permiso del
+				  propio <li>, igual que en el RIT; antes, el boton 1640).
 				-->
-				<li class="dropdown menu_1640" id="MEstablecimientos">
-					<a id="ICAWeb_Establecimientos" onclick="menu.validarIngreso(1640,7)" class="dropdown-toggle no-arrow" style="cursor:pointer;" title="Establecimientos del contribuyente">
+				<li class="dropdown" id="MEstablecimientos" data-permiso="establecimientos.ver" data-contribuyente>
+					<a id="ICAWeb_Establecimientos" onclick="menu.validarIngreso('establecimientos.ver',7)" class="dropdown-toggle no-arrow" style="cursor:pointer;" title="Establecimientos del contribuyente">
 						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><line x1="9" y1="9" x2="9" y2="9.01"/><line x1="9" y1="13" x2="9" y2="13.01"/><line x1="9" y1="17" x2="9" y2="17.01"/><line x1="15" y1="9" x2="15" y2="9.01"/><line x1="15" y1="13" x2="15" y2="13.01"/><line x1="15" y1="17" x2="15" y2="17.01"/></svg></span>
 						<span class="mtext">Establecimientos</span>
 					</a>
 				</li>
 
 				<!-- ICA WEB → INDUSTRIA Y COMERCIO -->
-				<li class="dropdown" id="MICAWeb">
+				<li class="dropdown" id="MICAWeb" data-contribuyente>
 					<a href="javascript:;" class="dropdown-toggle">
 						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>
 						<span class="mtext">Industria y Comercio</span>
@@ -348,14 +346,14 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 						<!-- Establecimientos ya NO esta aqui: subio a primer nivel, junto
 						     al RIT. Ver la nota en ese bloque. -->
 
-						<li class="menu_1641">
-							<a id="ICAWeb_Presentar" onclick="menu.validarIngreso(1641,103)">
+						<li data-permiso="ica.editar ica.firmar ica.presentar">
+							<a id="ICAWeb_Presentar" onclick="menu.validarIngreso('ica.editar ica.firmar ica.presentar',103)">
 								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></i> Presentar Declaración
 							</a>
 						</li>
 
-						<li class="menu_1641">
-							<a id="ICAWeb_Declaraciones" onclick="menu.validarIngreso(1641,102)">
+						<li data-permiso="ica.ver">
+							<a id="ICAWeb_Declaraciones" onclick="menu.validarIngreso('ica.ver',102)">
 								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></i>
 								Consultar Declaraciones
 							</a>
@@ -365,7 +363,7 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 				</li>
 
 				<!-- RETE ICA → RETENCIÓN ICA -->
-				<li class="dropdown" id="MReteICA">
+				<li class="dropdown" id="MReteICA" data-contribuyente>
 					<a href="javascript:;" class="dropdown-toggle">
 						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M8 3h8M5 8l-3 6a4 4 0 0 0 8 0z"/><path d="M19 8l-3 6a4 4 0 0 0 8 0z"/><path d="M3 8h5M16 8h5"/></svg></span>
 						<span class="mtext">Retención ICA</span>
@@ -373,14 +371,14 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 
 					<ul class="submenu" id="SubReteICA">
 
-						<li class="menu_1643">
-							<a id="ReteICA_Presentar" onclick="menu.validarIngreso(1643,105)">
+						<li data-permiso="reteica.editar reteica.firmar reteica.presentar">
+							<a id="ReteICA_Presentar" onclick="menu.validarIngreso('reteica.editar reteica.firmar reteica.presentar',105)">
 								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></i> Presentar Declaración
 							</a>
 						</li>
 
-						<li class="menu_1643">
-							<a id="ReteICA_Declaraciones" onclick="menu.validarIngreso(1643,104)">
+						<li data-permiso="reteica.ver">
+							<a id="ReteICA_Declaraciones" onclick="menu.validarIngreso('reteica.ver',104)">
 								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></i>
 								Consultar Declaraciones
 							</a>
@@ -390,7 +388,7 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 				</li>
 
 				<!-- AUTO RETENCION → AUTO RETENCIÓN ICA -->
-				<li class="dropdown" id="MAutoretencion">
+				<li class="dropdown" id="MAutoretencion" data-contribuyente>
 					<a href="javascript:;" class="dropdown-toggle">
 						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg></span>
 						<span class="mtext">Auto Retención ICA</span>
@@ -398,14 +396,14 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 
 					<ul class="submenu" id="SubAutoretencion">
 
-						<li class="menu_1644">
-							<a id="AutoRet_Presentar" onclick="menu.validarIngreso(1644,107)">
+						<li data-permiso="autorreteica.editar autorreteica.firmar autorreteica.presentar">
+							<a id="AutoRet_Presentar" onclick="menu.validarIngreso('autorreteica.editar autorreteica.firmar autorreteica.presentar',107)">
 								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></i> Presentar Declaración
 							</a>
 						</li>
 
-						<li class="menu_1644">
-							<a id="AutoRet_Declaraciones" onclick="menu.validarIngreso(1644,106)">
+						<li data-permiso="autorreteica.ver">
+							<a id="AutoRet_Declaraciones" onclick="menu.validarIngreso('autorreteica.ver',106)">
 								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></i> Consultar Declaraciones
 							</a>
 						</li>
@@ -414,9 +412,10 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 				</li>
 
 				<!-- RECAUDO ICA: potestad exclusiva de la Alcaldía (marca declaraciones como
-				     pagadas; el controlador exige rol 1 o 2). Antes dentro de Administración ICA. -->
-				<li class="dropdown menu_1639" id="MRecaudo">
-					<a id="ICA_Recaudo" onclick="menu.validarIngreso(1639,11)" class="dropdown-toggle no-arrow" style="cursor:pointer;" title="Recaudo por código de barras">
+				     pagadas; el controlador exige sus interruptores de recaudo). Antes dentro de
+				     Administración ICA. -->
+				<li class="dropdown" id="MRecaudo" data-permiso="alcaldia.recaudo.cargar alcaldia.recaudo.asignar">
+					<a id="ICA_Recaudo" onclick="menu.validarIngreso('alcaldia.recaudo.cargar alcaldia.recaudo.asignar',11)" class="dropdown-toggle no-arrow" style="cursor:pointer;" title="Recaudo por código de barras">
 						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="6" y2="16"/><line x1="9" y1="8" x2="9" y2="16"/><line x1="13" y1="8" x2="13" y2="16"/><line x1="18" y1="8" x2="18" y2="16"/></svg></span>
 						<span class="mtext">Recaudo ICA</span>
 					</a>
@@ -426,7 +425,7 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 				     Básicos". Se aplana y se renombra para no tener dos "Configuración".
 				     "Municipio y bancos" es configuracion.php: EAN de recaudo y cuentas de los
 				     bancos (gobierna el código de barras de todo el municipio; el controlador
-				     exige rol 1 o 2, no se confía en que el ítem no se vea). -->
+				     exige "Municipio y bancos", no se confía en que el ítem no se vea). -->
 				<li class="dropdown" id="MICAAlcaldia">
 					<a href="javascript:;" class="dropdown-toggle">
 						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></span>
@@ -435,26 +434,26 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 
 					<ul class="submenu" id="SubICAAlcaldia">
 
-						<li class="menu_1645">
-							<a id="ICA_Configuracion" onclick="menu.validarIngreso(1645,12)" style="cursor:pointer;">
+						<li data-permiso="parametros.municipio">
+							<a id="ICA_Configuracion" onclick="menu.validarIngreso('parametros.municipio',12)" style="cursor:pointer;">
 								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></i> Municipio y bancos
 							</a>
 						</li>
 
-						<li class="menu_1639">
-							<a id="ICA_Actividades" onclick="menu.validarIngreso(1639,3)">
+						<li data-permiso="parametros.ver">
+							<a id="ICA_Actividades" onclick="menu.validarIngreso('parametros.ver',3)">
 								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></i> Actividades
 							</a>
 						</li>
 
-						<li class="menu_1639">
-							<a id="ICA_Conceptos" onclick="menu.validarIngreso(1639,6)">
+						<li data-permiso="parametros.ver">
+							<a id="ICA_Conceptos" onclick="menu.validarIngreso('parametros.ver',6)">
 								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></i> Conceptos
 							</a>
 						</li>
 
-						<li class="menu_1639">
-							<a id="ICA_GrupoTarifario" onclick="menu.validarIngreso(1639,5)">
+						<li data-permiso="parametros.ver">
+							<a id="ICA_GrupoTarifario" onclick="menu.validarIngreso('parametros.ver',5)">
 								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></i> Grupos tarifarios
 							</a>
 						</li>
@@ -470,8 +469,8 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 					</a>
 
 					<ul class="submenu" id="SubConsultasExternas">
-						<li class="menu_1035">
-							<a  id="ConsultasPazYSalvo" onclick="menu.validarIngreso(1035,100)">
+						<li data-permiso="predial.consultar">
+							<a id="ConsultasPazYSalvo" onclick="menu.validarIngreso('predial.consultar',100)">
 								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></i> Consultas Paz y Salvo
 							</a>
 						</li>
@@ -486,14 +485,14 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 					</a>
 
 					<ul class="submenu" id="SubConfig">
-						<li class="menu_26">
-							<a id="Config_Usuarios" onclick="menu.validarIngreso(26,1)">
+						<li data-permiso="usuarios.ver">
+							<a id="Config_Usuarios" onclick="menu.validarIngreso('usuarios.ver',1)">
 								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.5a5 5 0 0 1 10 0"/></svg></i> Usuarios
 							</a>
 						</li>
 
-						<li class="menu_11">
-							<a id="Config_Roles" onclick="menu.validarIngreso(11,2)">
+						<li data-permiso="roles.ver">
+							<a id="Config_Roles" onclick="menu.validarIngreso('roles.ver',2)">
 								<i class="submenu-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="15" r="4"/><path d="M10.5 11.5L21 1"/><path d="M16 6l3 3"/><path d="M19 3l3 3"/></svg></i> Roles
 							</a>
 						</li>
@@ -594,7 +593,12 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
                        'autoretencionpresentar.php', 'autoretencionconsultar.php'];
         var pagina   = (location.pathname.split('/').pop() || '').toLowerCase();
         var enModulo = MODULOS.indexOf(pagina) !== -1;
-        var esAdmin  = localStorage.getItem('id_Rol') == 1;   // solo el administrador gestiona a otros
+        // Quien trabaja sobre cualquier contribuyente: el administrador y los
+        // roles de la Alcaldía con "Gestionar a un contribuyente" (panel de
+        // Roles). Sin permisos guardados todavía, el administrador como antes.
+        function gestiona() {
+            return ErpPermisos.hay() ? ErpPermisos.gestionaOtros() : localStorage.getItem('id_Rol') == 1;
+        }
 
         // localStorage guarda texto: null, 'null', 'undefined' y '' son "ninguno".
         function leer(llave) {
@@ -619,11 +623,16 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
         var MENU_DEL_CONTRIBUYENTE = '#MRIT, #MEstablecimientos, #MICAWeb, #MReteICA, #MAutoretencion';
 
         function pintarMenu() {
-            if (!esAdmin) { return; }
+            // Si le quitaron "Gestionar" en plena sesion, el rotulo no queda colgado.
+            if (!gestiona()) { $('#MGestionando').hide(); return; }
             var c = actual();
             $('#MGestionando .menu-gestionando-nombre').text(c.nombre || 'Contribuyente');
             $('#MGestionando').attr('title', c.nombre || '').toggle(!!c.id);
-            $(MENU_DEL_CONTRIBUYENTE).toggle(!!c.id).toggleClass('en-gestion', !!c.id);
+            // Solo lo que su rol tiene (menu.js marca .erp-permitido).
+            $(MENU_DEL_CONTRIBUYENTE).each(function () {
+                var ver = !!c.id && $(this).hasClass('erp-permitido');
+                $(this).toggle(ver).toggleClass('en-gestion', ver);
+            });
         }
 
         function pintarBarra() {
@@ -631,7 +640,7 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
             $('#barraContribActivo').remove();
 
             var c = actual();
-            if (!esAdmin || !c.id) { return; }
+            if (!gestiona() || !c.id) { return; }
 
             var $bar = $('<div id="barraContribActivo"></div>').css({
                 background: '#fff8e1', 'border-bottom': '1px solid #f0d98c',
@@ -817,14 +826,17 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
         // redirige de UNA, antes de que carguen los scripts de la pantalla, para
         // no encimar el aviso con los popups propios del módulo. El mensaje lo
         // muestra Contribuyentes al llegar (bandera en sessionStorage).
-        if (esAdmin && enModulo && !deEstaPestana.id) {
+        // Solo si la pantalla es para su rol: si no, la guardia de menu.js ya
+        // lo mando a Inicio con su aviso (dos redirecciones daban dos avisos).
+        if (gestiona() && enModulo && !deEstaPestana.id
+            && (typeof menu === 'undefined' || menu.puedeEntrar(pagina))) {
             try { sessionStorage.setItem('avisoElegirContrib', '1'); } catch (e) {}
             window.location.replace('contribuyentes.php');
         } else {
             $(document).ready(pintarBarra);
         }
 
-        return { fijar: fijar, salir: salir };
+        return { fijar: fijar, salir: salir, pintarMenu: pintarMenu, pintarBarra: pintarBarra };
     })();
 
     /**

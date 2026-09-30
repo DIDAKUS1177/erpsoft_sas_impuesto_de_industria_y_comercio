@@ -3,6 +3,7 @@ namespace erpsoftsas;
 
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.sessions.php';
+include_once SERVER . '/business/class.permisosRol.php';
 include_once SERVER . '/business/class.recaudoAsobancaria.php';
 include_once SERVER . '/business/class.pseModulo.php';
 include_once SERVER . '/business/class.pagoDeclaracion.php';
@@ -64,13 +65,17 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
         // Esto es potestad exclusiva de la Alcaldia: marca declaraciones como
         // pagadas. Un contribuyente no puede acercarse a este endpoint.
         if (session_status() === PHP_SESSION_NONE) { @session_start(); }
-        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
 
-        if (empty($_SESSION['id_usuario']) || !in_array($rol, [1, 2], true)) {
+        // Permisos por accion (panel de Roles, 2026-09-29): asignar un pago a
+        // mano (funcion 4) tiene su propio interruptor; lo demas es cargar y
+        // aplicar archivos. Antes: roles 1 y 2 por numero.
+        $clave = ((int) $_obj->_funcion === 4) ? 'alcaldia.recaudo.asignar' : 'alcaldia.recaudo.cargar';
+        if (empty($_SESSION['id_usuario']) || !\erpsoftsas\PermisosRol::tiene($clave)) {
             header('Content-type: application/json');
             echo json_encode([
                 'ok' => 0,
-                'mensaje' => 'Solo la Alcaldía puede cargar archivos de recaudo.',
+                'mensaje' => empty($_SESSION['id_usuario']) ? 'Solo la Alcaldía puede cargar archivos de recaudo.'
+                           : \erpsoftsas\PermisosRol::mensaje($clave),
                 'datos' => [],
                 // Sesión vencida: dist/menu.php lleva al login con un aviso.
                 'sinSesion' => empty($_SESSION['id_usuario']) ? 1 : 0,

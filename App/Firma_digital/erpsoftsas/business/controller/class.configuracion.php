@@ -5,6 +5,7 @@ namespace erpsoftsas;
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
 include_once SERVER . '/business/controller/class.cabecera.php';
+include_once SERVER . '/business/class.permisosRol.php';
 
 /**
  * Configuración del municipio: parámetros y cuentas de los bancos.
@@ -72,7 +73,8 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
             header('Content-type: application/json');
             echo json_encode([
                 'ok' => 0,
-                'mensaje' => 'Solo la Alcaldía puede ver o cambiar la configuración.',
+                'mensaje' => empty($_SESSION['id_usuario']) ? 'Debe iniciar sesión.'
+                           : \erpsoftsas\PermisosRol::mensaje('parametros.municipio'),
                 'datos' => [],
                 // Si el rechazo es porque la sesion vencio, dist/menu.php lleva al
                 // login con aviso (como en contribuyentes y establecimientos) en
@@ -146,15 +148,17 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
         }
     }
 
-    /** Roles 1 (Administrador) y 2 (Internos Alcaldía), igual que el resto del sistema. */
+    /**
+     * Quien tiene "Municipio y bancos" (panel de Roles, 2026-09-29; antes los
+     * roles 1 y 2 por numero). Guardar pide ademas la contraseña de edición.
+     */
     private static function _esAlcaldia()
     {
         if (session_status() === PHP_SESSION_NONE) { @session_start(); }
 
         if (empty($_SESSION['id_usuario'])) { return false; }
 
-        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
-        return in_array($rol, [1, 2], true);
+        return \erpsoftsas\PermisosRol::tiene('parametros.municipio');
     }
 
     /* ==================== CONTRASEÑA DE EDICIÓN ==================== */

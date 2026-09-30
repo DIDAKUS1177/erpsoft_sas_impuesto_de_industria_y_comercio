@@ -49,7 +49,7 @@ class RitFirma
      * tambien la linea "Documentos adjuntos" (documentosImpresos), que la v3 no
      * tenia: cambiar un soporte cambiaba el papel sin tocar la firma.
      */
-    const VERSION = 'v4';
+    const VERSION = 'v5';
 
     /**
      * Versiones cuya huella se ACEPTA al comprobar una firma.
@@ -64,7 +64,7 @@ class RitFirma
      * Para invalidar a proposito todas las firmas viejas (si algun dia cambia QUE
      * se firma), subir VERSION y quitar de esta lista las versiones anteriores.
      */
-    const VERSIONES_ACEPTADAS = ['v4', 'v3'];
+    const VERSIONES_ACEPTADAS = ['v5', 'v4', 'v3'];
 
     /**
      * Los documentos que hay que haber cargado para poder firmar el RIT.
@@ -223,9 +223,51 @@ class RitFirma
      */
     public static function datosFirmables($con, $idContribuyente, $version = self::VERSION)
     {
-        return ($version === 'v3')
-            ? self::_datosV3($con, $idContribuyente)
-            : self::_datosV4($con, $idContribuyente);
+        if ($version === 'v3') { return self::_datosV3($con, $idContribuyente); }
+        if ($version === 'v4') { return self::_datosV4($con, $idContribuyente); }
+        return self::_datosV5($con, $idContribuyente);
+    }
+
+    /**
+     * Formula v5 (2026-09-28): la v4 MAS "consorcio o union temporal" y
+     * "patrimonio autonomo" (migracion 033), que desde hoy salen en el PDF del
+     * RIT. Lo impreso tiene que estar firmado: sin esto se podian cambiar despues
+     * de firmar sin que la firma se cayera. La v4 queda CONGELADA (las firmas ya
+     * hechas se comprueban con ella, ver VERSIONES_ACEPTADAS).
+     *
+     * Sin la migracion 033 las dos columnas no existen: cuentan como "0", que es
+     * lo que imprime el formulario en ese caso.
+     */
+    private static function _datosV5($con, $idContribuyente)
+    {
+        $datos = self::_datosV4($con, $idContribuyente);
+        if (!$datos) { return null; }
+        $datos['_v'] = 'v5';
+        $datos['marcas'] = self::marcasImpresas($con, $idContribuyente);
+        return $datos;
+    }
+
+    /**
+     * "¿Es consorcio o union temporal?" y "¿Realiza actividades a traves de
+     * patrimonio autonomo?", como '1' o '0'. Las lee el PDF del RIT y la huella v5.
+     */
+    public static function marcasImpresas($con, $idContribuyente)
+    {
+        $marcas = ['consorcio' => '0', 'patrimonio' => '0'];
+        $hay = $con->obnerFila($con->consultar(
+            "SELECT COL_LENGTH('dbo.ind_contribuyentes', 'ind_EsConsorcio') AS c,
+                    COL_LENGTH('dbo.ind_contribuyentes', 'ind_PatrimonioAutonomo') AS p"
+        ));
+        if (empty($hay['c']) || empty($hay['p'])) { return $marcas; }
+        $f = $con->obnerFila($con->consultar(
+            'SELECT ind_EsConsorcio AS c, ind_PatrimonioAutonomo AS p FROM ind_contribuyentes WHERE ind_Id = ?',
+            [(int) $idContribuyente]
+        ));
+        if ($f) {
+            $marcas['consorcio']  = !empty($f['c']) ? '1' : '0';
+            $marcas['patrimonio'] = !empty($f['p']) ? '1' : '0';
+        }
+        return $marcas;
     }
 
     /**
@@ -601,5 +643,58 @@ class RitFirma
         }
 
         return ['firmado' => false, 'firma' => null, 'desactualizada' => $ultima];
+    }
+
+    /**
+     * Opcion de uso del RIT: 'Inscripción', 'Actualización' o 'Cese'. UNA sola
+     * regla para la pantalla (funcion 10 de la API de firmas) y para el PDF
+     * (extensiones/ritActualizado.php); antes cada uno tenia la suya y el mismo
+     * contribuyente veia "Inscripción" en pantalla y "Actualización" en papel.
+     *
+     * Lo que pidio el cliente: "si están en la base de datos, solo salga
+     * ACTUALIZACIÓN; si no están, INSCRIPCIÓN" (revision del 21-08) y "si apenas
+     * inicia es inscripción, por el contrario actualización" (26-08, sobre un
+     * registro que llevaba tiempo en el sistema sin firmar). Por eso:
+     *   - Cese: el contribuyente tiene fecha de cese.
+     *   - Actualizacion: el RIT ya se formalizo antes -hay una firma de OTRA
+     *     version, o la ultima firma quedo vencida porque se esta cambiando-, o
+     *     el contribuyente ya estaba en el sistema: tiene declaraciones
+     *     presentadas (ICA, retencion o autorretencion).
+     *   - Inscripcion: lo demas. El contribuyente nuevo la ve mientras llena y
+     *     firma su primer RIT, y su primer PDF firmado dice Inscripcion.
+     * NO se usa ind_RIT_FechaCreacion: se marca al ABRIR el RIT (punto 10 de la
+     * cotizacion), asi que con esa fecha nadie salia nunca como inscripcion.
+     */
+    public static function opcionDeUso($con, $idContribuyente)
+    {
+        $idContribuyente = (int) $idContribuyente;
+
+        $cese = $con->obnerFila($con->consultar(
+            "SELECT TOP 1 1 AS x FROM ind_contribuyentes
+              WHERE ind_Id = ? AND ind_FechaCese IS NOT NULL AND ind_FechaCese <> '1900-01-01'",
+            [$idContribuyente]
+        ));
+        if ($cese) { return 'Cese'; }
+
+        $firmas = [];
+        $st = $con->consultar('SELECT DISTINCT rif_Hash AS h FROM ind_rit_firmas WHERE rif_IdContribuyente = ?', [$idContribuyente]);
+        while ($f = $con->obnerFila($st)) { $firmas[] = (string) $f['h']; }
+        if ($firmas) {
+            $estado = self::firmaVigente($con, $idContribuyente);
+            if (!$estado['firmado'] || count($firmas) > 1) { return 'Actualización'; }
+        }
+
+        // Declaraciones presentadas, en las tablas que existan en esta base.
+        foreach ([['ind_declaraciones_ica', 'dec'], ['ind_reteica', 'ret'], ['ind_autorreteica', 'aut']] as [$tabla, $p]) {
+            $existe = $con->obnerFila($con->consultar("SELECT OBJECT_ID('$tabla', 'U') AS id"));
+            if (empty($existe['id'])) { continue; }
+            $hay = $con->obnerFila($con->consultar(
+                "SELECT TOP 1 1 AS x FROM $tabla WHERE {$p}_IdContribuyente = ? AND {$p}_Estado = 2",
+                [$idContribuyente]
+            ));
+            if ($hay) { return 'Actualización'; }
+        }
+
+        return 'Inscripción';
     }
 }

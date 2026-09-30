@@ -489,8 +489,9 @@ class Peticiones {
                 $('#wrapper').removeClass('body-load');
                 if (arr.ok == 1) {
 
+                    // El nombre lo escribe quien crea el rol: como texto, nunca HTML.
                     $.each(arr.datos, function(k, v) {
-                        $("#usu_Rol").append('<option value="' + v['rol_Id'] + '">' + v['rol_Nombre'] + '</option>');
+                        $("#usu_Rol").append($('<option>').val(v['rol_Id']).text(v['rol_Nombre'] == null ? '' : v['rol_Nombre']));
                     });
 
                 } else {

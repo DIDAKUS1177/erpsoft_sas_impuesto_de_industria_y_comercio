@@ -38,26 +38,62 @@ class Login{
     
     private function _establecerDatos(){
         //print_r($_POST);
-        $this->_usuario = $_POST['u_correo_inst'];
-        $this->_clave = sha1($_POST['u_id_genesis']);
+        $this->_usuario = $_POST['u_correo_inst'] ?? '';
+        $this->_claveTexto = (string) ($_POST['u_id_genesis'] ?? '');
+        // La misma huella con que el DAO guarda la clave (DAOGeneral::hashClave).
+        $this->_clave = DAOGeneral::hashClave($this->_claveTexto);
+    }
+
+    /** La clave tal como la escribio el usuario (solo para la huella anterior). */
+    private $_claveTexto = '';
+
+    /**
+     * Busca la cuenta con esa huella de clave. Devuelve el DAO consultado.
+     */
+    private function _buscarCuenta($huella)
+    {
+        $obj = new DAO_Usuario();
+        if (filter_var($this->_usuario, FILTER_VALIDATE_EMAIL)) {
+            $obj->set_usu_Correo($this->_usuario);
+        } else {
+            $obj->set_usu_Usuario($this->_usuario);
+        }
+        $obj->set_usu_Password($huella);
+        $obj->set_usu_Estado(1);
+        $obj->consultar();
+        return $obj;
     }
     
     /**
      * Verificacion y logueo de usuario
      */
     private function _verificarDatosUsuario(){
-        $this->_objUsuario = new DAO_Usuario();
-
-        if (filter_var($this->_usuario, FILTER_VALIDATE_EMAIL)) {
-            $this->_objUsuario->set_usu_Correo($this->_usuario);
-        }else{
-            $this->_objUsuario->set_usu_Usuario($this->_usuario);
-        }
-        
-        $this->_objUsuario->set_usu_Password($this->_clave);
-        $this->_objUsuario->set_usu_Estado(1);
-        $this->_objUsuario->consultar();
+        $this->_objUsuario = $this->_buscarCuenta($this->_clave);
         $id = $this->_objUsuario->get_usu_Id();
+
+        /*
+         * Cuentas creadas antes del 2026-09-29 con una clave con ñ o tildes: su
+         * huella se calculo sobre Windows-1252 (DAOGeneral::hashClaveAnterior) y
+         * no coincidia con la del login -se creaban y despues no podian entrar-.
+         * Se prueba con esa huella y, si entra, se le guarda la nueva, para que
+         * de ahi en adelante sea una sola cuenta.
+         */
+        $anterior = DAOGeneral::hashClaveAnterior($this->_claveTexto);
+        if (empty($id) && $anterior !== $this->_clave) {
+            $this->_objUsuario = $this->_buscarCuenta($anterior);
+            $id = $this->_objUsuario->get_usu_Id();
+            if (!empty($id)) {
+                // Si no se puede actualizar la huella, entra igual (la clave es
+                // correcta) y se intenta la proxima vez.
+                try {
+                    $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+                    $con->consultar("UPDATE conf_usuarios SET usu_Password = ? WHERE usu_Id = ? AND usu_Password = ?",
+                                    [$this->_clave, (int) $id, $anterior]);
+                } catch (\Throwable $e) {
+                    error_log('[login] no se actualizo la huella de la cuenta ' . (int) $id . ': ' . $e->getMessage());
+                }
+            }
+        }
         $estado = $this->_objUsuario->get_usu_Estado();
         
         if (filter_var($this->_usuario, FILTER_VALIDATE_EMAIL)) {
@@ -113,6 +149,13 @@ class Login{
      * @param type $respuesta
      * @param type $id
      */
+    /** La huella de la clave no sale nunca hacia el navegador. */
+    private static function _sinClave($datos)
+    {
+        if (is_array($datos)) { unset($datos['usu_Password']); }
+        return $datos;
+    }
+
     private function _respuesta($respuesta,$id,$error){
         $arrRespu = array();
         if($respuesta){
@@ -123,7 +166,7 @@ class Login{
                 //"tipo_usuario" => $this->_objUsuario->get_tipo_usuario(),
                 "token" => 1,
                 "mail" => $this->_objUsuario->get_usu_Correo(),
-                "datos_usuario" => $this->_actualizado == 0 ? $this->_objUsuario->getArray() : ""
+                "datos_usuario" => $this->_actualizado == 0 ? self::_sinClave($this->_objUsuario->getArray()) : ""
             );
         }else{
             switch ($error) {
@@ -131,7 +174,7 @@ class Login{
                  $arrRespu = array("ok" => $error, "url" => $id, "mensaje" => "Usuario Inactivo", "tipo_usuario" => "","token" => 0);
                 break;
             case 2:
-                 $arrRespu = array("ok" => $error, "url" => $id, "mensaje" => "Error en las credenciales", "tipo_usuario" =>  $this->_objUsuario,"token" => 0);
+                 $arrRespu = array("ok" => $error, "url" => $id, "mensaje" => "Error en las credenciales", "tipo_usuario" => "", "token" => 0);
                 break;
             }
         }

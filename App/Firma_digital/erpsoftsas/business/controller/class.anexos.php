@@ -3,6 +3,7 @@ namespace erpsoftsas;
 
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.sessions.php';
+include_once SERVER . '/business/class.permisosRol.php';
 
 /**
  * Anexos de los establecimientos (puntos 17 y 18).
@@ -77,6 +78,14 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
                     $respuesta = $_obj->_eliminar();
                     break;
                 default:
+                    // Un archivo que supera post_max_size hace que PHP descarte
+                    // TODA la peticion: llega sin 'funcion' y sin archivos, y el
+                    // usuario leia "Función no válida". Se dice lo que paso.
+                    if (empty($_POST) && empty($_FILES) && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+                        throw new \erpsoftsas\AnexosException(
+                            'El archivo es demasiado grande para el servidor. Súbalo de máximo 10 MB '
+                            . '(comprímalo o escanéelo en menor resolución).', 0);
+                    }
                     throw new \erpsoftsas\AnexosException("Función no válida", 0);
             }
 
@@ -190,10 +199,9 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
 
         if (empty($_SESSION['id_usuario'])) { return false; }
 
-        // Rol 1 (Administrador) y 2 (Internos Alcaldia) operan sobre
-        // cualquier establecimiento; es su trabajo.
-        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
-        if (in_array($rol, [1, 2], true)) { return true; }
+        // Cualquier establecimiento: quien gestiona a otros contribuyentes
+        // (antes: roles 1 y 2 por numero).
+        if (\erpsoftsas\PermisosRol::gestionaOtros()) { return true; }
 
         // No hay columna que ate el usuario al contribuyente: el sistema los
         // cruza por número de documento (igual que usu_idContibuyente en
@@ -272,8 +280,7 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
 
         if (empty($_SESSION['id_usuario'])) { return false; }
 
-        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
-        if (in_array($rol, [1, 2], true)) { return true; }
+        if (\erpsoftsas\PermisosRol::gestionaOtros()) { return true; }
 
         $propio = $con->obnerFila($con->consultar(
             "SELECT c.ind_Id
@@ -319,6 +326,32 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
         return null;
     }
 
+    /** Quien registra el cese del contribuyente ("Registrar el cese de actividades"). */
+    private static function _esAdministrador()
+    {
+        return \erpsoftsas\PermisosRol::tiene('alcaldia.cese');
+    }
+
+    /**
+     * El interruptor que pide un documento, segun de quien es y de que tipo
+     * (panel de Roles, 2026-09-29):
+     *   contribuyente, constancia de cese  -> Registrar el cese de actividades
+     *   contribuyente, los demas (RUT...)  -> Subir y quitar documentos (RIT)
+     *   establecimiento, soporte de cierre -> Cerrar establecimientos
+     *   establecimiento, los demas         -> Crear y editar establecimientos
+     * Para VER la lista basta el permiso de ver de cada lado.
+     */
+    private static function _permisoDocumento(array $dueno, $tipo, $paraVer = false)
+    {
+        $esCese = strtolower(trim((string) $tipo)) === 'cese';
+        if ($dueno['tipo'] === 'contribuyente') {
+            if ($paraVer) { return ['rit.ver']; }
+            return [$esCese ? 'alcaldia.cese' : 'rit.documentos'];
+        }
+        if ($paraVer) { return ['establecimientos.ver', 'alcaldia.establecimientos.cerrar']; }
+        return [$esCese ? 'alcaldia.establecimientos.cerrar' : 'establecimientos.editar'];
+    }
+
     private function _subir()
     {
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
@@ -341,6 +374,34 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
 
         if (self::_establecimientoCerrado($dueno, $con)) {
             $this->_mensaje = 'El establecimiento está cerrado: sus archivos no se pueden cambiar.';
+            return [];
+        }
+
+        // El tipo, UNA sola vez: el mismo valor decide el permiso y se guarda.
+        // Con espacios de relleno ("cese" + espacios + "x") pasaba como
+        // documento comun y quedaba guardado como 'cese' (SQL Server ignora los
+        // espacios del final al comparar): un contribuyente colaba asi una
+        // constancia de cierre (revision 2026-09-29).
+        $tipoPedido = strtolower(trim((string) ($_POST['tipo'] ?? 'otro')));
+        if (!preg_match('/^[a-z_]{1,40}$/', $tipoPedido)) {
+            $this->_mensaje = 'Tipo de documento no válido.';
+            return [];
+        }
+        $_POST['tipo'] = $tipoPedido;
+
+        // La constancia de cierre del CONTRIBUYENTE respalda el cese del RIT,
+        // que registra quien tenga "Registrar el cese de actividades" (funcion
+        // 21 de establecimientos). Antes de recibir el archivo: no se acepta ni
+        // se guarda nada. Al contribuyente se le explica asi; a un funcionario
+        // sin ese interruptor, con el mensaje de permisos de siempre (abajo).
+        if (trim((string) ($_POST['tipo'] ?? '')) === 'cese' && $dueno['tipo'] === 'contribuyente'
+            && !\erpsoftsas\PermisosRol::esAlcaldia()) {
+            $this->_mensaje = 'La constancia de cierre la carga la Alcaldía al registrar el cese.';
+            return [];
+        }
+        $necesita = self::_permisoDocumento($dueno, $_POST['tipo'] ?? '');
+        if (!\erpsoftsas\PermisosRol::tieneAlguno($necesita)) {
+            $this->_mensaje = \erpsoftsas\PermisosRol::mensaje($necesita[0]);
             return [];
         }
 
@@ -495,6 +556,11 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
             $this->_mensaje = 'No tiene permiso para ver los anexos de este registro';
             return [];
         }
+        $necesita = self::_permisoDocumento($dueno, '', true);
+        if (!\erpsoftsas\PermisosRol::tieneAlguno($necesita)) {
+            $this->_mensaje = \erpsoftsas\PermisosRol::mensaje($necesita[0]);
+            return [];
+        }
 
         $columnaDueno = $dueno['tipo'] === 'contribuyente'
             ? 'anx_IdContribuyente' : 'anx_IdEstablecimiento';
@@ -554,7 +620,7 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
         }
 
         $anexo = $con->obnerFila($con->consultar(
-            "SELECT anx_IdEstablecimiento, anx_IdContribuyente
+            "SELECT anx_IdEstablecimiento, anx_IdContribuyente, anx_Tipo, anx_Activo
                FROM ind_establecimiento_anexos WHERE anx_Id = ?",
             [$idAnexo]
         ));
@@ -571,10 +637,39 @@ class ControladorAnexos extends \erpsoftsas\Cabecera
             $this->_mensaje = 'No tiene permiso para quitar este anexo';
             return [];
         }
+        $necesita = self::_permisoDocumento($duenoReal, $anexo['anx_Tipo'] ?? '');
+        if (!\erpsoftsas\PermisosRol::tieneAlguno($necesita)) {
+            $this->_mensaje = \erpsoftsas\PermisosRol::mensaje($necesita[0]);
+            return [];
+        }
 
         if (self::_establecimientoCerrado($duenoReal, $con)) {
             $this->_mensaje = 'El establecimiento está cerrado: sus archivos no se pueden cambiar.';
             return [];
+        }
+
+        // Constancia de cierre del contribuyente: solo el administrador, y no la
+        // ULTIMA mientras el cese siga registrado (quedaria un cese sin soporte).
+        if ($duenoReal['tipo'] === 'contribuyente' && ($anexo['anx_Tipo'] ?? '') === 'cese') {
+            if (!self::_esAdministrador()) {
+                $this->_mensaje = 'La constancia de cierre solo la puede quitar la Alcaldía.';
+                return [];
+            }
+            $conCese = $con->obnerFila($con->consultar(
+                "SELECT TOP 1 1 AS x FROM ind_contribuyentes
+                  WHERE ind_Id = ? AND ind_FechaCese IS NOT NULL AND ind_FechaCese <> '1900-01-01'",
+                [$duenoReal['id']]
+            ));
+            $otras = $con->obnerFila($con->consultar(
+                "SELECT COUNT(*) AS n FROM ind_establecimiento_anexos
+                  WHERE anx_IdContribuyente = ? AND anx_IdEstablecimiento IS NULL
+                    AND anx_Tipo = 'cese' AND anx_Activo = 1 AND anx_Id <> ?",
+                [$duenoReal['id'], $idAnexo]
+            ));
+            if ($conCese && (int) ($otras['n'] ?? 0) === 0) {
+                $this->_mensaje = 'Es el soporte del cese registrado. Para quitarlo, retire primero el cese.';
+                return [];
+            }
         }
 
         $con->consultar(

@@ -180,6 +180,34 @@ class DAOGeneral {
      * El driver devuelve las fechas como DateTime, que no se puede pegar a un
      * texto (PHP lanza Error): se escribe como AAAA-MM-DD hh:mm:ss.
      */
+    /**
+     * Huella de una clave: SHA-1 del texto en UTF-8, en hexadecimal mayusculas.
+     *
+     * Es la MISMA cuenta que hace el login (sha1() en PHP). Hasta el 2026-09-29
+     * la calculaba SQL Server con HASHBYTES('SHA1', '...') sobre un literal
+     * VARCHAR, que la base convierte a Windows-1252 (Modern_Spanish_CI_AS): para
+     * claves con ñ o tildes ("Contraseña2026") el hash guardado no era el del
+     * login, la cuenta se creaba ("Datos ingresados correctamente") y despues
+     * no podia entrar. Para ASCII las dos cuentas dan lo mismo.
+     */
+    public static function hashClave($clave)
+    {
+        return strtoupper(sha1((string) $clave));
+    }
+
+    /**
+     * La huella con que se guardaron las claves ANTES del 2026-09-29 (la de
+     * HASHBYTES sobre Windows-1252). Solo difiere de hashClave() si la clave
+     * tiene caracteres fuera de ASCII. La usa el login para dejar entrar a esas
+     * cuentas y pasarlas a la huella nueva.
+     */
+    public static function hashClaveAnterior($clave)
+    {
+        $clave = (string) $clave;
+        if (!preg_match('/[^\x00-\x7F]/', $clave)) { return self::hashClave($clave); }
+        return strtoupper(sha1(mb_convert_encoding($clave, 'Windows-1252', 'UTF-8')));
+    }
+
     protected static function _literalSql($valor){
         if ($valor instanceof \DateTimeInterface) {
             $valor = $valor->format('Y-m-d H:i:s');
@@ -216,8 +244,10 @@ class DAOGeneral {
                         // como UNA, y HASHBYTES recibe la clave tal como se escribio
                         // (la misma que el login compara con sha1() en PHP).
                         if ($this->_namespace === 'sqlserver') {
-                            // SQL Server usa HASHBYTES
-                            $set[] = $nom_campo . " = CONVERT(VARCHAR(40), HASHBYTES('SHA1', '" . self::_literalSql($this->{'_' . $nom_campo}) . "'), 2)";
+                            // La huella se calcula en PHP, igual que el login (ver
+                            // hashClave): con HASHBYTES una clave con ñ o tilde
+                            // quedaba con otra huella y la cuenta no podia entrar.
+                            $set[] = $nom_campo . " = '" . self::hashClave($this->{'_' . $nom_campo}) . "'";
                         } else {
                             // MySQL
                             $set[] = $nom_campo . " = SHA1('" . self::_literalSql($this->{'_' . $nom_campo}) . "')";

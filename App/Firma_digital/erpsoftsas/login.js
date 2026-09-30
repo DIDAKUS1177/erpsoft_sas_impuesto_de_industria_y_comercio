@@ -329,8 +329,21 @@ class Login {
              data: {funcion : 3, id_rol :  rol},
              dataType: "json",
              type: "POST"
-             
+
          });
+    }
+
+    /**
+     * Los interruptores del panel de Roles que tiene el rol de la sesion
+     * (funcion 6), con su tipo. Los usan el menu y cada pantalla (erpPuede).
+     */
+    getPermisosPantalla() {
+        return $.ajax({
+            url: 'business/controller/class.permisos.php',
+            data: {funcion : 6},
+            dataType: "json",
+            type: "POST"
+        });
     }
 
     getPermisosBoton(idRol, idBoton) {
@@ -356,15 +369,12 @@ class Login {
 
                     localStorage.setItem('Tipo_Usuario', postL.tipo_usuario);
                     localStorage.setItem('id_Usuario', postL.datos_usuario.usu_Id);
-                    // El administrador (rol 1) no es un contribuyente: entra SIN
-                    // contribuyente activo y elige uno en Contribuyentes > Gestionar.
-                    // Si su documento coincidía con alguien del padrón, quedaba
-                    // "gestionando" a ese sin haberlo elegido. Tampoco sobreviven al
-                    // login el nombre y documento de una gestión anterior.
+                    // Ni el nombre ni el documento de una gestión anterior
+                    // sobreviven al login. El contribuyente activo se decide
+                    // abajo, con el tipo de rol.
                     localStorage.removeItem('contribActivoNombre');
                     localStorage.removeItem('contribActivoDoc');
-                    localStorage.setItem('id_Contribuyente',
-                        postL.datos_usuario.usu_Rol == 1 ? '' : postL.datos_usuario.usu_idContibuyente);
+                    localStorage.setItem('id_Contribuyente', '');
                     localStorage.setItem('id_Rol', postL.datos_usuario.usu_Rol);
                     localStorage.setItem('documento', postL.datos_usuario.usu_NumeroDocumento);
                     localStorage.setItem('NomUsu',postL.datos_usuario.usu_Nombres + ' ' + postL.datos_usuario.usu_Apellidos);
@@ -377,28 +387,39 @@ class Login {
                     const fechaHoy = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
                     localStorage.setItem('fechaSesion', fechaHoy);
 
-                    console.log('postt ', postL);
-                    var permisos = await login.getPermisos(postL.datos_usuario.usu_Rol);
-                    console.log('permisos ', permisos);
-                    if(permisos.ok == 1){
-                        ConfigPermisosRol.set('permisos',permisos.datos);
-                        
-                        const permisosRol = permisos.datos;
-                        localStorage.setItem('permisosRol', JSON.stringify(permisosRol));
+                    // Interruptores del panel de Roles (2026-09-29): los usan
+                    // el menú y cada pantalla. Antes eran filas de "botones"
+                    // (permisosRol) y las pantallas decidían por el número del rol.
+                    var permisos = await login.getPermisosPantalla();
+                    var p = (permisos && permisos.ok == 1) ? permisos.datos : null;
+                    if (p && Array.isArray(p.claves) && (p.admin || p.claves.length)) {
+                        localStorage.removeItem('permisosRol');
+                        localStorage.setItem('erpPermisos', JSON.stringify(p));
 
-                        console.log('Contenido completo de ConfigPermisosRol:', ConfigPermisosRol);
-                        //login.construirMenu();
-              
-                        console.log('perm ', permisos);
-                        if(postL.datos_usuario.usu_Rol == 4){
+                        // Un rol de la Alcaldía no es un contribuyente: entra SIN
+                        // contribuyente activo y, si gestiona, elige uno en
+                        // Contribuyentes > Gestionar. (Si su documento coincidía
+                        // con alguien del padrón, quedaba "gestionando" a ese.)
+                        localStorage.setItem('id_Contribuyente',
+                            p.alcaldia ? '' : (postL.datos_usuario.usu_idContibuyente || ''));
+
+                        // El contribuyente llega a su RIT; los demás, a Inicio.
+                        if (!p.alcaldia && (p.admin || p.claves.indexOf('rit.ver') !== -1)) {
                             window.location = 'dist/icaWebRit.php';
-                        }else{
+                        } else {
                             window.location = 'dist/dashboard.php';
                         }
                     }else{
+                        // Un rol sin ningún permiso, o inactivo, no entra: se dice
+                        // por qué, en vez de "intente nuevamente".
+                        localStorage.clear();
+                        var inactivo = p && p.activo === false;
                         swal({
-                            title:"Error",
-                            text:"El sistema no pudo cargar los privilegios, intente nuevamente",
+                            title: inactivo ? "Su rol está inactivo" : "Su cuenta no tiene permisos",
+                            text: inactivo
+                                ? "El rol de su cuenta fue inactivado. Comuníquese con el administrador de la Alcaldía."
+                                : "Su rol todavía no tiene permisos asignados en el sistema. "
+                                  + "Comuníquese con el administrador de la Alcaldía para que se los asigne.",
                             type:"warning"
                         })
                     }
@@ -415,7 +436,16 @@ class Login {
            
         }
         catch (error){
-
+            // Sin esto, una respuesta caida (500, sin red) dejaba la pantalla sin
+            // decir nada y a medio guardar en localStorage.
+            console.error('login', error);
+            localStorage.clear();
+            swal({
+                title: "No se pudo iniciar sesión",
+                text: "No hubo respuesta del servidor. Intente de nuevo en unos minutos; "
+                    + "si el problema sigue, comuníquese con la Secretaría de Hacienda.",
+                type: "error"
+            });
         }
     }
 

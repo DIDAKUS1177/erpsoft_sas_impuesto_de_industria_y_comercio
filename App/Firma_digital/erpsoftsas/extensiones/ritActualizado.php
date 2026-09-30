@@ -94,8 +94,11 @@ function _ritEsDeLaSesion($idContribuyente, $con)
 
     if (empty($_SESSION['id_usuario'])) { return false; }
 
-    $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
-    if (in_array($rol, [1, 2], true)) { return true; }
+    // "Ver el RIT"; el de cualquiera, quien gestiona contribuyentes (panel de
+    // Roles, 2026-09-29; antes roles 1 y 2).
+    include_once SERVER . '/business/class.permisosRol.php';
+    if (!\erpsoftsas\PermisosRol::tiene('rit.ver')) { return false; }
+    if (\erpsoftsas\PermisosRol::gestionaOtros()) { return true; }
 
     $propio = $con->obnerFila($con->consultar(
         "SELECT c.ind_Id
@@ -245,55 +248,16 @@ $row = $con->obnerFila($con->consultar($sql, [$idEstablecimiento, $idContribuyen
 // Ver la nota de "opcion de uso" mas abajo. Se resuelven aqui, sobre el
 // contribuyente, porque puede no haber establecimiento del que leerlas.
 /*
- * "Inscripcion" solo la PRIMERA vez.
- *
- * Corregido el 2026-08-26: "no deberia salir inscripcion sino actualizacion;
- * si apenas inicia es inscripcion, por el contrario actualizacion". La regla
- * anterior miraba si el RIT se habia FIRMADO alguna vez, y por eso un registro
- * que llevaba tiempo en el sistema pero sin firmar seguia saliendo como
- * inscripcion.
- *
- * Ahora se mira si el RIT ya EXISTE -ind_RIT_FechaCreacion, que se llena la
- * primera vez que se diligencia-, que es lo que distingue inscribirse de
- * reportar una novedad. La firma se sigue teniendo en cuenta como respaldo:
- * un RIT firmado esta creado por definicion, aunque la fecha no se hubiera
- * registrado en su momento.
+ * Opcion de uso (Inscripcion / Actualizacion / Cese): la MISMA regla que la
+ * pantalla del RIT, en RitFirma::opcionDeUso (ver alli lo que pidio el
+ * cliente el 21 y el 26 de agosto). Antes el PDF miraba ind_RIT_FechaCreacion,
+ * que se marca con solo ABRIR el RIT: nadie salia como inscripcion en papel,
+ * y la pantalla, con otra regla, decia lo contrario. El cese es solo el de la
+ * PERSONA (migracion 019), no el cierre de uno de sus locales.
  */
-$previo = $con->obnerFila($con->consultar(
-    "SELECT TOP 1 1 AS x
-       FROM ind_contribuyentes c
-      WHERE c.ind_Id = ?
-        AND (c.ind_RIT_FechaCreacion IS NOT NULL
-             OR EXISTS (SELECT 1 FROM ind_rit_firmas f WHERE f.rif_IdContribuyente = c.ind_Id))",
-    [$idContribuyente]
-));
-$ritYaFormalizado = (bool) $previo;
-
-/*
- * Se descarta 1900-01-01 ademas de NULL: SQL Server convierte una cadena
- * vacia en esa fecha al guardarla en una columna de tipo fecha, asi que un
- * cese que se limpio puede quedar con ese valor en vez de en nulo. Sin esta
- * guarda el formulario marcaba "Cese de Actividades" en contribuyentes que no
- * han cesado nada -visto en la base local, establecimiento 43-. La misma
- * defensa ya existe en class.contribuyentes.php al leer el cese.
- */
-/*
- * Solo el cese de la PERSONA (migracion 019). Aqui se caia tambien al de
- * cualquiera de sus locales "para bases sin la 019", pero esta misma consulta
- * ya nombra ind_FechaCese, asi que sin la 019 falla igual. Y desde el
- * 2026-09-25 cerrar un local (funcion 23 de class.establecimientos.php)
- * siempre escribe est_Fecha_cierre: el RIT de quien cerraba UNO de sus locales
- * salia marcado "Cese de actividades" como si hubiera cesado del todo.
- */
-$filaCese = $con->obnerFila($con->consultar(
-    "SELECT TOP 1 c.ind_Id
-       FROM ind_contribuyentes c
-      WHERE c.ind_Id = ?
-        AND c.ind_FechaCese IS NOT NULL
-        AND c.ind_FechaCese <> '1900-01-01'",
-    [$idContribuyente]
-));
-$hayCese = (bool) $filaCese;
+$opcionUso        = \erpsoftsas\RitFirma::opcionDeUso($con, $idContribuyente);
+$hayCese          = $opcionUso === 'Cese';
+$ritYaFormalizado = $opcionUso === 'Actualización';
 
 if (!$row) {
     exit('No existe información para el registro solicitado.');
@@ -774,6 +738,14 @@ if (!empty($row['ind_SinAvisosTableros'])) { $partes[] = 'Sin Avisos y Tableros'
 
 $responsabilidadesTexto = $partes ? implode(' · ', $partes) : 'Ninguna';
 
+// Consorcio o union temporal y patrimonio autonomo (migracion 033): se marcan
+// en el RIT junto al regimen y no se imprimian. Salen de RitFirma, la misma
+// lectura que cubre la huella v5.
+$marcas = \erpsoftsas\RitFirma::marcasImpresas($con, (int) $row['ind_Id']);
+$marcasTexto = '¿Es consorcio o unión temporal? <b>' . ($marcas['consorcio'] === '1' ? 'Sí' : 'No') . '</b>'
+             . ' &nbsp;·&nbsp; ¿Realiza actividades a través de patrimonio autónomo? <b>'
+             . ($marcas['patrimonio'] === '1' ? 'Sí' : 'No') . '</b>';
+
 // Codigos CIIU del RUT (migracion 005): son los de la DIAN, de cuatro
 // digitos, distintos de los del acuerdo municipal que salen en la tabla de
 // actividades economicas.
@@ -1053,6 +1025,11 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 <tr>
 <td width="30%" bgcolor="#cae6e7"><b>Responsabilidades:</b></td>
 <td width="70%">'.$responsabilidadesTexto.'</td>
+</tr>
+
+<tr>
+<td width="30%" bgcolor="#cae6e7"><b>Consorcio y patrimonio autónomo:</b></td>
+<td width="70%">'.$marcasTexto.'</td>
 </tr>
 
 <tr>

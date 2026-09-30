@@ -303,7 +303,7 @@
 					<h5 class="mb-3" style="font-weight:600;">Cese de actividades</h5>
 
 					<div id="ritAvisoCese" class="mb-3" style="display:none; font-size:13px; color:#6B7280;">
-						<i class="fa fa-lock"></i> Solo la Alcaldía puede registrar el cese de actividades.
+						<i class="fa fa-lock"></i> El cese de actividades lo registra la Alcaldía.
 					</div>
 
 					<div class="row">
@@ -333,6 +333,26 @@
 							<label>Observación</label>
 							<input type="text" class="form-control cese-solo-admin" maxlength="255"
 							       id="rit_est_Observacion_cierre">
+						</div>
+					</div>
+
+					<!-- Constancia de cierre del cese (revisiones del cliente del 21 y 31 de
+					     agosto). El servidor no guarda un cese sin ella (funcion 21 de
+					     class.establecimientos.php); solo la carga el administrador. -->
+					<div class="row" id="ritCeseSoporte">
+						<div class="col-md-6 form-group">
+							<label>Constancia de cierre <span class="text-muted" style="font-weight:400;">(Cámara de comercio y/o Acta de liquidación; PDF, JPG o PNG)</span></label>
+							<input type="file" class="form-control cese-solo-admin" id="ritCeseArchivo" accept=".pdf,.jpg,.jpeg,.png">
+						</div>
+						<div class="col-md-3 form-group">
+							<label>&nbsp;</label>
+							<button type="button" class="btn btn-outline-primary btn-block cese-solo-admin" id="btnSubirCeseRIT">
+								<i class="fa fa-upload"></i> Cargar constancia
+							</button>
+						</div>
+						<div class="col-md-3 form-group">
+							<label>&nbsp;</label>
+							<div id="ritCeseSoporteEstado" style="font-size:13px; padding-top:7px;"></div>
 						</div>
 					</div>
 
@@ -488,7 +508,9 @@
 								<option value="rut">RUT (obligatorio)</option>
 								<option value="camara">Cámara de comercio o acta de constitución (obligatorio)</option>
 								<option value="cedula">Documento de identificación del representante legal o propietario (obligatorio)</option>
-								<option value="usosuelo">Uso de suelo (opcional)</option>
+								<!-- "Uso de suelo" ya no se pide: el cliente respondio "no" en
+								     las preguntas del 25-09 (punto 8). Los que ya se subieron
+								     siguen en la lista con su etiqueta. -->
 							</select>
 						</div>
 						<div class="col-md-5 form-group">

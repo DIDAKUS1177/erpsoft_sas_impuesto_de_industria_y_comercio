@@ -56,7 +56,7 @@
 			<div class="card-box mb-30" id="ltsRol">
 				<div class="pd-20 d-flex justify-content-between">
 					<h4 class="h4">Listado de Conceptos</h4>
-					<button type="button" class="btn btn-outline-success" onclick="conceptos.crearConceptos()"><span class="ti-plus"></span> Crear Conceptos </button>
+					<button type="button" class="btn btn-outline-success" id="btnNuevoParametro" onclick="conceptos.crearConceptos()" data-permiso-crear="parametros.conceptos"><span class="ti-plus"></span>Crear Conceptos </button>
 				</div>
 				<div class="pb-20">
 				<table id="conceptosRegistrados" class="data-table table stripe hover nowrap">

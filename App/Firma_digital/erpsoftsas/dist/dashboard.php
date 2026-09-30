@@ -171,6 +171,8 @@
 		function construirAccesosRapidos() {
 			var contenedor = document.getElementById('accesosRapidosModulos');
 			if (!contenedor) { return; }
+			// Se puede volver a llamar (ver abajo): se arma desde cero.
+			contenedor.innerHTML = '';
 
 			var modulos = document.querySelectorAll('#accordion-menu > li.dropdown');
 
@@ -341,6 +343,10 @@
 		   jQuery 3 esos corren DESPUÉS de DOMContentLoaded. Registrado aquí, al
 		   final de la página, corre detrás de ellos y lee el menú ya filtrado. */
 		$(construirAccesosRapidos);
+		// Si los permisos llegan (o cambian) despues de cargar -una sesion
+		// abierta antes del panel de Roles, o el administrador cambio el rol-,
+		// menu.js repinta el menu y avisa: se rearman las tarjetas.
+		$(document).on('erp:permisos', construirAccesosRapidos);
 	})();
 	</script>
 

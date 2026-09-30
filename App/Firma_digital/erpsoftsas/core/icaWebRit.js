@@ -1948,7 +1948,12 @@ actualizarDeclaracionIca(valor, numeroCampo){
      * contenido, tamaño, tope de archivos- vive alli y no se repite aqui: lo
      * que se comprueba en el navegador se salta desde la consola.
      */
-    subirAnexoRIT() {
+    /**
+     * Sube un documento del contribuyente. Sin argumentos, el de "Documentos"
+     * (tipo del selector); el bloque de cese lo llama con 'cese' y su propio
+     * campo de archivo para la constancia de cierre.
+     */
+    subirAnexoRIT(tipo, selectorArchivo, selectorBoton) {
         const idContribuyente = $('#rit_ind_Id').val();
         if (!idContribuyente) {
             swal({ type: 'info', title: 'Primero guarde el RIT',
@@ -1956,19 +1961,26 @@ actualizarDeclaracionIca(valor, numeroCampo){
             return;
         }
 
-        const $archivo = $('#ritAnexoArchivo');
+        const $archivo = $(selectorArchivo || '#ritAnexoArchivo');
         if ($archivo.length === 0 || !$archivo[0].files.length) {
             swal({ type: 'info', title: 'No eligió ningún archivo' });
+            return;
+        }
+        // El limite que anuncia la pantalla. Se revisa aqui para no subir 20 MB
+        // y recibir un error: el servidor tampoco los acepta.
+        if ($archivo[0].files[0].size > 10 * 1024 * 1024) {
+            swal({ type: 'warning', title: 'El archivo es muy grande',
+                   text: 'El máximo es 10 MB. Comprímalo o escanéelo en menor resolución.' });
             return;
         }
 
         const datos = new FormData();
         datos.append('funcion', 1);
         datos.append('ind_Id', idContribuyente);
-        datos.append('tipo', $('#ritAnexoTipo').val());
+        datos.append('tipo', tipo || $('#ritAnexoTipo').val());
         datos.append('anexos[]', $archivo[0].files[0]);
 
-        const $boton = $('#btnSubirAnexoRIT');
+        const $boton = $(selectorBoton || '#btnSubirAnexoRIT');
         $boton.prop('disabled', true);
 
         $.ajax({
@@ -2019,10 +2031,24 @@ actualizarDeclaracionIca(valor, numeroCampo){
             success: function (resp) {
                 const etiquetas = {
                     rut: 'RUT', camara: 'Cámara de comercio', cedula: 'Documento de identificación',
-                    usosuelo: 'Uso de suelo', cese: 'Cese', otro: 'Otro'
+                    usosuelo: 'Uso de suelo', cese: 'Constancia de cierre', otro: 'Otro'
                 };
 
                 const lista = (resp.ok == 1 && resp.datos) ? resp.datos : [];
+                // Quitar: la constancia de cierre, quien registra el cese; los
+                // demas documentos, quien sube y quita documentos (panel de Roles).
+                const puedeCese = establecimientos.puede('alcaldia.cese');
+                const puedeDocumentos = establecimientos.puede('rit.documentos');
+                // La constancia se ve desde el mismo bloque del cese (cliente,
+                // 2026-09-29: "se debería de visualizar"): la más reciente.
+                const constancias = lista.filter(a => a.anx_Tipo === 'cese');
+                // _listar ordena por fecha de carga DESCENDENTE: la primera.
+                const ultima = constancias.length ? constancias[0] : null;
+                $('#ritCeseSoporteEstado').html(ultima
+                    ? '<span style="color:#15803D;"><i class="fa fa-check"></i> Constancia cargada</span> '
+                        + '<a class="btn btn-sm btn-outline-info ml-1" target="_blank" '
+                        + 'href="../extensiones/anexo.php?id=' + encodeURIComponent(ultima.anx_Id) + '">Ver</a>'
+                    : '<span class="text-muted">Sin constancia de cierre</span>');
 
                 if (!lista.length) {
                     $('#tbodyAnexosRIT').html(
@@ -2043,8 +2069,9 @@ actualizarDeclaracionIca(valor, numeroCampo){
                             '<td>' +
                               '<a class="btn btn-sm btn-outline-info" target="_blank" ' +
                                  'href="../extensiones/anexo.php?id=' + encodeURIComponent(a.anx_Id) + '">Ver</a> ' +
+                              ((a.anx_Tipo === 'cese' ? !puedeCese : !puedeDocumentos) ? '' :
                               '<button type="button" class="btn btn-sm btn-outline-danger" ' +
-                                 'onclick="establecimientos.eliminarAnexoRIT(' + Number(a.anx_Id) + ')">Quitar</button>' +
+                                 'onclick="establecimientos.eliminarAnexoRIT(' + Number(a.anx_Id) + ')">Quitar</button>') +
                             '</td>' +
                             '</tr>';
                     });
@@ -2476,7 +2503,8 @@ actualizarDeclaracionIca(valor, numeroCampo){
         // el que no fuera administrador (puntos 14 y 15 de la lista anterior);
         // esa regla quedo derogada, asi que se sueltan los campos y se retira
         // el aviso del candado.
-        $('.campo-solo-admin').prop('readonly', false);
+        // Siempre que el rol pueda editar el RIT (panel de Roles).
+        $('.campo-solo-admin').prop('readonly', !this.puede('rit.editar'));
         $('#ritAvisoContador').hide();
     }
 
@@ -2519,6 +2547,12 @@ actualizarDeclaracionIca(valor, numeroCampo){
      * cambios, o sea que la inscripcion ya ocurrio.
      */
     pintarOpcionUso(estadoFirma) {
+        // La decide el servidor con la misma regla del PDF (RitFirma::opcionDeUso):
+        // Inscripción, Actualización o Cese.
+        if (estadoFirma && estadoFirma.opcionUso) {
+            $('#rit_OpcionUso').val(estadoFirma.opcionUso);
+            return;
+        }
         const yaFormalizado = estadoFirma &&
             (String(estadoFirma.firmado) === '1' || !!estadoFirma.desactualizada);
 
@@ -2605,7 +2639,32 @@ actualizarDeclaracionIca(valor, numeroCampo){
 
         $('#btnDescargarRIT').attr('title', firmado
             ? 'Descargar el RIT firmado'
-            : 'Se puede descargar, pero saldrá marcado SIN FIRMAR');
+            : 'Se puede descargar, pero mientras no esté firmado su formulario RIT no estará formalizado');
+
+        this.aplicarPermisosDelRol();
+    }
+
+    /**
+     * Interruptores del panel de Roles: sin "Editar el RIT" el formulario es
+     * de consulta; sin "Firmar el RIT" no hay boton de firmar; sin "Subir y
+     * quitar documentos" no se cargan anexos. El servidor exige lo mismo.
+     * (No confundir con aplicarPermisosRIT, que suelta los campos del
+     * contador y el revisor.)
+     */
+    aplicarPermisosDelRol() {
+        if (!this.puede('rit.editar')) {
+            var $campos = $('#formRIT').find('input, select, textarea').not('.cese-solo-admin');
+            $campos.filter('input, textarea').prop('readonly', true);
+            $campos.filter('select, input[type=checkbox], input[type=radio]').prop('disabled', true);
+            $('#btnActualizarRIT, #btnGuardarRIT, #btnCancelarRIT').hide();
+            $('#btnAgregarActividadRIT, #btnGuardarActividadesRIT').prop('disabled', true).hide();
+        }
+        if (!this.puede('rit.firmar')) {
+            $('#btnFirmarRIT').hide();
+        }
+        if (!this.puede('rit.documentos')) {
+            $('#btnSubirAnexoRIT').closest('.row').hide();
+        }
     }
 
     /** "Actualizar": desbloquea para registrar una novedad. */
@@ -2785,14 +2844,24 @@ actualizarDeclaracionIca(valor, numeroCampo){
         this.aplicarPermisoCese();
     }
 
-    /** Quien no es Alcaldia ve el cese pero no lo toca. */
-    aplicarPermisoCese() {
-        var esAlcaldia = (idRol == 1 || idRol == 2);
+    /** ¿El rol tiene este interruptor del panel de Roles? (core/Permisos.js) */
+    puede(clave) {
+        return typeof erpPuede !== 'function' || erpPuede(clave);
+    }
 
-        $('input.cese-solo-admin').prop('readonly', !esAlcaldia);
-        $('select.cese-solo-admin').prop('disabled', !esAlcaldia);
-        $('#btnGuardarCeseRIT').prop('disabled', !esAlcaldia).toggle(esAlcaldia);
-        $('#ritAvisoCese').toggle(!esAlcaldia);
+    /**
+     * El cese lo registra quien tiene "Registrar el cese de actividades" en el
+     * panel de Roles (antes, solo el rol 1): es lo que exige el servidor
+     * (_guardarCese). Los demas lo ven sin poder tocarlo.
+     */
+    aplicarPermisoCese() {
+        var puedeCese = this.puede('alcaldia.cese');
+
+        $('input.cese-solo-admin').prop('readonly', !puedeCese);
+        $('select.cese-solo-admin').prop('disabled', !puedeCese);
+        $('#btnGuardarCeseRIT').prop('disabled', !puedeCese).toggle(puedeCese);
+        $('#ritCeseSoporte').toggle(puedeCese);
+        $('#ritAvisoCese').toggle(!puedeCese);
     }
 
     guardarCeseRIT() {
@@ -3046,15 +3115,18 @@ actualizarDeclaracionIca(valor, numeroCampo){
                         avisoCese = ' El cese que escribió no se guarda con este botón: sigue en '
                                   + 'pantalla, guárdelo con "Guardar cese".';
                     }
+                    // "Firmar ahora" solo a quien puede firmar (panel de Roles).
+                    var puedeFirmar = establecimientos.puede('rit.firmar');
                     swal({
                         type: 'success',
                         title: 'RIT actualizado',
-                        text: (resp.mensaje || '') + ' Para que quede en firme debe firmarlo.' + avisoCese,
-                        showCancelButton: true,
-                        confirmButtonText: 'Firmar ahora',
+                        text: (resp.mensaje || '') + ' Para que quede en firme debe firmarlo'
+                            + (puedeFirmar ? '.' : ' quien tenga permiso de firmar el RIT.') + avisoCese,
+                        showCancelButton: puedeFirmar,
+                        confirmButtonText: puedeFirmar ? 'Firmar ahora' : 'Entendido',
                         cancelButtonText: 'Más tarde'
                     }).then(function (res) {
-                        if (res.value) { establecimientos.firmarRIT(); }
+                        if (res.value && puedeFirmar) { establecimientos.firmarRIT(); }
                     });
                 });
             },
@@ -3086,6 +3158,10 @@ $(document).on('click', '#btnActualizarRIT', function () {
     establecimientos.actualizarRIT();
 });
 
+
+$(document).on('click', '#btnSubirCeseRIT', function () {
+    establecimientos.subirAnexoRIT('cese', '#ritCeseArchivo', '#btnSubirCeseRIT');
+});
 
 $(document).on('click', '#btnGuardarCeseRIT', function () {
     establecimientos.guardarCeseRIT();

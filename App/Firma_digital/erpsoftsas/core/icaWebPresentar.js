@@ -551,6 +551,18 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
             // Nueva = "Declaración Inicial", y sin "Declaración que corrige".
             FormularioDeclaracion.pintarOpcionUso(d);
 
+            /*
+             * Renglon 29: el anticipo que el servidor trajo de la declaracion
+             * presentada del año anterior (_cruzarAnticipoDelAnioAnterior). Se
+             * limpiaba el formulario y la casilla quedaba en 0: el contribuyente
+             * no veia por que el total bajaba, y "Guardar" mandaba ese 0 y borraba
+             * el anticipo cruzado. Viene crudo de la base: deBaseDeDatosAInput,
+             * no limpiarEntero (que leeria "2500000.00" como 250000000).
+             */
+            if (Number(NumerosCOP.deBaseDeDatos(d.dec_ValorConcepto8)) > 0) {
+                $('[data-campo="anticipo_anterior"]').val(NumerosCOP.deBaseDeDatosAInput(d.dec_ValorConcepto8));
+            }
+
             $("#modal-CrearDeclaracion")
             .data("idDeclaracion", d.dec_Id);
 
@@ -603,7 +615,7 @@ consultarDeclaraciones(idEstablecimiento, idContribuyente) {
     establecimientos._idContribuyenteActual = idContribuyente || null;
 
     $("#tbodyDeclaraciones").html(
-        '<tr><td colspan="8" class="text-center text-muted py-4">' +
+        '<tr><td colspan="9" class="text-center text-muted py-4">' +
             '<i class="fa fa-spinner fa-spin"></i> Cargando declaraciones...' +
         '</td></tr>'
     );
@@ -621,7 +633,7 @@ consultarDeclaraciones(idEstablecimiento, idContribuyente) {
 
             if(resp.ok != 1 || !Array.isArray(resp.datos) || resp.datos.length === 0){
                 $("#tbodyDeclaraciones").html(
-                    '<tr><td colspan="8" class="text-center text-muted py-4">' +
+                    '<tr><td colspan="9" class="text-center text-muted py-4">' +
                         'Aún no hay declaraciones. Usa "Crear Declaración" para empezar.' +
                     '</td></tr>'
                 );
@@ -651,7 +663,7 @@ consultarDeclaraciones(idEstablecimiento, idContribuyente) {
                 // (Llego a distinguir el caso "ya presento la de este periodo".
                 // Eso desaparecio: crear ya no se bloquea por haber presentado.)
                 $("#tbodyDeclaraciones").html(
-                    '<tr><td colspan="8" class="text-center text-muted py-4">' +
+                    '<tr><td colspan="9" class="text-center text-muted py-4">' +
                         'No hay declaraciones en curso. Las ya presentadas y pagadas están en ' +
                         '<a href="icaWebConsultar.php"><b>Consultar Declaraciones</b></a>.' +
                     '</td></tr>'
@@ -679,6 +691,7 @@ consultarDeclaraciones(idEstablecimiento, idContribuyente) {
                         '<td>' + d.dec_AnioDeclaracion + '</td>' +
                         '<td>' + DeclaracionesUI.nombreMes(d.dec_MesDeclaracion) + '</td>' +
                         '<td>' + numero + '</td>' +
+                        '<td>' + DeclaracionesUI.tipoDeclaracion(d, resp.datos) + '</td>' +
                         '<td>' + DeclaracionesUI.chipEstado(d) + '</td>' +
                         '<td>' + fechaPago + '</td>' +
                         '<td>' + banco + '</td>' +
@@ -693,7 +706,7 @@ consultarDeclaraciones(idEstablecimiento, idContribuyente) {
         },
         error: function(){
             $("#tbodyDeclaraciones").html(
-                '<tr><td colspan="8" class="text-center text-danger py-4">' +
+                '<tr><td colspan="9" class="text-center text-danger py-4">' +
                     '<i class="fa fa-exclamation-triangle"></i> No se pudieron cargar las declaraciones.' +
                 '</td></tr>'
             );
@@ -1711,6 +1724,10 @@ establecimientos.UsuarioActivo();
 $(document).on('click', '#btnNuevaDeclaracion', function () {
     establecimientos.crearDeclaracion(null, idContribuyente);
 });
+// "Crear y editar borradores" del panel de Roles: sin el, no se ofrece.
+if (typeof erpPuede === 'function' && !erpPuede('ica.editar')) {
+    $('#btnNuevaDeclaracion').hide();
+}
 
 
 

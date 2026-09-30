@@ -55,7 +55,20 @@ var DeclaracionesUI = (function () {
      *   o.off     true = tarjeta gris, sin la accion
      *   o.motivo  (con o.off) POR QUE esta en gris; tambien es su tooltip
      */
+    /**
+     * ¿El rol puede? (interruptores del panel de Roles, core/Permisos.js). Una
+     * clave, o varias separadas por espacio (alguna); un arreglo exige todas.
+     * Sin Permisos.js cargado no se esconde nada: decide el servidor.
+     */
+    function permitido(p) {
+        if (typeof erpPuede !== 'function') { return true; }
+        return (Array.isArray(p) ? p : [p]).every(function (x) { return erpPuede(x); });
+    }
+
     function accBtn(o) {
+        // Lo que el rol no puede hacer no se ofrece (el servidor igual lo
+        // rebotaria). Ver permitido().
+        if (o.permiso && !permitido(o.permiso)) { return ''; }
         var cls = 'acc-card acc-' + o.tipo + (o.off ? ' acc-off' : '');
         var ini;
         if (o.off && o.motivo) {
@@ -119,8 +132,8 @@ var DeclaracionesUI = (function () {
 
         if (!d || !d.dec_Id) {
             return envolverAcciones(
-                accBtn({ tipo: 'warning',   icono: 'fa-pencil',      texto: 'Editar', title: 'Editar borrador', off: true }) +
-                accBtn({ tipo: 'secondary', icono: 'fa-certificate', texto: 'Firmar', title: 'Firmar',          off: true }) +
+                accBtn({ permiso: 'ica.editar', tipo: 'warning',   icono: 'fa-pencil',      texto: 'Editar', title: 'Editar borrador', off: true }) +
+                accBtn({ permiso: 'ica.firmar', tipo: 'secondary', icono: 'fa-certificate', texto: 'Firmar', title: 'Firmar',          off: true }) +
                 accBtn({ tipo: 'info',      icono: 'fa-eye',         texto: 'Ver',    title: 'Ver borrador',     off: true })
             );
         }
@@ -129,7 +142,7 @@ var DeclaracionesUI = (function () {
 
         // Descargar el formulario oficial esta disponible en todos los
         // estados: es el mismo documento, con o sin sello segun avance.
-        var descargar = accBtn({ tipo: 'primary', icono: 'fa-download', texto: 'Descargar', title: 'Descargar',
+        var descargar = accBtn({ permiso: 'ica.ver', tipo: 'primary', icono: 'fa-download', texto: 'Descargar', title: 'Descargar',
                                  href: '../extensiones/declaracion.php?dec_Id=' + d.dec_Id, target: '_blank' });
 
         /*
@@ -155,15 +168,15 @@ var DeclaracionesUI = (function () {
 
         if (clave === 'borrador') {
             return envolverAcciones(
-                accBtn({ tipo: 'warning',   icono: 'fa-pencil',          texto: 'Editar', title: 'Editar',
+                accBtn({ permiso: 'ica.editar', tipo: 'warning',   icono: 'fa-pencil',          texto: 'Editar', title: 'Editar',
                          onclick: objJs + '.editarDeclaracion(' + d.dec_Id + ')' }) +
                 (sinGuardar
-                    ? accBtn({ tipo: 'secondary', icono: 'fa-pencil-square-o', texto: 'Firmar',
+                    ? accBtn({ permiso: 'ica.firmar', tipo: 'secondary', icono: 'fa-pencil-square-o', texto: 'Firmar',
                                motivo: MOTIVO_SIN_GUARDAR, off: true })
-                    : accBtn({ tipo: 'secondary', icono: 'fa-pencil-square-o', texto: 'Firmar', title: 'Firmar',
+                    : accBtn({ permiso: 'ica.firmar', tipo: 'secondary', icono: 'fa-pencil-square-o', texto: 'Firmar', title: 'Firmar',
                                onclick: objJs + '.abrirFirmaDigital(' + d.dec_Id + ', ' + d.dec_IdEstablecimiento + ')' })) +
                 descargar +
-                accBtn({ tipo: 'danger',    icono: 'fa-trash',           texto: 'Borrar', title: 'Borrar borrador',
+                accBtn({ permiso: 'ica.editar', tipo: 'danger',    icono: 'fa-trash',           texto: 'Borrar', title: 'Borrar borrador',
                          onclick: objJs + '.borrarDeclaracion(' + d.dec_Id + ')' })
             );
         }
@@ -172,7 +185,7 @@ var DeclaracionesUI = (function () {
             // "Editar borrador" sobre una firmada BORRA las firmas y devuelve
             // la declaracion a borrador (regla del cliente): dejarian de
             // acreditar el contenido si este cambia.
-            var acciones = accBtn({ tipo: 'warning', icono: 'fa-pencil', texto: 'Editar',
+            var acciones = accBtn({ permiso: 'ica.editar', tipo: 'warning', icono: 'fa-pencil', texto: 'Editar',
                                     title: 'Editar borrador (elimina las firmas)',
                                     onclick: objJs + '.editarFirmada(' + d.dec_Id + ')' }) +
                            descargar;
@@ -181,11 +194,11 @@ var DeclaracionesUI = (function () {
             // firma del contador ni la presentacion van a pasar. Se dice por qué.
             if (sinGuardar) {
                 if (clave === 'pendienteCont') {
-                    acciones += accBtn({ tipo: 'info', icono: 'fa-pencil-square-o', texto: 'Firmar contador',
+                    acciones += accBtn({ permiso: 'ica.firmar', tipo: 'info', icono: 'fa-pencil-square-o', texto: 'Firmar contador',
                                          motivo: MOTIVO_SIN_GUARDAR_FIRMADA, off: true });
                 }
                 return envolverAcciones(acciones +
-                       accBtn({ tipo: 'success', icono: 'fa-paper-plane', texto: 'Presentar',
+                       accBtn({ permiso: 'ica.presentar', tipo: 'success', icono: 'fa-paper-plane', texto: 'Presentar',
                                 motivo: MOTIVO_SIN_GUARDAR_FIRMADA, off: true }));
             }
 
@@ -217,16 +230,16 @@ var DeclaracionesUI = (function () {
                      * falte y presentando de una sola vez, que es como lo
                      * pidieron antes. Se suma una via, no se sustituye.
                      */
-                    acciones += accBtn({ tipo: 'info', icono: 'fa-pencil-square-o', texto: 'Firmar contador',
+                    acciones += accBtn({ permiso: 'ica.firmar', tipo: 'info', icono: 'fa-pencil-square-o', texto: 'Firmar contador',
                                          title: 'Firmar como contador o revisor fiscal (solo firma, no presenta)',
                                          onclick: objJs + '.firmaContador(' + d.dec_Id + ', ' + d.dec_IdEstablecimiento + ')' });
 
-                    acciones += accBtn({ tipo: 'success', icono: 'fa-paper-plane', texto: 'Presentar', title: 'Presentar',
+                    acciones += accBtn({ permiso: ['ica.presentar', 'ica.firmar'], tipo: 'success', icono: 'fa-paper-plane', texto: 'Presentar', title: 'Presentar',
                                          onclick: objJs + '.presentarDeclaracion(' + d.dec_Id + ', ' + d.dec_IdEstablecimiento + ')' });
                 } else {
                     // Sin correo registrado no hay a donde mandar el codigo:
                     // se dice que falta el dato en vez de fallar al pulsar.
-                    acciones += accBtn({ tipo: 'success', icono: 'fa-paper-plane', texto: 'Presentar',
+                    acciones += accBtn({ permiso: 'ica.presentar', tipo: 'success', icono: 'fa-paper-plane', texto: 'Presentar',
                                          motivo: 'Registre el correo del contador o revisor fiscal en el RIT antes de presentar',
                                          off: true });
                 }
@@ -234,7 +247,7 @@ var DeclaracionesUI = (function () {
             }
 
             return envolverAcciones(acciones +
-                   accBtn({ tipo: 'success', icono: 'fa-paper-plane', texto: 'Presentar', title: 'Presentar',
+                   accBtn({ permiso: 'ica.presentar', tipo: 'success', icono: 'fa-paper-plane', texto: 'Presentar', title: 'Presentar',
                             onclick: objJs + '.presentarDeclaracion(' + d.dec_Id + ', ' + d.dec_IdEstablecimiento + ')' }));
         }
 
@@ -252,7 +265,7 @@ var DeclaracionesUI = (function () {
          * quien no sabia que "Corregir" cumple ese papel sentia que la
          * pantalla no ofrecia ninguna salida despues de presentar.
          */
-        botones += accBtn({ tipo: 'warning', icono: 'fa-pencil', texto: 'Corregir',
+        botones += accBtn({ permiso: 'ica.corregir', tipo: 'warning', icono: 'fa-pencil', texto: 'Corregir',
                             title: '¿Necesitas declarar de nuevo este período? Esta es la forma correcta: genera una corrección enlazada a la presentada.',
                             onclick: objJs + '.corregirDeclaracion(' + d.dec_Id + ')' });
 
@@ -283,7 +296,7 @@ var DeclaracionesUI = (function () {
             // Va al RESUMEN de pago (pagar.php), no directo a crear la sesion:
             // la certificacion WC exige mostrar el monto y aceptar la politica
             // de datos antes de redirigir al banco (items 4 y 12.1).
-            botones += accBtn({ tipo: 'danger', icono: 'fa-money', texto: 'Pagar PSE', title: 'Pagar por PSE',
+            botones += accBtn({ permiso: 'ica.pagar', tipo: 'danger', icono: 'fa-money', texto: 'Pagar PSE', title: 'Pagar por PSE',
                                 href: '../extensiones/pse/pagar.php?modulo=ica&id=' + d.dec_Id, target: '_blank' });
         }
 
@@ -293,7 +306,7 @@ var DeclaracionesUI = (function () {
         // es la única forma de pagar en ventanilla: la declaración ya no trae
         // código de barras.
         if (clave === 'presentada' && Number(d.dec_ValorConcepto20) > 0) {
-            botones += accBtn({ tipo: 'info', icono: 'fa-barcode', texto: 'Recibo de pago',
+            botones += accBtn({ permiso: 'ica.pagar', tipo: 'info', icono: 'fa-barcode', texto: 'Recibo de pago',
                                 title: 'Descargar el recibo de pago para el banco',
                                 href: '../extensiones/reciboPago.php?modulo=ICA&id=' + d.dec_Id, target: '_blank' });
         }
@@ -370,6 +383,34 @@ var DeclaracionesUI = (function () {
     function chipEstado(d) {
         var e = estado(d);
         return '<span class="chip-estado ' + e.clase + '">' + e.texto + '</span>';
+    }
+
+    /**
+     * Columna "Tipo de declaración" (cliente, 2026-09-29): Inicial o Corrección
+     * (de cuál), y en la que ya fue corregida, por cuál. dec_DeclaracionCorrige
+     * guarda el NUMERO de la corregida; "todas" es la lista del contribuyente,
+     * para encontrar quién corrige a esta.
+     */
+    function tipoDeclaracion(d, todas) {
+        var numero  = String(d.dec_NumeroDeclaracion || d.dec_Id);
+        var corrige = d.dec_DeclaracionCorrige ? String(d.dec_DeclaracionCorrige) : '';
+        var html = corrige
+            ? '<span class="chip-estado est-firmada">Corrección</span>'
+                + '<div style="font-size:11px;color:#6B7280;">de la N° ' + corrige + '</div>'
+            : '<span class="chip-estado est-borrador">Inicial</span>';
+        var correcciones = (todas || []).filter(function (x) {
+            return x.dec_DeclaracionCorrige && String(x.dec_DeclaracionCorrige) === numero;
+        });
+        if (correcciones.length) {
+            var ultima = correcciones[correcciones.length - 1];
+            var suNumero = ultima.dec_NumeroDeclaracion || ultima.dec_Id;
+            // "Que diga que está siendo corregida": en borrador todavía no la
+            // reemplaza; ya presentada, sí.
+            html += estado(ultima).paso >= 5
+                ? '<div style="font-size:11px;color:#B45309;">Corregida por la N° ' + suNumero + '</div>'
+                : '<div style="font-size:11px;color:#B45309;">En corrección: N° ' + suNumero + '</div>';
+        }
+        return html;
     }
 
     /**
@@ -463,9 +504,11 @@ var DeclaracionesUI = (function () {
     return {
         nombreMes: nombreMes,
         htmlAcciones: htmlAcciones,
+        permitido: permitido,
         mostrarMotivo: mostrarMotivo,
         estado: estado,
         chipEstado: chipEstado,
+        tipoDeclaracion: tipoDeclaracion,
         resumenDeclaracion: resumenDeclaracion,
         stepperHtml: stepperHtml,
         fechaTexto: fechaTexto,
@@ -896,7 +939,33 @@ var FormularioDeclaracion = {
             if (totales[k] === undefined) { delete totales[k]; }
         });
 
+        // Tipo de sancion del renglon 31 (migracion 038): antes no se guardaba y
+        // al reabrir volvia a "Ninguna". Solo si la pantalla tiene las opciones.
+        var $tipo = $("input[name='tipoSancion']");
+        if ($tipo.length) {
+            totales.dec_TipoSancion = String($tipo.filter(':checked').val() || '');
+            totales.dec_OtraSancion = totales.dec_TipoSancion === 'otra' ? String($('#txtOtraSancion').val() || '').trim() : '';
+        }
+
         return totales;
+    },
+
+    /**
+     * Marca el tipo de sancion guardado (migracion 038) al abrir una
+     * declaracion. Sin dato -o en una base sin la 038- queda "Ninguna".
+     */
+    pintarTipoSancion: function (d) {
+        var tipo = String((d && d.dec_TipoSancion) || '');
+        var $opcion = $("input[name='tipoSancion'][value='" + tipo.replace(/[^a-z]/g, '') + "']");
+        if (!tipo || !$opcion.length) { $opcion = $('#chkSinSancion'); }
+        $opcion.prop('checked', true);
+        if (tipo === 'otra') {
+            $('#txtOtraSancion').val(String(d.dec_OtraSancion || ''));
+            $('#inputOtraSancion').show();
+        } else {
+            $('#txtOtraSancion').val('');
+            $('#inputOtraSancion').hide();
+        }
     },
 
     /**
@@ -1209,6 +1278,8 @@ var EditarDeclaracion = (function () {
                 } else {
                     $("#chkSinSancion").prop("checked", true);
                 }
+                // Con el tipo guardado (migracion 038), se marca el que se eligio.
+                if (d.dec_TipoSancion) { FormularioDeclaracion.pintarTipoSancion(d); }
                 if (typeof sancionSegunTipo === 'function') { sancionSegunTipo(); }
 
                 // Actividades: se muestran con la base/tarifa/impuesto TAL

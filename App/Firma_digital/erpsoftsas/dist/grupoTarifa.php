@@ -56,7 +56,7 @@
 			<div class="card-box mb-30" id="ltsRol">
 				<div class="pd-20 d-flex justify-content-between">
 					<h4 class="h4">Listado de Grupo Tarifa</h4>
-					<button type="button" class="btn btn-outline-success" onclick="grupoTarifa.crearGrupoTarifa()"><span class="ti-plus"></span> Crear Grupo Tarifa </button>
+					<button type="button" class="btn btn-outline-success" id="btnNuevoParametro" onclick="grupoTarifa.crearGrupoTarifa()" data-permiso-crear="parametros.grupos"><span class="ti-plus"></span>Crear Grupo Tarifa </button>
 				</div>
 				<div class="pb-20">
 				<table id="grupoTarifaRegistrados" class="data-table table stripe hover nowrap">

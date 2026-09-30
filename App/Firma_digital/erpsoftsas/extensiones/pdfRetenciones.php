@@ -330,7 +330,10 @@ function pdfret_firmas($firmaDeclarante, $firmaContador, $fechaSello, $nombreDec
     $html = '
 <table border="1" cellpadding="2" width="100%">
 <tr>
-    <td width="5%" rowspan="3" bgcolor="#e1dada"></td>
+    <td width="5%" rowspan="4" bgcolor="#e1dada"></td>
+    <td width="95%" align="center"><b>DECLARO QUE LA INFORMACIÓN AQUÍ CONSIGNADA ES CORRECTA Y AJUSTADA A LAS DISPOSICIONES LEGALES</b></td>
+</tr>
+<tr>
     <td width="47%"><b>FIRMA DEL DECLARANTE</b><br>';
 
     if ($firmaDeclarante) {
@@ -536,13 +539,25 @@ function pdfret_bloqueBarras($pdf, $referencia, $valor, $estaPresentada)
  *
  * Devuelve la fila, o corta la ejecucion con el codigo HTTP que corresponda.
  */
-function pdfret_filaAutorizada($con, $tabla, $prefijo, $id)
+function pdfret_filaAutorizada($con, $tabla, $prefijo, $id, $clavePermiso = null)
 {
     if (session_status() === PHP_SESSION_NONE) { @session_start(); }
 
     if (empty($_SESSION['id_usuario'])) {
         http_response_code(401);
         exit('Debe iniciar sesión para descargar este documento.');
+    }
+
+    // Permiso de la accion (panel de Roles, 2026-09-29): el PDF pide "Ver y
+    // descargar" del modulo; el recibo de pago pasa "Recibo de pago y PSE".
+    include_once SERVER . '/business/class.permisosRol.php';
+    if ($clavePermiso === null) {
+        $clavePermiso = ['ind_reteica' => 'reteica', 'ind_autorreteica' => 'autorreteica',
+                         'ind_declaraciones_ica' => 'ica'][$tabla] . '.ver';
+    }
+    if (!\erpsoftsas\PermisosRol::tiene($clavePermiso)) {
+        http_response_code(403);
+        exit(\erpsoftsas\PermisosRol::mensaje($clavePermiso));
     }
 
     $id = (int) $id;
@@ -554,12 +569,10 @@ function pdfret_filaAutorizada($con, $tabla, $prefijo, $id)
     $sql    = "SELECT * FROM {$tabla} WHERE {$prefijo}Id = ?";
     $params = [$id];
 
-    $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
-
-    /* Los roles de Alcaldia (1 y 2) ven cualquiera; el resto solo lo suyo.
-       No hay columna que ate usuario y contribuyente: se cruzan por numero de
-       documento, igual que en todo el sistema. */
-    if (!in_array($rol, [1, 2], true)) {
+    /* Quien gestiona contribuyentes ve cualquiera (antes: roles 1 y 2); el
+       resto solo lo suyo. No hay columna que ate usuario y contribuyente: se
+       cruzan por numero de documento, igual que en todo el sistema. */
+    if (!\erpsoftsas\PermisosRol::gestionaOtros()) {
         $sql .= " AND {$prefijo}IdContribuyente IN (
                       SELECT c.ind_Id FROM ind_contribuyentes c
                       INNER JOIN conf_usuarios u

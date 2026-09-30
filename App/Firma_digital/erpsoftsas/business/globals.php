@@ -11,6 +11,14 @@
    @ini_set('display_errors', '0');
    @ini_set('log_errors', '1');
 
+   // El driver de SQL Server guarda el resultado de cada consulta en el
+   // cliente (SQLSRV_CURSOR_CLIENT_BUFFERED, ver class.conexionSqlServer.php)
+   // y por defecto corta en 10 MB: "Memory limit of 10240 KB exceeded for
+   // buffered query". Asi fallaba "Actualizar" establecimiento en produccion
+   // (2026-09-29; la consulta que traia la tabla entera ya se corrigio). Se
+   // sube a 32 MB como red de seguridad, dentro de los 128 MB de PHP.
+   @ini_set('sqlsrv.ClientBufferMaxKBSize', '32768');
+
    // Cargar configuracion del municipio ANTES que cualquier conexion a BD se
    // instancie: sin esto, class.conexionSqlServer.php nunca ve las constantes
    // DB_PROD_* y cae a las credenciales de produccion hardcodeadas, sin
@@ -31,6 +39,12 @@
    if (file_exists($_configMunicipioPath)) {
        require_once $_configMunicipioPath;
    }
+
+   // Departamento por defecto (cliente, 2026-09-29: "el departamento no
+   // aparece" en el formulario de establecimientos). El config.municipio.php de
+   // produccion de Paipa no lo define y el campo salia vacio. Los cuatro
+   // municipios son de Boyaca; uno de otro departamento lo define en su config.
+   if (!defined('MUNICIPIO_DEPARTAMENTO')) { define('MUNICIPIO_DEPARTAMENTO', 'Boyacá'); }
 
    define ('SERVER', $_SERVER['DOCUMENT_ROOT']."/erpsoftsas");
    header("Cache-Control: no-cache, must-revalidate"); // HTTP/1.1

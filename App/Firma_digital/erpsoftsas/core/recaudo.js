@@ -52,6 +52,11 @@ function pintarFilas(idCuerpo, lista, columnas, vacio) {
 
 /** Boton para asignar a mano la fila i de una lista a la candidata c. */
 function botonAsignar(lista, i, c, cand) {
+    // "Asignar pagos a mano" del panel de Roles: sin el, solo se ve la candidata.
+    if (typeof erpPuede === 'function' && !erpPuede('alcaldia.recaudo.asignar')) {
+        return '<div class="small text-muted mb-1">Candidata: ' + escapar(cand.etiqueta) + ' '
+             + escapar(cand.contribuyente || cand.documento || '') + ' (total ' + pesos(cand.total) + ')</div>';
+    }
     return '<button type="button" class="btn btn-sm btn-outline-primary mb-1 js-asignar"'
          + ' data-lista="' + lista + '" data-i="' + i + '" data-c="' + c + '">'
          + 'Aplicar a ' + escapar(cand.etiqueta) + ': ' + escapar(cand.contribuyente || cand.documento || '')

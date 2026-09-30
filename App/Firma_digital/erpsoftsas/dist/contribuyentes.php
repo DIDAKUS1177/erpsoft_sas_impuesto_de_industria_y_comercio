@@ -56,10 +56,10 @@
 			<div class="card-box mb-30" id="ltsRol">
 				<div class="pd-20 d-flex justify-content-between">
 					<h4 class="h4">Listado de Contribuyentes</h4>
-					<button type="button" class="btn btn-outline-success" onclick="contribuyentes.crearContribuyentes()"><span class="ti-plus"></span> Crear Contribuyentes</button>
+					<button type="button" class="btn btn-outline-success" id="btnNuevoContribuyente" onclick="contribuyentes.crearContribuyentes()" data-permiso-crear="alcaldia.contribuyentes.editar"><span class="ti-plus"></span> Crear Contribuyentes</button>
 				</div>
-				<!-- Se busca en el servidor (máximo 20 resultados): la pantalla ya no
-				     descarga el padrón completo para filtrarlo aquí. -->
+				<!-- Se busca y se pagina en el servidor (funcion 5 y core/paginador.js):
+				     la pantalla no descarga el padrón completo para filtrarlo aquí. -->
 				<div class="pd-20 pt-0">
 					<label for="buscarContribuyente" class="sr-only">Buscar contribuyente</label>
 					<div class="input-group mb-0" style="max-width: 560px;">
@@ -83,9 +83,11 @@
 							</tr>
 						</thead>
 						<tbody id="bodyContribuyentesRegistrados">
-						
+
 						</tbody>
 					</table>
+					<!-- De a 5, 10, 20, 50 o 100 por página y el total (cliente, 2026-09-29). -->
+					<div id="paginacionContribuyentes" class="px-3 pt-2"></div>
 				</div>
 			</div>
 		</div>
@@ -340,6 +342,7 @@
 		<!-- switchery js -->
 		<script src="../src/plugins/switchery/switchery.min.js"></script>
 		<script src="../src/plugins/sweetalert2/sweetalert2.all.js"></script>
+		<script src="../core/paginador.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/contribuyentes.js?v=<?php echo time(); ?>"></script>
 
         <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />

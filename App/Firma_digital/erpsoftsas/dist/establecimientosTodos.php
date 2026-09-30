@@ -79,6 +79,8 @@
 						</thead>
 						<tbody id="bodyEstablecimientos"></tbody>
 					</table>
+					<!-- De a 5, 10, 20, 50 o 100 por página y el total (cliente, 2026-09-29). -->
+					<div id="paginacionEstablecimientos" class="px-3 pt-2"></div>
 				</div>
 			</div>
 		</div>
@@ -93,6 +95,7 @@
 		<script src="../src/plugins/datatables/js/dataTables.responsive.min.js"></script>
 		<script src="../src/plugins/datatables/js/responsive.bootstrap4.min.js"></script>
 		<script src="../src/plugins/sweetalert2/sweetalert2.all.js"></script>
+		<script src="../core/paginador.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/establecimientosTodos.js?v=<?php echo time(); ?>"></script>
 	</div>
 </body>

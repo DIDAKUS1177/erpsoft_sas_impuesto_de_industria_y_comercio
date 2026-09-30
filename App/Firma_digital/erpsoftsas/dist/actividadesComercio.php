@@ -56,7 +56,7 @@
 			<div class="card-box mb-30" id="ltsRol">
 				<div class="pd-20 d-flex justify-content-between">
 					<h4 class="h4">Listado de Actividades Comercio</h4>
-					<button type="button" class="btn btn-outline-success" onclick="actividadesComercio.crearActividadesComercio()"><span class="ti-plus"></span> Crear Acttividad </button>
+					<button type="button" class="btn btn-outline-success" id="btnNuevoParametro" onclick="actividadesComercio.crearActividadesComercio()" data-permiso-crear="parametros.actividades"><span class="ti-plus"></span>Crear Acttividad </button>
 				</div>
 				<div class="pb-20">
 				<table id="actividadesComercioRegistrados" class="data-table table stripe hover nowrap">

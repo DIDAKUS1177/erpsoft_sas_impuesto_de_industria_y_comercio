@@ -177,7 +177,8 @@ if ($modulo === 'ica') {
          * mismo funcionario podía sacar el recibo sin intereses pero no cobrar
          * por PSE sin inventarse una cifra (revisión 2026-09-28).
          */
-        $esAlcaldia = in_array((int) ($_SESSION['id_Rol'] ?? 0), [1, 2], true);
+        include_once SERVER . '/business/class.permisosRol.php';
+        $esAlcaldia = \erpsoftsas\PermisosRol::tiene('alcaldia.recibo.intereses');
         $mora = [
             'limite' => date('d/m/Y', strtotime(\erpsoftsas\VencimientoICA::fechaLimite($anioIca))),
             'dias'   => \erpsoftsas\VencimientoICA::diasDeMora($anioIca, \erpsoftsas\VencimientoICA::hoy()),

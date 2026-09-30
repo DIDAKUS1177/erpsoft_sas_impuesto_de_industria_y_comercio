@@ -58,7 +58,7 @@
 					<h4 class="h4">Listado de Establecimientos del Contribuyente</h4>
 					<div>
 					<button type="button" class="btn btn-outline-info mr-1" onclick="establecimientos.verInformacionContribuyente()"><span class="ti-id-badge"></span> Información del Contribuyente</button>
-					<button type="button" class="btn btn-outline-success" onclick="establecimientos.crearEstablecimientos()"><span class="ti-plus"></span> Crear Establecimientos </button>
+					<button type="button" class="btn btn-outline-success" id="btnNuevoEstablecimiento" onclick="establecimientos.crearEstablecimientos()" data-permiso-crear="establecimientos.editar"><span class="ti-plus"></span> Crear Establecimientos </button>
 					</div>
 				</div>
 				<div class="pb-20">

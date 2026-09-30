@@ -105,7 +105,13 @@ class PseModulo
         if (!\PlacetoPay::botonVisible($usuario)) {
             return 'El pago en línea todavía no está disponible. Puede pagar en el banco con el recibo de pago.';
         }
-        if (in_array((int) ($_SESSION['id_Rol'] ?? 0), [1, 2], true)) {
+        // "Recibo de pago y PSE" del modulo; por cualquier contribuyente, quien
+        // lo gestiona (panel de Roles, 2026-09-29; antes roles 1 y 2).
+        include_once SERVER . '/business/class.permisosRol.php';
+        if (!\erpsoftsas\PermisosRol::tiene($m['clave'] . '.pagar')) {
+            return \erpsoftsas\PermisosRol::mensaje($m['clave'] . '.pagar');
+        }
+        if (\erpsoftsas\PermisosRol::gestionaOtros()) {
             return null;
         }
 

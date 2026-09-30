@@ -100,6 +100,7 @@
                                         <th>Año</th>
                                         <th>Mes</th>
                                         <th>N° Declaración</th>
+                                        <th>Tipo de declaración</th>
                                         <th>Estado</th>
                                         <th>Fecha Pago</th>
                                         <th>Banco</th>
@@ -1000,7 +1001,7 @@ data-campo="sanciones" value="0">
                                     </div>
 
                                     <div id="inputOtraSancion" style="display:none; margin-top:5px;">
-                                        <input type="text" class="form-control" id="txtOtraSancion" placeholder="Detalle de la sanción">
+                                        <input type="text" class="form-control" id="txtOtraSancion" placeholder="Detalle de la sanción" maxlength="40">
                                     </div>
 
                                 </div>

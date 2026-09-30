@@ -50,6 +50,7 @@ include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.sessions.php';
 include_once SERVER . '/business/controller/class.cabecera.php';
 include_once SERVER . '/business/class.catalogoAnio.php';
+include_once SERVER . '/business/class.permisosRol.php';
 
 abstract class ControladorRetencion extends \erpsoftsas\Cabecera
 {
@@ -137,11 +138,19 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
     /**
      * Es funcionario de la Alcaldia (roles 1 y 2): ve todo, como en el ICA.
      */
+    /**
+     * ¿Trabaja sobre CUALQUIER contribuyente (el que pida)? Un rol de la
+     * Alcaldia con "Gestionar a un contribuyente" (antes: roles 1 y 2).
+     */
     protected function _esFuncionario()
     {
-        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
-        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
-        return in_array($rol, [1, 2], true);
+        return \erpsoftsas\PermisosRol::gestionaOtros();
+    }
+
+    /** Prefijo de los permisos de este modulo: reteica.* o autorreteica.* */
+    protected function _prefijoPermisos()
+    {
+        return $this->modulo === 'AUTORRETEICA' ? 'autorreteica' : 'reteica';
     }
 
     /**
@@ -812,6 +821,13 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
      *  la autorretencion). Corre dentro de la transaccion de _guardar. */
     protected function _guardarExtra($con, array $fila) {}
 
+    /**
+     * Regla de cuadre propia del modulo, sobre lo ya liquidado (dentro de la
+     * transaccion de Guardar y de Presentar). null si cuadra; si no, el mensaje
+     * para el usuario, y no se guarda ni se presenta. Ver la autorretencion.
+     */
+    protected function _descuadre($con, $id) { return null; }
+
     /** Columnas de la tabla principal que no son casillas y tambien se firman. */
     protected function _columnasFirmadas() { return []; }
 
@@ -954,6 +970,15 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
 
             /* 3. Recalcular. Estricto: una formula que falla deshace todo. */
             $this->_liquidar($con, $id, true);
+
+            /* 3b. La regla de cuadre del modulo: si no cuadra, no se guarda. */
+            $descuadre = $this->_descuadre($con, $id);
+            if ($descuadre !== null) {
+                $con->rollback();
+                $this->_ok = 0;
+                $this->_mensaje = $descuadre;
+                return ['descuadre' => 1];
+            }
 
             /* 4. Si lo firmado ya no es lo guardado, las firmas se quitan, como
                   al editar una firmada en el ICA. Seguian ahi y se presentaba
@@ -1195,6 +1220,16 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
 
             $antes = $this->_huella($con, $id);
             $this->_liquidar($con, $id, true);
+
+            // Un borrador guardado antes de la regla de cuadre no se presenta
+            // descuadrado.
+            $descuadre = $this->_descuadre($con, $id);
+            if ($descuadre !== null) {
+                $con->rollback();
+                $this->_ok = 0;
+                $this->_mensaje = $descuadre;
+                return ['descuadre' => 1];
+            }
 
             if ($this->_huella($con, $id) !== $antes) {
                 $con->consultar(
@@ -1484,7 +1519,24 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
         header('Content-type: application/json');
 
         if (empty($_SESSION['id_usuario'])) {
-            echo json_encode(['ok' => 0, 'mensaje' => 'Debe iniciar sesión.', 'datos' => []]);
+            echo json_encode(['ok' => 0, 'mensaje' => 'Debe iniciar sesión.', 'datos' => [], 'sinSesion' => 1]);
+            return;
+        }
+
+        /*
+         * Permisos por accion (panel de Roles, 2026-09-29): cada funcion pide su
+         * interruptor del modulo. Un rol de la Alcaldia sin "Gestionar a un
+         * contribuyente" no tiene sobre quien trabajar.
+         */
+        $accion = [1 => 'editar', 2 => 'ver', 3 => 'ver', 4 => 'editar', 5 => 'editar',
+                   6 => 'presentar', 7 => 'corregir', 8 => 'ver'][(int) ($_POST['funcion'] ?? 0)] ?? null;
+        $clave = $accion !== null ? $this->_prefijoPermisos() . '.' . $accion : null;
+        if ($clave !== null && !\erpsoftsas\PermisosRol::tiene($clave)) {
+            echo json_encode(['ok' => 0, 'mensaje' => \erpsoftsas\PermisosRol::mensaje($clave), 'datos' => [], 'sinPermiso' => 1]);
+            return;
+        }
+        if (\erpsoftsas\PermisosRol::esAlcaldia() && !\erpsoftsas\PermisosRol::gestionaOtros()) {
+            echo json_encode(['ok' => 0, 'mensaje' => \erpsoftsas\PermisosRol::mensaje('alcaldia.contribuyentes.gestionar'), 'datos' => [], 'sinPermiso' => 1]);
             return;
         }
 

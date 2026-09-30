@@ -91,7 +91,7 @@
 									<th>Período</th>
 									<th>N° Declaración</th>
 									<th>Estado</th>
-									<th>Corrección</th>
+									<th>Tipo de declaración</th>
 									<th style="text-align:right;">Total a pagar</th>
 									<th class="text-center" style="width:150px;">Acciones</th>
 								</tr>

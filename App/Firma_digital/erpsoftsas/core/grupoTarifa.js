@@ -64,13 +64,17 @@ class GrupoTarifa {
                     dep.gru_Nombre +
                     '</td>' +
                     '<td align="center">' +
+                    // Editar y activar/inactivar: "parametros.grupos" del panel de Roles.
+                    ((typeof erpPuede === 'function' && !erpPuede('parametros.grupos'))
+                        ? '<span class="text-muted small">Solo consulta</span>'
+                        : (
                     '<button type="button" class="btn btn-social-icon btn-warning " data-toggle="tooltip" title="Editar Grupo Tarifa" style="margin-right:5px" onclick="javascript:grupoTarifa.getGrupoTarifaById(' + dep.gru_Id + ')">' +
                     '<i class="dw dw-edit2"></i>' +
                     '</button>' +
 
                     '<button type="button" class="btn btn-social-icon ' + clase + ' " data-toggle="tooltip" title="' + titulo + '"  onclick="javascript:grupoTarifa.cambiarEstado(' + dep.gru_Id + ',' + dep.gru_Estado + ')">' +
                     '<i class="' + icono + '"></i>' +
-                    '</button>' +
+                    '</button>')) +
                     '</td>' +
                     '</tr>'
                 );

@@ -200,6 +200,12 @@ var Retenciones = (function () {
      *   o.href    enlace directo   + o.target opcional (por defecto _blank)
      */
     function accBtn(o) {
+        // Lo que el rol no puede hacer no se ofrece (interruptores del panel de
+        // Roles; el servidor igual lo rebotaria). Arreglo = todas las claves.
+        if (o.permiso && typeof erpPuede === 'function'
+            && !(Array.isArray(o.permiso) ? o.permiso : [o.permiso]).every(function (x) { return erpPuede(x); })) {
+            return '';
+        }
         var cls = 'acc-card acc-' + o.tipo + (o.clase ? ' ' + o.clase : '');
         var cuerpo = '<i class="fa ' + o.icono + '"></i>'
                    + '<span class="acc-lbl">' + o.texto + '</span>';
@@ -238,8 +244,10 @@ var Retenciones = (function () {
      */
     function accionesRetencion(f, cfg) {
         var estado = f.estadoClave || 'borrador';
+        // Prefijo de los interruptores del panel de Roles: reteica / autorreteica.
+        var mod = String(cfg.modulo || '').toLowerCase();
         var pdf = cfg.pdf
-            ? accBtn({ tipo: 'primary', icono: 'fa-download', texto: 'Descargar', title: 'Descargar', href: cfg.pdf + '?id=' + f.id })
+            ? accBtn({ permiso: mod + '.ver', tipo: 'primary', icono: 'fa-download', texto: 'Descargar', title: 'Descargar', href: cfg.pdf + '?id=' + f.id })
             : '';
         var b;
 
@@ -251,40 +259,41 @@ var Retenciones = (function () {
                 // (en $0 pagar.php solo puede decir "no aplica"). Va al RESUMEN
                 // (pagar.php): monto + logo AvalPay + politica antes de redirigir.
                 if (Number(f.pago_en_linea) === 1 && Number(f.total) > 0) {
-                    b += accBtn({ tipo: 'danger', icono: 'fa-money', texto: 'Pagar PSE', title: 'Pagar por PSE',
+                    b += accBtn({ permiso: mod + '.pagar', tipo: 'danger', icono: 'fa-money', texto: 'Pagar PSE', title: 'Pagar por PSE',
                                   href: '../extensiones/pse/pagar.php?modulo=' + encodeURIComponent(cfg.modulo || '') + '&id=' + f.id,
                                   target: '_blank' });
                 }
                 // Recibo de pago para el banco: el mismo en los tres módulos
                 // (extensiones/reciboPago.php), solo si hay valor.
                 if (Number(f.total) > 0) {
-                    b += accBtn({ tipo: 'info', icono: 'fa-barcode', texto: 'Recibo de pago',
+                    b += accBtn({ permiso: mod + '.pagar', tipo: 'info', icono: 'fa-barcode', texto: 'Recibo de pago',
                                   title: 'Descargar el recibo de pago para el banco',
                                   href: '../extensiones/reciboPago.php?modulo=' + encodeURIComponent(cfg.modulo || '') + '&id=' + f.id,
                                   target: '_blank' });
                 }
-                b += accBtn({ tipo: 'warning', icono: 'fa-pencil', texto: 'Corregir',
+                b += accBtn({ permiso: mod + '.corregir', tipo: 'warning', icono: 'fa-pencil', texto: 'Corregir',
                               title: 'Corregir', clase: 'js-corregir', id: f.id });
             }
         } else if (estado === 'pendienteCont' || estado === 'firmada') {
-            b = accBtn({ tipo: 'warning', icono: 'fa-pencil', texto: 'Editar',
+            b = accBtn({ permiso: mod + '.editar', tipo: 'warning', icono: 'fa-pencil', texto: 'Editar',
                          title: 'Editar (si cambia algo, al guardar se quitan las firmas)', clase: 'js-editar', id: f.id })
               + pdf;
             if (estado === 'pendienteCont') {
                 // Firmar como contador es un acto propio, con su botón, como en
                 // el ICA (cliente, 2026-09-01): el contador firma y se va.
                 // "Presentar" pide la firma que falte y presenta de una vez.
-                b += accBtn({ tipo: 'info', icono: 'fa-pencil-square-o', texto: 'Firmar contador',
+                b += accBtn({ permiso: mod + '.firmar', tipo: 'info', icono: 'fa-pencil-square-o', texto: 'Firmar contador',
                               title: 'Firmar como contador o revisor fiscal (solo firma, no presenta)',
                               clase: 'js-firmar-contador', id: f.id, numero: f.numero });
             }
-            b += accBtn({ tipo: 'success', icono: 'fa-paper-plane', texto: 'Presentar',
+            b += accBtn({ permiso: estado === 'pendienteCont' ? [mod + '.presentar', mod + '.firmar'] : mod + '.presentar',
+                      tipo: 'success', icono: 'fa-paper-plane', texto: 'Presentar',
                           title: 'Presentar', clase: 'js-presentar', id: f.id, numero: f.numero });
         } else { // borrador
-            b = accBtn({ tipo: 'warning',   icono: 'fa-pencil',          texto: 'Editar', title: 'Editar',          clase: 'js-editar', id: f.id })
-              + accBtn({ tipo: 'secondary', icono: 'fa-pencil-square-o', texto: 'Firmar', title: 'Firmar',          clase: 'js-firmar', id: f.id, numero: f.numero })
+            b = accBtn({ permiso: mod + '.editar', tipo: 'warning',   icono: 'fa-pencil',          texto: 'Editar', title: 'Editar',          clase: 'js-editar', id: f.id })
+              + accBtn({ permiso: mod + '.firmar', tipo: 'secondary', icono: 'fa-pencil-square-o', texto: 'Firmar', title: 'Firmar',          clase: 'js-firmar', id: f.id, numero: f.numero })
               + pdf
-              + accBtn({ tipo: 'danger',    icono: 'fa-trash',           texto: 'Borrar', title: 'Borrar borrador', clase: 'js-borrar', id: f.id });
+              + accBtn({ permiso: mod + '.editar', tipo: 'danger',    icono: 'fa-trash',           texto: 'Borrar', title: 'Borrar borrador', clase: 'js-borrar', id: f.id });
         }
         return accCards(b);
     }
@@ -607,7 +616,32 @@ var Retenciones = (function () {
             }, function (r) { pintar(r.datos); });
         }
 
+        /*
+         * "Tipo de declaración" (cliente, 2026-09-29), como en el ICA: Inicial o
+         * Corrección de cuál, y en la ya corregida, por cuál.
+         */
+        function tipoDeclaracion(f, todas) {
+            var html = f.corrige
+                ? '<span class="chip-estado est-firmada">Corrección</span>'
+                    + '<div style="font-size:11px;color:#6B7280;">de la N° ' + escapar(f.corrige) + '</div>'
+                : '<span class="chip-estado est-borrador">Inicial</span>';
+            var por = (todas || []).filter(function (x) {
+                return x.corrige && String(x.corrige) === String(f.numero);
+            });
+            if (por.length) {
+                var ultima = por[por.length - 1];
+                var yaPresentada = ultima.estadoClave === 'presentada' || ultima.estadoClave === 'pagada';
+                html += '<div style="font-size:11px;color:#B45309;">'
+                      + (yaPresentada ? 'Corregida por la N° ' : 'En corrección: N° ')
+                      + escapar(ultima.numero) + '</div>';
+            }
+            return html;
+        }
+
         function pintar(filas) {
+
+            // Toda la lista, para saber cuál corrige a cuál ("Tipo de declaración").
+            var todas = filas || [];
 
             // Esta pantalla es de CONSULTA: igual que el Consultar del ICA, solo
             // se listan las declaraciones ya PRESENTADAS (o pagadas). Los
@@ -638,7 +672,7 @@ var Retenciones = (function () {
                   + '<td>' + nombrePeriodo(cfg, f.periodo) + '</td>'
                   + '<td>' + escapar(f.numero) + '</td>'
                   + '<td>' + insignia(f) + '</td>'
-                  + '<td>' + (f.corrige ? ('Corrige la ' + escapar(f.corrige)) : '—') + '</td>'
+                  + '<td>' + tipoDeclaracion(f, todas) + '</td>'
                   + '<td style="text-align:right;">' + pesos(f.total) + '</td>'
                   + '<td class="text-center">' + accionesRetencion(f, cfg) + '</td>'
                   + '</tr>'
@@ -858,6 +892,12 @@ var Retenciones = (function () {
         });
 
         /* ---------------- crear ---------------- */
+
+        // Crear es "Crear y editar borradores" del panel de Roles: quien solo
+        // firma o presenta no ve el boton (el servidor igual lo rebotaria).
+        if (typeof erpPuede === 'function' && !erpPuede(String(cfg.modulo || '').toLowerCase() + '.editar')) {
+            $('#btnCrear').prop('disabled', true).hide();
+        }
 
         $('#btnCrear').on('click', function () {
 

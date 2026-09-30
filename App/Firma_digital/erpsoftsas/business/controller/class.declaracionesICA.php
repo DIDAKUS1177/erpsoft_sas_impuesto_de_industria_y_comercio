@@ -324,8 +324,26 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
             return 'Debe iniciar sesión.';
         }
 
-        $rol = isset($_SESSION['id_Rol']) ? (int) $_SESSION['id_Rol'] : 0;
-        if (in_array($rol, [1, 2], true)) { return null; }
+        /*
+         * Permisos por accion (panel de Roles, 2026-09-29): cada funcion pide
+         * su interruptor de "Declaración de ICA". Trabajar sobre OTRO
+         * contribuyente pide ademas "Gestionar a un contribuyente" (antes:
+         * roles 1 y 2 podian todo, sin filtro).
+         */
+        include_once SERVER . '/business/class.permisosRol.php';
+        $necesita = [
+            1 => 'ica.editar', 2 => 'ica.editar', 3 => 'ica.ver', 4 => 'ica.editar',
+            5 => 'ica.ver', 6 => 'ica.editar', 7 => 'ica.editar', 8 => 'ica.ver',
+            9 => 'ica.presentar', 10 => 'ica.editar', 11 => 'ica.corregir',
+            12 => 'ica.ver', 13 => 'ica.ver', 14 => 'ica.editar',
+        ][(int) ($_POST['funcion'] ?? 0)] ?? null;
+        if ($necesita !== null && !\erpsoftsas\PermisosRol::tiene($necesita)) {
+            return \erpsoftsas\PermisosRol::mensaje($necesita);
+        }
+        if (\erpsoftsas\PermisosRol::gestionaOtros()) { return null; }
+        if (\erpsoftsas\PermisosRol::esAlcaldia()) {
+            return \erpsoftsas\PermisosRol::mensaje('alcaldia.contribuyentes.gestionar');
+        }
 
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
         $propio = self::_contribuyenteDeLaSesion($con);
@@ -435,7 +453,8 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
         $negado = self::_verificarAcceso();
         if ($negado !== null) {
             header('Content-type: application/json');
-            echo json_encode(["ok" => 0, "mensaje" => $negado, "datos" => []]);
+            echo json_encode(["ok" => 0, "mensaje" => $negado, "datos" => [],
+                              "sinSesion" => empty($_SESSION['id_usuario']) ? 1 : 0]);
             return;
         }
 
@@ -1197,8 +1216,15 @@ $sql = "
             ON acc.acc_Id = atc.atc_IdCodigoActividad
         WHERE e.est_Id = ?
     ";
+    $params = [(int) ($_POST['est_Id'] ?? 0)];
+    // Solo de un establecimiento suyo, salvo quien gestiona contribuyentes
+    // (_verificarAcceso ya fijo dec_IdContribuyente al de la sesion).
+    if (!\erpsoftsas\PermisosRol::gestionaOtros()) {
+        $sql .= " AND e.est_IdContribuyente = ?";
+        $params[] = (int) ($_POST['dec_IdContribuyente'] ?? 0);
+    }
 
-    $res = $con->consultar($sql,[ $_POST['est_Id'] ]);
+    $res = $con->consultar($sql, $params);
 
     $actividades = [];
 
@@ -1447,6 +1473,20 @@ private function _ejecutarSpLiquidacion($anio,$mes,$numero, $campoSeleccionado){
  * @param array  $actividades  filas de la tabla de actividades del formulario
  * @param array  $totales      renglones de ingresos; si viene vacio no se tocan
  */
+/** ¿La base tiene las columnas del tipo de sancion (migracion 038)? */
+private static function _hayColumnasSancion($con)
+{
+    static $hay = null;
+    if ($hay === null) {
+        $f = $con->obnerFila($con->consultar(
+            "SELECT COL_LENGTH('dbo.ind_declaraciones_ica', 'dec_TipoSancion') AS t,
+                    COL_LENGTH('dbo.ind_declaraciones_ica', 'dec_OtraSancion') AS o"
+        ));
+        $hay = !empty($f['t']) && !empty($f['o']);
+    }
+    return $hay;
+}
+
 private function _guardarActividadesYTotales($con, $idFila, array $actividades, array $totales = [])
 {
     if (count($totales)) {
@@ -1492,6 +1532,25 @@ private function _guardarActividadesYTotales($con, $idFila, array $actividades, 
             $totales['dec_ValorImpuesto']            ?? null,
             $idFila
         ]);
+
+        /*
+         * Tipo de sancion del renglon 31 (migracion 038). Solo si la pantalla
+         * lo manda y la base tiene las columnas; un valor fuera de la lista no
+         * entra. "Ninguna" guarda NULL, y el "¿Cuál?" solo vale con "otra".
+         */
+        if (array_key_exists('dec_TipoSancion', $totales) && self::_hayColumnasSancion($con)) {
+            $tipo = strtolower(trim((string) $totales['dec_TipoSancion']));
+            if (!in_array($tipo, ['extemporaneidad', 'correccion', 'inexactitud', 'otra'], true)) { $tipo = ''; }
+            // 40: mas largo parte en dos el renglon 31 del PDF y saca el codigo
+            // de barras del papel (revision 2026-09-29).
+            $otra = $tipo === 'otra' ? mb_substr(trim((string) ($totales['dec_OtraSancion'] ?? '')), 0, 40) : '';
+            $con->consultar(
+                "UPDATE ind_declaraciones_ica
+                    SET dec_TipoSancion = NULLIF(?, ''), dec_OtraSancion = NULLIF(?, '')
+                  WHERE dec_Id = ?",
+                [$tipo, $otra, $idFila]
+            );
+        }
     }
 
     // Se reemplazan enteras: la pantalla manda siempre la tabla completa, asi

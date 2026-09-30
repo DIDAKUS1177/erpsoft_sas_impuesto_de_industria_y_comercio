@@ -73,6 +73,18 @@ if (!$permitido) {
     exit('Este archivo pertenece a otro contribuyente.');
 }
 
+/* ---- Y su interruptor de "ver" (panel de Roles, 2026-09-29) -------------
+   El mismo que pide listar esos documentos (class.anexos.php): quien gestiona
+   contribuyentes pero no ve el RIT no baja su RUT ni su cedula por el id. */
+include_once SERVER . '/business/class.permisosRol.php';
+$claveVer = !empty($anexo['anx_IdEstablecimiento'])
+    ? ['establecimientos.ver', 'alcaldia.establecimientos.cerrar']
+    : ['rit.ver'];
+if (!\erpsoftsas\PermisosRol::tieneAlguno($claveVer)) {
+    http_response_code(403);
+    exit(\erpsoftsas\PermisosRol::mensaje($claveVer[0]));
+}
+
 /* ---- Entrega ---------------------------------------------------------- */
 $ruta = \erpsoftsas\ControladorAnexos::carpetaBase() . '/' . $anexo['anx_Ruta'];
 
