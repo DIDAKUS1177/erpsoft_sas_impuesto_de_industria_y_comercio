@@ -1688,14 +1688,11 @@ Quedan para el cliente: la regla de cuadre de la autorretención también frena
 "Liquidar" un borrador a medias; "Crear y editar contribuyentes" permite cambiar
 el documento (que es lo que une la cuenta con el contribuyente).
 
-`BD/Datos Usuario.txt` (usuarios y claves en texto plano) se quitó el mismo día
-(`d55f603`, pedido de Diego): el despliegue de Plesk lo borró de los 4 servidores
-y su URL responde 404. **El repositorio de GitHub es PÚBLICO**, así que sigue
-en el historial: esas claves hay que darlas por conocidas y cambiarlas donde se
-usen. En `BD/` de Macanal quedaron `provisionar_municipio.php` y
-`seed_catalogos.sql` (la carga de su base): el script NO tiene guarda de línea
-de comandos; hoy se detiene porque el config de Macanal no tiene la clave de la
-base, pero conviene borrarlo desde el Administrador de archivos (no está en git).
+`Datos Usuario.txt` (usuarios y claves en texto plano) se quitó del repositorio
+el mismo día, a pedido de Diego: `d55f603` (la copia publicada, `BD/`) y
+`55cbdb0` (las de `App/erpsoftsas/BD` y `App/predial_old/BD`). Sigue en el
+historial, así que esas claves hay que darlas por conocidas y cambiarlas donde
+se usen. Ningún archivo con claves vuelve al repositorio.
 
 ### Pendientes
 
