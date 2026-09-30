@@ -1686,9 +1686,16 @@ Pruebas nuevas: `probar_permisos.php` (130), `probar_migraciones_040.php` (16:
 roles de otros números, requisitos, 039 fuera de Paipa y 037 que avisa).
 Quedan para el cliente: la regla de cuadre de la autorretención también frena
 "Liquidar" un borrador a medias; "Crear y editar contribuyentes" permite cambiar
-el documento (que es lo que une la cuenta con el contribuyente). Y
-`BD/Datos Usuario.txt`, con usuarios y claves en texto plano, está en el
-repositorio y en la carpeta publicada: conviene quitarlo.
+el documento (que es lo que une la cuenta con el contribuyente).
+
+`BD/Datos Usuario.txt` (usuarios y claves en texto plano) se quitó el mismo día
+(`d55f603`, pedido de Diego): el despliegue de Plesk lo borró de los 4 servidores
+y su URL responde 404. **El repositorio de GitHub es PÚBLICO**, así que sigue
+en el historial: esas claves hay que darlas por conocidas y cambiarlas donde se
+usen. En `BD/` de Macanal quedaron `provisionar_municipio.php` y
+`seed_catalogos.sql` (la carga de su base): el script NO tiene guarda de línea
+de comandos; hoy se detiene porque el config de Macanal no tiene la clave de la
+base, pero conviene borrarlo desde el Administrador de archivos (no está en git).
 
 ### Pendientes
 
