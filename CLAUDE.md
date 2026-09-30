@@ -1630,6 +1630,12 @@ podía crear roles o reescribirles los permisos).
   confirmar el despliegue, no guardar los roles 3 y 4 en el panel: guardar borra
   sus botones viejos y volver al código anterior los dejaría sin permisos.
 
+**Desplegado el 2026-09-29** (commit `b6979c5`, "Pull ahora" en los 4 municipios,
+verificado desde afuera) y migraciones 037, 038, 039 y 040 aplicadas en Paipa
+(`erpsofts_ind_comercio_paip`, con sus bancos en el recibo) y Guateque
+(`erpsofts_ind_comercio_guat`, bancos vacíos): 41 registradas en las dos.
+Macanal y Sutatenza siguen sin migraciones (sin clave de BD / BD vacía).
+
 **Revisión antes de subir (4 revisores en paralelo, mismo día).** Lo corregido:
 - **La cuenta se relee en cada petición** (`PermisosRol::_cuenta`): rol y estado
   salen de `conf_usuarios`, no del login. Inactivar una cuenta la saca en la
