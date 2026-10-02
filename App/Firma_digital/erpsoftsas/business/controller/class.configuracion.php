@@ -26,9 +26,10 @@ include_once SERVER . '/business/class.permisosRol.php';
  *
  * QUIÉN PUEDE ENTRAR
  *
- * Solo los roles de Alcaldía (1 y 2). Un contribuyente no tiene nada que
- * hacer aquí: el EAN gobierna el código de barras con el que el banco recauda,
- * y cambiarlo rompe el pago de todo el municipio.
+ * Quien tenga "Municipio y bancos" en el panel de Roles (solo cuenta en un rol
+ * de la Alcaldía). Un contribuyente no tiene nada que hacer aquí: el EAN
+ * gobierna el código de barras con el que el banco recauda, y cambiarlo rompe
+ * el pago de todo el municipio.
  *
  * VALIDACIÓN
  *
@@ -47,10 +48,12 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
      * CONTRASEÑA DE EDICIÓN (pedido del dueño, 2026-09-24: "para editar esto,
      * que es más denso, pon una contraseña").
      *
-     * Ver no la pide; GUARDAR sí, y se exige aquí en run(), en el servidor: un
-     * campo habilitado a mano en el navegador no sirve de nada. Al acertarla, la
-     * edición queda abierta MINUTOS_DESBLOQUEO minutos para ESTA sesión. Tras
-     * INTENTOS_MAXIMOS fallos seguidos hay que esperar MINUTOS_ESPERA.
+     * Ver no la pide; guardar un PARÁMETRO sí, y se exige aquí en run(), en el
+     * servidor: un campo habilitado a mano en el navegador no sirve de nada. Al
+     * acertarla, la edición queda abierta MINUTOS_DESBLOQUEO minutos para ESTA
+     * sesión. Tras INTENTOS_MAXIMOS fallos seguidos hay que esperar
+     * MINUTOS_ESPERA. Las cuentas de los bancos no la piden (cliente,
+     * 2026-09-30): las cambia quien tenga "Municipio y bancos", y queda quién.
      *
      * Solo se guarda el hash; la contraseña la tiene el dueño y no se escribe en
      * el código ni en la documentación del repositorio. Para cambiarla, un
@@ -84,9 +87,26 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
             return;
         }
 
-        // Las dos funciones que GUARDAN (2 parámetros, 4 cuentas de bancos)
-        // exigen además la edición desbloqueada con la contraseña.
-        if (in_array((int) $_obj->_funcion, [2, 4], true) && !self::_edicionDesbloqueada()) {
+        // Lo que guarda (2 y 4) solo se acepta desde la pantalla: jQuery manda
+        // X-Requested-With y un formulario de otro sitio no puede ponerlo, así
+        // que una página ajena no cambia una cuenta con la sesión abierta de un
+        // funcionario. Para las cuentas eso lo cuidaba el candado.
+        if (in_array((int) $_obj->_funcion, [2, 4], true) && !self::_desdeLaPantalla()) {
+            header('Content-type: application/json');
+            echo json_encode([
+                'ok' => 0,
+                'mensaje' => 'No se pudo guardar: hágalo desde la pantalla de Municipio y bancos.',
+                'datos' => []
+            ]);
+            return;
+        }
+
+        // Guardar un PARÁMETRO (función 2) exige además la edición desbloqueada
+        // con la contraseña: el EAN y las claves de PSE gobiernan el recaudo.
+        // Las cuentas de los bancos (función 4) no: son las del recibo de pago y
+        // el cliente pidió que la Alcaldía las cambie sin pedírselas a nadie
+        // (2026-09-30). Basta "Municipio y bancos", y queda quién (ban_ActualizadoPor).
+        if ((int) $_obj->_funcion === 2 && !self::_edicionDesbloqueada()) {
             header('Content-type: application/json');
             echo json_encode([
                 'ok' => 0,
@@ -150,7 +170,8 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
 
     /**
      * Quien tiene "Municipio y bancos" (panel de Roles, 2026-09-29; antes los
-     * roles 1 y 2 por numero). Guardar pide ademas la contraseña de edición.
+     * roles 1 y 2 por numero). Guardar un parámetro pide además la contraseña
+     * de edición; guardar las cuentas de los bancos, no.
      */
     private static function _esAlcaldia()
     {
@@ -159,6 +180,22 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
         if (empty($_SESSION['id_usuario'])) { return false; }
 
         return \erpsoftsas\PermisosRol::tiene('parametros.municipio');
+    }
+
+    /** La petición viene de la pantalla (jQuery), no de un formulario de otro sitio. */
+    private static function _desdeLaPantalla()
+    {
+        return isset($_SERVER['HTTP_X_REQUESTED_WITH'])
+            && strtolower((string) $_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+    }
+
+    /** ind_bancos.ban_ActualizadoPor existe desde la migración 041. */
+    private static function _hayAutorBancos($con)
+    {
+        $f = $con->obnerFila($con->consultar(
+            "SELECT COL_LENGTH('dbo.ind_bancos', 'ban_ActualizadoPor') AS l", []
+        ));
+        return !empty($f['l']);
     }
 
     /* ==================== CONTRASEÑA DE EDICIÓN ==================== */
@@ -434,11 +471,22 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
     {
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
+        // Último cambio de las cuentas: fecha y, con la 041, quién. Sin la
+        // contraseña, es lo que deja ver un cambio que nadie esperaba.
+        $hayAutor = self::_hayAutorBancos($con);
+        $autor = $hayAutor
+            ? "LTRIM(RTRIM(ISNULL(u.usu_Nombres, '') + ' ' + ISNULL(u.usu_Apellidos, '')))"
+            : "CAST(NULL AS VARCHAR(1))";
+        $union = $hayAutor ? "LEFT JOIN conf_usuarios u ON u.usu_Id = b.ban_ActualizadoPor" : "";
+
         $stmt = $con->consultar(
-            "SELECT ban_Id, ban_Codigo, ban_Nombre, ban_Asobancaria,
-                    ban_CuentaContable, ban_CuentaRecaudadora, ban_Activo
-               FROM ind_bancos
-              ORDER BY ban_Codigo",
+            "SELECT b.ban_Id, b.ban_Codigo, b.ban_Nombre, b.ban_Asobancaria,
+                    b.ban_CuentaContable, b.ban_CuentaRecaudadora, b.ban_Activo,
+                    CONVERT(VARCHAR(16), b.ban_FechaActualizacion, 120) AS ban_FechaActualizacion,
+                    $autor AS ban_ActualizadoPorNombre
+               FROM ind_bancos b
+               $union
+              ORDER BY b.ban_Codigo",
             []
         );
 
@@ -461,7 +509,7 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
         }
 
         $banco = $con->obnerFila($con->consultar(
-            "SELECT ban_Id, ban_Nombre FROM ind_bancos WHERE ban_Id = ?", [$id]
+            "SELECT ban_Id, ban_Nombre, ban_CuentaRecaudadora, ban_Activo FROM ind_bancos WHERE ban_Id = ?", [$id]
         ));
         if (!$banco) {
             $this->_mensaje = 'El banco no existe';
@@ -474,31 +522,61 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
         /*
          * Una cuenta bancaria o contable son dígitos, y a veces guiones o
          * puntos como separadores. Se rechaza cualquier otra cosa: estos
-         * números terminan en un archivo que va al banco, y una letra ahí
-         * hace rebotar el archivo entero.
+         * números terminan en un archivo que va al banco y en el recibo de
+         * pago, y una letra ahí hace rebotar el archivo entero. Con al menos un
+         * dígito ("-" o "." solos saldrían en el recibo como si fueran una
+         * cuenta). Hasta 30, que es lo que cabe en la columna (con 31 la base
+         * cortaba el guardado con un error sin explicación).
          */
         foreach ([['contable', $contable], ['recaudadora', $recaudadora]] as $par) {
-            if ($par[1] !== '' && !preg_match('/^[0-9.\- ]{1,40}$/', $par[1])) {
+            if ($par[1] === '') { continue; }
+            if (!preg_match('/^[0-9.\- ]+$/', $par[1])) {
                 $this->_mensaje = 'La cuenta ' . $par[0] . ' solo admite números, guiones y puntos.';
+                return [];
+            }
+            if (!preg_match('/[0-9]/', $par[1])) {
+                $this->_mensaje = 'La cuenta ' . $par[0] . ' debe tener al menos un número.';
+                return [];
+            }
+            if (strlen($par[1]) > 30) {
+                $this->_mensaje = 'La cuenta ' . $par[0] . ' admite hasta 30 caracteres.';
                 return [];
             }
         }
 
+        $valores = [$contable !== '' ? $contable : null,
+                    $recaudadora !== '' ? $recaudadora : null];
+        $autor = '';
+        if (self::_hayAutorBancos($con)) {
+            $autor = ', ban_ActualizadoPor = ?';
+            $valores[] = (int) ($_SESSION['id_usuario'] ?? 0) ?: null;
+        }
+        $valores[] = $id;
+
         $con->consultar(
             "UPDATE ind_bancos
                 SET ban_CuentaContable = ?, ban_CuentaRecaudadora = ?,
-                    ban_FechaActualizacion = GETDATE()
+                    ban_FechaActualizacion = GETDATE()$autor
               WHERE ban_Id = ?",
-            [$contable !== '' ? $contable : null,
-             $recaudadora !== '' ? $recaudadora : null,
-             $id]
+            $valores
         );
 
-        error_log(sprintf('[configuracion] usuario %s cambio las cuentas de %s',
-            $_SESSION['id_usuario'] ?? '?', $banco['ban_Nombre']));
+        $antes = trim((string) ($banco['ban_CuentaRecaudadora'] ?? ''));
+        error_log(sprintf('[configuracion] usuario %s cambio las cuentas de %s (recaudadora: "%s" -> "%s")',
+            $_SESSION['id_usuario'] ?? '?', $banco['ban_Nombre'], $antes, $recaudadora));
 
         $this->_ok = 1;
-        $this->_mensaje = 'Cuentas actualizadas';
+        $this->_mensaje = 'Cuentas actualizadas.';
+        if ($recaudadora !== $antes) {
+            // Un banco inactivo no sale en el recibo aunque tenga cuenta.
+            if (empty($banco['ban_Activo'])) {
+                $this->_mensaje .= ' Este banco está inactivo: no sale en el recibo de pago.';
+            } else {
+                $this->_mensaje .= $recaudadora !== ''
+                    ? ' El recibo de pago ya sale con esta cuenta.'
+                    : ' Este banco ya no sale en el recibo de pago.';
+            }
+        }
         return ['ban_Id' => $id];
     }
 }

@@ -39,6 +39,7 @@
 require_once __DIR__ . '/pdfRetenciones.php';
 include_once SERVER . '/business/class.vencimientoICA.php';
 include_once SERVER . '/business/class.parametros.php';
+include_once SERVER . '/business/class.bancosRecibo.php';
 include_once SERVER . '/business/class.permisosRol.php';
 
 // "Hoy" es el de Colombia (emisión y "pague antes de"): con el servidor en UTC,
@@ -519,17 +520,35 @@ $pdf->writeHTML(
 
 /*
  * Bancos autorizados (cliente, 2026-09-29): "Páguese en: BANCOS: ..." como en
- * las demás facturas del municipio, con banco y número de cuenta. Salen del
- * parámetro RECIBO_BANCOS (Municipio y bancos, migración 039), para que cada
- * municipio tenga los suyos; vacío, no se imprime.
+ * las demás facturas del municipio, con banco y número de cuenta. Salen de
+ * "Cuentas de los bancos" en Municipio y bancos (class.bancosRecibo.php,
+ * migración 041): cada municipio tiene los suyos y la Alcaldía los cambia ahí
+ * sin pedírselo a nadie. Sin ninguno, no se imprime.
+ *
+ * Como la lista la arma la Alcaldía, puede crecer, y con muchos bancos la
+ * línea empujaría la copia del banco fuera del papel (SetAutoPageBreak está
+ * apagado: TCPDF no avisa). Se mide con cada tamaño de letra y se usa el
+ * primero que deja sitio a lo de abajo: liquidador, corte, copia del banco,
+ * código y sello ocupan 84 mm medidos (87 con holgura), más 5 mm de margen de
+ * la impresora. Los 26 bancos del catálogo con cuentas de 30 cifras caben a 6,5.
  */
-$bancosRecibo = \erpsoftsas\Parametros::valorOConstante('RECIBO_BANCOS', 'MUNICIPIO_BANCOS_RECIBO');
+$bancosRecibo = \erpsoftsas\BancosRecibo::texto();
 if ($bancosRecibo !== null) {
-    $pdf->writeHTML(
-        '<table cellpadding="2" width="100%"><tr><td style="font-size:7.5px; border: 0.3px solid #c3c8d0;">'
-        . '<b>Páguese en: BANCOS:</b> ' . recibo_h($bancosRecibo) . '</td></tr></table>',
-        true, false, true, false, ''
-    );
+    $limite   = $pdf->getPageHeight() - 5 - 87;
+    $tamanos  = [7.5, 6.5, 5.5, 4.5];
+    foreach ($tamanos as $i => $tam) {
+        $pdf->startTransaction();
+        $pdf->writeHTML(
+            '<table cellpadding="2" width="100%"><tr><td style="font-size:' . $tam . 'px; border: 0.3px solid #c3c8d0;">'
+            . '<b>Páguese en: BANCOS:</b> ' . recibo_h($bancosRecibo) . '</td></tr></table>',
+            true, false, true, false, ''
+        );
+        if ($pdf->GetY() <= $limite || $i === count($tamanos) - 1) {
+            $pdf->commitTransaction();
+            break;
+        }
+        $pdf->rollbackTransaction(true);
+    }
 }
 
 if ($liquidador !== '') {

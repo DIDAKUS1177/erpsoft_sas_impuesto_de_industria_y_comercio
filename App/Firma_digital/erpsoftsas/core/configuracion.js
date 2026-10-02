@@ -1,10 +1,15 @@
 /**
  * Configuración del municipio: parámetros y cuentas de los bancos.
  *
- * El permiso real vive en el servidor (class.configuracion.php, roles 1 y 2).
- * Lo de aquí es solo la pantalla: quien llegue por la URL sin ser Alcaldía
- * recibe un rechazo del servidor y las dos tablas se quedan vacías con su
- * mensaje, en vez de mostrar el EAN de recaudo a cualquiera.
+ * El permiso real vive en el servidor (class.configuracion.php, permiso
+ * "Municipio y bancos"). Lo de aquí es solo la pantalla: quien llegue por la
+ * URL sin ese permiso recibe un rechazo del servidor y las dos tablas se
+ * quedan vacías con su mensaje, en vez de mostrar el EAN de recaudo a
+ * cualquiera.
+ *
+ * La contraseña de edición protege solo los PARÁMETROS. Las cuentas de los
+ * bancos (las del recibo de pago) se cambian sin ella: el cliente pidió que la
+ * Alcaldía las maneje sin pedírselas a nadie (2026-09-30).
  */
 class Configuracion {
 
@@ -34,9 +39,9 @@ class Configuracion {
         if (abierta) {
             const hora = new Date(Date.now() + estado.segundos * 1000)
                 .toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
-            $('#candadoTitulo').html('<i class="fa fa-unlock"></i> Edición desbloqueada');
+            $('#candadoTitulo').html('<i class="fa fa-unlock"></i> Edición de parámetros desbloqueada');
             // "12:56 p. m." ya trae su punto: no se le agrega otro.
-            $('#candadoTexto').text('Puede guardar cambios. Se vuelve a bloquear sola a las '
+            $('#candadoTexto').text('Puede guardar los parámetros. Se vuelve a bloquear sola a las '
                 + hora + (hora.slice(-1) === '.' ? '' : '.'));
             $('#btnCandado').text('Bloquear ahora').removeClass('btn-primary').addClass('btn-outline-secondary');
             // Al vencer, la pantalla se bloquea a la par con el servidor.
@@ -44,16 +49,17 @@ class Configuracion {
                 self.aplicarCandado({ desbloqueada: false });
             }, estado.segundos * 1000);
         } else {
-            $('#candadoTitulo').html('<i class="fa fa-lock"></i> Edición protegida');
-            $('#candadoTexto').text('Puede consultar estos datos. Para cambiarlos se pide la contraseña de edición.');
+            $('#candadoTitulo').html('<i class="fa fa-lock"></i> Parámetros protegidos');
+            $('#candadoTexto').text('Para cambiar los parámetros del municipio se pide la contraseña de edición. '
+                + 'Las cuentas de los bancos se cambian sin ella.');
             $('#btnCandado').text('Desbloquear edición').removeClass('btn-outline-secondary').addClass('btn-primary');
         }
         this.bloquearTablas();
     }
 
-    /** Campos y botones Guardar de las dos tablas, según el candado. */
+    /** Campos y botones Guardar de los parámetros, según el candado (los bancos no lo llevan). */
     bloquearTablas() {
-        $('#tbodyParametros, #tbodyBancos').find('input, button').prop('disabled', !this._desbloqueada);
+        $('#tbodyParametros').find('input, button').prop('disabled', !this._desbloqueada);
     }
 
     abrirClave(mensaje) {
@@ -228,7 +234,7 @@ class Configuracion {
             success: function (resp) {
                 if (resp.ok != 1) {
                     $('#tbodyBancos').html(
-                        '<tr><td colspan="6" class="text-center text-muted py-3">' +
+                        '<tr><td colspan="7" class="text-center text-muted py-3">' +
                         self.escapeHtml(resp.mensaje || 'No se pudo cargar.') + '</td></tr>');
                     return;
                 }
@@ -238,7 +244,7 @@ class Configuracion {
             error: function (xhr) {
                 console.log('Error al cargar bancos:', xhr.responseText);
                 $('#tbodyBancos').html(
-                    '<tr><td colspan="6" class="text-center text-muted py-3">Error de conexión.</td></tr>');
+                    '<tr><td colspan="7" class="text-center text-muted py-3">Error de conexión.</td></tr>');
             }
         });
     }
@@ -268,24 +274,66 @@ class Configuracion {
                 '<td>' + self.escapeHtml(b.ban_Nombre) + '</td>' +
                 '<td>' + self.escapeHtml(b.ban_Asobancaria) + '</td>' +
                 '<td><input type="text" class="form-control form-control-sm" ' +
-                    'id="cta_' + Number(b.ban_Id) + '" maxlength="40" ' +
+                    'id="cta_' + Number(b.ban_Id) + '" maxlength="30" ' +
+                    'aria-label="Cuenta contable de ' + self.escapeHtml(b.ban_Nombre) + '" ' +
                     'value="' + self.escapeHtml(b.ban_CuentaContable) + '"></td>' +
                 '<td><input type="text" class="form-control form-control-sm" ' +
-                    'id="rec_' + Number(b.ban_Id) + '" maxlength="40" ' +
+                    'id="rec_' + Number(b.ban_Id) + '" maxlength="30" ' +
+                    'aria-label="Cuenta recaudadora de ' + self.escapeHtml(b.ban_Nombre) + '" ' +
                     'value="' + self.escapeHtml(b.ban_CuentaRecaudadora) + '"></td>' +
+                '<td><small>' + self.escapeHtml(b.ban_FechaActualizacion) +
+                    (b.ban_ActualizadoPorNombre
+                        ? '<br><span class="text-muted">' + self.escapeHtml(b.ban_ActualizadoPorNombre) + '</span>'
+                        : '') + '</small></td>' +
                 '<td><button type="button" class="btn btn-sm btn-primary" ' +
                     'onclick="configuracion.guardarCuentas(' + Number(b.ban_Id) + ')">Guardar</button></td>' +
                 '</tr>';
         });
 
         $('#tbodyBancos').html(filas ||
-            '<tr><td colspan="6" class="text-center text-muted py-3">' +
+            '<tr><td colspan="7" class="text-center text-muted py-3">' +
             (soloConCuenta ? 'Ningún banco tiene cuentas configuradas todavía.' : 'No hay bancos.') +
             '</td></tr>');
         self.bloquearTablas();
     }
 
+    /**
+     * Cambiar la cuenta recaudadora cambia lo que imprime el recibo de pago de
+     * todo el municipio, y ya no lo frena la contraseña: se confirma con el
+     * antes y el después a la vista. La cuenta contable sola no lo pide.
+     */
     guardarCuentas(idBanco) {
+        const self = this;
+        const banco = self._bancos.find((b) => Number(b.ban_Id) === Number(idBanco)) || {};
+        const antes = String(banco.ban_CuentaRecaudadora || '').trim();
+        const despues = String($('#rec_' + idBanco).val() || '').trim();
+
+        if (antes === despues) { self.enviarCuentas(idBanco); return; }
+
+        const fila = (rotulo, valor) =>
+            '<tr><td style="text-align:left;padding:4px 10px;">' + rotulo + '</td>' +
+            '<td style="text-align:left;padding:4px 10px;"><b>' +
+            (valor ? self.escapeHtml(valor) : '<span style="color:#888;">(vacía: no sale en el recibo)</span>') +
+            '</b></td></tr>';
+
+        swal({
+            title: '¿Cambiar la cuenta del recibo?',
+            html: '<p style="margin-bottom:8px;">' + self.escapeHtml(banco.ban_Nombre || 'Banco') + '</p>' +
+                  '<table style="margin:0 auto;">' + fila('Antes', antes) + fila('Después', despues) + '</table>' +
+                  '<p style="margin-top:12px;font-size:14px;">Los recibos de pago que se generen desde ahora ' +
+                  'salen con este cambio.</p>',
+            type: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#d33',
+            confirmButtonText: 'Sí, guardar',
+            cancelButtonText: 'Cancelar'
+        }).then((result) => {
+            if (result.value) { self.enviarCuentas(idBanco); }
+        });
+    }
+
+    enviarCuentas(idBanco) {
         const self = this;
 
         $.ajax({
@@ -299,7 +347,6 @@ class Configuracion {
                 ban_CuentaRecaudadora: $('#rec_' + idBanco).val()
             },
             success: function (resp) {
-                if (self.respuestaPideClave(resp)) { return; }
                 swal({
                     type: resp.ok == 1 ? 'success' : 'error',
                     title: resp.ok == 1 ? 'Guardado' : 'No se pudo guardar',

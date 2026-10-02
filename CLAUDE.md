@@ -28,6 +28,9 @@ predial/dist/dashboard.php     ← portal público (landing page sin login), MÓ
                                    APARTE, solo servido por el contenedor del 8080
                                    (que monta todo el repo). No confundir con el
                                    dashboard interno (App/Firma_digital/erpsoftsas/dist/dashboard.php).
+                                   En producción: https://sistema.erpsoftsas.com/predial/dist/dashboard.php,
+                                   la página EMBEBIDA en el sitio de la Alcaldía; se sube a mano a ese
+                                   dominio (el Git de Plesk de ICA no la publica). Ver "Portal Tributario".
 
 _archivo_obsoleto_YYYY-MM-DD/  ← carpetas de limpieza: duplicados/backups viejos
                                    movidos aquí (nunca borrados) durante las sesiones
@@ -1534,7 +1537,8 @@ términos, establecimiento fijo en Paipa.
   declaración —ICA 16, retención 16, autorretención 21— se suma a los del recibo
   en "INTERESES DE MORA AL …"; el SUBTOTAL va sin él; el total no cambia) y
   "Páguese en: BANCOS: …" del parámetro `RECIBO_BANCOS` (**migración 039**; nace
-  con los bancos de Paipa solo donde `RECAUDO_EAN` = 7709998161047).
+  con los bancos de Paipa solo donde `RECAUDO_EAN` = 7709998161047). Desde el
+  2026-09-30 salen de "Cuentas de los bancos" (ver más abajo, migración 041).
 - Columna "Tipo de declaración" (Inicial / Corrección de la N° X; en la original
   "En corrección: N° X" o "Corregida por la N° X") en Presentar y Consultar del ICA
   y en Consultar de retención y autorretención.
@@ -1693,6 +1697,104 @@ el mismo día, a pedido de Diego: `d55f603` (la copia publicada, `BD/`) y
 `55cbdb0` (las de `App/erpsoftsas/BD` y `App/predial_old/BD`). Sigue en el
 historial, así que esas claves hay que darlas por conocidas y cambiarlas donde
 se usen. Ningún archivo con claves vuelve al repositorio.
+
+### Cuentas de los bancos del recibo (2026-09-30)
+
+Pedido del cliente: las cuentas deben ser dinámicas; si una cambia, la Alcaldía
+la cambia ella misma sin pedírsela a nadie. Con la 039 los bancos del recibo eran
+un texto libre (`RECIBO_BANCOS`) y la tabla "Cuentas de los bancos" de la misma
+pantalla (`ind_bancos`, cuenta contable y recaudadora) no hacía nada en el recibo:
+dos lugares para lo mismo, y guardar cualquiera de los dos pedía la contraseña de
+edición del dueño.
+
+- **El recibo lee `ind_bancos`** (`business/class.bancosRecibo.php`): cada banco
+  activo con cuenta recaudadora, en orden alfabético, "NOMBRE (cuenta)" con el
+  nombre del catálogo (p. ej. "BANCOLOMBIA S.A."). Para quitar un banco del
+  recibo se deja su cuenta recaudadora vacía. Si ningún banco tiene cuenta y
+  `RECIBO_BANCOS` sigue activo (base sin la 041), se usa el parámetro.
+- **Guardar una cuenta de banco (función 4) ya no pide la contraseña**: basta el
+  permiso "Municipio y bancos". Los parámetros (función 2: EAN, PSE, fecha
+  límite) la siguen pidiendo. Sin la contraseña, lo que deja ver un cambio que
+  nadie esperaba es **quién y cuándo**: `ind_bancos.ban_ActualizadoPor` (041) y
+  la fecha, en la columna "Último cambio"; el registro de PHP anota además la
+  cuenta recaudadora antes y después. Cambiar la recaudadora pide confirmar con
+  el antes y el después a la vista. Solo dígitos, guiones, puntos y espacios,
+  con al menos un dígito ("-" solo saldría en el recibo como si fuera una
+  cuenta), hasta 30 (la columna es VARCHAR(30)). Un banco inactivo guarda su
+  cuenta pero el mensaje dice que no sale en el recibo.
+- **Guardar (funciones 2 y 4) exige `X-Requested-With`** (`_desdeLaPantalla`):
+  jQuery lo manda y un formulario de otro sitio no puede ponerlo, así que una
+  página ajena no cambia una cuenta con la sesión abierta de un funcionario
+  (antes eso lo frenaba la contraseña). `caso.php` y `caso_config.php` lo
+  mandan como jQuery; con `sinAjax` simulan el otro sitio.
+- **Recibo**: la línea de bancos se mide con 7,5 / 6,5 / 5,5 / 4,5 y se usa el
+  primer tamaño que deja sitio a lo de abajo (84 mm medidos, 87 con holgura,
+  más 5 de margen; `SetAutoPageBreak` está apagado). Los 26 bancos del catálogo
+  con cuentas de 30 cifras caben en una hoja a 6,5.
+- **Migración 041**: agrega `ban_ActualizadoPor`, corrige la descripción de
+  "Municipio y bancos" en Roles (decía que las cuentas piden la contraseña) y
+  agrega CONFIAR COOPERATIVA FINANCIERA al catálogo con código y código
+  Asobancaria "-" (no se conocen; el Asobancaria es con el que Recaudo reconoce
+  el archivo de cada banco y los dos son únicos, así que uno inventado podría
+  atribuirle a Confiar el archivo de otro); si `RECIBO_BANCOS` es todavía la
+  lista de la 039, pasa sus 7 cuentas a la cuenta recaudadora (por código y
+  nombre del banco) y APAGA el parámetro (`par_Estado = 0`, el texto queda).
+  Todo o nada, en una transacción: si un banco no está, está inactivo o ya tiene
+  otra cuenta, si CONFIAR ya existe con otra cuenta o si el código "-" lo usa
+  otro banco, no toca nada, falla con un error visible (el aplicador lo imprime
+  entero) y no se registra. Si CONFIAR ya existe sin cuenta, le pone la suya.
+  Parámetro vacío (Guateque): lo apaga. Otra lista escrita a mano: la deja activa.
+- Pantalla: la tabla de bancos no depende del candado; la ayuda dice qué sale en
+  el recibo y el encabezado "Cuenta recaudadora (sale en el recibo)".
+Pruebas: `probar_bancos_recibo.php` (43: la 041 con el aplicador real y sus
+conflictos, rol 2 con y sin el permiso, formulario de otro sitio, autor, 26
+bancos en el recibo); `probar_nuevo` y `probar_cambios_finales` ajustados a la
+regla nueva. **Al desplegar: primero el Pull y después la migración 041 en
+Paipa y Guateque** (con el código anterior, un recibo generado después de la
+041 saldría sin bancos).
+
+### Portal Tributario (2026-10-01)
+
+La Alcaldía embebe en su sitio https://sistema.erpsoftsas.com/predial/dist/dashboard.php,
+que tenía el diseño viejo y "Industria y Comercio" con el aviso de módulo en
+desarrollo. Pedido (el lunes sale ICA a producción): que esa tarjeta abra el
+módulo, con la foto del ingreso de ICA, el logo más grande, que se vea bien en
+cualquier pantalla y que dependa del municipio. `predial/dist/dashboard.php` se
+rehízo como página independiente:
+- **Sin la plantilla vieja**: no incluye `globals.php`, `class.sessions.php`, ni
+  core.css/style.css/jQuery/ApexCharts (daban errores en la consola); solo
+  Google Fonts (Source Serif 4 + Inter, las del módulo) y CSS propio. No pide
+  sesión ni toca la base.
+- **Marca blanca**: `$MUNICIPIOS` (en la misma página) trae por municipio
+  nombre, logo, escudo, foto y su encuadre, colores, contacto, normatividad y
+  la dirección de cada trámite. Elige `PORTAL_MUNICIPIO` (config.municipio.php
+  de ese servidor, si existe) o Paipa; `?municipio=guateque|macanal|sutatenza`
+  muestra otro (solo de la lista). Trámite sin dirección no sale; `'pronto'` sale
+  como "Próximamente". Sin logo completo, el encabezado arma uno con el escudo y
+  "Alcaldía de X". Los colores derivados (fondo profundo, tinte de íconos)
+  salen del color del municipio en PHP.
+- Imágenes del dominio de ICA de Paipa (`…/erpsoftsas/vendors/images/`): trae
+  las de los 4 municipios y es el único con SSL válido. Logo de ERPSoft
+  embebido (data URI): ese servidor no lo tiene.
+- Tarjetas que abren en pestaña nueva: dentro del marco de la Alcaldía el
+  navegador bloquea la cookie de sesión del módulo y no dejaría entrar.
+- Pantallas: 1 columna de tarjetas en celular, 2 desde 600 px, 4 desde 1100
+  (según cuántos trámites haya, para no dejar uno solo en su fila); logo de
+  64 a 108 px; contenido centrado a 1200 px en pantallas anchas. Probado con
+  Chrome sin ventana dentro de marcos de 320, 375, 414, 768 y 1024 px (Chrome
+  sin ventana en Windows no baja de ~500 px de ventana, por eso los marcos).
+- **Más vistoso (segunda vuelta, mismo día)**: título con "de <municipio>" en
+  dorado; botones directos en la portada (Declarar Industria y Comercio, Pagar
+  el impuesto predial: salen si el municipio tiene ese trámite); `destacados`
+  del catálogo como insignias; ola en el borde de la foto; cada trámite con su
+  tono (predial el del municipio, ICA dorado, exógena azul); panel "Declara en
+  cuatro pasos" (solo si hay ICA; describe los pasos reales del módulo:
+  inscripción y RIT, declaración, firma con código, presentar y pagar con el
+  código de barras o el recibo); pie con trámites, contacto y el escudo de
+  marca de agua; entrada escalonada y acercamiento lento de la foto, apagados
+  con "reducir movimiento".
+Para subirla: guardar la actual como respaldo y cargar la nueva en
+`sistema.erpsoftsas.com/predial/dist/` (no la publica el Git de ICA).
 
 ### Pendientes
 

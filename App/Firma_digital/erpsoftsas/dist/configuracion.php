@@ -53,15 +53,16 @@
 		<div class="main-container">
 
 			<!-- ===================== CANDADO DE EDICIÓN ===================== -->
-			<!-- Ver no pide nada; guardar exige la contraseña de edición, y quien la
-			     exige es el servidor (class.configuracion.php). Esto solo la pide y
-			     muestra si la edición está abierta. -->
+			<!-- Ver no pide nada; guardar un PARÁMETRO exige la contraseña de
+			     edición, y quien la exige es el servidor (class.configuracion.php).
+			     Las cuentas de los bancos no la piden (cliente, 2026-09-30). Esto
+			     solo la pide y muestra si la edición está abierta. -->
 			<div class="card-box mb-30" id="cajaCandado">
 				<div class="pd-20 d-flex flex-wrap align-items-center justify-content-between" style="gap: 12px;">
 					<div>
-						<div class="h5 mb-1" id="candadoTitulo"><i class="fa fa-lock"></i> Edición protegida</div>
+						<div class="h5 mb-1" id="candadoTitulo"><i class="fa fa-lock"></i> Parámetros protegidos</div>
 						<div class="text-muted" id="candadoTexto" style="font-size: 13px;">
-							Puede consultar estos datos. Para cambiarlos se pide la contraseña de edición.
+							Para cambiar los parámetros del municipio se pide la contraseña de edición. Las cuentas de los bancos se cambian sin ella.
 						</div>
 					</div>
 					<button type="button" class="btn btn-primary" id="btnCandado">Desbloquear edición</button>
@@ -123,18 +124,21 @@
 			</div>
 
 			<!-- ===================== CUENTAS DE LOS BANCOS ===================== -->
-			<!-- Los 25 bancos están cargados desde la migración 006 pero los 25
-			     tienen las dos cuentas vacías, y hacen falta para cuadrar el
-			     recaudo. Solo se editan esas dos columnas: el código y el código
+			<!-- Los bancos están cargados desde la migración 006 (Confiar, desde la
+			     041). Solo se editan las dos cuentas: el código y el código
 			     Asobancaria los fija el banco, no la Alcaldía, y dejarlos
 			     editables invita a "corregir" un código que en realidad es el
-			     correcto. -->
+			     correcto. La cuenta recaudadora es la que sale en el recibo de
+			     pago (class.bancosRecibo.php) y se guarda sin la contraseña de
+			     edición: el cliente pidió manejarla sin pedírsela a nadie. -->
 			<div class="card-box mb-30">
-				<div class="pd-20 d-flex justify-content-between align-items-center">
+				<div class="pd-20 d-flex flex-wrap justify-content-between align-items-center" style="gap: 12px;">
 					<div>
 						<h4 class="h4 mb-1">Cuentas de los bancos</h4>
 						<p class="text-muted mb-0" style="font-size:13px;">
-							Cuenta contable y cuenta recaudadora de cada banco. El código y el
+							Los bancos con <b>cuenta recaudadora</b> salen en el recibo de pago
+							("Páguese en: BANCOS"), en orden alfabético. Para quitar un banco del
+							recibo, deje su cuenta recaudadora vacía y guarde. El código y el
 							código Asobancaria los fija el banco y no se editan aquí.
 						</p>
 					</div>
@@ -148,16 +152,17 @@
 					<table class="table table-hover">
 						<thead>
 							<tr>
-								<th style="width:8%;">Código</th>
-								<th style="width:30%;">Banco</th>
-								<th style="width:10%;">Asobancaria</th>
-								<th style="width:22%;">Cuenta contable</th>
-								<th style="width:22%;">Cuenta recaudadora</th>
+								<th style="width:7%;">Código</th>
+								<th style="width:24%;">Banco</th>
+								<th style="width:9%;">Asobancaria</th>
+								<th style="width:19%;">Cuenta contable</th>
+								<th style="width:20%;">Cuenta recaudadora <small class="text-muted" style="font-weight:400;">(sale en el recibo)</small></th>
+								<th style="width:13%;">Último cambio</th>
 								<th style="width:8%;">Acciones</th>
 							</tr>
 						</thead>
 						<tbody id="tbodyBancos">
-							<tr><td colspan="6" class="text-center text-muted py-3">Cargando…</td></tr>
+							<tr><td colspan="7" class="text-center text-muted py-3">Cargando…</td></tr>
 						</tbody>
 					</table>
 				</div>
