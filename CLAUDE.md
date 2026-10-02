@@ -1753,6 +1753,13 @@ regla nueva. **Al desplegar: primero el Pull y después la migración 041 en
 Paipa y Guateque** (con el código anterior, un recibo generado después de la
 041 saldría sin bancos).
 
+**Desplegado el 2026-10-01** (`69bcd13`, "Pull ahora" en los 4; el JS servido es
+idéntico al del repositorio) y 041 aplicada en Paipa y Guateque ("Terminado sin
+errores", 42 registradas). Paipa quedó con las 7 cuentas en la tabla y el
+parámetro apagado; un recibo con sus datos reales imprime los 7 bancos en una
+hoja. Guateque no tiene cuentas: su recibo sale sin la línea hasta que su
+Alcaldía las escriba.
+
 ### Portal Tributario (2026-10-01)
 
 La Alcaldía embebe en su sitio https://sistema.erpsoftsas.com/predial/dist/dashboard.php,
@@ -1795,6 +1802,10 @@ rehízo como página independiente:
   con "reducir movimiento".
 Para subirla: guardar la actual como respaldo y cargar la nueva en
 `sistema.erpsoftsas.com/predial/dist/` (no la publica el Git de ICA).
+**Publicada el 2026-10-01** (`236b283`): la página servida es idéntica byte a
+byte a la local, sin errores en la consola, imágenes y enlaces en 200. La
+versión anterior quedó respaldada en el servidor, con una extensión que IIS no
+sirve.
 
 ### Pendientes
 
