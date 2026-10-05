@@ -865,6 +865,13 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
         }
 
         function abrir() {
+            // El modal vive dentro del encabezado (.header-right), que tiene su
+            // propia capa: el fondo oscuro de Bootstrap va en el <body> y quedaba
+            // ENCIMA del modal -todo gris y nada respondia; habia que recargar-
+            // (reportado en Paipa, 2026-10-05). Se pasa al <body> antes de abrir.
+            if (!$('#modal-CambiarClave').parent().is('body')) {
+                $('#modal-CambiarClave').appendTo('body');
+            }
             $("#formCambiarClave").trigger("reset");
             $("#cc_req-length, #cc_req-upper, #cc_req-lower, #cc_req-number")
                 .removeClass("text-success").addClass("text-danger");

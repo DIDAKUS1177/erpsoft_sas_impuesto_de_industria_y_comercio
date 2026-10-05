@@ -1807,6 +1807,138 @@ byte a la local, sin errores en la consola, imágenes y enlaces en 200. La
 versión anterior quedó respaldada en el servidor, con una extensión que IIS no
 sirve.
 
+### Consecutivos por impuesto en Paipa (2026-10-05, migración 043)
+
+Pedido de la Alcaldía de Paipa (Juan): el consecutivo va en ICA 2026100000,
+retención 2026200000 y autorretención 2026300000. El número sigue siendo AAAA +
+seis cifras (029/030), y ahora la primera de las seis dice el impuesto. No
+cambia el PHP, solo la base:
+- `ind_consecutivos` con `cse_Anio = 0` guarda la base de cada serie:
+  `BASE_DECLARACION_ICA` 100000, `BASE_RETEICA` 200000, `BASE_AUTORRETEICA`
+  300000. **Solo se siembran en `erpsofts_ind_comercio_paip`**; en las demás
+  bases los procedimientos encuentran base 0 y numeran como antes.
+- La 043 sube a su base los contadores que iban por debajo. La próxima ICA de
+  2026 sale 2026100001, la próxima retención 2026200001 y la próxima
+  autorretención 2026300001.
+- `sp_siguiente_numero_declaracion` y `sp_siguiente_numero_retencion` abren la
+  serie de un año nuevo en la base (la primera ICA de 2027 será 2027100001). No
+  pasan de base + 99.999, porque ahí empieza la serie del impuesto siguiente:
+  dan error y no reparten. Toman la fila del año con `UPDLOCK, HOLDLOCK`.
+- No renumera nada: lo ya emitido (2026000001…) conserva su número, que va
+  impreso y en códigos de barras.
+- Los números nuevos de los tres módulos ya no se repiten entre sí, así que el
+  recaudo por archivo deja de mandarlos a "Revisar a mano".
+- Descartar un borrador de ICA sigue devolviendo el número (la secuencia de seis
+  cifras incluye el dígito del impuesto).
+Prueba: `probar_consecutivos.php` (11). Simula Paipa sembrando las bases y crea
+declaraciones reales de los tres módulos. Sin bases numera igual que antes.
+
+**Año de la declaración (pendiente de decisión).** Paipa quiere declarar el ICA
+de 2023 y el sistema lo vuelve a 2026. `_agregarDeclaracion` usa `date('Y')`
+porque el cliente pidió quitar el selector de año ("nada de años",
+2026-08-31). La casilla de año de la pantalla se puede escribir, pero el
+servidor la ignora. Habilitarlo exige decidir:
+- qué años se permiten y quién los elige;
+- de qué serie sale el número (la del año declarado o la del año en curso);
+- con qué tarifas se liquida: el catálogo solo tiene actividades de 2025 y
+  fórmulas de 2026, así que un 2023 se liquidaría con lo vigente.
+
+### Pago en línea con Wompi (Macanal, 2026-10-02)
+
+Macanal cobra con Wompi (Bancolombia); Paipa sigue con AvalPay (PlacetoPay),
+certificada con Evertec. Cada entidad usa SU pasarela con el mismo recorrido.
+
+- **Una pasarela por entidad** (migración **042**): `PASARELA_PROVEEDOR`
+  (PLACETOPAY | WOMPI; WOMPI solo en `erpsofts_ind_comercio_maca`), las cuatro
+  llaves de Wompi (privada y secretos sensibles) e `ind_pagos_en_linea`, un
+  renglón por intento. `business/class.pasarela.php` decide: `configurado`,
+  `botonVisible` (con el modo certificación de `PASARELA_USUARIOS_PRUEBA`),
+  `nombre`, `textoBoton` y `aplicarADeclaracion`, común a las dos con la vía de
+  cada una. `PlacetoPay::aplicarADeclaracion` delega ahí y `PlacetoPay::botonVisible`
+  se quitó.
+- **Wompi** (`business/class.wompi.php`): Web Checkout (`checkout.wompi.co/p/`)
+  con firma de integridad SHA-256(referencia + centavos + COP + vencimiento +
+  secreto) y enlace válido 30 minutos. Las consultas van SIEMPRE con la llave
+  privada (con la pública Wompi ya responde 404). Los avisos traen un checksum
+  SHA-256(propiedades + timestamp + secreto de eventos). No se mezclan llaves de
+  pruebas y de producción. `WOMPI_API_BASE` es una constante, nunca un parámetro
+  de pantalla (quien la cambiara podría "aprobar" pagos); solo la usan las pruebas.
+- **Intentos** (`business/class.pagoWompi.php`): referencia
+  `ICA|RET|AUT<número>-<8 hex>`, porque Wompi no deja reutilizarla y los tres
+  módulos numeran igual. Lo que se guarda sale de una consulta propia, no de la
+  URL ni del aviso. Reglas:
+  - Valor o moneda distintos a los del intento → `REVISAR`, sin registrar el pago.
+  - Un estado final no vuelve a PENDING.
+  - El estado de la declaración lo cambia el intento más reciente o uno aprobado.
+  - Un segundo pago aprobado de una declaración ya pagada queda `DOBLE` (hay que
+    devolverlo), y el intento que sí pagó no se ve a sí mismo como doble si se
+    reprocesa.
+  - El pago se registra con vía `WOMPI` y banco "Wompi - <medio>".
+  - El correo del formulario de Wompi es el registrado del contribuyente
+    (`ind_Email`), no el de quien opera.
+- **Recorrido**: el de PSE, con una rama por pasarela.
+  - `pagar.php`: textos, botón y pago en trámite.
+  - `crearSesion.php` (solo por POST): crea el intento y redirige con la firma.
+  - `retorno.php?pasarela=wompi&decl=&ref=&t=`: Wompi agrega `id` = la transacción.
+  - `wompi_eventos.php` (nuevo): la lógica vive en `PagoWompi::procesarEvento`.
+  - `cron_verificar_pagos.php` (solo por línea de comandos; `PagoWompi::revisarAbiertos`).
+  - `faq.php` y los listados: "Pagar en línea" en vez de "Pagar PSE" (`pago_en_linea_texto`).
+- La documentación de Wompi trae un checksum de ejemplo de eventos que NO es el
+  SHA-256 de su propia cadena (es ilustrativo); el de integridad sí coincide.
+- **Revisión antes de subir (2026-10-02, tres revisores: plata, regresiones,
+  seguridad).** Corregido:
+  - **Modo prueba**: la 042 crea `PASARELA_USUARIOS_PRUEBA` donde no existía
+    (solo Paipa la tenía, a mano, y la pantalla no crea filas). Con llaves de
+    pruebas y la lista vacía el botón no lo ve NADIE. Un pago con llaves de
+    pruebas queda con vía `WOMPI_PRUEBA`, banco "Wompi PRUEBAS - …" y
+    `pel_Ambiente` = test: nunca pasa por real.
+  - **Retorno**: solo con el enlace firmado (`t` = HMAC de módulo, declaración y
+    referencia con el secreto de integridad); sin él no consulta ni muestra
+    nada. No aplica el `id` de la URL (podría ser de otra cuenta de Wompi con la
+    misma referencia). Confirma por la referencia, que la búsqueda trae solo del
+    comercio, o por el id que guardó un aviso firmado (`PagoWompi::confirmar`).
+    También con la declaración ya pagada, para mostrar un pago DOBLE.
+  - **Candado por declaración** (`sp_getapplock`) y transacción: el pago se
+    registra antes que el intento; si algo falla, no queda ninguno de los dos.
+  - **Varias transacciones por referencia** (reintentos en el checkout): un
+    rechazo de otra no pisa un aprobado; otra aprobada se anota para devolver;
+    el mismo pago anulado después de registrado queda REVISAR.
+  - **En trámite** (`PagoWompi::enTramite`): un intento PENDING, o uno CREADO de
+    menos de 45 minutos, al que se le pregunta a Wompi; si Wompi no contesta,
+    cuenta como en trámite. Así no se crea otro intento y se paga dos veces.
+    Máximo 5 intentos por declaración en una hora; `crearSesion.php` solo
+    acepta POST.
+  - **Cron**: no cierra nada por un 404 (eso es una llave equivocada). `SIN_PAGO`
+    solo si la búsqueda contestó vacía pasadas 26 h, o si Wompi no responde en 7
+    días; un aviso posterior igual lo registra. Revisa también los
+    DECLINED/ERROR de las últimas 26 h e imprime ATENCIÓN para DOBLE y REVISAR.
+  - **Ambiente** según la llave privada (es la que viaja): dejar en blanco la
+    pública no manda la privada de producción al sandbox. Con llaves de
+    producción `WOMPI_API_BASE` no cuenta. Municipio y bancos muestra
+    "(pruebas)" o "(producción)" en cada llave secreta.
+  - Además:
+    - la fecha de pago es la de Wompi (`finalized_at`) en hora de Colombia;
+    - los centavos van como BIGINT (más de 2^31 desde $21.474.837);
+    - a Wompi solo va el correo (el enlace queda en el historial del navegador);
+    - el medio se valida (`^[A-Z_]{1,30}$`);
+    - el banco del pago se escapa en Consultar y Presentar.
+- Pruebas: `probar_wompi.php` (49) con un Wompi FALSO en el contenedor
+  (`stub_wompi.php`, que exige la llave privada; `soloPorId` simula una
+  transacción de otro comercio) y `wompi_arnes.php`; `caso.php` tiene `wompiApi`
+  y `completo`. Mientras corre, la suite agrega `WOMPI_API_BASE` al config DEL
+  CONTENEDOR (por el Apache de `crearSesion.php`) y lo deja como estaba. Sin eso,
+  una corrida mandó consultas al sandbox real con la llave inventada. Guía de
+  puesta en marcha: punto 7 de `extensiones/pse/DESPLIEGUE.md`.
+- **Al subir**: los 5 archivos nuevos (`class.wompi.php`, `class.pasarela.php`,
+  `class.pagoWompi.php`, `wompi_eventos.php` y la 042) van en el MISMO commit,
+  agregados por ruta (no `git add -A`: el repositorio es público).
+  `class.placetopay.php` y los listados ya los requieren: sin ellos, el PSE y
+  los listados de Paipa se rompen.
+- Falta: las llaves de pruebas de Macanal, el SSL de Macanal (Wompi exige https),
+  registrar la URL de eventos, la prueba de punta a punta en el sandbox (ahí se
+  confirma la búsqueda por referencia) y aplicar la 042 en todas las bases al
+  desplegar.
+
 ### Pendientes
 
 - **Migración 036** (fórmulas del ICA del año vigente): aplicarla en Paipa y
