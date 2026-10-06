@@ -101,8 +101,8 @@ class PseModulo
         if ($usuario <= 0) {
             return 'Inicie sesión para pagar en línea.';
         }
-        require_once __DIR__ . '/class.placetopay.php';
-        if (!\PlacetoPay::botonVisible($usuario)) {
+        require_once __DIR__ . '/class.pasarela.php';
+        if (!Pasarela::botonVisible($usuario)) {
             return 'El pago en línea todavía no está disponible. Puede pagar en el banco con el recibo de pago.';
         }
         // "Recibo de pago y PSE" del modulo; por cualquier contribuyente, quien

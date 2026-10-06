@@ -164,7 +164,10 @@ class Configuracion {
                               'placeholder="' + (puesto ? 'Escriba una nueva para cambiarla'
                                                         : 'Sin configurar') + '">' +
                           '<small class="' + (puesto ? 'text-success' : 'text-muted') + '">' +
-                              (puesto ? '<i class="fa fa-check"></i> Configurada · dejarla en blanco no la borra'
+                              (puesto ? '<i class="fa fa-check"></i> Configurada' +
+                                        // Llaves de Wompi: de pruebas o de producción (no deben mezclarse).
+                                        (p.par_Ambiente ? ' (' + self.escapeHtml(p.par_Ambiente) + ')' : '') +
+                                        ' · dejarla en blanco no la borra'
                                       : 'Sin configurar') + '</small>'
                         : '<input type="text" class="form-control form-control-sm" ' +
                               'id="par_' + Number(p.par_Id) + '" ' +

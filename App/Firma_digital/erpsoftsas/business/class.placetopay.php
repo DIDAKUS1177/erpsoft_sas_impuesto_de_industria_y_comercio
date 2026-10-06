@@ -85,37 +85,9 @@ class PlacetoPay {
             && self::secretKey() !== null;
     }
 
-    /*
-     * MODO CERTIFICACION: el boton solo lo ven los usuarios de prueba.
-     *
-     * Durante la homologacion con el banco hay que "prender" las credenciales
-     * de PRUEBA, y eso haria visible el boton "Pagar PSE" para TODOS los
-     * contribuyentes reales, apuntando al ambiente de pruebas. Para evitarlo,
-     * el parametro PASARELA_USUARIOS_PRUEBA (conf_parametros) lista los IDs de
-     * usuario -separados por coma- que SI pueden ver el boton mientras dura la
-     * certificacion.
-     *
-     *   - vacio  -> produccion: lo ven todos (cuando ya hay credenciales reales).
-     *   - con IDs -> certificacion: solo esos usuarios lo ven.
-     *
-     * Se cambia desde la pantalla de Configuracion, sin desplegar.
-     */
-    public static function botonVisible($idUsuario = null)
-    {
-        if (!self::configurado()) {
-            return false;
-        }
-
-        include_once __DIR__ . '/class.parametros.php';
-        $lista = \erpsoftsas\Parametros::valor('PASARELA_USUARIOS_PRUEBA');
-
-        if ($lista === null) {
-            return true; // sin lista => produccion, visible para todos
-        }
-
-        $ids = array_filter(array_map('trim', explode(',', $lista)), 'strlen');
-        return in_array((string) (int) $idUsuario, $ids, true);
-    }
+    // El modo certificacion (PASARELA_USUARIOS_PRUEBA: el boton solo para los
+    // usuarios de prueba) vive desde la 042 en \erpsoftsas\Pasarela::botonVisible,
+    // que sirve a las dos pasarelas.
 
     private static function auth() {
         $seed = date('c');
@@ -314,54 +286,18 @@ class PlacetoPay {
      * lo aprobo. Las columnas las crea la migracion 014.
      *
      * Devuelve true si la declaracion quedo marcada como pagada.
+     *
+     * Desde la 042 la logica es la misma para las dos pasarelas y vive en
+     * \erpsoftsas\Pasarela::aplicarADeclaracion; aqui solo se fija la via (PSE).
+     * $m es el descriptor del modulo; si no viene, es ICA.
      */
     public static function aplicarADeclaracion($con, $idDeclaracion, array $info, $valor, $m = null)
     {
-        // $m es el descriptor del modulo (ICA / RETEICA / AUTORRETEICA). Si no
-        // viene, es ICA -asi las llamadas viejas siguen funcionando igual-.
-        require_once __DIR__ . '/class.pseModulo.php';
-        if ($m === null) { $m = \erpsoftsas\PseModulo::get('ica'); }
-
-        $tabla = $m['tabla'];
-        $pk    = $m['pk'];
-        $cEst  = \erpsoftsas\PseModulo::colEstado($m);
-        $cFec  = \erpsoftsas\PseModulo::colFechaEstado($m);
-        $cMsg  = \erpsoftsas\PseModulo::colMensaje($m);
-
-        // Nombres de tabla/columna salen del mapa fijo de PseModulo, nunca del
-        // usuario: interpolarlos aqui es seguro.
-        $con->consultar(
-            "UPDATE $tabla
-                SET $cEst = ?,
-                    $cFec = GETDATE(),
-                    $cMsg = ?
-              WHERE $pk = ?",
-            [$info['estado'], $info['mensaje'] ?? '', (int) $idDeclaracion]
-        );
-
-        if (empty($info['aprobado'])) {
-            return false;
-        }
-
-        /*
-         * El pago lo registra PagoDeclaracion, que es el unico sitio que toca
-         * esas columnas. Antes este UPDATE llenaba cinco y el recaudo bancario
-         * cuatro, y dos no las llenaba nadie: la misma declaracion quedaba con
-         * datos distintos segun por donde entrara la plata.
-         */
+        require_once __DIR__ . '/class.pasarela.php';
         require_once __DIR__ . '/class.pagoDeclaracion.php';
 
-        // Lo que entro de verdad (con los intereses de mora, si los hubo); el
-        // total de la declaracion solo si el banco no lo informa.
-        if (isset($info['valor']) && (float) $info['valor'] > 0) {
-            $valor = (float) $info['valor'];
-        }
-
-        return \erpsoftsas\PagoDeclaracion::registrar($con, $idDeclaracion, [
-            'valor' => $valor,
-            'banco' => $info['banco'],
-            'via'   => \erpsoftsas\PagoDeclaracion::VIA_PSE,
-            // Sin fechaPago: en PSE el pago acaba de ocurrir.
-        ], $m);
+        return \erpsoftsas\Pasarela::aplicarADeclaracion(
+            $con, $idDeclaracion, $info, $valor, $m, \erpsoftsas\PagoDeclaracion::VIA_PSE
+        );
     }
 }

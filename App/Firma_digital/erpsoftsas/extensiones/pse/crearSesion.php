@@ -1,8 +1,9 @@
 <?php
 
 /**
- * Punto de entrada del botón "Pagar PSE": crea la sesión en PlacetoPay
- * para una declaración y redirige al usuario a pagarla.
+ * Punto de entrada del botón de pago en línea: crea el pago en la pasarela de
+ * la entidad (042: PlacetoPay en Paipa, Wompi en Macanal) y redirige al
+ * usuario a pagarlo.
  *
  * Sirve a los TRES módulos (ICA, Retención, Autorretención) según ?modulo=,
  * usando el descriptor de PseModulo para saber tabla y columnas. Sin modulo,
@@ -15,6 +16,7 @@ include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
 require_once SERVER . '/business/class.placetopay.php';
 require_once SERVER . '/business/class.pseModulo.php';
+require_once SERVER . '/business/class.pasarela.php';
 
 $configPath = dirname(dirname(dirname(__DIR__))) . '/config.municipio.php';
 if (!file_exists($configPath)) {
@@ -28,7 +30,7 @@ $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
 // Sin convenio de recaudo configurado no hay nada que cobrar. Se comprueba lo
 // PRIMERO, antes de tocar la base (ver la nota en pagar.php).
-if (!PlacetoPay::configurado()) {
+if (!\erpsoftsas\Pasarela::configurado()) {
     http_response_code(503);
     die('El pago en línea no está disponible: la Alcaldía todavía no ha configurado '
       . 'el convenio de recaudo. Puede pagar en el banco con el código de barras '
@@ -54,7 +56,10 @@ if ($motivo !== null) {
  * POST con acepto=1. Si se llega sin aceptar -por ejemplo abriendo esta URL a
  * mano-, se redirige al resumen en vez de crear la sesion directamente.
  */
-$acepto = (($_POST['acepto'] ?? $_GET['acepto'] ?? '') === '1');
+// Solo por POST (el formulario del resumen): con GET, un enlace o una imagen en
+// otra pagina creaba pagos con la sesion abierta del contribuyente (revision
+// 2026-10-02). Con GET se va al resumen, como sin aceptar.
+$acepto = (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['acepto'] ?? '') === '1');
 if (!$acepto) {
     header('Location: pagar.php?modulo=' . urlencode($modulo) . '&id=' . $id);
     exit;
@@ -96,9 +101,23 @@ if ((int) ($row['estado'] ?? 0) !== 2) {
  * crea otra; se manda al resumen (pagar.php), que muestra el aviso de "pago en
  * proceso". Evita dobles pagos sobre una operacion en tramite.
  */
-if (!empty($row['pse_req']) && strtoupper((string) $row['pse_est']) === 'PENDING') {
+$esWompi = \erpsoftsas\Pasarela::esWompi();
+if ($esWompi) {
+    require_once SERVER . '/business/class.pagoWompi.php';
+}
+// Con Wompi, en tramite tambien es un intento recien creado cuyo enlace todavia
+// puede estar pagandose (PagoWompi::enTramite): asi no se paga dos veces.
+$enTramite = $esWompi
+    ? \erpsoftsas\PagoWompi::enTramite($con, $modulo, $id) !== null
+    : (!empty($row['pse_req']) && strtoupper((string) $row['pse_est']) === 'PENDING');
+if ($enTramite) {
     header('Location: pagar.php?modulo=' . urlencode($modulo) . '&id=' . $id);
     exit;
+}
+if ($esWompi && \erpsoftsas\PagoWompi::intentosUltimaHora($con, $modulo, $id) >= \erpsoftsas\PagoWompi::MAX_INTENTOS_HORA) {
+    http_response_code(429);
+    die('Ya se iniciaron varios pagos de esta declaración en la última hora. Si ya pagó, espere la confirmación; '
+      . 'si no, intente de nuevo más tarde.');
 }
 
 $referencia = (string) $row['numero'];
@@ -152,6 +171,36 @@ $valor += $intereses;
 // URL de retorno: esquema+host actuales para que funcione igual en local,
 // pruebas y produccion. Lleva el modulo para volver a la tabla correcta.
 $esquema = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+
+/*
+ * WOMPI (042). Cada clic es un intento con su referencia (Wompi no deja
+ * reutilizarla), firmada junto con el valor: nadie puede cambiar lo que se
+ * cobra en el camino. Wompi devuelve al contribuyente a retorno.php agregando
+ * ?id=<transaccion>; por eso la declaracion va aqui como "decl" y no como "id",
+ * con la referencia y una firma del enlace (PagoWompi::urlRetorno). Los
+ * intereses de mora van dentro del valor, igual que con PlacetoPay.
+ */
+if ($esWompi) {
+    $centavos = (int) round($valor * 100);
+    $usuario  = (int) ($_SESSION['id_usuario'] ?? 0);
+    try {
+        $refWompi = \erpsoftsas\PagoWompi::crearIntento($con, $m, $id, $referencia, $centavos, $intereses, $usuario);
+        $url = \erpsoftsas\Wompi::urlCheckout([
+            'referencia'  => $refWompi,
+            'centavos'    => $centavos,
+            'vencimiento' => \erpsoftsas\Wompi::vencimiento(),
+            'redirect'    => \erpsoftsas\PagoWompi::urlRetorno(
+                                 $esquema . '://' . $_SERVER['HTTP_HOST'] . '/erpsoftsas/extensiones/pse/', $modulo, $id, $refWompi),
+            'cliente'     => \erpsoftsas\PagoWompi::cliente($con, $m, $id),
+        ]);
+    } catch (Exception $e) {
+        error_log('[wompi crearSesion] ' . $modulo . ' ' . $id . ': ' . $e->getMessage());
+        http_response_code(502);
+        die('No se pudo iniciar el pago en línea. Intente de nuevo en unos minutos.');
+    }
+    header('Location: ' . $url);
+    exit;
+}
 $returnUrl = $esquema . '://' . $_SERVER['HTTP_HOST']
            . '/erpsoftsas/extensiones/pse/retorno.php?modulo=' . urlencode($modulo) . '&id=' . $id;
 

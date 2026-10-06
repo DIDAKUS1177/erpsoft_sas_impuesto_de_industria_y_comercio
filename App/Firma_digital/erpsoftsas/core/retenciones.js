@@ -259,7 +259,9 @@ var Retenciones = (function () {
                 // (en $0 pagar.php solo puede decir "no aplica"). Va al RESUMEN
                 // (pagar.php): monto + logo AvalPay + politica antes de redirigir.
                 if (Number(f.pago_en_linea) === 1 && Number(f.total) > 0) {
-                    b += accBtn({ permiso: mod + '.pagar', tipo: 'danger', icono: 'fa-money', texto: 'Pagar PSE', title: 'Pagar por PSE',
+                    // Texto según la pasarela de la entidad (042), como en el ICA.
+                    var textoPago = f.pago_en_linea_texto || 'Pagar PSE';
+                    b += accBtn({ permiso: mod + '.pagar', tipo: 'danger', icono: 'fa-money', texto: textoPago, title: textoPago,
                                   href: '../extensiones/pse/pagar.php?modulo=' + encodeURIComponent(cfg.modulo || '') + '&id=' + f.id,
                                   target: '_blank' });
                 }

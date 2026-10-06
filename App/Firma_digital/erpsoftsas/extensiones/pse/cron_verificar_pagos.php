@@ -12,7 +12,15 @@
  *
  * Se ejecuta por CLI (php cron_verificar_pagos.php): $_SERVER['DOCUMENT_ROOT']
  * no existe en ese contexto, asi que las rutas van con __DIR__.
+ *
+ * SOLO por CLI (la tarea de Plesk "Ejecutar un script PHP" lo corre asi): por
+ * la web cualquiera lo podia llamar en bucle, gastando la llave privada de la
+ * pasarela y leyendo las referencias abiertas (revision 2026-10-02).
  */
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit;
+}
 require_once __DIR__ . '/../../business/class.conexionSqlServer.php';
 require_once __DIR__ . '/../../business/class.placetopay.php';
 require_once __DIR__ . '/../../business/class.pseModulo.php';
@@ -77,6 +85,23 @@ foreach (\erpsoftsas\PseModulo::claves() as $clave) {
         } catch (Exception $e) {
             echo "[{$clave}] id {$row['id']}: error al consultar - {$e->getMessage()}\n";
         }
+    }
+}
+
+/*
+ * WOMPI (042): en la entidad que cobra con Wompi, los intentos que siguen
+ * abiertos. Con PlacetoPay el bucle de arriba hace este trabajo con el
+ * requestId de cada declaracion; Wompi no lo usa (ver class.pagoWompi.php).
+ */
+require_once __DIR__ . '/../../business/class.pasarela.php';
+if (\erpsoftsas\Pasarela::esWompi()) {
+    require_once __DIR__ . '/../../business/class.pagoWompi.php';
+    if (\erpsoftsas\Wompi::configurado()) {
+        $r = \erpsoftsas\PagoWompi::revisarAbiertos($con, function ($linea) { echo "[wompi] $linea\n"; });
+        $revisadas    += $r['revisados'];
+        $actualizadas += $r['pagados'];
+    } else {
+        echo "[wompi] las llaves de Wompi no están completas (o mezclan pruebas y producción): no se revisó nada.\n";
     }
 }
 

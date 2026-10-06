@@ -13,7 +13,14 @@
  * El texto del FAQ es el que entregó AvalPay; el nombre del comercio se toma
  * del config del municipio. Los T&C legales los define la Alcaldía: aquí va una
  * base razonable que la entidad puede ampliar.
+ *
+ * Desde la 042 la pasarela es la de la entidad: donde se cobra con Wompi
+ * (Macanal), el texto habla de Wompi y de sus medios de pago.
  */
+include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
+include_once SERVER . '/business/class.conexionSqlServer.php';
+require_once SERVER . '/business/class.pasarela.php';
+
 $configPath = dirname(dirname(dirname(__DIR__))) . '/config.municipio.php';
 if (!file_exists($configPath)) {
     $configPath = dirname(dirname(__DIR__)) . '/config.municipio.php';
@@ -26,6 +33,9 @@ $muni    = defined('MUNICIPIO_NOMBRE') ? MUNICIPIO_NOMBRE : 'la Alcaldía';
 $color   = defined('MUNICIPIO_COLOR') ? MUNICIPIO_COLOR : '#1fa49d';
 $colorOs = defined('MUNICIPIO_COLOR_OSCURO') ? MUNICIPIO_COLOR_OSCURO : '#17756f';
 $e = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+
+$esWompi    = \erpsoftsas\Pasarela::esWompi();
+$plataforma = $esWompi ? 'Wompi' : 'AvalPay';
 ?><!DOCTYPE html>
 <html lang="es">
 <head>
@@ -63,29 +73,34 @@ $e = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
   <section>
     <h2>Preguntas frecuentes</h2>
 
-    <h3>¿Qué es AvalPay?</h3>
-    <p>AvalPay es la plataforma de pagos electrónicos que usa <?= $e($muni) ?> para procesar
+    <h3>¿Qué es <?= $e($plataforma) ?>?</h3>
+    <p><?= $e($plataforma) ?> es la plataforma de pagos electrónicos<?= $esWompi ? ' de Bancolombia' : '' ?> que usa <?= $e($muni) ?> para procesar
     en línea las transacciones generadas en el sistema, con las formas de pago habilitadas para tal fin.</p>
 
     <h3>¿Cómo puedo pagar?</h3>
+    <?php if ($esWompi): ?>
+    <p>Podrá realizar su pago con los medios que la entidad habilitó en Wompi, como <strong>PSE</strong>
+    (cuentas de ahorro y corriente), <strong>tarjetas</strong> o <strong>Nequi</strong>; en la página de pago verá los disponibles.</p>
+    <?php else: ?>
     <p>Podrá realizar su pago con los medios habilitados: <strong>cuentas de ahorro y corriente por PSE</strong>
     (débito bancario), según las opciones dispuestas por la entidad.</p>
+    <?php endif; ?>
 
     <h3>¿Es seguro ingresar mis datos bancarios en este sitio?</h3>
-    <p>Sí. Para proteger sus datos, <?= $e($muni) ?> delega en <strong>AvalPay</strong> la captura de la
+    <p>Sí. Para proteger sus datos, <?= $e($muni) ?> delega en <strong><?= $e($plataforma) ?></strong> la captura de la
     información sensible. La plataforma cumple los estándares de la norma internacional <strong>PCI DSS</strong>
     de seguridad en transacciones y usa cifrado de la información hacia y desde el sitio.
     <?= $e($muni) ?> <strong>no almacena</strong> los datos de su cuenta.</p>
 
     <h3>¿Puedo realizar el pago cualquier día y a cualquier hora?</h3>
-    <p>Sí, los pagos en línea a través de AvalPay están disponibles los 7 días de la semana, las 24 horas.</p>
+    <p>Sí, los pagos en línea a través de <?= $e($plataforma) ?> están disponibles los 7 días de la semana, las 24 horas.</p>
 
     <h3>¿Puedo cambiar la forma de pago?</h3>
     <p>Si aún no ha finalizado el pago, puede volver al paso inicial y elegir otra forma de pago. Una vez
     finalizada la operación no es posible cambiarla.</p>
 
     <h3>¿Pagar electrónicamente tiene algún costo para mí?</h3>
-    <p>No. Los pagos electrónicos realizados a través de AvalPay no generan costos adicionales para el pagador.</p>
+    <p>No. Los pagos electrónicos realizados a través de <?= $e($plataforma) ?> no generan costos adicionales para el pagador.</p>
 
     <h3>¿Qué debo hacer si mi transacción no concluyó?</h3>
     <p>Primero, revise si llegó un correo de confirmación a la cuenta que registró al pagar (incluida la carpeta
@@ -101,7 +116,11 @@ $e = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
     <h2>Política de tratamiento de datos personales</h2>
     <p>Los datos que usted suministra en el proceso de pago se utilizan <strong>únicamente</strong> para procesar
     el pago del Impuesto de Industria y Comercio y llevar su registro y trazabilidad ante <?= $e($muni) ?>.</p>
-    <p>La captura de la información financiera (cuenta, entidad bancaria) la realiza directamente <strong>AvalPay</strong>,
+    <?php if ($esWompi): ?>
+    <p>Para que el comprobante de pago le llegue al contribuyente, <?= $e($muni) ?> le envía a Wompi el correo
+    electrónico registrado en su información tributaria.</p>
+    <?php endif; ?>
+    <p>La captura de la información financiera (cuenta, entidad bancaria) la realiza directamente <strong><?= $e($plataforma) ?></strong>,
     que cumple el estándar PCI DSS; <?= $e($muni) ?> no tiene acceso ni almacena esos datos.</p>
     <p>Usted puede conocer, actualizar o rectificar sus datos y ejercer los derechos previstos en la Ley 1581 de 2012
     y demás normas aplicables, comunicándose con <?= $e($muni) ?>.</p>
@@ -111,12 +130,12 @@ $e = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
     <h2>Términos y condiciones</h2>
     <ul>
       <li>El pago en línea aplica sobre declaraciones <strong>presentadas</strong> y con un valor a pagar mayor a cero.</li>
-      <li>El valor a pagar corresponde al liquidado en la declaración; antes de ser redirigido a AvalPay usted verá
+      <li>El valor a pagar corresponde al liquidado en la declaración; antes de ser redirigido a <?= $e($plataforma) ?> usted verá
       el monto total a pagar y deberá aceptar esta política.</li>
       <li>La transacción puede quedar en estado <strong>aprobada</strong>, <strong>rechazada</strong> o
       <strong>pendiente</strong>. Si queda pendiente, el sistema la confirmará automáticamente cuando la entidad
       financiera responda; no vuelva a pagar sin verificar el estado.</li>
-      <li>El comprobante de la operación queda a cargo de AvalPay y del sistema de <?= $e($muni) ?>.</li>
+      <li>El comprobante de la operación queda a cargo de <?= $e($plataforma) ?> y del sistema de <?= $e($muni) ?>.</li>
       <li>Al continuar con el pago, usted acepta estos términos y la política de tratamiento de datos.</li>
     </ul>
     <p class="nota">Estos términos son una base general; <?= $e($muni) ?> es responsable de definir y ampliar las

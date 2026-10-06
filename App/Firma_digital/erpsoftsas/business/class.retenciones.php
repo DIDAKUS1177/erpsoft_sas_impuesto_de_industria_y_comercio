@@ -51,6 +51,7 @@ include_once SERVER . '/business/class.sessions.php';
 include_once SERVER . '/business/controller/class.cabecera.php';
 include_once SERVER . '/business/class.catalogoAnio.php';
 include_once SERVER . '/business/class.permisosRol.php';
+include_once SERVER . '/business/class.pasarela.php';
 
 abstract class ControladorRetencion extends \erpsoftsas\Cabecera
 {
@@ -664,6 +665,7 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
             'estadoClave' => $clave,
             'pagado'      => $pagado ? 1 : 0,
             'pago_en_linea' => $this->_pagoEnLinea(),
+            'pago_en_linea_texto' => \erpsoftsas\Pasarela::textoBoton(),
             'total'       => isset($f[$colTotal]) ? (float) $f[$colTotal] : 0,
             'documento'   => isset($f['documento']) ? $f['documento'] : '',
             'razon'       => $razon,
@@ -680,8 +682,8 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
     protected function _pagoEnLinea()
     {
         if ($this->_pagoEnLineaCache === null) {
-            require_once __DIR__ . '/class.placetopay.php';
-            $this->_pagoEnLineaCache = (int) \PlacetoPay::botonVisible($_SESSION['id_usuario'] ?? null);
+            require_once __DIR__ . '/class.pasarela.php';
+            $this->_pagoEnLineaCache = (int) \erpsoftsas\Pasarela::botonVisible($_SESSION['id_usuario'] ?? null);
         }
         return $this->_pagoEnLineaCache;
     }

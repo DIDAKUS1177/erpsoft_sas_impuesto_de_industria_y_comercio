@@ -19,6 +19,7 @@ include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
 require_once SERVER . '/business/class.placetopay.php';
 require_once SERVER . '/business/class.pseModulo.php';
+require_once SERVER . '/business/class.pasarela.php';
 
 $configPath = dirname(dirname(dirname(__DIR__))) . '/config.municipio.php';
 if (!file_exists($configPath)) {
@@ -32,9 +33,14 @@ $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
 $color   = defined('MUNICIPIO_COLOR') ? MUNICIPIO_COLOR : '#1fa49d';
 $muni    = defined('MUNICIPIO_NOMBRE') ? MUNICIPIO_NOMBRE : 'Alcaldía';
+// La pasarela de la entidad (042): AvalPay (PlacetoPay) o Wompi (Bancolombia).
+$esWompi   = \erpsoftsas\Pasarela::esWompi();
+$pasarela  = \erpsoftsas\Pasarela::nombre();
+$textoPago = $esWompi ? 'Ir a pagar con Wompi' : 'Pagar con PSE';
 // Logo de AvalPay para el resumen (Guia WC, item 12.1). En produccion el banco
-// suele entregar la URL del logo productivo; si cambia, se ajusta aqui.
-$logoAvalPay = 'https://placetopay-static-test-bucket.s3.us-east-2.amazonaws.com/avalpaycenter-com/logos/Logo%20Avalpay.svg';
+// suele entregar la URL del logo productivo; si cambia, se ajusta aqui. Con
+// Wompi va solo el texto: su certificacion no pide logo.
+$logoAvalPay = $esWompi ? '' : 'https://placetopay-static-test-bucket.s3.us-east-2.amazonaws.com/avalpaycenter-com/logos/Logo%20Avalpay.svg';
 
 $modulo = $_GET['modulo'] ?? 'ica';
 $m      = \erpsoftsas\PseModulo::get($modulo);
@@ -58,7 +64,7 @@ function pantalla($titulo, $html, $color, $muni) {
              box-shadow: 0 4px 20px rgba(0,0,0,.08); overflow: hidden; }
   .cab { background: var(--c); color: #fff; padding: 18px 24px; font-size: 18px; font-weight: 600; }
   .cuerpo { padding: 24px; }
-  .fila { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; font-size: 15px; }
+  .fila { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #eee; font-size: 15px; }
   .fila .k { color: #666; }
   .fila .v { font-weight: 600; text-align: right; }
   .total { font-size: 22px; color: var(--c); }
@@ -98,7 +104,7 @@ function pantalla($titulo, $html, $color, $muni) {
 }
 
 // Sin convenio configurado no hay pago que ofrecer.
-if (!PlacetoPay::configurado()) {
+if (!\erpsoftsas\Pasarela::configurado()) {
     http_response_code(503);
     pantalla('Pago no disponible',
         '<div class="aviso info">El pago en línea todavía no está disponible. '
@@ -192,8 +198,30 @@ if ($modulo === 'ica') {
 
 // item 4.3: si ya hay una sesion y el ultimo estado conocido es PENDIENTE, no
 // se crea otra: se informa. "Verificar estado" fuerza una consulta (retorno.php).
-if (!empty($row['pse_req']) && strtoupper((string) $row['pse_est']) === 'PENDING') {
-    $retorno = 'retorno.php?modulo=' . urlencode($modulo) . '&id=' . $id;
+// Con Wompi el pago en tramite es un intento PENDING, o uno recien creado cuyo
+// enlace todavia puede estar pagandose (PagoWompi::enTramite): el
+// contribuyente pudo pagar en otra pestaña sin volver.
+$tramite = null;
+if ($esWompi) {
+    require_once SERVER . '/business/class.pagoWompi.php';
+    $tramite   = \erpsoftsas\PagoWompi::enTramite($con, $modulo, $id);
+    $enTramite = $tramite !== null;
+    $retorno   = $tramite ? \erpsoftsas\PagoWompi::urlRetorno('', $modulo, $id, $tramite['pel_Referencia']) : '';
+} else {
+    $enTramite = !empty($row['pse_req']) && strtoupper((string) $row['pse_est']) === 'PENDING';
+    $retorno   = 'retorno.php?modulo=' . urlencode($modulo) . '&id=' . $id;
+}
+if ($enTramite && $tramite && ($tramite['pel_Estado'] ?? '') === 'CREADO') {
+    $faltan = max(1, \erpsoftsas\PagoWompi::MINUTOS_RECIENTE - (int) ($tramite['minutos'] ?? 0));
+    pantalla('Pago iniciado',
+        '<div class="aviso pend">Hace ' . (int) ($tramite['minutos'] ?? 0) . ' minuto(s) se inició un pago de esta declaración '
+      . '(referencia <span class="ref">' . htmlspecialchars($referencia) . '</span>) que todavía no tiene respuesta de Wompi. '
+      . 'Si lo terminó, espere: se confirmará solo. Si no lo terminó, podrá iniciar otro en unos ' . $faltan
+      . ' minutos, cuando venza ese enlace. Así se evita pagar dos veces.</div>'
+      . '<a class="btn" href="' . htmlspecialchars($retorno) . '">Verificar estado del pago</a>',
+        $color, $muni);
+}
+if ($enTramite) {
     pantalla('Pago en proceso',
         '<div class="aviso pend">Su pago con referencia <span class="ref">' . htmlspecialchars($referencia)
       . '</span>' . ($mora === null ? ' por <b>' . $valorFmt . '</b>' : '')
@@ -229,8 +257,10 @@ ob_start();
 <div class="fila"><span class="k">Total a pagar</span><span class="v total" id="totalPse"><?= $valorFmt ?></span></div>
 
 <div class="aval">
+  <?php if ($logoAvalPay !== ''): ?>
   <img src="<?= htmlspecialchars($logoAvalPay) ?>" alt="AvalPay" onerror="this.style.display='none'">
-  <small>Pago seguro procesado por AvalPay (PSE)</small>
+  <?php endif; ?>
+  <small>Pago seguro procesado por <?= htmlspecialchars($pasarela) ?></small>
 </div>
 
 <form method="post" action="crearSesion.php" id="formPago">
@@ -241,11 +271,11 @@ ob_start();
       <input type="checkbox" name="acepto" value="1" id="acepto" required>
       <span>He leído y acepto la
       <a href="faq.php" target="_blank" style="color:var(--c);font-weight:600;">política de tratamiento de datos y los términos y condiciones</a>
-      de <?= htmlspecialchars($muni) ?> y autorizo el procesamiento del pago a través de AvalPay (PSE).</span>
+      de <?= htmlspecialchars($muni) ?> y autorizo el procesamiento del pago a través de <?= htmlspecialchars($pasarela) ?>.</span>
     </label>
   </div>
   <div class="aviso-mora" id="avisoMora" hidden>Escriba los intereses de mora para continuar.</div>
-  <button type="submit" class="btn" id="btnPagar" disabled>Pagar con PSE</button>
+  <button type="submit" class="btn" id="btnPagar" disabled><?= htmlspecialchars($textoPago) ?></button>
   <a class="btn sec" href="#" onclick="window.close(); setTimeout(function () { history.back(); }, 200); return false;">Cancelar</a>
 </form>
 
@@ -293,12 +323,13 @@ ob_start();
   });
   // Al volver con "Atrás" desde el banco, el navegador restaura la página con el
   // botón en "Redirigiendo…": se deja como corresponde.
+  var textoPago = <?= json_encode($textoPago, JSON_UNESCAPED_UNICODE) ?>;
   window.addEventListener('pageshow', function (e) {
-    if (e.persisted) { btn.textContent = 'Pagar con PSE'; refrescar(); }
+    if (e.persisted) { btn.textContent = textoPago; refrescar(); }
   });
   frm.addEventListener('submit', function () {
     btn.disabled = true;
-    btn.textContent = 'Redirigiendo al banco…';
+    btn.textContent = <?= json_encode($esWompi ? 'Redirigiendo a Wompi…' : 'Redirigiendo al banco…', JSON_UNESCAPED_UNICODE) ?>;
   });
 </script>
 <?php

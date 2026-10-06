@@ -1,20 +1,24 @@
 <?php
 
 /**
- * A donde PlacetoPay redirige al usuario cuando da "volver al comercio".
- * Consulta el estado real de la sesion (no confia en nada de la URL) y
- * actualiza la declaracion antes de mostrar el resultado.
+ * A donde la pasarela devuelve al usuario despues de pagar. Consulta el estado
+ * real del pago (no confia en nada de la URL) y actualiza la declaracion antes
+ * de mostrar el resultado.
  *
  * Muestra el detalle de la transaccion (Guia WC, item 12.4): referencia,
  * estado final, fecha, valor y moneda. Sirve a los tres modulos segun ?modulo=.
  *
- * GET: id (o dec_Id), modulo
+ * GET PlacetoPay: id (o dec_Id) = la declaracion, modulo
+ * GET Wompi (042): decl = la declaracion, modulo, ref = el intento, t = la firma
+ *     del enlace (PagoWompi::urlRetorno), e id = la transaccion, que agrega
+ *     Wompi (por eso la declaracion no va en "id").
  */
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
 require_once SERVER . '/business/class.placetopay.php';
 require_once SERVER . '/business/class.pseModulo.php';
 require_once SERVER . '/business/class.pagoDeclaracion.php';
+require_once SERVER . '/business/class.pasarela.php';
 
 $configPath = dirname(dirname(dirname(__DIR__))) . '/config.municipio.php';
 if (!file_exists($configPath)) {
@@ -29,8 +33,10 @@ $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 $color = defined('MUNICIPIO_COLOR') ? MUNICIPIO_COLOR : '#1fa49d';
 $muni  = defined('MUNICIPIO_NOMBRE') ? MUNICIPIO_NOMBRE : 'Alcaldía';
 
-$m   = \erpsoftsas\PseModulo::get($_GET['modulo'] ?? 'ica');
-$id  = (int) ($_GET['id'] ?? $_GET['dec_Id'] ?? 0);
+$m       = \erpsoftsas\PseModulo::get($_GET['modulo'] ?? 'ica');
+// La rama la decide la pasarela de la entidad, no la URL (revision 2026-10-02).
+$esWompi = \erpsoftsas\Pasarela::esWompi();
+$id      = $esWompi ? (int) ($_GET['decl'] ?? 0) : (int) ($_GET['id'] ?? $_GET['dec_Id'] ?? 0);
 
 $col = [
     'numero' => $m['numero'], 'valor' => $m['valor'], 'pagado' => $m['pagado'],
@@ -50,7 +56,73 @@ $valor      = (float) ($row['valor'] ?? 0);
 $estado     = '';
 $fechaIso   = '';
 
-if (!$row || empty($row['pse_req'])) {
+if ($esWompi) {
+    /*
+     * WOMPI (042, revision 2026-10-02). Sin el enlace FIRMADO (ref + t, que solo
+     * arma crearSesion.php o el resumen) no se consulta nada ni se muestran
+     * datos: nadie puede recorrer declaraciones ajenas ni gastar la llave
+     * privada desde afuera.
+     *
+     * El "id" que agrega Wompi tampoco se aplica tal cual: podria ser de otra
+     * cuenta de Wompi con la misma referencia. Se pregunta por la REFERENCIA del
+     * intento con la llave privada (solo trae lo de este comercio), o por el id
+     * que ya guardo un aviso firmado (PagoWompi::confirmar). Si no hay nada
+     * todavia, el aviso de Wompi lo registra en un momento.
+     *
+     * Tambien con la declaracion ya pagada: asi un segundo pago se ve como tal.
+     */
+    require_once SERVER . '/business/class.pagoWompi.php';
+    $refWompi = (string) ($_GET['ref'] ?? '');
+    $intento  = null;
+    if ($row && \erpsoftsas\PagoWompi::retornoValido($m['clave'], $id, $refWompi, $_GET['t'] ?? '')) {
+        $intento = \erpsoftsas\PagoWompi::intento($con, $refWompi);
+        if ($intento && ($intento['pel_Modulo'] !== $m['clave'] || (int) $intento['pel_IdDeclaracion'] !== $id)) {
+            $intento = null;
+        }
+    }
+
+    if (!$intento) {
+        $referencia = '';
+        $valor      = 0;
+        $mensaje    = 'No se pudo verificar este enlace de pago. Consulte el estado del pago desde su declaración.';
+    } else {
+        try {
+            $r = \erpsoftsas\PagoWompi::confirmar($con, $intento);
+            if ($r === null) {
+                $estado  = 'PENDING';
+                $mensaje = trim((string) ($_GET['id'] ?? '')) !== ''
+                    ? 'Recibimos su regreso de Wompi: el pago se está confirmando. Puede cerrar esta ventana; '
+                      . 'se actualizará solo en unos minutos.'
+                    : 'No se encontró un pago con este enlace. Si no lo terminó, puede iniciarlo de nuevo desde su declaración.';
+            } else {
+                $info     = $r['info'];
+                $estado   = $r['estado'];
+                $fechaIso = $info['fecha'];
+                if ($info['valor'] !== null) { $valor = (float) $info['valor']; }
+
+                if ($r['pagada']) {
+                    $aprobado = true;
+                    $mensaje  = 'Pago aprobado. Gracias.';
+                } elseif ($r['doble']) {
+                    $mensaje = 'Wompi aprobó este pago, pero la declaración ya estaba pagada. ' . $muni
+                             . ' revisará la devolución; conserve su comprobante de Wompi.';
+                } elseif ($info['aprobado']) {
+                    $mensaje = 'Wompi aprobó el pago, pero no se pudo registrar automáticamente. '
+                             . 'Comuníquese con ' . $muni . ' con su número de referencia.';
+                } elseif ($estado === 'PENDING') {
+                    $mensaje = 'El pago quedó en proceso. En cuanto se confirme, se actualizará automáticamente (puede tardar unos minutos).';
+                } else {
+                    $mensaje = 'El pago no fue aprobado. Puede intentarlo de nuevo desde su declaración.';
+                    if ($info['mensaje'] !== '') { $mensaje .= ' (' . $info['mensaje'] . ')'; }
+                }
+            }
+        } catch (Exception $e) {
+            error_log('[wompi retorno] ' . $m['clave'] . ' ' . $id . ': ' . $e->getMessage());
+            $mensaje = 'No se pudo confirmar el estado del pago en este momento. Si el pago sí se realizó, '
+                     . 'quedará confirmado automáticamente en las próximas horas.';
+        }
+    }
+} elseif (!$row || empty($row['pse_req'])) {
     $mensaje = 'No se encontró un pago PSE iniciado para esta declaración.';
 } elseif ((int) $row['pagado'] === 1) {
     $aprobado = true;
@@ -124,6 +196,9 @@ if (!$row || empty($row['pse_req'])) {
 $mapaEstado = [
     'APPROVED' => 'Aprobado', 'PENDING' => 'Pendiente', 'REJECTED' => 'Rechazado',
     'EXPIRED'  => 'Expirado', 'FAILED' => 'Fallido',
+    // Wompi (042)
+    'DECLINED' => 'Rechazado', 'VOIDED' => 'Anulado', 'ERROR' => 'Fallido',
+    'REVISAR'  => 'En revisión', 'DOBLE' => 'Pago repetido',
 ];
 $estadoTxt = $mapaEstado[$estado] ?? ($estado !== '' ? $estado : '—');
 $valorFmt  = $valor > 0 ? '$ ' . number_format($valor, 0, ',', '.') . ' COP' : '—';

@@ -311,6 +311,14 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
                 // Se sustituye por la unica informacion que la pantalla
                 // necesita: si hay algo guardado.
                 $f['par_Puesto'] = (int) (trim((string) $f['par_Valor']) !== '');
+                // De las llaves de Wompi (042) se dice ademas si son de pruebas o
+                // de produccion: lo dice su prefijo, que no es secreto, y sin
+                // eso una mezcla apaga el boton sin que se sepa por que.
+                if (strpos((string) $f['par_Clave'], 'WOMPI_') === 0 && $f['par_Puesto']) {
+                    $v = trim((string) $f['par_Valor']);
+                    $f['par_Ambiente'] = preg_match('/^(prv_)?prod_/', $v) ? 'producción'
+                                       : (preg_match('/^(prv_)?test_/', $v) ? 'pruebas' : null);
+                }
                 $f['par_Valor']  = '';
             } else {
                 $f['par_Puesto'] = (int) (trim((string) $f['par_Valor']) !== '');

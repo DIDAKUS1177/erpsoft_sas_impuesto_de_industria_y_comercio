@@ -97,3 +97,48 @@ El botón ya está habilitado en el código (apunta a `crearSesion.php`), pero
 mientras la dirección de la pasarela siga en modo prueba, cualquier clic ahí crea
 sesiones de PRUEBA, no reales. No hace falta "activar" nada aparte: el
 comportamiento cambia solo con las credenciales/URL de producción del punto 3.
+
+## 7. Wompi (Bancolombia) en vez de PlacetoPay — Macanal (migración 042)
+
+Cada entidad cobra con SU pasarela: el parámetro `PASARELA_PROVEEDOR`
+(Municipio y bancos) dice cuál. La 042 lo deja en `WOMPI` solo en la base de
+Macanal; en las demás queda `PLACETOPAY` y nada cambia.
+
+1. **Cuenta del comercio**: la Alcaldía crea la suya en comercios.wompi.co, a
+   su nombre y con la cuenta bancaria donde Wompi consigna. En el panel, en
+   Desarrolladores, están las cuatro llaves de cada ambiente.
+2. **Llaves** (Municipio y bancos, detrás de la contraseña de edición):
+   `WOMPI_LLAVE_PUBLICA` (pub_test_…), `WOMPI_LLAVE_PRIVADA` (prv_test_…),
+   `WOMPI_SECRETO_INTEGRIDAD` (test_integrity_…) y `WOMPI_SECRETO_EVENTOS`
+   (test_events_…). Las tres últimas nunca se vuelven a mostrar. Si se mezclan
+   llaves de pruebas y de producción, el botón no se ofrece.
+3. **Modo prueba**: `PASARELA_USUARIOS_PRUEBA` con el id del usuario de prueba
+   (mejor un contribuyente de prueba: solo puede pagar lo suyo). Con las llaves
+   de pruebas y la lista vacía el botón no lo ve nadie. Lo que se pague en
+   pruebas queda con vía `WOMPI_PRUEBA` y banco "Wompi PRUEBAS - …". Al pasar a
+   producción, revisar esas declaraciones y dejarlas como estaban, y vaciar la
+   lista.
+4. **URL de eventos** (en el panel de Wompi; exige https, así que el dominio
+   necesita su certificado SSL antes):
+
+   ```
+   https://industria-comercio-macanal.erpsoftsas.com/erpsoftsas/extensiones/pse/wompi_eventos.php
+   ```
+
+5. **Cron de respaldo**: la misma tarea del punto 4 (`cron_verificar_pagos.php`,
+   tipo "Ejecutar un script PHP": desde la 042 solo corre por línea de comandos)
+   revisa también los intentos de Wompi que sigan abiertos. Las líneas
+   "ATENCIÓN" son pagos para revisar a mano (DOBLE: devolver; REVISAR: no
+   cuadran o se anularon); conviene que la tarea notifique su salida.
+6. **Producción**: cambiar las cuatro llaves por las `…_prod_…` y vaciar
+   `PASARELA_USUARIOS_PRUEBA`. El API pasa solo a production.wompi.co (lo
+   decide la llave pública).
+
+Comprobar con el sandbox antes de abrirlo: un pago aprobado, uno rechazado y uno
+abandonado, y que el aviso llegue (el intento queda con su transacción). Lo que
+falta confirmar ahí: que `GET /v1/transactions?reference=` (búsqueda por
+referencia) responda con la llave privada. La usan el retorno, el cron y la
+regla de "pago en trámite". Si no existe:
+- el retorno dice "se está confirmando" y el aviso firmado registra el pago;
+- un intento recién creado frena otro durante 45 minutos;
+- los intentos sin aviso se cierran a los 7 días; para esos, mirar el panel de Wompi.

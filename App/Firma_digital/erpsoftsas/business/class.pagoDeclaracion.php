@@ -48,6 +48,13 @@ class PagoDeclaracion
     /** Por dónde entró la plata. Va tal cual a dec_RutaPago. */
     const VIA_PSE     = 'PSE';
     const VIA_RECAUDO = 'RECAUDO_BANCARIO';
+    /** Wompi (Bancolombia), migración 042: PSE, tarjeta, Nequi... el medio va en *_BancoPago. */
+    const VIA_WOMPI   = 'WOMPI';
+    /**
+     * Wompi con llaves de PRUEBAS: el sandbox "aprueba" con plata de mentira.
+     * Queda con su propia vía para que nunca se confunda con un pago real.
+     */
+    const VIA_WOMPI_PRUEBA = 'WOMPI_PRUEBA';
 
     /**
      * dec_BancoPago es VARCHAR(60) en la base.
@@ -84,7 +91,7 @@ class PagoDeclaracion
         $p  = $m['prefijo'];  // de PseModulo, nunca del usuario: seguro interpolarlos
         $pk = $m['pk'];
 
-        $via = in_array($datos['via'] ?? '', [self::VIA_PSE, self::VIA_RECAUDO], true)
+        $via = in_array($datos['via'] ?? '', [self::VIA_PSE, self::VIA_RECAUDO, self::VIA_WOMPI, self::VIA_WOMPI_PRUEBA], true)
             ? $datos['via']
             : self::VIA_RECAUDO;
 

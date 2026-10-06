@@ -688,7 +688,8 @@ consultarDeclaraciones(idEstablecimiento, idContribuyente) {
                 // dec_FechaPago llega como objeto del driver sqlsrv, no como
         // cadena: concatenarlo pintaba "[object Object]".
         var fechaPago = DeclaracionesUI.fechaTexto(d.dec_FechaPago);
-                var banco     = d.dec_BancoPago || 'No aplica';
+                // Escapado: lo escriben el recaudo y las pasarelas (p. ej. "Wompi - PSE").
+                var banco     = $('<div>').text(d.dec_BancoPago || 'No aplica').html();
                 // El valor a pagar de la casilla 38 (dec_ValorConcepto20), no lo
                 // pagado, que aqui siempre es $0 (cliente, 2026-09-25).
                 var valor     = NumerosCOP.deBaseDeDatosAInput(d.dec_ValorConcepto20);

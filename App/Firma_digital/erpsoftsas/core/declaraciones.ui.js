@@ -296,7 +296,10 @@ var DeclaracionesUI = (function () {
             // Va al RESUMEN de pago (pagar.php), no directo a crear la sesion:
             // la certificacion WC exige mostrar el monto y aceptar la politica
             // de datos antes de redirigir al banco (items 4 y 12.1).
-            botones += accBtn({ permiso: 'ica.pagar', tipo: 'danger', icono: 'fa-money', texto: 'Pagar PSE', title: 'Pagar por PSE',
+            // El texto lo da el servidor según la pasarela de la entidad (042):
+            // "Pagar PSE" con AvalPay, "Pagar en línea" con Wompi (no es solo PSE).
+            var textoPago = d.pago_en_linea_texto || 'Pagar PSE';
+            botones += accBtn({ permiso: 'ica.pagar', tipo: 'danger', icono: 'fa-money', texto: textoPago, title: textoPago,
                                 href: '../extensiones/pse/pagar.php?modulo=ica&id=' + d.dec_Id, target: '_blank' });
         }
 

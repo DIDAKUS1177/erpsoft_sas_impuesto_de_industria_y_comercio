@@ -2420,10 +2420,12 @@ private function _consultarDeclaracionesListado(){
      * para todas y la clase ya cachea, pero preguntarlo dentro del bucle
      * sugeriria que puede variar entre declaraciones.
      */
-    include_once SERVER . '/business/class.placetopay.php';
+    include_once SERVER . '/business/class.pasarela.php';
     // botonVisible (no solo configurado): durante la certificacion el boton solo
-    // lo ven los usuarios de prueba (parametro PASARELA_USUARIOS_PRUEBA).
-    $pagoEnLinea = (int) \PlacetoPay::botonVisible($_SESSION['id_usuario'] ?? null);
+    // lo ven los usuarios de prueba (parametro PASARELA_USUARIOS_PRUEBA). La
+    // pasarela es la de la entidad (042): AvalPay en Paipa, Wompi en Macanal.
+    $pagoEnLinea      = (int) \erpsoftsas\Pasarela::botonVisible($_SESSION['id_usuario'] ?? null);
+    $pagoEnLineaTexto = \erpsoftsas\Pasarela::textoBoton();
 
     $data = [];
 
@@ -2436,6 +2438,7 @@ private function _consultarDeclaracionesListado(){
         $row['requiere_contador'] = (int) ($row['tiene_correo_contador'] ?? 0);
 
         $row['pago_en_linea'] = $pagoEnLinea;
+        $row['pago_en_linea_texto'] = $pagoEnLineaTexto;
 
         $data[] = $row;
     }
