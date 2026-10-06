@@ -99,14 +99,29 @@ class Pasarela
         require_once __DIR__ . '/class.pagoDeclaracion.php';
         if ($m === null) { $m = PseModulo::get('ica'); }
 
+        // Sesion de PlacetoPay abierta y sin ningun intento de pago: no hay nada
+        // nuevo; se deja "Pago iniciado" con su hora (PlacetoPay::interpretarRespuesta).
+        if (!empty($info['sinIntento'])) {
+            return false;
+        }
+
         // Tabla y columnas salen del mapa fijo de PseModulo, nunca del usuario.
+        // Con PlacetoPay, solo sobre la declaracion que sigue teniendo la sesion
+        // consultada: el aviso tardio de una ya reemplazada no pisa el estado de
+        // la nueva (revision 2026-10-06). Wompi no trae requestId: como siempre.
+        $sesion = '';
+        $params = [$info['estado'], $info['mensaje'] ?? '', (int) $idDeclaracion];
+        if (!empty($info['requestId'])) {
+            $sesion   = ' AND ' . PseModulo::colRequestId($m) . ' = ?';
+            $params[] = (string) $info['requestId'];
+        }
         $con->consultar(
             "UPDATE {$m['tabla']}
                 SET " . PseModulo::colEstado($m) . " = ?,
                     " . PseModulo::colFechaEstado($m) . " = GETDATE(),
                     " . PseModulo::colMensaje($m) . " = ?
-              WHERE {$m['pk']} = ?",
-            [$info['estado'], $info['mensaje'] ?? '', (int) $idDeclaracion]
+              WHERE {$m['pk']} = ?" . $sesion,
+            $params
         );
 
         if (empty($info['aprobado'])) {

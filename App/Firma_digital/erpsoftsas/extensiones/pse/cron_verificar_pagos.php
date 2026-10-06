@@ -2,7 +2,7 @@
 
 /**
  * Tarea programada de respaldo (exigida por PlacetoPay/el banco): revisa toda
- * declaracion con una sesion PSE creada que aun no aparezca pagada, en los TRES
+ * declaracion con una sesion PSE PENDIENTE que aun no aparezca pagada, en los TRES
  * modulos (ICA, RETEICA, AUTORRETEICA), y confirma directamente contra
  * PlacetoPay. Es el tercer y ultimo mecanismo (junto con retorno.php y
  * webhook.php) para que ningun pago se quede sin reflejar.
@@ -42,6 +42,7 @@ $actualizadas = 0;
 foreach (\erpsoftsas\PseModulo::claves() as $clave) {
     $m   = \erpsoftsas\PseModulo::get($clave);
     $req = \erpsoftsas\PseModulo::colRequestId($m);
+    $est = \erpsoftsas\PseModulo::colEstado($m);
 
     /*
      * Solo PRESENTADAS (Estado = 2). Un borrador no se paga por PSE
@@ -49,13 +50,22 @@ foreach (\erpsoftsas\PseModulo::claves() as $clave) {
      * sesion que no es suya: la que una correccion heredaba de la original
      * hasta el 2026-09-28. Este cron la consultaba y, aprobada, marcaba la
      * correccion pagada en borrador.
+     *
+     * Y solo las sesiones SIN RESULTADO FINAL, como pide AvalPay al entregar
+     * produccion ("solo sobre las transacciones en estado pendiente",
+     * 2026-10-06): una rechazada o vencida ya no cambia, y se volvia a
+     * consultar cada dia mientras la declaracion siguiera sin pagar. Se
+     * excluyen las finales (PlacetoPay::ESTADOS_FINALES) y no "todo lo que no
+     * sea PENDING": una aprobada que no se alcanzo a registrar, una sin estado
+     * (de antes de anotarSesion) o cualquier otro estado se siguen consultando.
      */
     $stmt = $con->consultar(
         "SELECT {$m['pk']} AS id, {$req} AS pse_req, {$m['valor']} AS valor,
                 {$m['numero']} AS numero
          FROM {$m['tabla']}
          WHERE {$req} IS NOT NULL AND ISNULL({$m['pagado']}, 0) = 0
-           AND {$m['estado']} = 2",
+           AND {$m['estado']} = 2
+           AND ISNULL({$est}, '') NOT IN (" . PlacetoPay::listaSql(PlacetoPay::ESTADOS_FINALES) . ")",
         []
     );
 

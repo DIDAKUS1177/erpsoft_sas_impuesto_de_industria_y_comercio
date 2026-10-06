@@ -1859,6 +1859,26 @@ año, el actual. La casilla del formulario queda de solo lectura.
 - Retención y autorretención ya dejaban elegir año, pero numeran con la
   serie del año declarado (sin cambio).
 
+### PSE con AvalPay antes de producción en Paipa (2026-10-06)
+
+AvalPay entregó las credenciales productivas (sitio "ICA - WC"; la dirección
+va CON `/api`). Antes de usarlas se cerró un hueco: al crear la sesión solo se
+guardaba el requestId, así que una segunda sesión (otra pestaña) pisaba la
+primera y un pago hecho en la primera ya no lo encontraban ni el aviso
+(`webhook.php`, busca por requestId), ni el retorno, ni el cron.
+- `PlacetoPay::anotarSesion`: la sesión nace PENDING con "Sesión creada"; no
+  se anota sobre una PENDING o APPROVED sin registrar (`ESTADOS_EN_TRAMITE`)
+  ni sobre una declaración pagada. `pagar.php` muestra "Pago iniciado" con la
+  cuenta regresiva (`MINUTOS_SESION` = 30).
+- `PlacetoPay::exigirSesion`: una respuesta sin la sesión (credenciales de
+  otro ambiente, reloj corrido) se LANZA; antes se anotaba como "FAILED".
+- `interpretarRespuesta` trae `requestId` y `sinIntento` (abierta sin ningún
+  intento): `Pasarela::aplicarADeclaracion` no anota nada con `sinIntento` y,
+  con requestId, solo escribe el estado si la declaración sigue con esa sesión.
+- El cron deja de consultar solo las finales (`ESTADOS_FINALES`).
+- Suite: `probar_pse_sesion` (27 casos, sin banco). El paso a producción está
+  en `extensiones/pse/DESPLIEGUE.md` §8.
+
 ### Pago en línea con Wompi (Macanal, 2026-10-02)
 
 Macanal cobra con Wompi (Bancolombia); Paipa sigue con AvalPay (PlacetoPay),

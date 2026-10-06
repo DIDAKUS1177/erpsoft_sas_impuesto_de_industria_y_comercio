@@ -107,9 +107,10 @@ if ($esWompi) {
 }
 // Con Wompi, en tramite tambien es un intento recien creado cuyo enlace todavia
 // puede estar pagandose (PagoWompi::enTramite): asi no se paga dos veces.
+// Con PlacetoPay, en tramite es PENDING o APPROVED sin registrar (PlacetoPay::enTramite).
 $enTramite = $esWompi
     ? \erpsoftsas\PagoWompi::enTramite($con, $modulo, $id) !== null
-    : (!empty($row['pse_req']) && strtoupper((string) $row['pse_est']) === 'PENDING');
+    : (!empty($row['pse_req']) && PlacetoPay::enTramite($row['pse_est']));
 if ($enTramite) {
     header('Location: pagar.php?modulo=' . urlencode($modulo) . '&id=' . $id);
     exit;
@@ -237,10 +238,13 @@ try {
     die('No se pudo iniciar el pago con PlacetoPay: ' . htmlspecialchars($e->getMessage()));
 }
 
-$con->consultar(
-    "UPDATE {$m['tabla']} SET {$col['req']} = ? WHERE {$m['pk']} = ?",
-    [$sesion['requestId'], $id]
-);
+// La sesion queda anotada ya PENDIENTE (PlacetoPay::anotarSesion): otra no se
+// crea hasta que esta se resuelva o venza. Si en el intervalo otra pestaña dejo
+// la suya, esta no se ofrece: al resumen, que muestra el pago en curso.
+if (!PlacetoPay::anotarSesion($con, $m, $id, $sesion['requestId'])) {
+    header('Location: pagar.php?modulo=' . urlencode($modulo) . '&id=' . $id);
+    exit;
+}
 
 header('Location: ' . $sesion['processUrl']);
 exit;

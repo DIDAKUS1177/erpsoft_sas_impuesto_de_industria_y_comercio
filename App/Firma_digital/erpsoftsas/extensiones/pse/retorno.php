@@ -178,6 +178,11 @@ if ($esWompi) {
             } elseif ($info['aprobado']) {
                 $mensaje = 'El banco aprobó el pago, pero la declaración no está presentada y no se pudo '
                          . 'registrar. Comuníquese con ' . $muni . ' con el número de referencia.';
+            } elseif (!empty($info['sinIntento'])) {
+                // Abierta y sin ningun intento: no eligio banco o volvio atras.
+                $mensaje = 'Todavía no se ha hecho el pago: la sesión que inició sigue abierta. Si no lo va a '
+                         . 'terminar, podrá iniciar uno nuevo desde su declaración cuando esa sesión venza ('
+                         . PlacetoPay::MINUTOS_SESION . ' minutos después de iniciada).';
             } elseif ($info['estado'] === 'PENDING') {
                 $mensaje = 'El pago quedó en proceso. En cuanto el banco confirme, se actualizará automáticamente (puede tardar unos minutos).';
             } else {

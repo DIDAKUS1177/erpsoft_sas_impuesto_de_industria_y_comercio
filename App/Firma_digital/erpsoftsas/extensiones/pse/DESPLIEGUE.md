@@ -134,11 +134,62 @@ Macanal; en las demás queda `PLACETOPAY` y nada cambia.
    `PASARELA_USUARIOS_PRUEBA`. El API pasa solo a production.wompi.co (lo
    decide la llave pública).
 
-Comprobar con el sandbox antes de abrirlo: un pago aprobado, uno rechazado y uno
-abandonado, y que el aviso llegue (el intento queda con su transacción). Lo que
-falta confirmar ahí: que `GET /v1/transactions?reference=` (búsqueda por
-referencia) responda con la llave privada. La usan el retorno, el cron y la
-regla de "pago en trámite". Si no existe:
-- el retorno dice "se está confirmando" y el aviso firmado registra el pago;
-- un intento recién creado frena otro durante 45 minutos;
-- los intentos sin aviso se cierran a los 7 días; para esos, mirar el panel de Wompi.
+Comprobado contra el sandbox con las llaves de prueba de Macanal (2026-10-05):
+pago aprobado registrado, rechazado sin registrar, recarga del retorno sin
+duplicar, enlace con firma alterada rechazado. La búsqueda por referencia
+(`GET /v1/transactions?reference=`) SÍ responde con la llave privada. Falta en
+el dominio real: el aviso firmado (necesita el https) y un pago abandonado.
+
+Ojo: Wompi bloquea (403 de su CDN) un `redirect-url` con `localhost`; en local
+el retorno se abre a mano. Con el dominio del municipio no pasa.
+
+## 8. AvalPay en producción — Paipa
+
+AvalPay entregó las credenciales productivas (2026-10-06). Son tres sitios:
+**"ICA - WC" es el de este sistema** (ICA, retención y autorretención); "OTROS
+INGRESOS" y "PREDIAL" son de otras aplicaciones. Las credenciales no van aquí
+(repositorio público): las escribe quien administra, en la pantalla.
+
+1. **Parámetros ICA → Municipio y bancos** (detrás de la contraseña de
+   edición), los tres juntos:
+   - `PASARELA_BASEURL`: `https://checkout.avalpaycenter.com/api`. El correo de
+     AvalPay da la dirección sin `/api`; el sistema la necesita CON `/api`
+     (llama a `<base>/session`).
+   - `PASARELA_LOGIN` y `PASARELA_SECRETKEY`: los del sitio "ICA - WC".
+   Mezclar dirección de producción con credenciales de pruebas (o al revés)
+   hace fallar toda sesión.
+2. **Primer pago real con valor mínimo**, como pide AvalPay, todavía con
+   `PASARELA_USUARIOS_PRUEBA` = el usuario de prueba: solo él ve el botón. Lo
+   hace una persona con su propia cuenta; se comprueba que la declaración quede
+   pagada y, al día siguiente, que el dinero llegue a la cuenta de la Alcaldía
+   (compensación).
+3. **Abrirlo**: vaciar `PASARELA_USUARIOS_PRUEBA`. Desde ahí todos ven
+   "Pagar con PSE".
+4. **Aviso (webhook)**: confirmar con soporte de AvalPay que el sitio
+   productivo tenga la URL de notificación del punto 5. Sin ella el pago igual
+   se registra al volver el contribuyente o con el cron, pero más tarde.
+5. **Cron**: el de siempre, una vez al día de madrugada. Desde el 2026-10-06
+   solo consulta sesiones pendientes, como pide AvalPay.
+6. **Panel de AvalPay** (`dash.avalpaycenter.com`): la tesorería acepta la
+   invitación que llega por correo.
+
+Pagos de la certificación que quedaron en la base de Paipa: todos del
+contribuyente de prueba (NIT 900900900), en ICA y retención. No tocan a ningún
+contribuyente real; si estorban en los informes, se devuelven a "sin pagar".
+
+**La sesión nace PENDIENTE (2026-10-06).** Antes solo se guardaba el requestId
+al crearla y el estado quedaba vacío hasta la primera consulta: nada frenaba
+una segunda sesión (otra pestaña), que pisaba la primera, y un pago hecho en la
+primera ya no lo encontraban ni el aviso, ni el retorno, ni el cron.
+`PlacetoPay::anotarSesion` la deja PENDING; el resumen muestra "Pago iniciado"
+con lo que falta para que venza (30 min) y "Verificar estado del pago".
+Revisión del mismo día, antes de subirlo:
+- **No se crea otra encima** de una PENDING ni de una APPROVED que no se
+  alcanzó a registrar, ni sobre una declaración ya pagada.
+- **Un error del servicio no es un resultado**: si PlacetoPay contesta sin la
+  sesión (credenciales de otro ambiente, reloj corrido), se lanza y no se
+  anota nada; antes quedaba "FAILED" y se podía pagar encima.
+- **El aviso de una sesión ya reemplazada** no pisa el estado de la nueva.
+- **Volver sin pagar** (sin elegir banco) no borra "Pago iniciado" ni su hora.
+- **El cron** deja de consultar solo las finales (REJECTED, EXPIRED,
+  PARTIAL_EXPIRED); lo demás se sigue mirando.

@@ -41,6 +41,39 @@ class PlacetoPay {
     const PARAM_LOGIN     = 'PASARELA_LOGIN';
     const PARAM_SECRETKEY = 'PASARELA_SECRETKEY';
 
+    /** Vigencia de una sesion (la guia WC exige entre 10 y 30 minutos). */
+    const MINUTOS_SESION = 30;
+
+    /** *_PSE_Mensaje de una sesion recien creada, sin respuesta del banco aun. */
+    const MENSAJE_SESION_CREADA = 'Sesión creada: esperando el pago';
+
+    /*
+     * Estados de una sesion, para el candado y el cron (revision 2026-10-06).
+     *
+     * EN TRAMITE: no se crea otra encima. PENDING es la que puede estar
+     * pagandose; APPROVED sin pagar es un pago aprobado que no se alcanzo a
+     * registrar (registrar fallo): pisarla perderia el requestId con que el
+     * retorno o el cron lo registran, y el contribuyente pagaria dos veces.
+     *
+     * FINALES SIN PAGO: ya no cambian; el cron no las vuelve a consultar (lo
+     * pide AvalPay). Todo lo demas -pendiente, aprobada sin registrar, sin
+     * estado (de antes de anotarSesion) u otro- se sigue consultando.
+     */
+    const ESTADOS_EN_TRAMITE = ['PENDING', 'APPROVED'];
+    const ESTADOS_FINALES    = ['REJECTED', 'EXPIRED', 'PARTIAL_EXPIRED'];
+
+    /** ¿Hay una sesion en tramite con ese ultimo estado conocido? */
+    public static function enTramite($estado)
+    {
+        return in_array(strtoupper((string) $estado), self::ESTADOS_EN_TRAMITE, true);
+    }
+
+    /** Lista SQL de estados ('A', 'B'); solo de las constantes de arriba. */
+    public static function listaSql(array $estados)
+    {
+        return "'" . implode("', '", $estados) . "'";
+    }
+
     private static function parametro($clave, $constante, $patron = null)
     {
         include_once __DIR__ . '/class.parametros.php';
@@ -151,7 +184,7 @@ class PlacetoPay {
             // La certificacion WC de AvalPay exige que la expiracion este entre
             // 10 y 30 minutos (Guia de certificacion WC, item 2). Antes eran 2h,
             // fuera de rango: la sesion habria sido rechazada en la homologacion.
-            'expiration'   => date('c', strtotime('+30 minutes')),
+            'expiration'   => date('c', strtotime('+' . self::MINUTOS_SESION . ' minutes')),
             'returnUrl'    => $returnUrl,
             'ipAddress'    => $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1',
             'userAgent'    => $_SERVER['HTTP_USER_AGENT'] ?? 'ERPSoftSAS-ICA-Paipa',
@@ -180,6 +213,51 @@ class PlacetoPay {
             'requestId'  => $data['requestId'],
             'processUrl' => $data['processUrl'],
         ];
+    }
+
+    /**
+     * Anota en la declaracion la sesion recien creada, ya PENDIENTE.
+     *
+     * Antes solo se guardaba el requestId; el estado quedaba vacio -o con el de
+     * la sesion anterior, p. ej. REJECTED- hasta la primera consulta. Mientras
+     * tanto nada frenaba otra sesion (el freno del item 4.3 mira el PENDING), y
+     * la nueva PISABA el requestId de la primera: si el contribuyente pagaba en
+     * la pestaña de la primera, el banco cobraba y ni el aviso (webhook.php), ni
+     * el retorno, ni el cron encontraban ya la declaracion (revision 2026-10-06,
+     * antes de pasar Paipa a produccion). Naciendo PENDING, la siguiente espera
+     * a que esta se resuelva o venza.
+     *
+     * Solo se anota si en el intervalo nadie dejo otra sesion en tramite (dos
+     * pestañas a la vez) y la declaracion sigue presentada y sin pagar (el
+     * recaudo pudo marcarla mientras se hablaba con PlacetoPay): si no, devuelve
+     * false y la nueva no se ofrece; vence sola sin que nadie la pague.
+     *
+     * @return bool true si la sesion quedo anotada en la declaracion
+     */
+    public static function anotarSesion($con, array $m, $idDeclaracion, $requestId)
+    {
+        require_once __DIR__ . '/class.pseModulo.php';
+
+        // Tabla y columnas salen del mapa fijo de PseModulo, nunca del usuario.
+        $req = \erpsoftsas\PseModulo::colRequestId($m);
+        $est = \erpsoftsas\PseModulo::colEstado($m);
+
+        $con->consultar(
+            "UPDATE {$m['tabla']}
+                SET {$req} = ?, {$est} = 'PENDING',
+                    " . \erpsoftsas\PseModulo::colFechaEstado($m) . " = GETDATE(),
+                    " . \erpsoftsas\PseModulo::colMensaje($m) . " = ?
+              WHERE {$m['pk']} = ?
+                AND ISNULL({$m['pagado']}, 0) = 0 AND {$m['estado']} = 2
+                AND ({$req} IS NULL OR ISNULL({$est}, '') NOT IN (" . self::listaSql(self::ESTADOS_EN_TRAMITE) . "))",
+            [$requestId, self::MENSAJE_SESION_CREADA, (int) $idDeclaracion]
+        );
+
+        $fila = $con->obnerFila($con->consultar(
+            "SELECT {$req} AS req FROM {$m['tabla']} WHERE {$m['pk']} = ?", [(int) $idDeclaracion]
+        ));
+
+        return isset($fila['req']) && (string) $fila['req'] === (string) $requestId;
     }
 
     /**
@@ -217,7 +295,34 @@ class PlacetoPay {
      */
     public static function consultarSesion($requestId) {
         $payload = ['auth' => self::auth()];
-        return self::post(self::baseUrl() . '/session/' . (int) $requestId, $payload);
+        $data = self::post(self::baseUrl() . '/session/' . (int) $requestId, $payload);
+
+        return self::exigirSesion($data, $requestId);
+    }
+
+    /**
+     * La respuesta tiene que traer la sesion pedida; si no, se lanza.
+     *
+     * Una respuesta SIN la sesion es un error del servicio, no el estado del
+     * pago: credenciales que no son del ambiente (p. ej. a mitad del cambio a
+     * produccion), el reloj del servidor corrido (la semilla es la hora), una
+     * sesion que no existe alli... PlacetoPay contesta entonces
+     * {"status":{"status":"FAILED",...}} sin requestId, y eso se anotaba en la
+     * declaracion como si fuera el resultado: un pago que seguia pendiente en
+     * el banco quedaba "FAILED", el contribuyente podia pagar otra vez y nadie
+     * volvia a mirarlo. Se lanza, como un error de conexion: no se anota nada,
+     * el aviso contesta 500 (PlacetoPay lo reintenta) y el cron lo vuelve a
+     * consultar (revision 2026-10-06).
+     */
+    public static function exigirSesion($data, $requestId)
+    {
+        if (!is_array($data) || !isset($data['requestId'])
+            || (string) $data['requestId'] !== (string) (int) $requestId) {
+            $motivo = $data['status']['message'] ?? 'respuesta sin la sesión';
+            throw new Exception('PlacetoPay no devolvió la sesión ' . (int) $requestId . ': ' . $motivo);
+        }
+
+        return $data;
     }
 
     /**
@@ -237,6 +342,17 @@ class PlacetoPay {
         return [
             'aprobado'      => $estado === 'APPROVED',
             'estado'        => $estado,
+
+            // La sesion consultada: el estado solo se anota en la declaracion
+            // que sigue teniendo ESTA sesion (Pasarela::aplicarADeclaracion). Un
+            // aviso tardio de una sesion ya reemplazada no pisa a la nueva.
+            'requestId'     => $respuesta['requestId'] ?? null,
+
+            // Abierta y sin ningun intento de pago (el contribuyente no eligio
+            // banco, o volvio atras): no hay nada nuevo que anotar. Asi se
+            // conserva "Pago iniciado" con su hora, y el resumen sigue diciendo
+            // cuanto falta para que venza (revision 2026-10-06).
+            'sinIntento'    => $estado === 'PENDING' && empty($respuesta['payment']),
             // El recorte lo hace PagoDeclaracion, con el largo REAL de la
             // columna. Aqui se recortaba a 10 por un comentario que decia que
             // dec_BancoPago era VARCHAR(10); son 60, comprobado contra

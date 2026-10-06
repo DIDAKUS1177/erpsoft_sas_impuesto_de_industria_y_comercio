@@ -37,10 +37,11 @@ $muni    = defined('MUNICIPIO_NOMBRE') ? MUNICIPIO_NOMBRE : 'Alcaldía';
 $esWompi   = \erpsoftsas\Pasarela::esWompi();
 $pasarela  = \erpsoftsas\Pasarela::nombre();
 $textoPago = $esWompi ? 'Ir a pagar con Wompi' : 'Pagar con PSE';
-// Logo de AvalPay para el resumen (Guia WC, item 12.1). En produccion el banco
-// suele entregar la URL del logo productivo; si cambia, se ajusta aqui. Con
-// Wompi va solo el texto: su certificacion no pide logo.
-$logoAvalPay = $esWompi ? '' : 'https://placetopay-static-test-bucket.s3.us-east-2.amazonaws.com/avalpaycenter-com/logos/Logo%20Avalpay.svg';
+// Logo de AvalPay para el resumen (Guia WC, item 12.1). El del repositorio
+// PRODUCTIVO de PlacetoPay (es el mismo SVG del de pruebas, comprobado el
+// 2026-10-06): el de pruebas puede desaparecer. Con Wompi va solo el texto: su
+// certificacion no pide logo.
+$logoAvalPay = $esWompi ? '' : 'https://placetopay-static-prod-bucket.s3.us-east-2.amazonaws.com/avalpaycenter-com/logos/Logo%20Avalpay.svg';
 
 $modulo = $_GET['modulo'] ?? 'ica';
 $m      = \erpsoftsas\PseModulo::get($modulo);
@@ -123,11 +124,15 @@ if ($motivo !== null) {
 $col = [
     'numero' => $m['numero'], 'valor' => $m['valor'], 'pagado' => $m['pagado'],
     'estado' => $m['estado'], 'req' => \erpsoftsas\PseModulo::colRequestId($m),
-    'est' => \erpsoftsas\PseModulo::colEstado($m),
+    'est' => \erpsoftsas\PseModulo::colEstado($m), 'msg' => \erpsoftsas\PseModulo::colMensaje($m),
+    'fest' => \erpsoftsas\PseModulo::colFechaEstado($m),
 ];
+// pse_min: minutos desde el ultimo estado, contados por SQL Server (la misma
+// hora con que se anoto), sin depender de la zona del PHP.
 $row = $con->obnerFila($con->consultar(
     "SELECT {$col['numero']} AS numero, {$col['valor']} AS valor, {$col['pagado']} AS pagado,
-            {$col['estado']} AS estado, {$col['req']} AS pse_req, {$col['est']} AS pse_est
+            {$col['estado']} AS estado, {$col['req']} AS pse_req, {$col['est']} AS pse_est,
+            {$col['msg']} AS pse_msg, DATEDIFF(MINUTE, {$col['fest']}, GETDATE()) AS pse_min
      FROM {$m['tabla']} WHERE {$m['pk']} = ?",
     [$id]
 ));
@@ -208,8 +213,37 @@ if ($esWompi) {
     $enTramite = $tramite !== null;
     $retorno   = $tramite ? \erpsoftsas\PagoWompi::urlRetorno('', $modulo, $id, $tramite['pel_Referencia']) : '';
 } else {
-    $enTramite = !empty($row['pse_req']) && strtoupper((string) $row['pse_est']) === 'PENDING';
+    // PENDING, o APPROVED que no se alcanzo a registrar (PlacetoPay::enTramite).
+    $enTramite = !empty($row['pse_req']) && PlacetoPay::enTramite($row['pse_est']);
     $retorno   = 'retorno.php?modulo=' . urlencode($modulo) . '&id=' . $id;
+
+    if ($enTramite && strtoupper((string) $row['pse_est']) === 'APPROVED') {
+        pantalla('Pago aprobado',
+            '<div class="aviso pend">El banco ya aprobó un pago de esta declaración (referencia <span class="ref">'
+          . htmlspecialchars($referencia) . '</span>) y se está registrando. No vuelva a pagar: pulse '
+          . '«Verificar estado del pago»; si el aviso no cambia, comuníquese con ' . htmlspecialchars($muni)
+          . ' indicando su referencia.</div>'
+          . '<a class="btn" href="' . htmlspecialchars($retorno) . '">Verificar estado del pago</a>',
+            $color, $muni);
+    }
+
+    // Sesion recien creada (PlacetoPay::anotarSesion) sin respuesta del banco:
+    // el contribuyente pudo no terminarla. No es "pendiente en el banco"; se dice
+    // cuando podra iniciar otra. Ya vencida, "Verificar estado" la cierra.
+    if ($enTramite && (string) ($row['pse_msg'] ?? '') === PlacetoPay::MENSAJE_SESION_CREADA) {
+        $minutos = max(0, (int) ($row['pse_min'] ?? 0));
+        $faltan  = PlacetoPay::MINUTOS_SESION - $minutos;
+        pantalla('Pago iniciado',
+            '<div class="aviso pend">Hace ' . $minutos . ' minuto(s) se inició un pago de esta declaración '
+          . '(referencia <span class="ref">' . htmlspecialchars($referencia) . '</span>) que todavía no tiene '
+          . 'respuesta del banco. Si lo terminó, espere: se confirmará solo. '
+          . ($faltan > 0
+                ? 'Si no lo terminó, podrá iniciar otro en unos ' . $faltan . ' minuto(s), cuando venza esa sesión.'
+                : 'Esa sesión ya venció: pulse «Verificar estado del pago» y, si no se pagó, podrá iniciar uno nuevo.')
+          . ' Así se evita pagar dos veces.</div>'
+          . '<a class="btn" href="' . htmlspecialchars($retorno) . '">Verificar estado del pago</a>',
+            $color, $muni);
+    }
 }
 if ($enTramite && $tramite && ($tramite['pel_Estado'] ?? '') === 'CREADO') {
     $faltan = max(1, \erpsoftsas\PagoWompi::MINUTOS_RECIENTE - (int) ($tramite['minutos'] ?? 0));
