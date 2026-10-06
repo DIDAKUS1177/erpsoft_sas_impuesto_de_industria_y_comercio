@@ -19,6 +19,10 @@ namespace erpsoftsas;
  * cliente pidió quitar el selector, "nada de años"), o sea el año en que se
  * presenta y se paga. Si algún día vuelve el selector de año GRAVABLE, la
  * fecha límite pasa a caer en el año siguiente al de la declaración.
+ *
+ * Desde el 2026-10-05 se puede crear una declaración de un año anterior (Juan,
+ * Paipa). Se mantiene la misma lectura: la de 2023 es la que tocaba presentar
+ * en 2023, vence el 30/04/2023 y nace vencida.
  */
 class VencimientoICA
 {

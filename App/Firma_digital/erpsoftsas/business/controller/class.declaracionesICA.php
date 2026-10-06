@@ -9,6 +9,13 @@ include_once SERVER . '/business/config.tributario.php';
 
 class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera 
 {
+    /**
+     * Cuantos años hacia atras se puede declarar (ver _agregarDeclaracion). El
+     * mismo numero esta en core/declaraciones.ui.js (ANIOS_ANTERIORES_ICA),
+     * que arma la lista de la pantalla.
+     */
+    const ANIOS_ANTERIORES = 10;
+
     private $_funcion;
     private $_ok;
     private $_mensaje;
@@ -35,9 +42,19 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
      * Si el procedimiento no existiera -base sin la migracion 012- se cae al
      * comportamiento anterior devolviendo null, y quien llama usa el id. Asi
      * una instalacion sin migrar sigue funcionando en vez de romperse.
+     *
+     * EL AÑO DEL NUMERO ES EL DE HOY, NO EL DE LA DECLARACION. Juan (Paipa,
+     * 2026-10-05), al habilitar las declaraciones de años anteriores: «Aunque
+     * sea de otro año sigue el consecutivo de este año». Una declaracion de
+     * 2023 creada hoy sale 2026100024, y la correccion de una vieja tambien
+     * toma la serie de hoy. Descartar un borrador devuelve el numero a la fila
+     * del año que lleva el NUMERO (sus cuatro primeras cifras), asi que la
+     * regla cuadra. Año de Colombia: el servidor esta en UTC.
      */
-    private function _siguienteNumeroDeclaracion($con, $anio)
+    private function _siguienteNumeroDeclaracion($con)
     {
+        $anio = (int) (new \DateTime('now', new \DateTimeZone('America/Bogota')))->format('Y');
+
         try {
             $fila = $con->obnerFila($con->consultar(
                 "DECLARE @n BIGINT;
@@ -574,17 +591,30 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
         }
 
         /*
-         * El año y el periodo los pone el sistema.
+         * El año lo elige quien crea; el periodo lo pone el sistema.
          *
          * El 2026-08-31 se llego a poner un selector de año en pantalla, porque
          * el ICA se presenta el año siguiente al gravable y con el año fijo al
          * del reloj nadie podria declarar en enero el año que acaba de cerrar.
          * El cliente pidio retirarlo: «nada de años». Se retiro entero.
          *
-         * QUEDA ANOTADO PORQUE EL PROBLEMA SIGUE AHI: llegado el 1 de enero,
-         * este date('Y') ofrecera el año nuevo y no el que toca declarar. No es
-         * un olvido, es una decision del cliente que habra que revisar antes de
-         * esa fecha.
+         * VUELVE EL 2026-10-05, a pedido de Juan (Paipa): «Las declaraciones de
+         * años anteriores se presentan en todo momento, ya que hay
+         * contribuyentes que las deben y tienen que presentarlas». Escribir
+         * 2023 en la casilla no servia: el servidor ponia el año en curso. La
+         * pantalla pregunta el año al pulsar "Crear" (pedirAnioDeclaracion en
+         * core/declaraciones.ui.js) con el actual marcado; sin año, el actual,
+         * como antes. Se acepta del año en curso hacia atras ANIOS_ANTERIORES,
+         * nunca uno futuro.
+         *
+         * Lo que arrastra el año, y por que esta bien asi:
+         *   - el NUMERO no: sigue la serie de hoy (_siguienteNumeroDeclaracion);
+         *   - las formulas: las del año declarado o, si no hay, las mas
+         *     antiguas cargadas (sp_calculo_comercio, migracion 036);
+         *   - el vencimiento: el de ese año (VencimientoICA), asi que una de
+         *     2023 ya nace vencida y se paga con recibo e intereses;
+         *   - el anticipo del renglon 29: el de la presentada del año anterior
+         *     al declarado.
          *
          * LA ZONA HORARIA VA ANTES DEL date('Y'), NO DESPUES (revision
          * 2026-09-28). Se fijaba mas abajo, justo antes de la fecha y la hora,
@@ -594,8 +624,20 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
          * mientras su fecha decia 31/12. Año, fecha y hora, los tres de Colombia.
          */
         date_default_timezone_set('America/Bogota');
-        $anio = (int) date('Y');
+        $anioActual = (int) date('Y');
+        $anio = $anioActual;
         $mes  = 12;
+
+        $pedido = trim((string) ($_POST['dec_AnioDeclaracion'] ?? ''));
+        if ($pedido !== '') {
+            $desde = $anioActual - self::ANIOS_ANTERIORES;
+            if (!ctype_digit($pedido) || (int) $pedido < $desde || (int) $pedido > $anioActual) {
+                $this->_ok = 0;
+                $this->_mensaje = "El año de la declaración debe estar entre $desde y $anioActual.";
+                return [];
+            }
+            $anio = (int) $pedido;
+        }
 
         /*
          * CREAR CREA. SIEMPRE.
@@ -720,7 +762,7 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
              * comportamiento anterior: una base sin la migracion 012 sigue
              * creando declaraciones en vez de fallar.
              */
-            $numero = $this->_siguienteNumeroDeclaracion($con, $anio);
+            $numero = $this->_siguienteNumeroDeclaracion($con);
             if ($numero === null) {
                 $numero = $id;
                 error_log('[declaraciones] sin consecutivo disponible; se usa el id ' . $id);
@@ -2271,8 +2313,7 @@ private function _crearCorreccion(){
      * (migracion 012), con la misma caida al id si no esta disponible.
      */
     if ($idNuevo) {
-        $anioCorreccion = (int) ($orig['dec_AnioDeclaracion'] ?? date('Y'));
-        $numeroNuevo = $this->_siguienteNumeroDeclaracion($con, $anioCorreccion);
+        $numeroNuevo = $this->_siguienteNumeroDeclaracion($con);
         if ($numeroNuevo === null) {
             $numeroNuevo = $idNuevo;
             error_log('[declaraciones] correccion sin consecutivo; se usa el id ' . $idNuevo);

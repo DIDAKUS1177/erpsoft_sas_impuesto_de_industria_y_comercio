@@ -1833,15 +1833,31 @@ cambia el PHP, solo la base:
 Prueba: `probar_consecutivos.php` (11). Simula Paipa sembrando las bases y crea
 declaraciones reales de los tres módulos. Sin bases numera igual que antes.
 
-**Año de la declaración (pendiente de decisión).** Paipa quiere declarar el ICA
-de 2023 y el sistema lo vuelve a 2026. `_agregarDeclaracion` usa `date('Y')`
-porque el cliente pidió quitar el selector de año ("nada de años",
-2026-08-31). La casilla de año de la pantalla se puede escribir, pero el
-servidor la ignora. Habilitarlo exige decidir:
-- qué años se permiten y quién los elige;
-- de qué serie sale el número (la del año declarado o la del año en curso);
-- con qué tarifas se liquida: el catálogo solo tiene actividades de 2025 y
-  fórmulas de 2026, así que un 2023 se liquidaría con lo vigente.
+**Año de la declaración (2026-10-05).** Juan (Paipa): "las declaraciones de
+años anteriores se presentan en todo momento" y "aunque sea de otro año sigue
+el consecutivo de este año". Al pulsar "Crear Declaración" las tres pantallas
+(Presentar, Consultar, RIT) preguntan el año (`pedirAnioDeclaracion` en
+`core/declaraciones.ui.js`, el actual marcado) y mandan `dec_AnioDeclaracion`
+a la función 1. El servidor acepta del año en curso hasta
+`ControladorDeclaracionesICA::ANIOS_ANTERIORES` (10) atrás, nunca futuro; sin
+año, el actual. La casilla del formulario queda de solo lectura.
+- El número SIEMPRE sale de la serie de hoy (`_siguienteNumeroDeclaracion`
+  ya no recibe año), también en la corrección: una de 2023 creada hoy es
+  2026100024. Descartar devuelve el número por sus cuatro primeras cifras.
+- Fórmulas: las del año declarado o las más antiguas cargadas (036); hoy un
+  2023 se liquida con las de 2026 salvo que la Alcaldía cargue las de ese año.
+- Vencimiento: el 30/04 del año declarado (`VencimientoICA`), así que una
+  vieja nace vencida: sin código de barras, se paga con recibo e intereses (la
+  pregunta del año lo advierte). OJO: el PDF rotula ese año "AÑO GRAVABLE";
+  si el cliente lo entiende como gravable, el límite debería caer el año
+  siguiente (pendiente de confirmar con Juan).
+- El "Periodo" del comprobante de AvalPay (`crearSesion.php`) sale del año de
+  la declaración, no del prefijo del número.
+- El anticipo del renglón 29 sale de la PRESENTADA del año anterior al
+  declarado: si se crean varias atrasadas el mismo día, las siguientes nacen
+  sin él hasta que se presente la anterior.
+- Retención y autorretención ya dejaban elegir año, pero numeran con la
+  serie del año declarado (sin cambio).
 
 ### Pago en línea con Wompi (Macanal, 2026-10-02)
 

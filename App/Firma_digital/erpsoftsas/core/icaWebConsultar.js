@@ -443,7 +443,17 @@ est_NoResolucion: $("#est_NoResolucion").val(),
 
 
 
+/**
+ * "Crear Declaración": primero el año (pedirAnioDeclaracion, en
+ * core/declaraciones.ui.js), despues la creacion. Cancelar no crea nada.
+ */
 crearDeclaracion(idEstablecimiento,idContribuyente) {
+    pedirAnioDeclaracion().then((anio) => {
+        if (anio) { this._crearDeclaracionDelAnio(idEstablecimiento, idContribuyente, anio); }
+    });
+}
+
+_crearDeclaracionDelAnio(idEstablecimiento,idContribuyente,anio) {
 
     $('#loading').show();
     $('#wrapper').addClass('body-load');
@@ -455,7 +465,8 @@ crearDeclaracion(idEstablecimiento,idContribuyente) {
         data:{
             funcion:1,
             dec_IdEstablecimiento:idEstablecimiento,
-            dec_IdContribuyente:idContribuyente
+            dec_IdContribuyente:idContribuyente,
+            dec_AnioDeclaracion:anio
         },
         success:function(arr){
             

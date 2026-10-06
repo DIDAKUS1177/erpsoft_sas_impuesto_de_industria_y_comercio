@@ -156,9 +156,14 @@ $returnUrl = $esquema . '://' . $_SERVER['HTTP_HOST']
            . '/erpsoftsas/extensiones/pse/retorno.php?modulo=' . urlencode($modulo) . '&id=' . $id;
 
 // Extradata (item 5): sale en el comprobante del banco. Periodo = prefijo AAAA
-// del numero de declaracion (migraciones 012/029/030).
+// del numero de declaracion (migraciones 012/029/030). En la ICA, el año de la
+// declaracion: desde el 2026-10-05 una de 2023 lleva numero de la serie de hoy
+// (2026...), y el comprobante diria "Periodo 2026".
 $anio = (strlen($referencia) >= 4 && ctype_digit(substr($referencia, 0, 4)))
       ? substr($referencia, 0, 4) : date('Y');
+if ($modulo === 'ica' && !empty($anioIca)) {
+    $anio = (string) $anioIca;
+}
 $fields = [
     ['keyword' => 'Concepto', 'value' => $m['etiqueta'], 'displayOn' => 'both'],
     ['keyword' => 'Periodo',  'value' => $anio, 'displayOn' => 'both'],

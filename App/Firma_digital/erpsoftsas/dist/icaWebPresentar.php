@@ -595,7 +595,7 @@ Guardar
                                 <!-- AÑO -->
                                 <div class="col-sm-3">
                                     <label>Año Declaración</label>
-                                    <input type="number" id="anioDeclaracion" class="form-control input-sm" >
+                                    <input type="number" id="anioDeclaracion" class="form-control input-sm" readonly title="El año se elige al crear la declaración">
                                 </div>
 
                                 <!-- PERIODO -->

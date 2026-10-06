@@ -1122,6 +1122,52 @@ function avisarNoSePudoCrear(arr) {
     swal({ type: 'error', title: 'No se pudo crear', text: texto });
 }
 
+/**
+ * Cuantos años hacia atras ofrece la lista. Es el mismo limite del servidor
+ * (ControladorDeclaracionesICA::ANIOS_ANTERIORES), que es quien manda.
+ */
+var ANIOS_ANTERIORES_ICA = 10;
+
+/**
+ * Pregunta de que año es la declaracion antes de crearla.
+ *
+ * Juan (Paipa, 2026-10-05): las declaraciones de años anteriores se presentan
+ * en todo momento. Escribir el año en la casilla del formulario no servia -el
+ * servidor ponia siempre el actual-, por eso se pregunta aqui, al crear, y la
+ * casilla queda de solo lectura. El año actual va marcado: para el caso de
+ * siempre basta con pulsar "Crear".
+ *
+ * Las tres pantallas que crean (Presentar, Consultar y el RIT) pasan por aqui.
+ *
+ * @return {Promise<string|null>} el año elegido, o null si se cancelo
+ */
+function pedirAnioDeclaracion() {
+
+    var actual = new Date().getFullYear();
+
+    // Map y no objeto: las claves numericas de un objeto salen en orden
+    // ascendente, y la lista debe empezar por el año actual.
+    var anios = new Map();
+    for (var a = actual; a >= actual - ANIOS_ANTERIORES_ICA; a--) {
+        anios.set(String(a), String(a));
+    }
+
+    return swal({
+        title: 'Año de la declaración',
+        text: 'Elija el año que va a declarar. El número de la declaración sigue la serie de este año. '
+            + 'Una declaración de un año anterior ya pasó su fecha límite: queda vencida y se paga '
+            + 'con el recibo de pago y los intereses de mora.',
+        input: 'select',
+        inputOptions: anios,
+        inputValue: String(actual),
+        showCancelButton: true,
+        confirmButtonText: 'Crear declaración',
+        cancelButtonText: 'Cancelar'
+    }).then(function (r) {
+        return (r && r.value) ? r.value : null;
+    });
+}
+
 var EditarDeclaracion = (function () {
 
     function abrir(decId) {
