@@ -55,6 +55,12 @@ class PagoDeclaracion
      * Queda con su propia vía para que nunca se confunda con un pago real.
      */
     const VIA_WOMPI_PRUEBA = 'WOMPI_PRUEBA';
+    /**
+     * Registrado a mano por la Alcaldía con su soporte (migración 044):
+     * transferencia, consignación... o una declaración antigua ya pagada. El
+     * detalle (medio, referencia, quién) va en ind_pagos_manuales.
+     */
+    const VIA_MANUAL = 'MANUAL';
 
     /**
      * dec_BancoPago es VARCHAR(60) en la base.
@@ -91,11 +97,13 @@ class PagoDeclaracion
         $p  = $m['prefijo'];  // de PseModulo, nunca del usuario: seguro interpolarlos
         $pk = $m['pk'];
 
-        $via = in_array($datos['via'] ?? '', [self::VIA_PSE, self::VIA_RECAUDO, self::VIA_WOMPI, self::VIA_WOMPI_PRUEBA], true)
+        $via = in_array($datos['via'] ?? '', [self::VIA_PSE, self::VIA_RECAUDO, self::VIA_WOMPI, self::VIA_WOMPI_PRUEBA, self::VIA_MANUAL], true)
             ? $datos['via']
             : self::VIA_RECAUDO;
 
-        $banco = substr(trim((string) ($datos['banco'] ?? '')), 0, self::LARGO_BANCO);
+        // mb_substr: con substr, cortar en medio de una "á" dejaba UTF-8
+        // inválido y sqlsrv rechazaba el parámetro (revisión 2026-10-09).
+        $banco = mb_substr(trim((string) ($datos['banco'] ?? '')), 0, self::LARGO_BANCO);
 
         /*
          * Si no viene fecha de pago se usa la de ahora. PSE es así: el pago

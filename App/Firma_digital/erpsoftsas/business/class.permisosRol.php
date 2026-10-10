@@ -291,6 +291,11 @@ class PermisosRol
             'alcaldia.cese'                     => ['alcaldia.contribuyentes.gestionar', 'rit.ver'],
             'alcaldia.recaudo.asignar'          => ['alcaldia.recaudo.cargar'],
             'alcaldia.recibo.intereses'         => ['alcaldia.contribuyentes.gestionar'],
+            // Se hacen sobre las declaraciones del contribuyente que se gestiona
+            // (migración 044, business/controller/class.registroManual.php).
+            'alcaldia.declaraciones.historicas' => ['alcaldia.contribuyentes.gestionar'],
+            'alcaldia.pagos.manual'             => ['alcaldia.contribuyentes.gestionar'],
+            'alcaldia.registro.anular'          => ['alcaldia.contribuyentes.gestionar'],
             'parametros.actividades'            => ['parametros.ver'],
             'parametros.conceptos'              => ['parametros.ver'],
             'parametros.grupos'                 => ['parametros.ver'],
@@ -459,6 +464,7 @@ class PermisosRol
         $lista = ['alcaldia.contribuyentes.ver', 'alcaldia.contribuyentes.editar', 'alcaldia.contribuyentes.gestionar',
                   'alcaldia.establecimientos.ver', 'alcaldia.establecimientos.cerrar', 'alcaldia.establecimientos.reabrir',
                   'alcaldia.cese', 'alcaldia.recaudo.cargar', 'alcaldia.recaudo.asignar', 'alcaldia.recibo.intereses',
+                  'alcaldia.declaraciones.historicas', 'alcaldia.pagos.manual', 'alcaldia.registro.anular',
                   'parametros.ver', 'parametros.actividades', 'parametros.conceptos', 'parametros.grupos', 'parametros.municipio',
                   'rit.ver', 'rit.editar', 'rit.firmar', 'rit.documentos', 'establecimientos.ver', 'establecimientos.editar',
                   'usuarios.ver', 'usuarios.editar', 'usuarios.estado', 'roles.ver', 'roles.editar', 'roles.permisos', 'predial.consultar'];

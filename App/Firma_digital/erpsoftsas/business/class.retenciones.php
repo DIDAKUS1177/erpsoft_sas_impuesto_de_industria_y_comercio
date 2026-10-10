@@ -605,6 +605,15 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
             $datos[] = $this->_filaParaPantalla($f);
         }
 
+        // Lo registrado a mano por la Alcaldía (migración 044): declaración en
+        // papel ya pagada, pago manual y sus PDF. Una consulta por tabla.
+        include_once SERVER . '/business/class.registroManual.php';
+        $manual = \erpsoftsas\RegistroManual::resumenes($con, $this->_prefijoPermisos(), array_column($datos, 'id'));
+        foreach ($datos as &$fila) {
+            $fila['registro_manual'] = $manual[$fila['id']] ?? null;
+        }
+        unset($fila);
+
         $this->_ok = 1;
         $this->_mensaje = count($datos) ? 'Consulta correcta' : 'No hay declaraciones';
         return $datos;
@@ -664,6 +673,10 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
             'estado'      => $estado,
             'estadoClave' => $clave,
             'pagado'      => $pagado ? 1 : 0,
+            // El pago, como en el listado del ICA: cuándo, por dónde y cuánto.
+            'fechaPago'   => $this->_fecha($f[$this->c('FechaPago')] ?? null),
+            'bancoPago'   => (string) ($f[$this->c('BancoPago')] ?? ''),
+            'valorPago'   => isset($f[$this->c('ValorPago')]) ? (float) $f[$this->c('ValorPago')] : null,
             'pago_en_linea' => $this->_pagoEnLinea(),
             'pago_en_linea_texto' => \erpsoftsas\Pasarela::textoBoton(),
             'total'       => isset($f[$colTotal]) ? (float) $f[$colTotal] : 0,
@@ -1110,12 +1123,17 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
 
         // Las filas hijas primero: hay clave foranea. Las firmas van por numero
         // y modulo (no tienen clave foranea): sin esto quedaban huerfanas.
-        $con->consultar("DELETE FROM {$this->tablaAct} WHERE {$this->fkAct} = ?", [$id]);
+        // Solo si sigue siendo borrador: la Alcaldía pudo registrarla presentada
+        // y pagada en el intervalo (registro manual, 044).
+        $sigueBorrador = "EXISTS (SELECT 1 FROM {$this->tabla} b WHERE b.{$this->pk()} = ?
+                             AND ISNULL(b.{$this->c('Estado')}, 0) <> 2 AND ISNULL(b.{$this->c('Pagado')}, 0) = 0)";
+        $con->consultar("DELETE FROM {$this->tablaAct} WHERE {$this->fkAct} = ? AND $sigueBorrador", [$id, $id]);
         $con->consultar(
-            "DELETE FROM firmas_declaraciones WHERE fd_NumeroDeclaracion = ? AND fd_Modulo = ?",
-            [(string) $fila[$this->c('NumeroDeclaracion')], $this->modulo]
+            "DELETE FROM firmas_declaraciones WHERE fd_NumeroDeclaracion = ? AND fd_Modulo = ? AND $sigueBorrador",
+            [(string) $fila[$this->c('NumeroDeclaracion')], $this->modulo, $id]
         );
-        $con->consultar("DELETE FROM {$this->tabla} WHERE {$this->pk()} = ?", [$id]);
+        $con->consultar("DELETE FROM {$this->tabla} WHERE {$this->pk()} = ?
+                            AND ISNULL({$this->c('Estado')}, 0) <> 2 AND ISNULL({$this->c('Pagado')}, 0) = 0", [$id]);
 
         $this->_ok = 1;
         $this->_mensaje = 'Borrador eliminado';

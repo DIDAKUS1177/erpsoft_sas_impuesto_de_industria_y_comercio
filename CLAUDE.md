@@ -1859,6 +1859,43 @@ año, el actual. La casilla del formulario queda de solo lectura.
 - Retención y autorretención ya dejaban elegir año, pero numeran con la
   serie del año declarado (sin cambio).
 
+### Registro manual: declaraciones ya pagadas y pagos manuales (2026-10-09, migración 044)
+
+Pedido de Juan (Paipa), definido con Diego: la Alcaldía registra en los tres
+módulos (a) una declaración presentada y pagada FUERA de la plataforma (en
+papel, por transferencia) y (b) un pago manual de una declaración presentada.
+- **Cómo:** el borrador se llena con el formulario de siempre; en la fila,
+  "Ya pagada" (permiso `alcaldia.declaraciones.historicas`) pide número y
+  fecha del papel, el pago y dos PDF (original y soporte), y la deja
+  presentada (fecha del papel) y pagada SIN firma por código. "Pago manual"
+  (`alcaldia.pagos.manual`) en presentadas sin pagar: pago + un PDF. Número
+  NUEVO de la serie; el del papel queda de referencia.
+- **Dónde:** lógica en `business/class.registroManual.php`; endpoint
+  `business/controller/class.registroManual.php` (funcion 1 y 2, exige
+  X-Requested-With); PDF por `extensiones/soporte.php` (sesión, dueño y
+  `{modulo}.ver`). Pantallas: `core/registroManual.js` (modal en el `<body>`),
+  `core/declaraciones.ui.js` y `core/retenciones.js`.
+- **Datos:** nada en las tablas de declaraciones (una corrección del ICA
+  copiaría todo): `ind_declaraciones_historicas`, `ind_pagos_manuales` (uno
+  por declaración) e `ind_declaracion_soportes`. El pago entra por
+  `PagoDeclaracion::registrar` con vía `MANUAL` y banco "Medio - Banco".
+- **PDF en disco:** `anexos_establecimientos/declaraciones/<modulo>_<id>/`,
+  bajo la carpeta que ya cierran el `.htaccess` y el `web.config`
+  (hiddenSegments) de `App/Firma_digital`.
+- **Reglas:** ICA exige actividades guardadas; un pago manual no se registra
+  si hay un PSE o Wompi en trámite; mismo candado que los pagos en línea
+  (`erp_pago_<modulo>_<id>`); pago anterior a la presentación pide confirmar.
+  Retención ofrece 10 años atrás a quien tiene el permiso de históricas.
+- **Anular** (funcion 3, permiso `alcaldia.registro.anular`): para un error de
+  digitación o un PDF equivocado. Exige motivo (10 a 500 caracteres) y que el
+  pago siga siendo el MANUAL. Una "Ya pagada" vuelve a borrador (conserva su
+  número) y un pago manual deja la declaración presentada sin pagar. No se
+  anula una ya pagada que tenga una corrección. Los PDF no se borran: quedan
+  inactivos (`sop_Activo = 0`, `soporte.php` da 404) y lo anulado queda en
+  `ind_registros_manuales_anulados` (quién, cuándo, motivo y los datos en JSON).
+- Suite: `probar_registro_manual` (40, por HTTP con sesión de Apache; correrla
+  como root, porque crea las sesiones con `su`).
+
 ### PSE con AvalPay antes de producción en Paipa (2026-10-06)
 
 AvalPay entregó las credenciales productivas (sitio "ICA - WC"; la dirección

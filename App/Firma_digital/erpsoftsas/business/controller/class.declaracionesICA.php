@@ -996,8 +996,12 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
         }
 
         try {
-            $con->consultar("DELETE FROM ind_declaraciones_ica_actividades WHERE dia_IdDeclaracion = ?", [$id]);
-            $con->consultar("DELETE FROM ind_declaraciones_ica WHERE dec_Id = ?", [$id]);
+            // Solo si sigue siendo borrador: la Alcaldía pudo registrarla
+            // presentada y pagada en el intervalo (registro manual, 044).
+            $sigueBorrador = "EXISTS (SELECT 1 FROM ind_declaraciones_ica b
+                                       WHERE b.dec_Id = ? AND ISNULL(b.dec_Estado, 0) <> 2 AND ISNULL(b.dec_Pagado, 0) = 0)";
+            $con->consultar("DELETE FROM ind_declaraciones_ica_actividades WHERE dia_IdDeclaracion = ? AND $sigueBorrador", [$id, $id]);
+            $con->consultar("DELETE FROM ind_declaraciones_ica WHERE dec_Id = ? AND ISNULL(dec_Estado, 0) <> 2 AND ISNULL(dec_Pagado, 0) = 0", [$id]);
         } catch (\Throwable $e) {
             error_log('[declaraciones] no se pudo borrar el borrador ' . $id . ': ' . $e->getMessage());
             $this->_ok = 0;
@@ -2442,6 +2446,15 @@ private function _consultarDeclaracionesListado(){
 
         $data[] = $row;
     }
+
+    // Lo registrado a mano por la Alcaldía (migración 044): declaración en papel
+    // ya pagada, pago manual y sus PDF. Una consulta por tabla para todo el listado.
+    include_once SERVER . '/business/class.registroManual.php';
+    $manual = \erpsoftsas\RegistroManual::resumenes($con, 'ica', array_column($data, 'dec_Id'));
+    foreach ($data as &$fila) {
+        $fila['registro_manual'] = $manual[(int) $fila['dec_Id']] ?? null;
+    }
+    unset($fila);
 
     $this->_ok = count($data) ? 1 : 0;
     $this->_mensaje = "Filtrado correctamente";

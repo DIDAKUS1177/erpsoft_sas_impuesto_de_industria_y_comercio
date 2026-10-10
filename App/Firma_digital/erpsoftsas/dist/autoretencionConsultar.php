@@ -127,6 +127,8 @@
 		<script src="../src/plugins/switchery/switchery.min.js"></script>
 		<script src="../src/plugins/sweetalert2/sweetalert2.all.js"></script>
 		<script src="../core/numeros.js?v=<?php echo time(); ?>"></script>
+		<!-- Registro manual de la Alcaldía (migración 044): declaraciones ya pagadas y pagos manuales. -->
+		<script src="../core/registroManual.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/retenciones.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/autoretencionConsultar.js?v=<?php echo time(); ?>"></script>
 		<!-- <script src="../core/Permisos.js"></script> -->

@@ -166,6 +166,8 @@ var DeclaracionesUI = (function () {
                                + '(se le quitan las firmas), escriba la base de cada actividad, '
                                + 'pulse Guardar y vuelva a firmarla.';
 
+        var numeroJs = atributo(JSON.stringify(String(d.dec_NumeroDeclaracion || d.dec_Id)));
+
         if (clave === 'borrador') {
             return envolverAcciones(
                 accBtn({ permiso: 'ica.editar', tipo: 'warning',   icono: 'fa-pencil',          texto: 'Editar', title: 'Editar',
@@ -176,6 +178,17 @@ var DeclaracionesUI = (function () {
                     : accBtn({ permiso: 'ica.firmar', tipo: 'secondary', icono: 'fa-pencil-square-o', texto: 'Firmar', title: 'Firmar',
                                onclick: objJs + '.abrirFirmaDigital(' + d.dec_Id + ', ' + d.dec_IdEstablecimiento + ')' })) +
                 descargar +
+                // Declaración presentada y pagada fuera de la plataforma (migración
+                // 044): se llena como cualquier borrador y se registra ya pagada,
+                // con el PDF original y el soporte. Solo la Alcaldía con permiso.
+                (typeof RegistroManual === 'undefined' ? '' : (sinGuardar || !(Number(d.dec_ValorConcepto20) > 0)
+                    ? accBtn({ permiso: 'alcaldia.declaraciones.historicas', tipo: 'success', icono: 'fa-archive', texto: 'Ya pagada',
+                               motivo: sinGuardar ? MOTIVO_SIN_GUARDAR
+                                       : 'El total a pagar está en $0: ábrala con Editar, revise los valores del papel y pulse Guardar.',
+                               off: true })
+                    : accBtn({ permiso: 'alcaldia.declaraciones.historicas', tipo: 'success', icono: 'fa-archive', texto: 'Ya pagada',
+                               title: 'Registrar como presentada y pagada fuera de la plataforma (con el PDF original y el soporte de pago)',
+                               onclick: 'RegistroManual.historica(&quot;ica&quot;, ' + d.dec_Id + ', ' + numeroJs + ')' }))) +
                 accBtn({ permiso: 'ica.editar', tipo: 'danger',    icono: 'fa-trash',           texto: 'Borrar', title: 'Borrar borrador',
                          onclick: objJs + '.borrarDeclaracion(' + d.dec_Id + ')' })
             );
@@ -314,7 +327,37 @@ var DeclaracionesUI = (function () {
                                 href: '../extensiones/reciboPago.php?modulo=ICA&id=' + d.dec_Id, target: '_blank' });
         }
 
-        return envolverAcciones(botones);
+        // Pago hecho fuera de la plataforma (transferencia, consignación...),
+        // con su soporte (migración 044). Solo la Alcaldía con permiso.
+        if (clave === 'presentada' && typeof RegistroManual !== 'undefined' && Number(d.dec_ValorConcepto20) > 0) {
+            botones += accBtn({ permiso: 'alcaldia.pagos.manual', tipo: 'success', icono: 'fa-check-square-o', texto: 'Pago manual',
+                                title: 'Registrar un pago hecho por transferencia, consignación u otro medio, con su soporte',
+                                onclick: 'RegistroManual.pago(&quot;ica&quot;, ' + d.dec_Id + ', ' + numeroJs + ', '
+                                       + Number(d.dec_ValorConcepto20 || 0) + ')' });
+        }
+
+        // Deshacer un registro manual hecho por error (solo pagos MANUAL).
+        if (typeof RegistroManual !== 'undefined' && d.registro_manual && d.registro_manual.pagoManual
+            && d.dec_RutaPago === 'MANUAL') {
+            botones += accBtn({ permiso: 'alcaldia.registro.anular', tipo: 'danger', icono: 'fa-undo', texto: 'Anular',
+                                title: 'Anular el registro manual (pide un motivo y queda constancia)',
+                                onclick: 'RegistroManual.anular(&quot;ica&quot;, ' + d.dec_Id + ', ' + numeroJs + ')' });
+        }
+
+        return envolverAcciones(botones + accionesSoportes(d.registro_manual, 'ica.ver'));
+    }
+
+    /**
+     * Los PDF que registró la Alcaldía con la declaración (migración 044): el
+     * original en papel y el soporte de pago. Se entregan por soporte.php, que
+     * comprueba sesión, dueño y permiso.
+     */
+    function accionesSoportes(rm, permisoVer) {
+        if (!rm || typeof RegistroManual === 'undefined') { return ''; }
+        return RegistroManual.soportes(rm).map(function (s) {
+            return accBtn({ permiso: permisoVer, tipo: 'primary', icono: s.original ? 'fa-file-pdf-o' : 'fa-paperclip',
+                            texto: s.texto, title: atributo(s.titulo), href: s.url, target: '_blank' });
+        }).join('');
     }
 
     /**
@@ -413,7 +456,13 @@ var DeclaracionesUI = (function () {
                 ? '<div style="font-size:11px;color:#B45309;">Corregida por la N° ' + suNumero + '</div>'
                 : '<div style="font-size:11px;color:#B45309;">En corrección: N° ' + suNumero + '</div>';
         }
+        html += notaRegistroManual(d.registro_manual);
         return html;
+    }
+
+    /** "Presentada en papel N° X" / "Pago manual: medio" (migración 044, core/registroManual.js). */
+    function notaRegistroManual(rm) {
+        return (rm && typeof RegistroManual !== 'undefined') ? RegistroManual.nota(rm) : '';
     }
 
     /**

@@ -160,7 +160,9 @@ var Retenciones = (function () {
             pagada:        { texto: 'Pagada',         clase: 'pagada' }
         };
         var e = estados[fila.estadoClave] || estados.borrador;
-        return '<span class="chip-estado est-' + e.clase + '">' + e.texto + '</span>';
+        return '<span class="chip-estado est-' + e.clase + '">' + e.texto + '</span>'
+             // "Presentada en papel N° X" / "Pago manual: medio" (migración 044).
+             + (typeof RegistroManual !== 'undefined' ? RegistroManual.nota(fila.registro_manual) : '');
     }
 
     /** El bloque de "no hay nada", con el mismo formato que el ICA. */
@@ -215,6 +217,7 @@ var Retenciones = (function () {
         }
         return '<button class="' + cls + '" data-id="' + o.id + '" '
              + (o.numero ? 'data-numero="' + escapar(o.numero) + '" ' : '')
+             + (o.valor !== undefined ? 'data-valor="' + Number(o.valor || 0) + '" ' : '')
              + 'title="' + o.title + '">' + cuerpo + '</button>';
     }
 
@@ -275,6 +278,20 @@ var Retenciones = (function () {
                 }
                 b += accBtn({ permiso: mod + '.corregir', tipo: 'warning', icono: 'fa-pencil', texto: 'Corregir',
                               title: 'Corregir', clase: 'js-corregir', id: f.id });
+                // Pago hecho fuera de la plataforma, con su soporte (migración 044).
+                // Con algo que pagar, como el recibo y el PSE.
+                if (typeof RegistroManual !== 'undefined' && Number(f.total) > 0) {
+                    b += accBtn({ permiso: 'alcaldia.pagos.manual', tipo: 'success', icono: 'fa-check-square-o', texto: 'Pago manual',
+                                  title: 'Registrar un pago hecho por transferencia, consignación u otro medio, con su soporte',
+                                  clase: 'js-pago-manual', id: f.id, numero: f.numero, valor: f.total });
+                }
+            }
+            b += soportes(f, mod);
+            // Deshacer un registro manual hecho por error (el servidor exige vía MANUAL).
+            if (typeof RegistroManual !== 'undefined' && f.registro_manual && f.registro_manual.pagoManual) {
+                b += accBtn({ permiso: 'alcaldia.registro.anular', tipo: 'danger', icono: 'fa-undo', texto: 'Anular',
+                              title: 'Anular el registro manual (pide un motivo y queda constancia)',
+                              clase: 'js-anular-registro', id: f.id, numero: f.numero });
             }
         } else if (estado === 'pendienteCont' || estado === 'firmada') {
             b = accBtn({ permiso: mod + '.editar', tipo: 'warning', icono: 'fa-pencil', texto: 'Editar',
@@ -295,16 +312,52 @@ var Retenciones = (function () {
             b = accBtn({ permiso: mod + '.editar', tipo: 'warning',   icono: 'fa-pencil',          texto: 'Editar', title: 'Editar',          clase: 'js-editar', id: f.id })
               + accBtn({ permiso: mod + '.firmar', tipo: 'secondary', icono: 'fa-pencil-square-o', texto: 'Firmar', title: 'Firmar',          clase: 'js-firmar', id: f.id, numero: f.numero })
               + pdf
+              // Declaración presentada y pagada fuera de la plataforma (migración
+              // 044): se llena como cualquier borrador y se registra ya pagada.
+              // Solo un borrador ya guardado con valores (el servidor lo exige igual).
+              + (typeof RegistroManual === 'undefined' || !(Number(f.total) > 0) ? '' :
+                 accBtn({ permiso: 'alcaldia.declaraciones.historicas', tipo: 'success', icono: 'fa-archive', texto: 'Ya pagada',
+                          title: 'Registrar como presentada y pagada fuera de la plataforma (con el PDF original y el soporte de pago)',
+                          clase: 'js-ya-pagada', id: f.id, numero: f.numero }))
               + accBtn({ permiso: mod + '.editar', tipo: 'danger',    icono: 'fa-trash',           texto: 'Borrar', title: 'Borrar borrador', clase: 'js-borrar', id: f.id });
         }
         return accCards(b);
     }
 
+    /** Los PDF que registró la Alcaldía (migración 044): original y soporte. */
+    function soportes(f, mod) {
+        if (typeof RegistroManual === 'undefined') { return ''; }
+        return RegistroManual.soportes(f.registro_manual).map(function (s) {
+            // El nombre del PDF lo escribe quien lo sube: escapar() no toca las
+            // comillas y accBtn pega el title tal cual dentro de "...".
+            return accBtn({ permiso: mod + '.ver', tipo: 'primary', icono: s.original ? 'fa-file-pdf-o' : 'fa-paperclip',
+                            texto: s.texto, title: escapar(s.titulo).replace(/"/g, '&quot;'), href: s.url });
+        }).join('');
+    }
+
+    /** Los clics de "Ya pagada" y "Pago manual" (migración 044), en las dos pantallas. */
+    function enlazarRegistroManual($tabla, cfg) {
+        if (typeof RegistroManual === 'undefined') { return; }
+        var mod = String(cfg.modulo || '').toLowerCase();
+        $tabla.on('click', '.js-ya-pagada', function () {
+            RegistroManual.historica(mod, $(this).data('id'), String($(this).data('numero') || ''));
+        });
+        $tabla.on('click', '.js-pago-manual', function () {
+            RegistroManual.pago(mod, $(this).data('id'), String($(this).data('numero') || ''), Number($(this).data('valor') || 0));
+        });
+        $tabla.on('click', '.js-anular-registro', function () {
+            RegistroManual.anular(mod, $(this).data('id'), String($(this).data('numero') || ''));
+        });
+    }
+
     /** Los años que se ofrecen: el actual y los dos anteriores.
      *  El anterior hace falta de verdad: en enero se declara diciembre. */
     function aniosOfrecidos() {
+        // Quien registra declaraciones antiguas ya pagadas (migración 044)
+        // necesita años más atrás: diez, como el ICA.
+        var atras = (typeof erpPuede === 'function' && erpPuede('alcaldia.declaraciones.historicas')) ? 10 : 2;
         var hoy = new Date().getFullYear(), lista = [];
-        for (var a = hoy; a >= hoy - 2; a--) { lista.push(a); }
+        for (var a = hoy; a >= hoy - atras; a--) { lista.push(a); }
         return lista;
     }
 
@@ -695,6 +748,7 @@ var Retenciones = (function () {
         $('#tablaDeclaraciones').on('click', '.js-presentar', function () {
             window.location = cfg.pantallaPresentar + '?id=' + $(this).data('id') + '&accion=presentar';
         });
+        enlazarRegistroManual($('#tablaDeclaraciones'), cfg);
         $('#tablaDeclaraciones').on('click', '.js-borrar', function () {
             var id = $(this).data('id');
             Swal.fire({
@@ -868,6 +922,7 @@ var Retenciones = (function () {
         $('#tablaMias').on('click', '.js-presentar', function () {
             presentarDeclaracion($(this).data('id'), String($(this).data('numero')));
         });
+        enlazarRegistroManual($('#tablaMias'), cfg);
         $('#tablaMias').on('click', '.js-corregir', function () {
             var id = $(this).data('id');
             Swal.fire({
