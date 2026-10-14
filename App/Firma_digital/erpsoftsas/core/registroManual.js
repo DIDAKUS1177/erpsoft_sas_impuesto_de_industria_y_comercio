@@ -7,8 +7,9 @@
  *       presentó en papel y se pagó fuera de la plataforma. Pide el número y
  *       la fecha del papel, el pago y dos PDF (original y soporte).
  *   RegistroManual.pago(modulo, id, numero, valor)
- *       Una declaración presentada queda pagada con un pago manual
- *       (transferencia, consignación...) y su soporte en PDF.
+ *       Una declaración presentada queda pagada con un pago manual: solo la
+ *       fecha de pago, el banco y el soporte en PDF (Paipa, 2026-10-14); el
+ *       valor es el total de la declaración.
  *   RegistroManual.anular(modulo, id, numero)
  *       "Eliminar pago" (se llamó "Anular" hasta el 2026-10-13): deshace un
  *       registro manual hecho por error, con motivo.
@@ -57,6 +58,18 @@ var RegistroManual = (function () {
              + '<label style="font-weight:600;">' + etiqueta + '</label>' + control
              + (ayuda ? '<small class="form-text text-muted">' + ayuda + '</small>' : '')
              + '</div>';
+    }
+
+    /* El pago manual: fecha, banco y soporte. El valor se muestra, no se escribe. */
+    function seccionPagoSimple(valor) {
+        return '<h6 style="margin:6px 0 10px;font-weight:700;">El pago</h6>'
+             + '<div class="form-row">'
+             + campo('Fecha de pago', '<input type="date" name="fechaPago" class="form-control" required max="' + hoy() + '">', '', 6)
+             + campo('Banco', '<select name="idBanco" class="form-control" required><option value="">Cargando bancos…</option></select>',
+                     'Por el que entró la plata.', 6)
+             + '</div>'
+             + '<p style="font-size:13px;color:#4B5563;margin:0 0 8px;">Valor que se registra: <b>$ ' + esc(pesos(valor) || '0')
+             + '</b> (el total a pagar de la declaración).</p>';
     }
 
     function seccionPago(valor) {
@@ -123,7 +136,7 @@ var RegistroManual = (function () {
               + 'con los datos que se llenaron en el formulario, sin firma por código: el respaldo son los PDF. '
               + 'Revise antes que el formulario tenga los mismos valores del papel.'
             : 'La declaración N° <b>' + esc(o.numero) + '</b> (' + esc(NOMBRE[o.modulo] || '') + ') quedará <b>pagada</b> '
-              + 'con este pago. Úselo para pagos hechos fuera de la plataforma: transferencia, consignación, ventanilla.';
+              + 'con este pago hecho fuera de la plataforma.';
 
         var papel = !o.historica ? '' :
               '<h6 style="margin:6px 0 10px;font-weight:700;">La declaración en papel</h6>'
@@ -146,7 +159,7 @@ var RegistroManual = (function () {
           + '<button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button></div>'
           + '<div class="modal-body">'
           + '<p style="font-size:13px;color:#4B5563;">' + intro + '</p>'
-          + papel + seccionPago(o.valor) + archivos
+          + papel + (o.historica ? seccionPago(o.valor) : seccionPagoSimple(o.valor)) + archivos
           + '</div>'
           + '<div class="modal-footer">'
           + '<button type="button" class="btn btn-link" data-dismiss="modal">Cancelar</button>'

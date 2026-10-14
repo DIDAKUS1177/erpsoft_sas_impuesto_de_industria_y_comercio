@@ -1087,7 +1087,16 @@ var Retenciones = (function () {
               + '<td><input type="text" class="form-control form-control-sm text-right js-base" '
               +      'inputmode="numeric" value="' + NumerosCOP.deBaseDeDatosAInput(a.base) + '"'
               +      (editable ? '' : ' disabled') + '></td>'
-              + '<td class="text-right js-valor">' + pesos(a.valor) + '</td>'
+              // El valor se calcula (base x tarifa, a miles) pero se puede escribir
+              // a mano (Paipa, 2026-10-14): queda marcado y el servidor no lo pisa.
+              // Borrarlo, o cambiar la base o la actividad, vuelve al calculado.
+              + (editable && abierta && Number(abierta.valorManual) === 1
+                  ? '<td><input type="text" class="form-control form-control-sm text-right js-valor-input'
+                    + (a.manual ? ' valor-manual' : '') + '" inputmode="numeric" data-manual="' + (a.manual ? 1 : 0) + '" '
+                    + 'title="Se calcula solo; puede escribirlo a mano. Para volver al calculado, bórrelo o cambie la base." '
+                    + 'value="' + NumerosCOP.formatear(Math.round(NumerosCOP.deBaseDeDatos(a.valor) || 0)) + '"></td>'
+                  : '<td class="text-right js-valor">' + pesos(a.valor)
+                    + (a.manual ? '<div style="font-size:10px;color:#B45309;">escrito a mano</div>' : '') + '</td>')
               + '<td class="text-center">' + (editable && cfg.actividadesEditables
                     ? '<button class="btn btn-danger btn-sm js-quitar" title="Quitar"><i class="fa fa-trash"></i></button>' : '')
               + '</td>'
@@ -1143,6 +1152,10 @@ var Retenciones = (function () {
          *   casillas derivadas  BD/migraciones/030 y 031 (columna ren_Formula)
          */
         function valorActividadFila($f) {
+            var $v = $f.find('.js-valor-input');
+            if ($v.length && Number($v.attr('data-manual')) === 1) {
+                return NumerosCOP.aEntero($v.val());
+            }
             var base   = NumerosCOP.aEntero($f.find('.js-base').val());
             var porMil = parseFloat($f.find('.js-tarifa').text()) || 0;  // tarifa "por mil"
             var tarifa = porMil / 1000;                                  // -> fraccion, como acc_Tarifa
@@ -1166,6 +1179,13 @@ var Retenciones = (function () {
                 if (!$f.find('.js-base').length) { return; }   // fila "sin actividades"
                 var valor = valorActividadFila($f);
                 $f.find('.js-valor').text(pesos(valor));
+                // La casilla calculada se actualiza; la escrita a mano no, ni la que
+                // se está editando (vaciarla para escribir otro número la volvía a
+                // llenar con el calculado y lo tecleado quedaba pegado detrás).
+                var $v = $f.find('.js-valor-input');
+                if ($v.length && Number($v.attr('data-manual')) !== 1 && $v[0] !== document.activeElement) {
+                    $v.val(NumerosCOP.formatear(valor));
+                }
                 sumaActividades += valor;
             });
 
@@ -1182,6 +1202,24 @@ var Retenciones = (function () {
         // estan editando.
         $('#panelFormulario')
             .on('input', '.js-renglon, .js-base, #impuestoEnergia', recalcularEnVivo);
+
+        // Valor de actividad a mano: escribirlo lo marca; borrarlo vuelve al
+        // calculado. Cambiar la base o la actividad también vuelve al calculado
+        // (el valor a mano era para la base de antes).
+        function valorCalculado($fila) {
+            $fila.find('.js-valor-input').attr('data-manual', 0).removeClass('valor-manual');
+        }
+        $('#panelFormulario').on('input', '.js-valor-input', function () {
+            var vacio = String($(this).val()).replace(/[^0-9]/g, '') === '';
+            $(this).attr('data-manual', vacio ? 0 : 1).toggleClass('valor-manual', !vacio);
+            recalcularEnVivo();
+        });
+        // Al salir de una casilla vacía, vuelve a mostrar el calculado.
+        $('#panelFormulario').on('blur', '.js-valor-input', function () {
+            if (Number($(this).attr('data-manual')) !== 1) { recalcularEnVivo(); }
+        });
+        $('#panelFormulario').on('input', '.js-base', function () { valorCalculado($(this).closest('tr')); recalcularEnVivo(); });
+        $('#panelFormulario').on('change', '.js-actividad', function () { valorCalculado($(this).closest('tr')); recalcularEnVivo(); });
 
         // Cualquier cosa que el usuario escriba o elija es un cambio sin guardar.
         $('#panelFormulario').on('input change', 'input, select', function () { sucio = true; });
@@ -1255,9 +1293,14 @@ var Retenciones = (function () {
             $('#tablaActividades tbody tr').each(function () {
                 var idAct = $(this).find('.js-actividad').val();
                 if (!idAct) { return; }
+                var $v = $(this).find('.js-valor-input');
+                var manual = $v.length && Number($v.attr('data-manual')) === 1;
                 datos.actividades.push({
                     idActividad: idAct,
-                    base: NumerosCOP.aEntero($(this).find('.js-base').val())
+                    base: NumerosCOP.aEntero($(this).find('.js-base').val()),
+                    // Solo el escrito a mano viaja: el calculado lo hace el servidor.
+                    manual: manual ? 1 : 0,
+                    valor: manual ? NumerosCOP.aEntero($v.val()) : 0
                 });
             });
 
@@ -1299,7 +1342,10 @@ var Retenciones = (function () {
             $('#tablaActividades tbody tr').each(function () {
                 var $f = $(this);
                 if (!$f.find('.js-base').length) { return; }   // fila "sin actividades"
-                if (!$f.find('.js-actividad').val() && NumerosCOP.aEntero($f.find('.js-base').val()) > 0) { n++; }
+                var $v = $f.find('.js-valor-input');
+                var conValor = NumerosCOP.aEntero($f.find('.js-base').val()) > 0
+                    || ($v.length && Number($v.attr('data-manual')) === 1 && NumerosCOP.aEntero($v.val()) > 0);
+                if (!$f.find('.js-actividad').val() && conValor) { n++; }
             });
             return n;
         }

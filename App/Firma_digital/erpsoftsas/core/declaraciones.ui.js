@@ -535,7 +535,8 @@ var DeclaracionesUI = (function () {
      * "Ninguna declaración coincide con el filtro" aunque la presentada del año
      * anterior estuviera ahi -en enero le pasaria a todo el que empieza la
      * nueva- (revision 2026-09-28). Ahora solo cuentan los años con algo que
-     * mostrar; se abre en el actual si tiene, y si no en el mas reciente.
+     * mostrar. porDefecto ya no lo usa la pantalla: desde el 2026-10-14 abre en
+     * "Todos los años"; se conserva por las pruebas y por si se vuelve a usar.
      *
      * @param {Array}  lista      filas del listado (funcion 8)
      * @param {number} anioActual el año de hoy

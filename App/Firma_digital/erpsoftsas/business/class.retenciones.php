@@ -98,6 +98,19 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
     /** Columna de la tabla de actividades. */
     protected function ca($sufijo) { return $this->pa . $sufijo; }
 
+    /**
+     * ¿La tabla de actividades tiene la marca de valor escrito a mano
+     * (migración 047)? Sin ella, el valor siempre es base x tarifa, como antes.
+     */
+    protected function _hayValorManual($con)
+    {
+        static $hay = [];
+        if (!isset($hay[$this->tablaAct])) {
+            $hay[$this->tablaAct] = $this->_existeColumna($con, $this->tablaAct, $this->ca('ValorManual'));
+        }
+        return $hay[$this->tablaAct];
+    }
+
     /** La clave primaria de la tabla principal. */
     protected function pk() { return $this->p . 'Id'; }
 
@@ -300,11 +313,13 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
          * toca. ROUND() de SQL Server redondea la mitad alejandose del cero,
          * igual que MROUND de Excel, asi que 823.500 da 824.000 en los dos.
          */
+        // El valor escrito a mano (047, pedido de Paipa 2026-10-14) no se recalcula.
         $con->consultar(
             "UPDATE {$this->tablaAct}
                 SET {$this->ca($this->colValor)} =
                     ROUND(ISNULL({$this->ca($this->colBase)},0) * ISNULL({$this->ca('Tarifa')},0) / 1000.0, 0) * 1000
-              WHERE {$this->fkAct} = ?",
+              WHERE {$this->fkAct} = ?"
+              . ($this->_hayValorManual($con) ? " AND ISNULL({$this->ca('ValorManual')}, 0) = 0" : ''),
             [$id]
         );
 
@@ -822,6 +837,8 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
             'editable'      => $this->_esBorrador($fila) ? 1 : 0,
             'renglones'     => $renglones,
             'actividades'   => $this->_actividadesDe($con, $id),
+            // Sin la 047 el valor escrito a mano no se guardaría: la casilla no se ofrece.
+            'valorManual'   => $this->_hayValorManual($con) ? 1 : 0,
             'extra'         => $this->_datosExtra($con, $fila),
         ];
     }
@@ -864,17 +881,28 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
             }
         }
 
+        // Un valor escrito a mano también es contenido firmado: cambiarlo quita
+        // las firmas. Las filas calculadas siguen con la huella de siempre.
+        $manual = $this->_hayValorManual($con);
         $stmt = $con->consultar(
             "SELECT {$this->ca('IdActividad')} AS a, {$this->ca($this->colBase)} AS b,
-                    {$this->ca('Tarifa')} AS t
+                    {$this->ca('Tarifa')} AS t, {$this->ca($this->colValor)} AS v"
+              . ($manual ? ", {$this->ca('ValorManual')} AS m" : ", 0 AS m") . "
                FROM {$this->tablaAct}
               WHERE {$this->fkAct} = ? AND {$this->ca('Activo')} = 1
               ORDER BY {$this->ca('IdActividad')}, {$this->ca($this->colBase)}",
             [(int) $id]
         );
+        $acts = [];
         while ($a = $con->obnerFila($stmt)) {
-            $partes[] = 'act=' . (int) $a['a'] . ':' . (float) $a['b'] . ':' . (float) $a['t'];
+            $acts[] = 'act=' . (int) $a['a'] . ':' . (float) $a['b'] . ':' . (float) $a['t']
+                    . (!empty($a['m']) ? ':manual=' . (float) $a['v'] : '');
         }
+        // Dos filas con la misma actividad y la misma base empatan en el ORDER BY
+        // y, con el valor a mano, ya no son iguales: se ordena aquí para que la
+        // huella no cambie solo porque la base las devolvió en otro orden.
+        sort($acts, SORT_STRING);
+        $partes = array_merge($partes, $acts);
 
         return md5(implode('|', $partes));
     }
@@ -900,6 +928,7 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
                 'base'        => (float) $f[$this->ca($this->colBase)],
                 'tarifa'      => (float) $f[$this->ca('Tarifa')],
                 'valor'       => (float) $f[$this->ca($this->colValor)],
+                'manual'      => !empty($f[$this->ca('ValorManual')] ?? 0) ? 1 : 0,
             ];
         }
         return $datos;
@@ -1017,8 +1046,10 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
             try { $con->rollback(); } catch (\Throwable $e2) { /* ya cerrada */ }
             error_log('[' . $this->modulo . '] no se pudo guardar ' . $id . ': ' . $e->getMessage());
             $this->_ok = 0;
-            $this->_mensaje = 'No se pudo guardar la declaración: no quedó ningún cambio. '
-                            . 'Revise las cifras e intente de nuevo; si persiste, avise a la Alcaldía.';
+            $this->_mensaje = $e->getMessage() === 'VALOR_ACTIVIDAD'
+                ? 'El valor de una actividad no es válido: escriba pesos enteros, sin negativos. No quedó ningún cambio.'
+                : 'No se pudo guardar la declaración: no quedó ningún cambio. '
+                  . 'Revise las cifras e intente de nuevo; si persiste, avise a la Alcaldía.';
             return [];
         }
 
@@ -1068,12 +1099,24 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
 
             $base = $this->_cifra(isset($a['base']) ? $a['base'] : 0);
 
+            // El valor escrito a mano (047): pesos enteros, de 0 a 15 cifras. Si
+            // no viene marcado, el valor es base x tarifa y _liquidar lo redondea.
+            $manual = $this->_hayValorManual($con) && !empty($a['manual']);
+            $valor  = $base * $tarifa;
+            if ($manual) {
+                $valor = round($this->_cifra(isset($a['valor']) ? $a['valor'] : 0));
+                if ($valor < 0 || $valor > 999999999999999) {
+                    throw new \RuntimeException('VALOR_ACTIVIDAD');
+                }
+            }
+
             $con->consultar(
                 "INSERT INTO {$this->tablaAct}
                         ({$this->fkAct}, {$this->ca('IdActividad')}, {$this->ca($this->colBase)},
-                         {$this->ca('Tarifa')}, {$this->ca($this->colValor)}, {$this->ca('FechaCreador')})
-                 VALUES (?, ?, ?, ?, ?, GETDATE())",
-                [(int) $id, $idActividad, $base, $tarifa, $base * $tarifa]
+                         {$this->ca('Tarifa')}, {$this->ca($this->colValor)}, {$this->ca('FechaCreador')}"
+                  . ($manual ? ", {$this->ca('ValorManual')}" : '') . ")
+                 VALUES (?, ?, ?, ?, ?, GETDATE()" . ($manual ? ', 1' : '') . ")",
+                [(int) $id, $idActividad, $base, $tarifa, $valor]
             );
         }
     }
@@ -1437,12 +1480,14 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
             );
         }
 
+        // Con el valor escrito a mano (047): la corrección parte de lo mismo.
+        $vm = $this->_hayValorManual($con) ? ", {$this->ca('ValorManual')}" : '';
         $con->consultar(
             "INSERT INTO {$this->tablaAct}
                     ({$this->fkAct}, {$this->ca('IdActividad')}, {$this->ca($this->colBase)},
-                     {$this->ca('Tarifa')}, {$this->ca($this->colValor)}, {$this->ca('FechaCreador')})
+                     {$this->ca('Tarifa')}, {$this->ca($this->colValor)}, {$this->ca('FechaCreador')}$vm)
              SELECT ?, {$this->ca('IdActividad')}, {$this->ca($this->colBase)},
-                    {$this->ca('Tarifa')}, {$this->ca($this->colValor)}, GETDATE()
+                    {$this->ca('Tarifa')}, {$this->ca($this->colValor)}, GETDATE()$vm
                FROM {$this->tablaAct}
               WHERE {$this->fkAct} = ? AND {$this->ca('Activo')} = 1",
             [(int) $destino, (int) $origen]

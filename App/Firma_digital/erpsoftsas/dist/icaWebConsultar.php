@@ -70,9 +70,8 @@
 				<div class="pb-20 px-3">
 
 
-                        <!-- Filtros: el listado abre en el año en curso en vez de
-                             volcar todo el historico (un establecimiento de prueba
-                             ya acumula 131 declaraciones). -->
+                        <!-- Filtros: el listado abre en "Todos los años" (Paipa,
+                             2026-10-14); antes abría en el año en curso. -->
                         <div class="filtros-declaraciones">
                             <div class="campo">
                                 <label for="filtroAnioDecl">Año</label>
@@ -1160,9 +1159,6 @@ data-campo="sanciones" value="0">
 		<script src="../core/declaraciones.ui.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/geografia.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/icaWebConsultar.js?v=<?php echo time(); ?>"></script>
-		<!-- Informe de declaraciones pagadas en PDF y Excel (2026-10-13). -->
-		<script src="../core/informePagos.js?v=<?php echo time(); ?>"></script>
-		<script>$(function () { InformePagos.montar({ modulo: 'ica', cabecera: '#ltsRol > .pd-20', anio: '#filtroAnioDecl' }); });</script>
 		<!-- <script src="../core/Permisos.js"></script> -->
         <script>
             const ID_USUARIO = <?php echo isset($_SESSION['IdUsuario']) ? $_SESSION['IdUsuario'] : (isset($_SESSION['usu_Id']) ? $_SESSION['usu_Id'] : 0); ?>;

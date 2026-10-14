@@ -16,6 +16,7 @@ var PERMISO_PAGINA = {
     'contribuyentes.php':            'alcaldia.contribuyentes.ver',
     'establecimientostodos.php':     'alcaldia.establecimientos.ver',
     'recaudo.php':                   'alcaldia.recaudo.cargar alcaldia.recaudo.asignar',
+    'informes.php':                  'alcaldia.informes.pagos',
     'icawebrit.php':                 'rit.ver',
     'establecimientos.php':          'establecimientos.ver',
     'icawebpresentar.php':           'ica.editar ica.firmar ica.presentar',
@@ -46,6 +47,7 @@ var DESTINO_MENU = {
     11: 'recaudo.php',                 // recaudo por codigo de barras (archivo Asobancaria)
     12: 'configuracion.php',           // municipio y bancos
     13: 'establecimientosTodos.php',   // directorio de la Alcaldia
+    14: 'informes.php',                // informes de declaraciones (PDF / Excel)
     100: 'consultasPazySalvoPredial.php',
     101: 'icaWebRit.php', 102: 'icaWebConsultar.php', 103: 'icaWebPresentar.php',
     104: 'reteicaConsultar.php', 105: 'reteicaPresentar.php',

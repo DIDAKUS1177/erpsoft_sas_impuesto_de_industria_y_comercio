@@ -133,9 +133,6 @@
 		<script src="../core/registroManual.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/retenciones.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/autoretencionConsultar.js?v=<?php echo time(); ?>"></script>
-		<!-- Informe de declaraciones pagadas en PDF y Excel (2026-10-13). -->
-		<script src="../core/informePagos.js?v=<?php echo time(); ?>"></script>
-		<script>$(function () { InformePagos.montar({ modulo: 'autorreteica', cabecera: $('#tituloModulo').parent(), anio: '#filtroAnio', periodo: '#filtroPeriodo' }); });</script>
 		<!-- <script src="../core/Permisos.js"></script> -->
 	</div>	
 </body>

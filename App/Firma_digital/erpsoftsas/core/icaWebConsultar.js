@@ -610,8 +610,9 @@ consultarDeclaraciones(idEstablecimiento, idContribuyente) {
             filtroAnios.anios.forEach(function (a) { opciones += '<option value="' + a + '">' + a + '</option>'; });
             $('#filtroAnioDecl').html(opciones);
 
-            // Abre en el año en curso si tiene presentadas; si no, en el mas reciente.
-            $('#filtroAnioDecl').val(filtroAnios.porDefecto);
+            // Abre en "Todos los años" (Paipa, 2026-10-14), como retención y
+            // autorretención; antes abría en el año en curso.
+            $('#filtroAnioDecl').val('');
             $('#filtroEstadoDecl').val('');
 
             establecimientos.pintarDeclaracionesFiltradas();
@@ -635,6 +636,13 @@ pintarDeclaracionesFiltradas() {
         if (anio   && String(d.dec_AnioDeclaracion) !== String(anio)) { return false; }
         if (estado && DeclaracionesUI.estado(d).clave !== estado)     { return false; }
         return true;
+    });
+    // Con "Todos los años" (2026-10-14) el orden importa: el servidor las trae
+    // por creación, y una "Ya pagada" de 2022 registrada hoy salía arriba.
+    filtradas.sort(function (a, b) {
+        return (Number(b.dec_AnioDeclaracion) - Number(a.dec_AnioDeclaracion))
+            || (Number(b.dec_MesDeclaracion) - Number(a.dec_MesDeclaracion))
+            || (Number(b.dec_Id) - Number(a.dec_Id));
     });
 
     var presentadas = todas.filter(function (d) {

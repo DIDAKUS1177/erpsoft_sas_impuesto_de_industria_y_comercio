@@ -1,26 +1,22 @@
 <?php
 /**
- * Informe de declaraciones PAGADAS en PDF o Excel (pedido de la Alcaldía de
- * Paipa, 2026-10-13). Lo piden los botones de Consultar de los tres módulos
- * (core/informePagos.js).
+ * Informe de declaraciones presentadas, pagadas o las dos, en PDF o Excel
+ * (pedido de la Alcaldía de Paipa, 2026-10-13 y 14). Lo pide el módulo
+ * Informes del administrador (dist/informes.php, core/informePagos.js).
  *
  * GET
  *   modulo         ica | reteica | autorreteica
  *   formato        pdf | xlsx
- *   anio, periodo  filtros opcionales (los de la pantalla)
- *   alcance        'todos' (todos los contribuyentes) o vacío
- *   contribuyente  el contribuyente de la pantalla (cuando no es 'todos')
+ *   estado         pagadas | sinpagar | todas (presentadas)
+ *   anio, periodo  filtros opcionales
+ *   documento      NIT o cédula, solo dígitos (vacío = todos los contribuyentes)
  *
- * Quién: sesión y "Ver" del módulo. Todos los contribuyentes, solo con
- * alcaldia.informes.pagos (que solo cuenta en un rol de la Alcaldía); uno,
- * quien puede operar sobre él (la Alcaldía que gestiona, o el propio
- * contribuyente). Columnas: las que pidió el cliente (NIT, contribuyente, año,
- * período, número, fecha de pago, banco y valor), más el medio y lo pagado.
+ * Quién: sesión, alcaldia.informes.pagos (que solo cuenta en un rol de la
+ * Alcaldía) y el "Ver" del módulo.
  */
 
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 require_once __DIR__ . '/pdfRetenciones.php';
-include_once SERVER . '/business/controller/class.anexos.php';
 include_once SERVER . '/business/class.permisosRol.php';
 include_once SERVER . '/business/class.informePagos.php';
 include_once SERVER . '/business/class.xlsxSimple.php';
@@ -43,34 +39,35 @@ if (empty($_SESSION['id_usuario'])) {
 }
 
 /* ---- Lo que se pide ---------------------------------------------------------- */
-$clave   = strtolower(trim((string) ($_GET['modulo'] ?? '')));
-$formato = strtolower(trim((string) ($_GET['formato'] ?? '')));
+// La pantalla manda por POST: el NIT o la cédula de una persona no queda en la
+// dirección, ni en el historial del navegador ni en el registro del servidor.
+$IN = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
+$clave   = strtolower(trim((string) ($IN['modulo'] ?? '')));
+$formato = strtolower(trim((string) ($IN['formato'] ?? '')));
 if (!PseModulo::existe($clave) || !in_array($formato, ['pdf', 'xlsx'], true)) {
     informe_fin(400, 'Informe no válido.');
 }
 $m = PseModulo::get($clave);
 
-$anio    = preg_match('/^\d{4}$/', (string) ($_GET['anio'] ?? '')) ? (int) $_GET['anio'] : null;
+$anio    = preg_match('/^\d{4}$/', (string) ($IN['anio'] ?? '')) ? (int) $IN['anio'] : null;
 $maxPer  = $clave === 'autorreteica' ? 6 : 12;
-$periodo = preg_match('/^\d{1,2}$/', (string) ($_GET['periodo'] ?? '')) ? (int) $_GET['periodo'] : null;
+$periodo = preg_match('/^\d{1,2}$/', (string) ($IN['periodo'] ?? '')) ? (int) $IN['periodo'] : null;
 if ($periodo !== null && ($periodo < 1 || $periodo > $maxPer)) { $periodo = null; }
 if ($anio !== null && ($anio < 2000 || $anio > 2100)) { $anio = null; }
-$todos = ($_GET['alcance'] ?? '') === 'todos';
-$idContribuyente = (int) ($_GET['contribuyente'] ?? 0);
+$estado    = in_array($IN['estado'] ?? '', InformePagos::ESTADOS, true) ? $IN['estado'] : 'pagadas';
+// ind_NumeroIdentificacion es INT: un NIT con su dígito de verificación pegado
+// (9001234567) no cabe y la consulta fallaba. Se pide sin DV, como se guarda.
+$documento = trim((string) ($IN['documento'] ?? ''));
+if ($documento !== '' && (!ctype_digit($documento) || strlen($documento) > 10
+                          || (int) $documento <= 0 || (int) $documento > 2147483647)) {
+    informe_fin(400, 'Escriba el NIT o la cédula solo con números y sin dígito de verificación.');
+}
 
 /* ---- Quién --------------------------------------------------------------------- */
-if (!PermisosRol::tiene($clave . '.ver')) {
-    informe_fin(403, PermisosRol::mensaje($clave . '.ver'));
+foreach (['alcaldia.informes.pagos', $clave . '.ver'] as $permiso) {
+    if (!PermisosRol::tiene($permiso)) { informe_fin(403, PermisosRol::mensaje($permiso)); }
 }
 $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
-if ($todos) {
-    if (!PermisosRol::tiene('alcaldia.informes.pagos')) {
-        informe_fin(403, PermisosRol::mensaje('alcaldia.informes.pagos'));
-    }
-    $idContribuyente = 0;
-} elseif ($idContribuyente <= 0 || !\erpsoftsas\ControladorAnexos::puedeOperarSobreContribuyente($idContribuyente, $con)) {
-    informe_fin(403, 'Solo puede descargar el informe del contribuyente que gestiona.');
-}
 
 // Ya se sabe quién es: soltar la sesión para que sus otras pestañas no esperen
 // mientras se arma un informe grande, y darle tiempo y memoria (medido: 10.000
@@ -82,7 +79,8 @@ if ((int) ini_get('memory_limit') > 0 && (int) ini_get('memory_limit') < 256) { 
 
 /* ---- Los datos ----------------------------------------------------------------- */
 try {
-    $filas = InformePagos::filas($con, $clave, ['anio' => $anio, 'periodo' => $periodo, 'contribuyente' => $idContribuyente ?: null]);
+    $filas = InformePagos::filas($con, $clave, ['estado' => $estado, 'anio' => $anio, 'periodo' => $periodo,
+                                                'documento' => $documento !== '' ? (int) $documento : null]);
 } catch (\Throwable $e) {
     error_log('[informe de pagos] ' . $e->getMessage());
     informe_fin(500, 'No se pudo generar el informe. Intente de nuevo.');
@@ -94,39 +92,64 @@ $u = $con->obnerFila($con->consultar("SELECT usu_Nombres, usu_Apellidos FROM con
 $quien = trim(preg_replace('/\s+/', ' ', ($u['usu_Nombres'] ?? '') . ' ' . ($u['usu_Apellidos'] ?? '')));
 
 $modulos   = ['ica' => 'Industria y Comercio', 'reteica' => 'Retención de Industria y Comercio', 'autorreteica' => 'Autorretención de Industria y Comercio'];
-$titulo    = 'Informe de declaraciones pagadas';
+$titulos   = ['pagadas' => 'Declaraciones pagadas', 'sinpagar' => 'Declaraciones presentadas sin pagar',
+              'todas' => 'Todas las declaraciones presentadas'];
+$titulo    = $titulos[$estado];
 $subtitulo = $modulos[$clave] . ' · Municipio de ' . MUNICIPIO_CIUDAD;
 $filtros   = 'Año: ' . ($anio ?: 'todos')
            . ($clave === 'ica' ? '' : ' · Período: ' . ($periodo ? InformePagos::nombrePeriodo($clave, $periodo) : 'todos'))
-           . ' · Contribuyente: ' . ($todos ? 'todos' : InformePagos::nombreContribuyente($con, $idContribuyente));
+           . ' · Contribuyente: ' . ($documento === '' ? 'todos' : InformePagos::nombrePorDocumento($con, $documento));
 $generado  = 'Generado el ' . $ahora->format('d/m/Y \a \l\a\s h:i a') . ($quien !== '' ? ' por ' . $quien : '');
 
 $totalDeclarado = array_sum(array_column($filas, 'valorDeclarado'));
 $totalPagado    = array_sum(array_column($filas, 'valorPagado'));
 
-$columnas = [
-    // [rótulo, ancho PDF (mm), ancho Excel, alineación, campo]
-    ['NIT / Documento',  26, 16, 'L', 'documento'],
-    ['Contribuyente',    46, 40, 'L', 'contribuyente'],
-    ['Año',              11,  7, 'C', 'anio'],
-    [$clave === 'autorreteica' ? 'Bimestre' : 'Mes', 24, 20, 'L', 'periodo'],
-    ['N° declaración',   22, 15, 'C', 'numero'],
-    ['Fecha de pago',    21, 13, 'C', 'fechaPago'],
-    ['Banco',            36, 32, 'L', 'banco'],
-    ['Medio',            24, 18, 'L', 'canal'],
-    ['Valor a pagar',    24.7, 16, 'R', 'valorDeclarado'],
-    ['Valor pagado',     24.7, 16, 'R', 'valorPagado'],
-];
+// [rótulo, ancho PDF (mm), ancho Excel, alineación, campo]. Suman 259.4 mm (carta
+// apaisada menos márgenes). El ICA es anual (el mes es siempre diciembre): sin
+// esa columna, Contribuyente, Banco y Medio caben completos.
+if ($clave === 'ica') {
+    $columnas = [
+        ['NIT / Documento',  22, 16, 'L', 'documento'],
+        ['Contribuyente',    46, 40, 'L', 'contribuyente'],
+        ['Año',              10,  7, 'C', 'anio'],
+        ['N° declaración',   21, 15, 'C', 'numero'],
+        ['Presentada',       18, 13, 'C', 'fechaPresentacion'],
+        ['Estado',           16, 11, 'C', 'estado'],
+        ['Fecha de pago',    18, 13, 'C', 'fechaPago'],
+        ['Banco',            36, 32, 'L', 'banco'],
+        ['Medio',            23, 14, 'L', 'canal'],
+        ['Valor a pagar',    24.7, 16, 'R', 'valorDeclarado'],
+        ['Valor pagado',     24.7, 16, 'R', 'valorPagado'],
+    ];
+} else {
+    $columnas = [
+        ['NIT / Documento',  22, 16, 'L', 'documento'],
+        ['Contribuyente',    32, 36, 'L', 'contribuyente'],
+        ['Año',              10,  7, 'C', 'anio'],
+        [$clave === 'autorreteica' ? 'Bimestre' : 'Mes', 20, 18, 'L', 'periodo'],
+        ['N° declaración',   21, 15, 'C', 'numero'],
+        ['Presentada',       18, 13, 'C', 'fechaPresentacion'],
+        ['Estado',           16, 11, 'C', 'estado'],
+        ['Fecha de pago',    18, 13, 'C', 'fechaPago'],
+        ['Banco',            34, 32, 'L', 'banco'],
+        ['Medio',            20, 14, 'L', 'canal'],
+        ['Valor a pagar',    24.2, 16, 'R', 'valorDeclarado'],
+        ['Valor pagado',     24.2, 16, 'R', 'valorPagado'],
+    ];
+}
+$FECHAS = ['fechaPago', 'fechaPresentacion'];
+$PESOS  = ['valorDeclarado', 'valorPagado'];
 
 $color = ltrim(defined('MUNICIPIO_COLOR') ? (string) MUNICIPIO_COLOR : '#1fa49d', '#');
 if (!preg_match('/^[0-9a-fA-F]{6}$/', $color)) { $color = '1fa49d'; }
 
-$base = 'Pagos_' . preg_replace('/[^A-Za-z]/', '', ucfirst($clave)) . '_' . ($anio ?: 'todos-los-anios')
-      . ($todos ? '_todos' : '') . '_' . $ahora->format('Ymd');
+$nombres = ['pagadas' => 'Pagadas', 'sinpagar' => 'Sin_pagar', 'todas' => 'Presentadas'];
+$base = 'Declaraciones_' . $nombres[$estado] . '_' . preg_replace('/[^A-Za-z]/', '', ucfirst($clave)) . '_'
+      . ($anio ?: 'todos-los-anios') . ($documento !== '' ? '_' . $documento : '') . '_' . $ahora->format('Ymd');
 
 /* ==== EXCEL ======================================================================== */
 if ($formato === 'xlsx') {
-    $x = new \erpsoftsas\XlsxSimple('Pagadas', $color);
+    $x = new \erpsoftsas\XlsxSimple('Declaraciones', $color);
     $x->anchos(array_column($columnas, 2));
     $ultimaCol = \erpsoftsas\XlsxSimple::columna(count($columnas));
 
@@ -142,14 +165,16 @@ if ($formato === 'xlsx') {
         $n++;
         foreach ($columnas as $i => $c) {
             $campo = $c[4];
-            if ($campo === 'fechaPago') {
+            if (in_array($campo, $FECHAS, true)) {
                 $x->fecha($n, $i + 1, $f[$campo]);
-            } elseif ($campo === 'valorDeclarado' || $campo === 'valorPagado') {
+            } elseif ($campo === 'valorPagado' && $f['estado'] !== 'Pagada') {
+                $x->texto($n, $i + 1, '', \erpsoftsas\XlsxSimple::PESOS);   // sin pagar: en blanco
+            } elseif (in_array($campo, $PESOS, true)) {
                 $x->numero($n, $i + 1, $f[$campo], \erpsoftsas\XlsxSimple::PESOS);
             } elseif ($campo === 'anio') {
                 $x->numero($n, $i + 1, $f[$campo], \erpsoftsas\XlsxSimple::CENTRADO);
             } else {
-                $x->texto($n, $i + 1, $f[$campo], $campo === 'numero' ? \erpsoftsas\XlsxSimple::CENTRADO : \erpsoftsas\XlsxSimple::TEXTO);
+                $x->texto($n, $i + 1, $f[$campo], in_array($campo, ['numero', 'estado'], true) ? \erpsoftsas\XlsxSimple::CENTRADO : \erpsoftsas\XlsxSimple::TEXTO);
             }
         }
     }
@@ -158,14 +183,19 @@ if ($formato === 'xlsx') {
         $x->autofiltro('A' . $cab . ':' . $ultimaCol . $n);
         // SUBTOTAL(109, …): el total sigue a los filtros que se apliquen en Excel.
         $t = $n + 1;
+        $cv = count($columnas) - 1;                         // valor a pagar (K) y valor pagado (L)
+        $colA = \erpsoftsas\XlsxSimple::columna($cv);
+        $colB = \erpsoftsas\XlsxSimple::columna($cv + 1);
         $x->texto($t, 1, 'Total', \erpsoftsas\XlsxSimple::TOTAL);
-        for ($i = 2; $i <= 8; $i++) { $x->texto($t, $i, '', \erpsoftsas\XlsxSimple::TOTAL); }
-        $x->formula($t, 2, 'SUBTOTAL(103,E' . ($cab + 1) . ':E' . $n . ')&" declaraciones"', \erpsoftsas\XlsxSimple::TOTAL,
+        for ($i = 2; $i < $cv; $i++) { $x->texto($t, $i, '', \erpsoftsas\XlsxSimple::TOTAL); }
+        // La columna del número (cuenta las filas visibles) depende del módulo.
+        $colNum = \erpsoftsas\XlsxSimple::columna(array_search('numero', array_column($columnas, 4), true) + 1);
+        $x->formula($t, 2, 'SUBTOTAL(103,' . $colNum . ($cab + 1) . ':' . $colNum . $n . ')&" declaraciones"', \erpsoftsas\XlsxSimple::TOTAL,
                     count($filas) . ' declaraciones');
-        $x->formula($t, 9,  'SUBTOTAL(109,I' . ($cab + 1) . ':I' . $n . ')', \erpsoftsas\XlsxSimple::TOTAL_PESOS, $totalDeclarado);
-        $x->formula($t, 10, 'SUBTOTAL(109,J' . ($cab + 1) . ':J' . $n . ')', \erpsoftsas\XlsxSimple::TOTAL_PESOS, $totalPagado);
+        $x->formula($t, $cv,     'SUBTOTAL(109,' . $colA . ($cab + 1) . ':' . $colA . $n . ')', \erpsoftsas\XlsxSimple::TOTAL_PESOS, $totalDeclarado);
+        $x->formula($t, $cv + 1, 'SUBTOTAL(109,' . $colB . ($cab + 1) . ':' . $colB . $n . ')', \erpsoftsas\XlsxSimple::TOTAL_PESOS, $totalPagado);
     } else {
-        $x->texto($cab + 1, 1, 'No hay declaraciones pagadas con estos filtros.', \erpsoftsas\XlsxSimple::SUBTITULO);
+        $x->texto($cab + 1, 1, 'No hay declaraciones con estos filtros.', \erpsoftsas\XlsxSimple::SUBTITULO);
         $x->unir('A' . ($cab + 1), $ultimaCol . ($cab + 1));
     }
 
@@ -212,7 +242,8 @@ class InformePagosPdf extends TCPDF
         $this->Cell(70, 5.5, number_format($e['cantidad'], 0, ',', '.'), 0, 2, 'R');
         $this->SetFont('helvetica', '', 7.5);
         $this->SetTextColor(107, 114, 128);
-        $this->Cell(70, 4, 'TOTAL PAGADO  $ ' . number_format($e['totalPagado'], 0, ',', '.'), 0, 0, 'R');
+        $this->Cell(70, 4, 'A PAGAR $ ' . number_format($e['totalDeclarado'], 0, ',', '.')
+                         . '  ·  PAGADO $ ' . number_format($e['totalPagado'], 0, ',', '.'), 0, 0, 'R');
 
         $this->SetDrawColor($this->rgb[0], $this->rgb[1], $this->rgb[2]);
         $this->SetLineWidth(0.5);
@@ -231,7 +262,7 @@ class InformePagosPdf extends TCPDF
         $this->SetFillColor($this->rgb[0], $this->rgb[1], $this->rgb[2]);
         $this->SetTextColor(255, 255, 255);
         $this->SetDrawColor(255, 255, 255);
-        $this->SetFont('helvetica', 'B', 7.5);
+        $this->SetFont('helvetica', 'B', 7);
         foreach ($this->columnas as $c) {
             $this->Cell($c[1], 7, $c[0], 'LR', 0, $c[3], true, '', 0);
         }
@@ -268,7 +299,7 @@ $pdf->rgb = [hexdec(substr($color, 0, 2)), hexdec(substr($color, 2, 2)), hexdec(
 $pdf->columnas = $columnas;
 $pdf->encabezado = [
     'titulo' => $titulo, 'subtitulo' => $subtitulo, 'filtros' => $filtros, 'generado' => $generado,
-    'cantidad' => count($filas), 'totalPagado' => $totalPagado,
+    'cantidad' => count($filas), 'totalPagado' => $totalPagado, 'totalDeclarado' => $totalDeclarado,
 ];
 $pdf->setCellPaddings(1.6, 0, 1.6, 0);
 $pdf->SetCreator('ERPSoft');
@@ -286,23 +317,27 @@ $pdf->SetDrawColor(229, 231, 235);
 if (!$filas) {
     $pdf->SetFont('helvetica', '', 9);
     $pdf->SetTextColor(107, 114, 128);
-    $pdf->Cell(259.4, 14, 'No hay declaraciones pagadas con estos filtros.', 'B', 1, 'C');
+    $pdf->Cell(259.4, 14, 'No hay declaraciones con estos filtros.', 'B', 1, 'C');
 }
 
 foreach ($filas as $i => $f) {
     if ($pdf->GetY() + $alto > $limite) { $pdf->AddPage(); $pdf->SetDrawColor(229, 231, 235); }
-    $pdf->SetFont('helvetica', '', 7.5);
+    $pdf->SetFont('helvetica', '', 7);
     $pdf->SetTextColor(31, 41, 55);
     $pdf->SetFillColor(244, 247, 249);
     $zebra = $i % 2 === 1;
     foreach ($columnas as $c) {
         $v = $f[$c[4]];
-        if ($c[4] === 'valorDeclarado' || $c[4] === 'valorPagado') {
+        if ($c[4] === 'valorPagado' && $f['estado'] !== 'Pagada') {
+            $pdf->Cell($c[1], $alto, '', 'B', 0, $c[3], $zebra, '', 0);   // sin pagar: en blanco
+            continue;
+        }
+        if (in_array($c[4], $PESOS, true)) {
             // Una cifra nunca se recorta: si no cabe, se comprime.
             $pdf->Cell($c[1], $alto, '$ ' . number_format($v, 0, ',', '.'), 'B', 0, $c[3], $zebra, '', 1);
             continue;
         }
-        if ($c[4] === 'fechaPago') {
+        if (in_array($c[4], $FECHAS, true)) {
             $v = preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $v, $d) ? $d[3] . '/' . $d[2] . '/' . $d[1] : '';
         } elseif ($c[4] === 'periodo' && $clave === 'autorreteica') {
             $v = preg_replace_callback('/[A-Za-zÁÉÍÓÚáéíóú]+/u', function ($p) { return mb_substr($p[0], 0, 3, 'UTF-8'); }, $v);
@@ -318,11 +353,12 @@ if ($filas) {
     $pdf->SetTextColor(17, 24, 39);
     $pdf->SetFillColor(238, 242, 246);
     $pdf->SetDrawColor($pdf->rgb[0], $pdf->rgb[1], $pdf->rgb[2]);
-    $antes = array_sum(array_column(array_slice($columnas, 0, 8), 1));
+    $cv = count($columnas) - 2;                             // las dos columnas de valor, al final
+    $antes = array_sum(array_column(array_slice($columnas, 0, $cv), 1));
     $n = count($filas);
     $pdf->Cell($antes, 8, 'Total: ' . $n . ($n === 1 ? ' declaración' : ' declaraciones'), 'T', 0, 'L', true);
-    $pdf->Cell($columnas[8][1], 8, '$ ' . number_format($totalDeclarado, 0, ',', '.'), 'T', 0, 'R', true, '', 1);
-    $pdf->Cell($columnas[9][1], 8, '$ ' . number_format($totalPagado, 0, ',', '.'), 'T', 1, 'R', true, '', 1);
+    $pdf->Cell($columnas[$cv][1], 8, '$ ' . number_format($totalDeclarado, 0, ',', '.'), 'T', 0, 'R', true, '', 1);
+    $pdf->Cell($columnas[$cv + 1][1], 8, '$ ' . number_format($totalPagado, 0, ',', '.'), 'T', 1, 'R', true, '', 1);
 }
 
 $pdf->Output($base . '.pdf', 'I');

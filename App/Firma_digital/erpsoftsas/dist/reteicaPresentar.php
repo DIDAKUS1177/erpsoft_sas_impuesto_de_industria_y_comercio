@@ -53,7 +53,7 @@
          * que el resto de pantallas internas.
          */
         .renglon-codigo { width: 60px; }
-        #tablaRenglones td, #tablaActividades td { vertical-align: middle; }
+        #tablaRenglones td, #tablaActividades td { vertical-align: middle; } .js-valor-input { min-width: 120px; } .js-valor-input.valor-manual { background: #FFFBEB; border-color: #F59E0B; }
     </style>
 </head>
 <body>

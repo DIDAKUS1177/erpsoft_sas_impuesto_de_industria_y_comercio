@@ -39,6 +39,12 @@ class RegistroManual
         'OTRO'          => 'Otro medio',
     ];
 
+    /**
+     * El pago manual (no el de una "ya pagada") pide solo fecha, banco y
+     * soporte desde el 2026-10-14 (Paipa): su medio se guarda así (047).
+     */
+    const SIN_MEDIO = 'NO_INDICADO';
+
     const TIPO_DECLARACION = 'declaracion_original';
     const TIPO_SOPORTE     = 'soporte_pago';
 
@@ -179,7 +185,11 @@ class RegistroManual
     /**
      * Presentada sin pagar → pagada, con su soporte.
      *
-     * @param array $datos fechaPago, valor, medio, idBanco, referencia, observacion
+     * Pide solo la fecha de pago, el banco y el soporte (Paipa, 2026-10-14):
+     * el valor es el total a pagar de la declaración y el medio queda
+     * SIN_MEDIO. Lo demás que llegue se ignora.
+     *
+     * @param array $datos fechaPago, idBanco
      */
     public static function registrarPago($con, $clave, $id, array $datos, array $archivos, $idUsuario)
     {
@@ -187,7 +197,7 @@ class RegistroManual
         $m  = PseModulo::get($clave);
         $id = (int) $id;
 
-        $pago = self::_leerPago($con, $datos);
+        $pago = self::_leerPago($con, $datos, true);
         if (is_string($pago)) { return self::_no($pago); }
 
         $sop = self::_archivo($archivos['soporte'] ?? null, 'el soporte de pago');
@@ -197,6 +207,14 @@ class RegistroManual
         if (!$fila) { return self::_no('Declaración no encontrada.'); }
         if ((int) $fila['estado'] !== 2) { return self::_no('Solo se registra el pago de una declaración presentada.'); }
         if ((int) $fila['pagado'] === 1) { return self::_no('Esa declaración ya figura como pagada.'); }
+        if ((float) $fila['total'] <= 0) { return self::_no('Esta declaración no tiene valor a pagar.'); }
+        // La fecha de pago es lo único que se escribe: antes de la presentación
+        // casi siempre es un error de digitación (un año equivocado). Se acepta
+        // solo confirmado, como en "Ya pagada".
+        if (!empty($fila['presentada']) && $pago['fecha'] < $fila['presentada'] && empty($datos['confirmaFechas'])) {
+            return self::_no('La fecha de pago es anterior a la presentación de la declaración (' . $fila['presentada']
+                           . '). Revísela; si es correcta, confírmelo.', 'FECHAS');
+        }
         $tramite = self::_pagoEnLinea($con, $m, $id, $fila);
         if ($tramite !== null) { return self::_no($tramite); }
 
@@ -231,6 +249,13 @@ class RegistroManual
                 $con->rollback();
                 self::_borrar($guardados);
                 return self::_no($tramite);
+            }
+            // El valor es el total de la declaración, leído bajo el candado.
+            $pago['valor'] = round((float) $fila['total'], 2);
+            if ($pago['valor'] <= 0) {
+                $con->rollback();
+                self::_borrar($guardados);
+                return self::_no('Esta declaración no tiene valor a pagar.');
             }
 
             $idSop = self::_insertarSoportes($con, $m, $id, $guardados, $idUsuario);
@@ -405,13 +430,14 @@ class RegistroManual
             $r[(int) $f['id']]['historica'] = ['numeroPapel' => $f['papel'], 'fechaPresentacion' => $f['fecha']];
         }
         $st = $con->consultar(
-            "SELECT pma_IdDeclaracion AS id, pma_Medio AS medio, pma_Referencia AS ref
+            "SELECT pma_IdDeclaracion AS id, pma_Medio AS medio, pma_Referencia AS ref, pma_Banco AS banco
                FROM ind_pagos_manuales
               WHERE pma_Modulo = ? AND pma_IdDeclaracion IN ($lista)", [$clave]
         );
         while ($f = $con->obnerFila($st)) {
+            // Sin medio (pago manual desde el 2026-10-14) la nota dice el banco.
             $r[(int) $f['id']]['pagoManual'] = [
-                'medio' => self::MEDIOS[$f['medio']] ?? $f['medio'], 'referencia' => (string) $f['ref'],
+                'medio' => self::MEDIOS[$f['medio']] ?? (string) $f['banco'], 'referencia' => (string) $f['ref'],
             ];
         }
         $st = $con->consultar(
@@ -424,6 +450,24 @@ class RegistroManual
             $r[(int) $f['id']]['soportes'][] = ['id' => (int) $f['sop'], 'tipo' => $f['tipo'], 'nombre' => $f['nombre']];
         }
         return $r;
+    }
+
+    /**
+     * El medio de un pago manual: NO_INDICADO si ya corrió la 047 (que lo
+     * admite en CK_pma_Medio); si el código llegó antes que la migración, OTRO,
+     * que siempre vale. Se mira conf_migraciones y no sys.check_constraints: la
+     * definición de una restricción puede llegar vacía sin VIEW DEFINITION.
+     */
+    private static function _sinMedio($con)
+    {
+        static $medio = null;
+        if ($medio === null) {
+            $f = $con->obnerFila($con->consultar(
+                "SELECT COUNT(*) AS n FROM conf_migraciones WHERE mig_Nombre = '047_informes_valor_manual_y_pago_simple'", []
+            ));
+            $medio = ((int) ($f['n'] ?? 0)) > 0 ? self::SIN_MEDIO : 'OTRO';
+        }
+        return $medio;
     }
 
     /** ¿Ya corrió la 044 en esta base? Se cachea por petición. */
@@ -471,10 +515,21 @@ class RegistroManual
      * El banco se elige de la lista (ind_bancos, migración 045): llega su id y
      * se guarda su nombre; antes era texto libre.
      */
-    private static function _leerPago($con, array $d)
+    private static function _leerPago($con, array $d, $simple = false)
     {
         $fecha = self::_fecha($d['fechaPago'] ?? '', 'de pago');
         if (is_array($fecha)) { return $fecha['mensaje']; }
+
+        // Pago manual: fecha y banco; valor (el total) y medio los pone quien llama.
+        if ($simple) {
+            $idBanco = trim((string) ($d['idBanco'] ?? ''));
+            $banco   = preg_match('/^[0-9]{1,9}$/', $idBanco) ? BancosPago::activo($con, (int) $idBanco) : null;
+            if (!$banco) { return 'Elija el banco por el que entró el pago.'; }
+            return [
+                'fecha' => $fecha, 'valor' => 0, 'medio' => self::_sinMedio($con), 'simple' => true,
+                'banco' => $banco['nombre'], 'idBanco' => $banco['id'], 'referencia' => '', 'observacion' => '',
+            ];
+        }
 
         // Pesos con puntos de miles o coma decimal, como se escriben a mano.
         $txt = preg_replace('/[\s$]/', '', (string) ($d['valor'] ?? ''));
@@ -595,7 +650,10 @@ class RegistroManual
     /** El pago: en la declaración (vía MANUAL) y su detalle. false si no se marcó. */
     private static function _registrarPago($con, array $m, $id, array $pago, $idSoporte, $idUsuario)
     {
-        $banco = self::MEDIOS[$pago['medio']] . ($pago['banco'] !== '' ? ' - ' . $pago['banco'] : '');
+        // El pago simple (sin medio) lleva solo el nombre del banco.
+        $banco = empty($pago['simple'])
+            ? self::MEDIOS[$pago['medio']] . ($pago['banco'] !== '' ? ' - ' . $pago['banco'] : '')
+            : $pago['banco'];
 
         $marcada = PagoDeclaracion::registrar($con, $id, [
             'valor'     => $pago['valor'],
@@ -630,6 +688,7 @@ class RegistroManual
         return $con->obnerFila($con->consultar(
             "SELECT {$m['pk']} AS id, ISNULL({$p}_Estado, 0) AS estado, ISNULL({$m['pagado']}, 0) AS pagado,
                     ISNULL({$m['valor']}, 0) AS total,
+                    CONVERT(VARCHAR(10), {$p}_FechaPresentacion, 120) AS presentada,
                     {$p}_PSE_RequestId AS pse_req, {$p}_PSE_Estado AS pse_est
                FROM {$m['tabla']} WHERE {$m['pk']} = ?",
             [(int) $id]

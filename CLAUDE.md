@@ -1917,13 +1917,10 @@ Pedido de la Alcaldía de Paipa, definido con Diego:
   servidor exige un banco ACTIVO (`pma_IdBanco`).
 - **"Anular" ahora es "Eliminar pago"** en pantalla y en el panel de Roles
   (mismo permiso `alcaldia.registro.anular`, mismo funcionamiento).
-- **Informe de pagadas en PDF y Excel** (`extensiones/informePagos.php`,
-  datos en `business/class.informePagos.php`, botones en Consultar de los tres
-  módulos con `core/informePagos.js`): NIT, contribuyente, año, período,
-  número, fecha de pago, banco, medio, valor a pagar y valor pagado, con los
-  filtros de la pantalla. "Todos los contribuyentes" exige
-  `alcaldia.informes.pagos` (permiso nuevo de la 045); si no, solo el
-  contribuyente que se puede operar. Los pagos `WOMPI_PRUEBA` no salen.
+- **Informe en PDF y Excel** (`extensiones/informePagos.php`, datos en
+  `business/class.informePagos.php`, permiso nuevo `alcaldia.informes.pagos`).
+  Nació como botones en Consultar; desde el 2026-10-14 vive en el módulo
+  Informes (ver la sección siguiente).
 - **El Excel se escribe a mano** (`business/class.xlsxSimple.php`, ZIP con
   `gzdeflate`): el contenedor local no trae la extensión zip y no se sabe si
   el PHP de cada Plesk la trae. Total con `SUBTOTAL(109, …)`, que sigue a los
@@ -1942,6 +1939,47 @@ Pedido de la Alcaldía de Paipa, definido con Diego:
   de un pago manual sale corto ("Ventanilla"). Prueba: `probar_046` (11).
 - Paipa eligió "Banco del pago en línea" = BANCO DE BOGOTÁ (AvalPay) el
   2026-10-14.
+
+### Informes, pago manual simple y valor de actividad a mano (2026-10-14, migración 047)
+
+Pedido de la Alcaldía de Paipa, definido con Diego:
+- **Módulo "Informes" del administrador** (`dist/informes.php`,
+  `core/informePagos.js`, menú debajo de Recaudo ICA, permiso
+  `alcaldia.informes.pagos`, que la 047 renombra "Informes de declaraciones";
+  `DESTINO_MENU` 14 y `PERMISO_PAGINA` en `core/menu.js`). Impuesto, estado
+  (Pagadas / Presentadas sin pagar / Presentadas y pagadas), año, período y
+  NIT o cédula opcional; PDF y Excel con fecha de presentación y estado. Los
+  botones de Consultar se quitaron: el contribuyente ya no descarga informes
+  (`extensiones/informePagos.php` exige el permiso y el "Ver" del módulo; la
+  pantalla solo ofrece los impuestos que el rol puede ver). Detalles de la
+  revisión del mismo día:
+  - Los filtros viajan por POST (el NIT o la cédula no queda en la dirección).
+  - `ind_NumeroIdentificacion` es INT: el NIT va SIN dígito de verificación
+    (la pantalla corta en el guion; el servidor rechaza con 400 lo que no
+    cabe). Con el DV pegado la consulta reventaba.
+  - "Sin pagar" = por cobrar: con valor > 0 y sin una corrección presentada
+    encima. En "Todas" esas salen como "Sin valor" y "Corregida". Un pago
+    `WOMPI_PRUEBA` cuenta como no pagado (no entró plata).
+  - En el ICA no va la columna "Mes" (siempre diciembre): así caben banco y
+    medio. El recaudo por archivo sale como medio "Recaudo".
+- **Pago manual simple**: solo fecha de pago, banco y soporte. El valor es el
+  total a pagar de la declaración (leído bajo el candado), el medio queda
+  `NO_INDICADO` (047 amplía `CK_pma_Medio`; sin la 047 se guarda `OTRO`) y el
+  texto del banco es solo su nombre. "Ya pagada" conserva el formulario
+  completo.
+- **Valor de actividad editable** en retención y autorretención
+  (`rea_ValorManual` / `aua_ValorManual`, 047): se calcula solo (base x
+  tarifa, a miles) y se puede escribir a mano; la fila queda marcada y
+  `_liquidar` no la pisa. Borrarlo, o cambiar la base o la actividad, vuelve
+  al calculado. Un valor a mano distinto cuenta en la huella (quita las
+  firmas) y la corrección lo copia. En pantalla, la casilla amarilla es la
+  escrita a mano.
+- Consultar del ICA abre en "Todos los años", como retención y
+  autorretención.
+- "Corregir" se apaga por rol en Usuarios y roles → Roles (no hizo falta
+  código).
+- Pruebas: `probar_banco_informes` (36), `probar_registro_manual` (49),
+  `probar_valor_manual` (18).
 
 ### PSE con AvalPay antes de producción en Paipa (2026-10-06)
 

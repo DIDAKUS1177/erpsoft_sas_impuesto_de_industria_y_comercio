@@ -421,6 +421,16 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 					</a>
 				</li>
 
+				<!-- INFORMES (2026-10-14): declaraciones presentadas, pagadas o las dos, en
+				     PDF o Excel, de todos los contribuyentes o de uno. Módulo propio del
+				     administrador (antes eran botones en Consultar). -->
+				<li class="dropdown" id="MInformes" data-permiso="alcaldia.informes.pagos">
+					<a id="ICA_Informes" onclick="menu.validarIngreso('alcaldia.informes.pagos',14)" class="dropdown-toggle no-arrow" style="cursor:pointer;" title="Informes de declaraciones en PDF o Excel">
+						<span class="micon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="17" x2="8" y2="13"/><line x1="12" y1="17" x2="12" y2="11"/><line x1="16" y1="17" x2="16" y2="15"/></svg></span>
+						<span class="mtext">Informes</span>
+					</a>
+				</li>
+
 				<!-- PARÁMETROS ICA: antes "Administración ICA", con un tercer nivel "Datos
 				     Básicos". Se aplana y se renombra para no tener dos "Configuración".
 				     "Municipio y bancos" es configuracion.php: EAN de recaudo y cuentas de los

@@ -6,13 +6,11 @@ require_once __DIR__ . '/class.bancosPago.php';
 require_once __DIR__ . '/class.registroManual.php';
 
 /**
- * Informe de declaraciones PAGADAS (pedido de la Alcaldía de Paipa,
- * 2026-10-13): NIT, contribuyente, año, período, número, fecha de pago, banco
- * y valor, para descargar en PDF o Excel (extensiones/informePagos.php).
- *
- * La Alcaldía con el permiso alcaldia.informes.pagos lo saca de todos los
- * contribuyentes; los demás, solo del contribuyente que pueden operar. Esa
- * regla la aplica quien llama; aquí solo se arma la consulta.
+ * Informe de declaraciones presentadas, pagadas o las dos (pedido de la
+ * Alcaldía de Paipa, 2026-10-13 y 14): NIT, contribuyente, año, período,
+ * número, fecha de presentación, estado, fecha de pago, banco y valores, para
+ * descargar en PDF o Excel desde el módulo Informes (extensiones/informePagos.php).
+ * Quién puede (alcaldia.informes.pagos) lo decide quien llama.
  *
  * Los pagos con llaves de PRUEBAS de Wompi (WOMPI_PRUEBA) no salen: no entró
  * plata y descuadrarían el total.
@@ -26,15 +24,16 @@ class InformePagos
     const CANALES = [
         'PSE'              => 'PSE',
         'WOMPI'            => 'Wompi',
-        'RECAUDO_BANCARIO' => 'Banco (recaudo)',
+        'RECAUDO_BANCARIO' => 'Recaudo',
         'MANUAL'           => 'Manual',
     ];
-    /** El medio de un pago manual, corto para la columna "Medio" (cabe completo en el PDF). */
+    /** El medio de un pago manual, corto para la columna "Medio" del PDF. */
     const MEDIOS_CORTOS = [
         'TRANSFERENCIA' => 'Transferencia',
         'CONSIGNACION'  => 'Consignación',
         'VENTANILLA'    => 'Ventanilla',
         'OTRO'          => 'Otro medio',
+        'NO_INDICADO'   => 'Manual',
     ];
 
     /** Columnas de año y período de cada módulo (del mapa fijo, nunca del usuario). */
@@ -62,11 +61,15 @@ class InformePagos
         return ((int) $tipo === 5 && $dv !== '') ? $numero . '-' . $dv : $numero;
     }
 
+    const ESTADOS = ['pagadas', 'sinpagar', 'todas'];
+
     /**
-     * Las pagadas del módulo.
+     * Las presentadas del módulo: pagadas, sin pagar o todas.
      *
-     * @param array $f anio (int|null), periodo (int|null), contribuyente (int|null = todos)
-     * @return array filas listas para pintar, en orden de fecha de pago
+     * @param array $f estado ('pagadas' | 'sinpagar' | 'todas'), anio (int|null),
+     *                 periodo (int|null), documento (int: NIT o cédula sin DV; null = todos)
+     * @return array filas listas para pintar: las pagadas por fecha de pago, las
+     *               demás por fecha de presentación
      */
     public static function filas($con, $clave, array $f)
     {
@@ -79,11 +82,29 @@ class InformePagos
         $conBanco  = BancosPago::hayColumna($con, $m);
         $conManual = RegistroManual::hayTablas($con);
 
-        $where  = ["ISNULL(d.{$m['pagado']}, 0) = 1", "d.{$m['estado']} = 2", "ISNULL(d.{$p}_RutaPago, '') <> 'WOMPI_PRUEBA'"];
+        $estado = in_array($f['estado'] ?? '', self::ESTADOS, true) ? $f['estado'] : 'pagadas';
+
+        // Pagada de verdad: un pago con llaves de PRUEBAS de Wompi no metió plata,
+        // así que esa declaración cuenta como sin pagar (antes se excluía entera).
+        $pagadaSql = "CASE WHEN ISNULL(d.{$m['pagado']}, 0) = 1 AND ISNULL(d.{$p}_RutaPago, '') <> 'WOMPI_PRUEBA' THEN 1 ELSE 0 END";
+        // Corregida: una corrección suya ya se presentó, así que esta ya no se cobra.
+        $colCorrige  = $m['clave'] === 'ica' ? 'dec_DeclaracionCorrige' : "{$p}_Corrige";
+        $corregidaSql = "CASE WHEN EXISTS (SELECT 1 FROM {$m['tabla']} x
+                                            WHERE x.{$colCorrige} = CAST(d.{$m['numero']} AS VARCHAR(30))
+                                              AND x.{$m['estado']} = 2) THEN 1 ELSE 0 END";
+
+        $where = ["d.{$m['estado']} = 2"];
+        if ($estado === 'pagadas')  { $where[] = "$pagadaSql = 1"; }
+        // Sin pagar = lo que falta cobrar: con valor y sin una corrección presentada encima.
+        if ($estado === 'sinpagar') { $where[] = "$pagadaSql = 0 AND ISNULL(d.{$m['valor']}, 0) > 0 AND $corregidaSql = 0"; }
         $params = [];
-        if (!empty($f['anio']))          { $where[] = "d.{$c['anio']} = ?";          $params[] = (int) $f['anio']; }
-        if (!empty($f['periodo']))       { $where[] = "d.{$c['periodo']} = ?";       $params[] = (int) $f['periodo']; }
-        if (!empty($f['contribuyente'])) { $where[] = "d.{$c['contribuyente']} = ?"; $params[] = (int) $f['contribuyente']; }
+        if (!empty($f['anio']))      { $where[] = "d.{$c['anio']} = ?";    $params[] = (int) $f['anio']; }
+        if (!empty($f['periodo']))   { $where[] = "d.{$c['periodo']} = ?"; $params[] = (int) $f['periodo']; }
+        // ind_NumeroIdentificacion es INT: el documento va como entero (sin DV).
+        if (!empty($f['documento'])) { $where[] = "c.ind_NumeroIdentificacion = ?"; $params[] = (int) $f['documento']; }
+        $orden = $estado === 'pagadas'
+            ? "d.{$p}_FechaPago, d.{$m['numero']}"
+            : "d.{$p}_FechaPresentacion, d.{$m['numero']}";
 
         $joinManual = $conManual
             ? "LEFT JOIN ind_pagos_manuales pm ON pm.pma_Modulo = '{$m['clave']}' AND pm.pma_IdDeclaracion = d.$pk"
@@ -96,6 +117,8 @@ class InformePagos
         $st = $con->consultar(
             "SELECT d.$pk AS id, d.{$m['numero']} AS numero, d.{$c['anio']} AS anio, d.{$c['periodo']} AS periodo,
                     CONVERT(VARCHAR(10), d.{$p}_FechaPago, 120) AS fechaPago,
+                    CONVERT(VARCHAR(10), d.{$p}_FechaPresentacion, 120) AS fechaPresentacion,
+                    $pagadaSql AS pagado, $corregidaSql AS corregida,
                     ISNULL(d.{$m['valor']}, 0) AS valorDeclarado, ISNULL(d.{$p}_ValorPago, 0) AS valorPagado,
                     $colBanco AS banco, d.{$p}_RutaPago AS ruta, $colMedio AS medio,
                     c.ind_NumeroIdentificacion AS doc, c.ind_DV AS dv, c.ind_IdTipoDocumento AS tipoDoc,
@@ -105,7 +128,7 @@ class InformePagos
                $joinBanco
                $joinManual
               WHERE " . implode(' AND ', $where) . "
-              ORDER BY d.{$p}_FechaPago, d.{$m['numero']}",
+              ORDER BY $orden",
             $params
         );
 
@@ -115,8 +138,12 @@ class InformePagos
                 (string) $r['ind_PrimerNombre'], (string) $r['ind_SegundoNombre'],
                 (string) $r['ind_PrimerApellido'], (string) $r['ind_SegundoApellido'],
             ]))));
-            $canal = self::CANALES[(string) $r['ruta']] ?? 'Sin dato';
-            if ((string) $r['ruta'] === 'MANUAL' && !empty($r['medio'])) {
+            $pagada = (int) $r['pagado'] === 1;
+            $estadoTxt = $pagada ? 'Pagada'
+                       : ((int) $r['corregida'] === 1 ? 'Corregida'
+                       : ((float) $r['valorDeclarado'] <= 0 ? 'Sin valor' : 'Sin pagar'));
+            $canal = $pagada ? (self::CANALES[(string) $r['ruta']] ?? 'Sin dato') : '';
+            if ($pagada && (string) $r['ruta'] === 'MANUAL' && !empty($r['medio'])) {
                 $canal = self::MEDIOS_CORTOS[$r['medio']] ?? $canal;
             }
             $filas[] = [
@@ -125,25 +152,27 @@ class InformePagos
                 'anio'           => (int) $r['anio'],
                 'periodo'        => self::nombrePeriodo($m['clave'], $r['periodo']),
                 'numero'         => (string) $r['numero'],
-                'fechaPago'      => (string) $r['fechaPago'],
-                'banco'          => trim((string) $r['banco']),
+                'fechaPresentacion' => (string) $r['fechaPresentacion'],
+                'estado'         => $estadoTxt,
+                'fechaPago'      => $pagada ? (string) $r['fechaPago'] : '',
+                'banco'          => $pagada ? trim((string) $r['banco']) : '',
                 'canal'          => $canal,
                 'valorDeclarado' => round((float) $r['valorDeclarado']),
-                'valorPagado'    => round((float) $r['valorPagado']),
+                'valorPagado'    => $pagada ? round((float) $r['valorPagado']) : 0,
             ];
         }
         return $filas;
     }
 
-    /** Nombre del contribuyente para el encabezado del informe. */
-    public static function nombreContribuyente($con, $id)
+    /** Nombre del contribuyente (por su documento) para el encabezado del informe. */
+    public static function nombrePorDocumento($con, $documento)
     {
         $r = $con->obnerFila($con->consultar(
-            "SELECT ind_NumeroIdentificacion AS doc, ind_DV AS dv, ind_IdTipoDocumento AS tipoDoc,
+            "SELECT TOP 1 ind_NumeroIdentificacion AS doc, ind_DV AS dv, ind_IdTipoDocumento AS tipoDoc,
                     ind_PrimerNombre, ind_SegundoNombre, ind_PrimerApellido, ind_SegundoApellido
-               FROM ind_contribuyentes WHERE ind_Id = ?", [(int) $id]
+               FROM ind_contribuyentes WHERE ind_NumeroIdentificacion = ? ORDER BY ind_Id", [(int) $documento]
         ));
-        if (!$r) { return ''; }
+        if (!$r) { return 'documento ' . $documento . ' (no registrado)'; }
         $nombre = trim(implode(' ', array_filter(array_map('trim', [
             (string) $r['ind_PrimerNombre'], (string) $r['ind_SegundoNombre'],
             (string) $r['ind_PrimerApellido'], (string) $r['ind_SegundoApellido'],
