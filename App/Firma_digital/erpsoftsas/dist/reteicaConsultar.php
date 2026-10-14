@@ -92,6 +92,8 @@
 									<th>N° Declaración</th>
 									<th>Estado</th>
 									<th>Tipo de declaración</th>
+									<th>Fecha pago</th>
+									<th>Banco</th>
 									<th style="text-align:right;">Total a pagar</th>
 									<th class="text-center" style="width:150px;">Acciones</th>
 								</tr>
@@ -131,6 +133,9 @@
 		<script src="../core/registroManual.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/retenciones.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/reteicaConsultar.js?v=<?php echo time(); ?>"></script>
+		<!-- Informe de declaraciones pagadas en PDF y Excel (2026-10-13). -->
+		<script src="../core/informePagos.js?v=<?php echo time(); ?>"></script>
+		<script>$(function () { InformePagos.montar({ modulo: 'reteica', cabecera: $('#tituloModulo').parent(), anio: '#filtroAnio', periodo: '#filtroPeriodo' }); });</script>
 		<!-- <script src="../core/Permisos.js"></script> -->
 	</div>	
 </body>

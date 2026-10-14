@@ -1160,6 +1160,9 @@ data-campo="sanciones" value="0">
 		<script src="../core/declaraciones.ui.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/geografia.js?v=<?php echo time(); ?>"></script>
 		<script src="../core/icaWebConsultar.js?v=<?php echo time(); ?>"></script>
+		<!-- Informe de declaraciones pagadas en PDF y Excel (2026-10-13). -->
+		<script src="../core/informePagos.js?v=<?php echo time(); ?>"></script>
+		<script>$(function () { InformePagos.montar({ modulo: 'ica', cabecera: '#ltsRol > .pd-20', anio: '#filtroAnioDecl' }); });</script>
 		<!-- <script src="../core/Permisos.js"></script> -->
         <script>
             const ID_USUARIO = <?php echo isset($_SESSION['IdUsuario']) ? $_SESSION['IdUsuario'] : (isset($_SESSION['usu_Id']) ? $_SESSION['usu_Id'] : 0); ?>;

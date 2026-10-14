@@ -59,7 +59,7 @@ class Configuracion {
 
     /** Campos y botones Guardar de los parámetros, según el candado (los bancos no lo llevan). */
     bloquearTablas() {
-        $('#tbodyParametros').find('input, button').prop('disabled', !this._desbloqueada);
+        $('#tbodyParametros').find('input, select, button').prop('disabled', !this._desbloqueada);
     }
 
     abrirClave(mensaje) {
@@ -158,7 +158,18 @@ class Configuracion {
                     const sensible = Number(p.par_Sensible) === 1;
                     const puesto   = Number(p.par_Puesto) === 1;
 
-                    const casilla = sensible
+                    // Un parámetro con lista (el banco de la pasarela, 045) es un desplegable.
+                    const opciones = Array.isArray(p.par_Opciones) ? p.par_Opciones : null;
+                    const casilla = opciones
+                        ? '<select class="form-control form-control-sm" id="par_' + Number(p.par_Id) + '">' +
+                              '<option value="">Sin elegir</option>' +
+                              opciones.map(function (o) {
+                                  return '<option value="' + self.escapeHtml(o.valor) + '"' +
+                                         (String(o.valor) === String(p.par_Valor || '') ? ' selected' : '') + '>' +
+                                         self.escapeHtml(o.texto) + '</option>';
+                              }).join('') +
+                          '</select>'
+                        : sensible
                         ? '<input type="password" class="form-control form-control-sm" ' +
                               'id="par_' + Number(p.par_Id) + '" value="" autocomplete="new-password" ' +
                               'placeholder="' + (puesto ? 'Escriba una nueva para cambiarla'

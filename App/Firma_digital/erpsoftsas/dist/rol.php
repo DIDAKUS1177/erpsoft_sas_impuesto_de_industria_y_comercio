@@ -119,10 +119,9 @@
 		padding: 12px 24px; background: #fff; border-top: 1px solid var(--erp-borde);
 		box-shadow: 0 -4px 14px rgba(0,0,0,.06); font-size: 13px;
 	}
-	/* En escritorio el menú lateral mide 280 px (dist/menu.php); oculto, nada. */
+	/* En escritorio el menú lateral (fijo, dist/menu.php) mide 280 px. */
 	@media (min-width: 1200px) {
-		.perm-barra { left: 280px; transition: left .2s ease; }
-		body.menu-oculto .perm-barra { left: 0; }
+		.perm-barra { left: 280px; }
 	}
 	.perm-barra .perm-conteo { font-weight: 600; color: var(--erp-texto); font-variant-numeric: tabular-nums; }
 	.perm-barra .perm-cambios { color: #a5680a; font-weight: 600; }

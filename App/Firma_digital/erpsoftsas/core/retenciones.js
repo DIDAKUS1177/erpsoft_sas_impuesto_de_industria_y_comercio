@@ -175,6 +175,12 @@ var Retenciones = (function () {
              + '</div></td></tr>';
     }
 
+    /** 'AAAA-MM-DD' -> 'DD/MM/AAAA'; "No aplica" sin fecha (o 1900-01-01), como el ICA. */
+    function fechaCorta(iso) {
+        var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+        return (m && m[1] !== '1900') ? m[3] + '/' + m[2] + '/' + m[1] : 'No aplica';
+    }
+
     function pesos(valor) {
         return '$ ' + NumerosCOP.formatear(NumerosCOP.deBaseDeDatos(valor));
     }
@@ -218,6 +224,7 @@ var Retenciones = (function () {
         return '<button class="' + cls + '" data-id="' + o.id + '" '
              + (o.numero ? 'data-numero="' + escapar(o.numero) + '" ' : '')
              + (o.valor !== undefined ? 'data-valor="' + Number(o.valor || 0) + '" ' : '')
+             + (o.historica !== undefined ? 'data-historica="' + (o.historica ? 1 : 0) + '" ' : '')
              + 'title="' + o.title + '">' + cuerpo + '</button>';
     }
 
@@ -289,9 +296,10 @@ var Retenciones = (function () {
             b += soportes(f, mod);
             // Deshacer un registro manual hecho por error (el servidor exige vía MANUAL).
             if (typeof RegistroManual !== 'undefined' && f.registro_manual && f.registro_manual.pagoManual) {
-                b += accBtn({ permiso: 'alcaldia.registro.anular', tipo: 'danger', icono: 'fa-undo', texto: 'Anular',
-                              title: 'Anular el registro manual (pide un motivo y queda constancia)',
-                              clase: 'js-anular-registro', id: f.id, numero: f.numero });
+                b += accBtn({ permiso: 'alcaldia.registro.anular', tipo: 'danger', icono: 'fa-trash', texto: 'Eliminar pago',
+                              title: 'Eliminar el pago manual (pide un motivo y queda constancia)',
+                              clase: 'js-anular-registro', id: f.id, numero: f.numero,
+                              historica: f.registro_manual.historica ? 1 : 0 });
             }
         } else if (estado === 'pendienteCont' || estado === 'firmada') {
             b = accBtn({ permiso: mod + '.editar', tipo: 'warning', icono: 'fa-pencil', texto: 'Editar',
@@ -346,7 +354,7 @@ var Retenciones = (function () {
             RegistroManual.pago(mod, $(this).data('id'), String($(this).data('numero') || ''), Number($(this).data('valor') || 0));
         });
         $tabla.on('click', '.js-anular-registro', function () {
-            RegistroManual.anular(mod, $(this).data('id'), String($(this).data('numero') || ''));
+            RegistroManual.anular(mod, $(this).data('id'), String($(this).data('numero') || ''), Number($(this).data('historica')) === 1);
         });
     }
 
@@ -712,7 +720,7 @@ var Retenciones = (function () {
             );
 
             if (!filas.length) {
-                $cuerpo.append(vacio(7,
+                $cuerpo.append(vacio(9,
                     'Aún no hay declaraciones presentadas',
                     'Cuando presente una declaración aparecerá aquí. Los borradores están en "Presentar Declaración".',
                     'fa-file-o'));
@@ -728,6 +736,9 @@ var Retenciones = (function () {
                   + '<td>' + escapar(f.numero) + '</td>'
                   + '<td>' + insignia(f) + '</td>'
                   + '<td>' + tipoDeclaracion(f, todas) + '</td>'
+                  // Fecha de pago y banco, como en el Consultar del ICA (2026-10-13).
+                  + '<td>' + fechaCorta(f.fechaPago) + '</td>'
+                  + '<td>' + escapar(f.bancoPago || 'No aplica') + '</td>'
                   + '<td style="text-align:right;">' + pesos(f.total) + '</td>'
                   + '<td class="text-center">' + accionesRetencion(f, cfg) + '</td>'
                   + '</tr>'

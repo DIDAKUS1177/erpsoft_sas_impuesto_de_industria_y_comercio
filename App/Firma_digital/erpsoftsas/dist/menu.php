@@ -146,11 +146,11 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 <!-- ========== HEADER PRINCIPAL ========== -->
 <div class="header">
 	<div class="header-left" style="display: flex; align-items: center;">
-		<!-- El escudo es el botón del menú en TODOS los anchos: en escritorio lo
-		     oculta/muestra y en ventanas angostas (< 1200 px) lo abre flotando. Hubo
+		<!-- El escudo es el botón del menú: en escritorio
+		     no hace nada (el menú es fijo desde el 2026-10-13) y en ventanas angostas (< 1200 px) lo abre flotando. Hubo
 		     un ☰ aparte para las angostas y el cliente pidió quitarlo (2026-09-24:
 		     "se ve tan amateur"). -->
-		<div id="btnMenu" role="button" tabindex="0" aria-label="Mostrar u ocultar el menú" style="display: flex; align-items: center; gap: 0.75rem; margin-left: 1rem; cursor: pointer; padding: 5px; border-radius: 6px; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='transparent'" title="Mostrar u ocultar el menú lateral">
+		<div id="btnMenu" role="button" tabindex="0" aria-label="Abrir el menú" style="display: flex; align-items: center; gap: 0.75rem; margin-left: 1rem; cursor: pointer; padding: 5px; border-radius: 6px; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='transparent'" title="Abrir el menú (en pantallas pequeñas)">
 			<img src="<?php echo MUNICIPIO_LOGO; ?>" alt="Escudo" style="width: 55px; height: 55px; border-radius: 4px; object-fit: contain;">
 			<div class="marca-texto">
 				<div class="marca-nombre" style="font-size: 14px; font-weight: 700; color: #FFFFFF; line-height: 1.2;"><?php echo MUNICIPIO_NOMBRE; ?></div>
@@ -1064,23 +1064,38 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
         };
     })();
 
-    /* ===== Mostrar / ocultar el menú lateral en escritorio =====
-       El menú arranca desplegado; si el usuario lo oculta se recuerda.
-       En móvil no se toca: ahí sigue mandando la clase .open del tema. */
+    /* ===== El menú lateral =====
+       En escritorio (>= 1200 px) queda FIJO: siempre visible y sin forma de
+       cerrarlo (pedido de la Alcaldía de Paipa, 2026-10-13, para los cuatro
+       municipios). Antes el escudo lo ocultaba, se recordaba en localStorage y
+       cualquier clic fuera del menú lo escondía: la gente lo perdía sin querer.
+       En ventanas angostas sigue flotando y lo abre el escudo (fijo taparía
+       la pantalla). */
     (function () {
 
         var ESCRITORIO = 1200;
-        var $cuerpo = $('body');
 
         function esEscritorio() {
             return $(window).width() >= ESCRITORIO;
         }
 
-        // Restaurar preferencia. Por defecto: oculto si prefieren auto-hide, pero
-        // usaremos el localStorage para recordar si lo abrieron.
-        if (localStorage.getItem('menuOculto') === '1') {
-            $cuerpo.addClass('menu-oculto');
+        // Quien lo dejó oculto con la versión anterior lo vuelve a ver.
+        $('body').removeClass('menu-oculto');
+        try { localStorage.removeItem('menuOculto'); } catch (e) { /* sin almacenamiento */ }
+
+        // En escritorio el escudo no hace nada: que no se anuncie como botón
+        // ni detenga el tabulador. En angosto sí lo es, y dice si está abierto.
+        function rolDelEscudo() {
+            var $e = $('#btnMenu');
+            if (esEscritorio()) {
+                $e.removeAttr('role tabindex title aria-label aria-expanded');
+            } else {
+                $e.attr({ role: 'button', tabindex: '0', title: 'Abrir el menú', 'aria-label': 'Abrir el menú',
+                          'aria-expanded': $('.left-side-bar').hasClass('open') ? 'true' : 'false' });
+            }
         }
+        rolDelEscudo();
+        $(window).on('resize', rolDelEscudo);
 
         $('#btnMenu').on('click', function (e) {
             // Ventana angosta: el menú flota sobre el contenido con el velo de
@@ -1092,21 +1107,15 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
                 var abrir = !$('.left-side-bar').hasClass('open');
                 $('.left-side-bar').toggleClass('open', abrir);
                 $('.mobile-menu-overlay').toggleClass('show', abrir);
+                $(this).attr('aria-expanded', abrir ? 'true' : 'false');
                 return;
             }
 
-            // El tema base tiene su propio handler sobre .menu-icon que activa
-            // .open y el velo .mobile-menu-overlay, pensados para móvil. En
-            // escritorio eso solo oscurece la pantalla, asi que se corta aqui.
-            // Este handler se registra antes que el del tema, por lo que
-            // stopImmediatePropagation() evita que aquel llegue a ejecutarse.
+            // En escritorio el menú es fijo: el escudo no hace nada. Se corta
+            // también el handler del tema, que activaría el velo oscuro móvil.
             e.stopImmediatePropagation();
             $('.left-side-bar').removeClass('open');
             $('.mobile-menu-overlay').removeClass('show');
-
-            var oculto = !$cuerpo.hasClass('menu-oculto');
-            $cuerpo.toggleClass('menu-oculto', oculto);
-            localStorage.setItem('menuOculto', oculto ? '1' : '0');
         });
 
         // En pantalla táctil la plantilla también cierra con touchstart, que
@@ -1124,18 +1133,6 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
             }
         });
 
-        // Ocultar menú automáticamente al hacer clic fuera (en el main-container)
-        $(document).on('click', function(e) {
-            if (esEscritorio() && !$cuerpo.hasClass('menu-oculto')) {
-                // Si el clic no fue dentro del menú ni en el botón superior
-                if (!$(e.target).closest('.left-side-bar, #btnMenu').length) {
-                    $cuerpo.addClass('menu-oculto');
-                    localStorage.setItem('menuOculto', '1');
-                }
-            }
-        });
-
-        $(window).on('resize', function() {});
     })();
 
 </script>
@@ -1471,10 +1468,9 @@ body.sidebar-shrink #btnMenuSidebar {
 	opacity: .75;
 }
 
-/* ---------- Ocultar / mostrar el menu en escritorio ----------
-   Por defecto el menu queda desplegado. El tema base solo sabe abrirlo
-   y cerrarlo en movil (clase .open); en escritorio el boton no hacia
-   nada. Estas reglas anaden el colapso real, recordado en localStorage. */
+/* ---------- El menu en escritorio: fijo ----------
+   Siempre desplegado y sin forma de cerrarlo (2026-10-13). El tema base solo
+   sabe abrirlo y cerrarlo en movil (clase .open); aqui se deja en su sitio. */
 @media (min-width: 1200px) {
 
 	/* style.css esconde el sidebar (left:-281px) dentro de un
@@ -1486,8 +1482,7 @@ body.sidebar-shrink #btnMenuSidebar {
 		transition: transform .2s ease;
 	}
 
-	/* La X de cerrar es para el overlay movil; en escritorio sobra,
-	   el boton del header ya hace esa funcion. */
+	/* La X de cerrar es para el overlay movil; en escritorio el menu es fijo. */
 	.left-side-bar .close-sidebar {
 		display: none !important;
 	}
@@ -1502,18 +1497,17 @@ body.sidebar-shrink #btnMenuSidebar {
 		display: none !important;
 	}
 
-	body.menu-oculto .left-side-bar {
-		transform: translateX(-100%);
-	}
-
-	body.menu-oculto .main-container {
-		padding-left: 20px !important;
+	/* Menú fijo (2026-10-13): en escritorio el escudo ya no lo oculta, así
+	   que no se ve como botón. */
+	#btnMenu {
+		cursor: default !important;
+		background: transparent !important;
 	}
 }
 
 /* ---------- Ventanas angostas: encabezado compacto ----------
    Por debajo de 1200 px el menú flota (plantilla: .left-side-bar.open) y lo
-   abre el mismo escudo (#btnMenu) que en escritorio lo oculta y lo muestra. */
+   abre el escudo (#btnMenu). En escritorio el menú es fijo y el escudo no hace nada. */
 #btnMenu:focus-visible {
 	outline: 2px solid rgba(255, 255, 255, .75);
 	outline-offset: 2px;

@@ -324,6 +324,14 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
                 $f['par_Puesto'] = (int) (trim((string) $f['par_Valor']) !== '');
             }
 
+            // El banco de la pasarela se elige de la lista de bancos (045).
+            if ($f['par_Clave'] === 'PASARELA_BANCO') {
+                require_once SERVER . '/business/class.bancosPago.php';
+                $f['par_Opciones'] = array_map(function ($b) {
+                    return ['valor' => (string) $b['id'], 'texto' => $b['nombre'] . ($b['cuenta'] !== '' ? ' (cuenta ' . $b['cuenta'] . ')' : '')];
+                }, \erpsoftsas\BancosPago::lista($con));
+            }
+
             $lista[] = $f;
         }
 
@@ -448,12 +456,34 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
             $valor = sprintf('%02d/%02d', $m[1], $m[2]);
         }
 
+        // El banco de la pasarela tiene que ser un banco activo del catálogo.
+        $bancoPasarela = null;
+        $bancoAnterior = null;
+        if ($par['par_Clave'] === 'PASARELA_BANCO') {
+            $antes = $con->obnerFila($con->consultar("SELECT par_Valor FROM conf_parametros WHERE par_Id = ?", [$id]));
+            $bancoAnterior = (int) ($antes['par_Valor'] ?? 0);
+        }
+        if ($par['par_Clave'] === 'PASARELA_BANCO' && $valor !== '') {
+            require_once SERVER . '/business/class.bancosPago.php';
+            $bancoPasarela = \erpsoftsas\BancosPago::activo($con, (int) $valor);
+            if (!$bancoPasarela) {
+                $this->_mensaje = 'Elija un banco activo de la lista.';
+                return [];
+            }
+        }
+
         $con->consultar(
             "UPDATE conf_parametros
                 SET par_Valor = ?, par_FechaActualizacion = GETDATE()
               WHERE par_Id = ?",
             [$valor, $id]
         );
+
+        // Los pagos en línea anteriores sin banco, o con el que estaba elegido,
+        // quedan con este (la entidad tiene una sola pasarela).
+        $completados = $bancoPasarela
+            ? \erpsoftsas\BancosPago::completarPagosEnLinea($con, $bancoPasarela['id'], $bancoAnterior)
+            : 0;
 
         /*
          * Queda constancia de quien cambio que: el EAN gobierna el recaudo de
@@ -470,6 +500,10 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
 
         $this->_ok = 1;
         $this->_mensaje = $sensible ? 'Clave actualizada' : 'Parámetro actualizado';
+        if ($completados > 0) {
+            $this->_mensaje .= '. ' . $completados . ($completados === 1 ? ' pago en línea anterior quedó' : ' pagos en línea anteriores quedaron')
+                             . ' con ' . $bancoPasarela['nombre'] . '.';
+        }
 
         // Un valor sensible tampoco vuelve en la respuesta.
         return $sensible ? ['par_Id' => $id] : ['par_Id' => $id, 'par_Valor' => $valor];

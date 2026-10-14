@@ -2208,6 +2208,8 @@ private function _crearCorreccion(){
         'dec_Id', 'dec_NumeroDeclaracion', 'dec_Estado', 'dec_FechaPresentacion',
         'dec_DeclaracionCorrige', 'dec_Pagado', 'dec_FechaPago', 'dec_ValorPago',
         'dec_BancoPago', 'dec_FechaRealPago', 'dec_RutaDeclaracion', 'dec_RutaPago',
+        // El banco del pago (migración 045): la corrección nace sin pagar.
+        'dec_IdBancoPago',
         // dec_AnioPago faltaba en esta lista: una correccion heredaba el año de
         // pago de la declaracion corregida, quedando con año de pago sin estar
         // pagada. Hasta ahora no se notaba porque nadie llenaba esa columna.

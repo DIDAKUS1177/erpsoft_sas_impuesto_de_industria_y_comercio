@@ -15,8 +15,10 @@ include_once SERVER . '/business/class.registroManual.php';
  *              número y fecha del papel + pago + dos PDF.
  *   funcion 2  pago manual de una declaración presentada
  *              (alcaldia.pagos.manual): pago + PDF del soporte.
- *   funcion 3  anular un registro manual hecho por error
+ *   funcion 3  "Eliminar pago": deshace un registro manual hecho por error
  *              (alcaldia.registro.anular): motivo obligatorio.
+ *   funcion 4  los bancos para elegir en el formulario (migración 045), a
+ *              quien puede registrar alguno de los dos.
  *
  * POST multipart: modulo (ica | reteica | autorreteica), id (el id interno de
  * la declaración), los datos del pago y los archivos "declaracion" y
@@ -37,7 +39,12 @@ class ControladorRegistroManual extends \erpsoftsas\Cabecera
         }
 
         $funcion = (int) ($_POST['funcion'] ?? 0);
-        $claves  = [1 => 'alcaldia.declaraciones.historicas', 2 => 'alcaldia.pagos.manual', 3 => 'alcaldia.registro.anular'];
+        $claves  = [
+            1 => ['alcaldia.declaraciones.historicas'],
+            2 => ['alcaldia.pagos.manual'],
+            3 => ['alcaldia.registro.anular'],
+            4 => ['alcaldia.declaraciones.historicas', 'alcaldia.pagos.manual'],
+        ];
         if (!isset($claves[$funcion])) {
             echo json_encode(['ok' => 0, 'mensaje' => 'Función no válida.', 'datos' => []]);
             return;
@@ -49,8 +56,9 @@ class ControladorRegistroManual extends \erpsoftsas\Cabecera
         }
         // Y gestionar contribuyentes: estas acciones son sobre declaraciones
         // ajenas. El panel lo exige como requisito; aquí no se da por hecho.
-        if (!PermisosRol::tiene($claves[$funcion]) || !PermisosRol::gestionaOtros()) {
-            $falta = PermisosRol::tiene($claves[$funcion]) ? 'alcaldia.contribuyentes.gestionar' : $claves[$funcion];
+        $tiene = PermisosRol::tieneAlguno($claves[$funcion]);
+        if (!$tiene || !PermisosRol::gestionaOtros()) {
+            $falta = $tiene ? 'alcaldia.contribuyentes.gestionar' : $claves[$funcion][0];
             echo json_encode(['ok' => 0, 'mensaje' => PermisosRol::mensaje($falta), 'datos' => []]);
             return;
         }
@@ -65,6 +73,12 @@ class ControladorRegistroManual extends \erpsoftsas\Cabecera
             $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
             if (!RegistroManual::hayTablas($con)) {
                 echo json_encode(['ok' => 0, 'mensaje' => 'Esta función aún no está instalada en este municipio (falta la migración 044).', 'datos' => []]);
+                return;
+            }
+
+            if ($funcion === 4) {
+                require_once SERVER . '/business/class.bancosPago.php';
+                echo json_encode(['ok' => 1, 'mensaje' => '', 'datos' => BancosPago::lista($con)]);
                 return;
             }
 

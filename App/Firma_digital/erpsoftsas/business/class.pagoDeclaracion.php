@@ -27,6 +27,8 @@ namespace erpsoftsas;
  *                         banco puede ser días después de la fecha de pago
  *     dec_ValorPago       lo que efectivamente entró
  *     dec_BancoPago       nombre del banco por el que entró
+ *     dec_IdBancoPago     ese banco en ind_bancos (migración 045; ver
+ *                         class.bancosPago.php)
  *     dec_AnioPago        año del pago. Sirve para cuadrar el recaudo por
  *                         vigencia sin tener que extraerlo de una fecha
  *     dec_RutaPago        por dónde entró: PSE o recaudo bancario. Sin esto
@@ -78,7 +80,8 @@ class PagoDeclaracion
      * @param  mixed  $con            conexión del proyecto
      * @param  int    $idDeclaracion
      * @param  array  $datos          valor, banco, via, y opcionalmente
-     *                                fechaPago ('Y-m-d' o 'Y-m-d H:i:s')
+     *                                fechaPago ('Y-m-d' o 'Y-m-d H:i:s') e
+     *                                idBanco (ind_bancos.ban_Id)
      * @param  array|null $m          descriptor del modulo (PseModulo::get);
      *                                si es null, ICA -asi el recaudo bancario y
      *                                cualquier llamada vieja siguen igual-. Los
@@ -121,6 +124,24 @@ class PagoDeclaracion
         $anio = (int) date('Y', strtotime($fechaPago));
 
         /*
+         * El ID del banco (migración 045): el que trae la llamada (recaudo por
+         * archivo, pago manual) o, en un pago en línea REAL, el de la pasarela
+         * (PASARELA_BANCO). Sin la columna no se escribe.
+         */
+        require_once __DIR__ . '/class.bancosPago.php';
+        $colBanco = '';
+        $params   = [$fechaPago, $datos['valor'] ?? 0, $banco, $anio, $via];
+        if (BancosPago::hayColumna($con, $m)) {
+            $idBanco = isset($datos['idBanco']) ? (int) $datos['idBanco'] : 0;
+            if ($idBanco <= 0 && in_array($via, [self::VIA_PSE, self::VIA_WOMPI], true)) {
+                $idBanco = (int) BancosPago::dePasarela($con);
+            }
+            $colBanco = ", {$p}_IdBancoPago = ?";
+            $params[] = $idBanco > 0 ? $idBanco : null;
+        }
+        $params[] = $idDeclaracion;
+
+        /*
          * La guarda de _Pagado hace la operación idempotente: la notificación
          * del banco y el retorno del usuario llegan casi a la vez y las dos
          * intentan aplicar el mismo pago. Sin ella, la segunda pisaría la fecha
@@ -142,9 +163,9 @@ class PagoDeclaracion
                     {$p}_ValorPago     = ?,
                     {$p}_BancoPago     = ?,
                     {$p}_AnioPago      = ?,
-                    {$p}_RutaPago      = ?
+                    {$p}_RutaPago      = ?$colBanco
               WHERE $pk = ? AND ISNULL({$p}_Pagado, 0) = 0 AND {$p}_Estado = 2",
-            [$fechaPago, $datos['valor'] ?? 0, $banco, $anio, $via, $idDeclaracion]
+            $params
         );
 
         $fila = $con->obnerFila($con->consultar(

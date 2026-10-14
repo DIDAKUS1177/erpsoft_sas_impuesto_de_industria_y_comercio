@@ -9,6 +9,12 @@
  *   RegistroManual.pago(modulo, id, numero, valor)
  *       Una declaración presentada queda pagada con un pago manual
  *       (transferencia, consignación...) y su soporte en PDF.
+ *   RegistroManual.anular(modulo, id, numero)
+ *       "Eliminar pago" (se llamó "Anular" hasta el 2026-10-13): deshace un
+ *       registro manual hecho por error, con motivo.
+ *
+ * El banco se elige de la lista de ind_bancos (migración 045): primero los que
+ * tienen cuenta recaudadora del municipio.
  *
  * El servidor (business/controller/class.registroManual.php) valida todo de
  * nuevo y exige los permisos alcaldia.declaraciones.historicas y
@@ -61,12 +67,46 @@ var RegistroManual = (function () {
              + campo('Valor pagado (pesos)', '<input type="text" name="valor" class="form-control" required inputmode="numeric" '
                    + 'placeholder="Ej. 1.250.000" value="' + esc(pesos(valor)) + '">', 'Lo que entró a la cuenta, con intereses si los hubo.', 4)
              + campo('Medio', '<select name="medio" class="form-control" required>' + opciones + '</select>', '', 4)
-             + campo('Banco', '<input type="text" name="banco" class="form-control" maxlength="60" placeholder="Ej. Bancolombia">', '', 6)
+             + campo('Banco', '<select name="idBanco" class="form-control" required><option value="">Cargando bancos…</option></select>',
+                     'Por el que entró la plata.', 6)
              + campo('Referencia o comprobante', '<input type="text" name="referencia" class="form-control" maxlength="60">', '', 6)
              // Alto fijo: la hoja de retención le da a los textarea un alto mínimo enorme.
              + campo('Observación', '<textarea name="observacion" class="form-control" rows="2" maxlength="500" '
                    + 'style="min-height:0;height:64px;"></textarea>', '', 12)
              + '</div>';
+    }
+
+    /*
+     * Los bancos, una vez por página. Los que tienen cuenta recaudadora (donde
+     * la entidad recibe) van primero y con su cuenta; los demás debajo.
+     */
+    var bancos = null;
+    function cargarBancos($m) {
+        var $sel = $m.find('select[name=idBanco]');
+        var pintar = function (lista) {
+            var propias = lista.filter(function (b) { return b.cuenta; });
+            var otras   = lista.filter(function (b) { return !b.cuenta; });
+            var op = function (b) {
+                return '<option value="' + Number(b.id) + '">' + esc(b.nombre) + (b.cuenta ? ' (cuenta ' + esc(b.cuenta) + ')' : '') + '</option>';
+            };
+            var html = '<option value="">Elija el banco</option>';
+            if (propias.length && otras.length) {
+                html += '<optgroup label="Cuentas del municipio">' + propias.map(op).join('') + '</optgroup>'
+                      + '<optgroup label="Otros bancos">' + otras.map(op).join('') + '</optgroup>';
+            } else {
+                html += lista.map(op).join('');
+            }
+            $sel.html(html);
+        };
+        if (bancos) { pintar(bancos); return; }
+        $.ajax({ url: URL, type: 'POST', dataType: 'json', global: false, data: { funcion: 4 } })
+            .done(function (r) {
+                if (r && Number(r.ok) === 1 && r.datos && r.datos.length) { bancos = r.datos; pintar(bancos); return; }
+                $sel.html('<option value="">' + esc((r && r.mensaje) || 'No hay bancos activos. Revise Municipio y bancos.') + '</option>');
+            })
+            .fail(function () {
+                $sel.html('<option value="">No se pudieron cargar los bancos. Cierre y vuelva a abrir.</option>');
+            });
     }
 
     function pdf(nombre, etiqueta, ayuda) {
@@ -125,6 +165,7 @@ var RegistroManual = (function () {
         // que la persona creyó cancelado.
         $m.on('hide.bs.modal', function (e) { if ($m.data('enviando')) { e.preventDefault(); } });
         $m.on('hidden.bs.modal', function () { $m.remove(); });
+        cargarBancos($m);
         $m.modal('show');
     }
 
@@ -185,20 +226,24 @@ var RegistroManual = (function () {
     }
 
     /**
-     * Deshace un registro manual hecho por error (permiso
+     * "Eliminar pago": deshace un registro manual hecho por error (permiso
      * alcaldia.registro.anular). El servidor decide qué se deshace: la ya
      * pagada vuelve a borrador; el pago manual se quita.
      */
-    function anular(modulo, id, numero) {
+    function anular(modulo, id, numero, historica) {
         swal({
             type: 'warning',
-            title: 'Anular el registro manual',
-            html: 'Declaración N° <b>' + esc(numero) + '</b>.<br>Si se registró <b>ya pagada</b>, vuelve a borrador; '
-                + 'si fue un <b>pago manual</b>, queda presentada sin pagar. Los PDF dejan de mostrarse y queda constancia.',
+            title: historica ? 'Eliminar el registro ya pagada' : 'Eliminar el pago manual',
+            html: 'Declaración N° <b>' + esc(numero) + '</b>.<br>'
+                + (historica
+                    ? 'Se registró <b>ya pagada</b>: al eliminar el pago <b>vuelve a borrador</b> (pierde también la presentación). '
+                    : 'Queda <b>presentada sin pagar</b>. ')
+                + 'Los PDF dejan de mostrarse y queda constancia.',
             input: 'textarea',
-            inputPlaceholder: 'Motivo de la anulación (obligatorio)',
+            inputPlaceholder: '¿Por qué se elimina? (obligatorio)',
             showCancelButton: true,
-            confirmButtonText: 'Anular',
+            confirmButtonText: 'Eliminar pago',
+            confirmButtonColor: '#DC2626',
             cancelButtonText: 'Cancelar',
             inputValidator: function (v) {
                 return new Promise(function (resolve) {
@@ -211,15 +256,15 @@ var RegistroManual = (function () {
                      data: { funcion: 3, modulo: modulo, id: id, motivo: String(r.value).trim() } })
                 .done(function (x) {
                     if (x && Number(x.ok) === 1) {
-                        swal({ type: 'success', title: 'Anulado', text: x.mensaje }).then(function () { location.reload(); });
+                        swal({ type: 'success', title: 'Pago eliminado', text: x.mensaje }).then(function () { location.reload(); });
                         return;
                     }
                     if (x && Number(x.sinSesion) === 1) { location.reload(); return; }
-                    swal({ type: 'error', title: 'No se anuló', text: (x && x.mensaje) || 'No se pudo anular. Intente de nuevo.' });
+                    swal({ type: 'error', title: 'No se eliminó', text: (x && x.mensaje) || 'No se pudo eliminar el pago. Intente de nuevo.' });
                 })
                 .fail(function () {
                     swal({ type: 'error', title: 'Sin respuesta del servidor',
-                           text: 'Recargue la lista antes de intentarlo de nuevo: la anulación pudo haberse guardado.' });
+                           text: 'Recargue la lista antes de intentarlo de nuevo: el pago pudo haberse eliminado.' });
                 });
         });
     }

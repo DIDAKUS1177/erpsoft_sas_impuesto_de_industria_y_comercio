@@ -1893,8 +1893,48 @@ papel, por transferencia) y (b) un pago manual de una declaración presentada.
   anula una ya pagada que tenga una corrección. Los PDF no se borran: quedan
   inactivos (`sop_Activo = 0`, `soporte.php` da 404) y lo anulado queda en
   `ind_registros_manuales_anulados` (quién, cuándo, motivo y los datos en JSON).
-- Suite: `probar_registro_manual` (40, por HTTP con sesión de Apache; correrla
+- Suite: `probar_registro_manual` (47, por HTTP con sesión de Apache; correrla
   como root, porque crea las sesiones con `su`).
+
+### Banco del pago, informe de pagadas y menú fijo (2026-10-13, migración 045)
+
+Pedido de la Alcaldía de Paipa, definido con Diego:
+- **El banco de cada pago por su ID** (`dec/ret/aut_IdBancoPago`, FK a
+  `ind_bancos`; `*_BancoPago` sigue con el texto de siempre). Lo pone
+  `PagoDeclaracion::registrar` venga por donde venga: el recaudo por archivo
+  manda el banco del archivo, el pago manual el que se elige, y PSE o Wompi
+  REAL el de `PASARELA_BANCO` (Municipio y bancos, desplegable; al elegirlo,
+  los pagos en línea viejos sin banco, o con el que estaba elegido antes,
+  quedan con él: así se corrige una elección equivocada). `WOMPI_PRUEBA` nunca
+  lleva banco. "CAJA" (00) y "PSE" (999) están en el catálogo para el recaudo
+  pero NO son bancos: no se ofrecen ni se aceptan. Todo está en
+  `business/class.bancosPago.php` y funciona sin la 045 (si la columna no
+  existe no se escribe). La 045 llenó por nombre SOLO los pagos del recaudo
+  por archivo y los manuales: en un PSE el texto guardado es el banco DEL QUE
+  PAGÓ, no por donde entró la plata (revisión del mismo día).
+- **Pago manual con banco de la lista** (función 4 de
+  `class.registroManual.php`): primero los que tienen cuenta recaudadora; el
+  servidor exige un banco ACTIVO (`pma_IdBanco`).
+- **"Anular" ahora es "Eliminar pago"** en pantalla y en el panel de Roles
+  (mismo permiso `alcaldia.registro.anular`, mismo funcionamiento).
+- **Informe de pagadas en PDF y Excel** (`extensiones/informePagos.php`,
+  datos en `business/class.informePagos.php`, botones en Consultar de los tres
+  módulos con `core/informePagos.js`): NIT, contribuyente, año, período,
+  número, fecha de pago, banco, medio, valor a pagar y valor pagado, con los
+  filtros de la pantalla. "Todos los contribuyentes" exige
+  `alcaldia.informes.pagos` (permiso nuevo de la 045); si no, solo el
+  contribuyente que se puede operar. Los pagos `WOMPI_PRUEBA` no salen.
+- **El Excel se escribe a mano** (`business/class.xlsxSimple.php`, ZIP con
+  `gzdeflate`): el contenedor local no trae la extensión zip y no se sabe si
+  el PHP de cada Plesk la trae. Total con `SUBTOTAL(109, …)`, que sigue a los
+  filtros que se apliquen en Excel; al imprimir, ajustado al ancho.
+- Consultar de retención y autorretención muestra "Fecha pago" y "Banco",
+  como el del ICA.
+- **Menú fijo en escritorio** (≥ 1200 px, los cuatro municipios): ya no se
+  oculta con el escudo ni con un clic fuera (`dist/menu.php`); la marca vieja
+  `menuOculto` de localStorage se borra. En pantallas angostas sigue flotando.
+- Suite: `probar_banco_informes` (37: banco por vía, el parámetro y su cambio,
+  el informe con permisos, Excel leído parte por parte).
 
 ### PSE con AvalPay antes de producción en Paipa (2026-10-06)
 

@@ -339,9 +339,10 @@ var DeclaracionesUI = (function () {
         // Deshacer un registro manual hecho por error (solo pagos MANUAL).
         if (typeof RegistroManual !== 'undefined' && d.registro_manual && d.registro_manual.pagoManual
             && d.dec_RutaPago === 'MANUAL') {
-            botones += accBtn({ permiso: 'alcaldia.registro.anular', tipo: 'danger', icono: 'fa-undo', texto: 'Anular',
-                                title: 'Anular el registro manual (pide un motivo y queda constancia)',
-                                onclick: 'RegistroManual.anular(&quot;ica&quot;, ' + d.dec_Id + ', ' + numeroJs + ')' });
+            botones += accBtn({ permiso: 'alcaldia.registro.anular', tipo: 'danger', icono: 'fa-trash', texto: 'Eliminar pago',
+                                title: 'Eliminar el pago manual (pide un motivo y queda constancia)',
+                                onclick: 'RegistroManual.anular(&quot;ica&quot;, ' + d.dec_Id + ', ' + numeroJs + ', '
+                                         + (d.registro_manual.historica ? 'true' : 'false') + ')' });
         }
 
         return envolverAcciones(botones + accionesSoportes(d.registro_manual, 'ica.ver'));

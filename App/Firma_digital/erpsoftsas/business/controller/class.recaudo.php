@@ -245,6 +245,7 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
                 $marcada = \erpsoftsas\PagoDeclaracion::registrar($con, $item['id'], [
                     'valor'     => $item['valor'],
                     'banco'     => $nombreBanco,
+                    'idBanco'   => $idBanco,
                     'via'       => \erpsoftsas\PagoDeclaracion::VIA_RECAUDO,
                     'fechaPago' => $fechaPago,
                 ], \erpsoftsas\PseModulo::get($item['modulo']));
@@ -645,7 +646,7 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
             }
 
             $archivo = $con->obnerFila($con->consultar(
-                "SELECT a.arc_Id, b.ban_Nombre
+                "SELECT a.arc_Id, b.ban_Id, b.ban_Nombre
                    FROM ind_archivos_asobancaria a
                    LEFT JOIN ind_bancos b ON b.ban_Id = a.arc_IdBanco
                   WHERE a.arc_Hash = ?",
@@ -681,6 +682,7 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
             $marcada = \erpsoftsas\PagoDeclaracion::registrar($con, $id, [
                 'valor'     => $valor,
                 'banco'     => (string) ($archivo['ban_Nombre'] ?? ''),
+                'idBanco'   => (int) ($archivo['ban_Id'] ?? 0),
                 'via'       => \erpsoftsas\PagoDeclaracion::VIA_RECAUDO,
                 'fechaPago' => $fechaPago,
             ], $m);

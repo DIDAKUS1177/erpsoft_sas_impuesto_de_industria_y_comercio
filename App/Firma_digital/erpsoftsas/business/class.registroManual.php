@@ -4,6 +4,7 @@ namespace erpsoftsas;
 
 require_once __DIR__ . '/class.pseModulo.php';
 require_once __DIR__ . '/class.pagoDeclaracion.php';
+require_once __DIR__ . '/class.bancosPago.php';
 
 /**
  * Lo que registra la Alcaldía a mano sobre una declaración (migración 044).
@@ -57,7 +58,7 @@ class RegistroManual
      * Borrador → presentada y pagada.
      *
      * @param array $datos   numeroPapel, fechaPresentacion, fechaPago, valor,
-     *                       medio, banco, referencia, observacion
+     *                       medio, idBanco, referencia, observacion
      * @param array $archivos 'declaracion' y 'soporte' de $_FILES
      * @return array ['ok' => bool, 'mensaje' => string]
      */
@@ -67,7 +68,7 @@ class RegistroManual
         $m  = PseModulo::get($clave);
         $id = (int) $id;
 
-        $pago = self::_leerPago($datos);
+        $pago = self::_leerPago($con, $datos);
         if (is_string($pago)) { return self::_no($pago); }
 
         $papel = trim((string) ($datos['numeroPapel'] ?? ''));
@@ -178,7 +179,7 @@ class RegistroManual
     /**
      * Presentada sin pagar → pagada, con su soporte.
      *
-     * @param array $datos fechaPago, valor, medio, banco, referencia, observacion
+     * @param array $datos fechaPago, valor, medio, idBanco, referencia, observacion
      */
     public static function registrarPago($con, $clave, $id, array $datos, array $archivos, $idUsuario)
     {
@@ -186,7 +187,7 @@ class RegistroManual
         $m  = PseModulo::get($clave);
         $id = (int) $id;
 
-        $pago = self::_leerPago($datos);
+        $pago = self::_leerPago($con, $datos);
         if (is_string($pago)) { return self::_no($pago); }
 
         $sop = self::_archivo($archivos['soporte'] ?? null, 'el soporte de pago');
@@ -256,8 +257,9 @@ class RegistroManual
     }
 
     /**
-     * Deshace un registro manual hecho por error (permiso
-     * alcaldia.registro.anular, Diego, 2026-10-09):
+     * "Eliminar pago" en pantalla (se llamó "Anular" hasta el 2026-10-13, a
+     * pedido de la Alcaldía): deshace un registro manual hecho por error
+     * (permiso alcaldia.registro.anular, Diego, 2026-10-09):
      *   - ya pagada (histórica): vuelve a BORRADOR, sin presentación ni pago;
      *   - pago manual: se quita el pago y queda presentada sin pagar.
      * Solo pagos con vía MANUAL: uno de PSE, Wompi o del banco no se toca
@@ -273,7 +275,7 @@ class RegistroManual
 
         $motivo = trim((string) $motivo);
         if (mb_strlen($motivo) < 10 || mb_strlen($motivo) > 500) {
-            return self::_no('Escriba el motivo de la anulación (entre 10 y 500 caracteres).');
+            return self::_no('Escriba por qué se elimina el pago (entre 10 y 500 caracteres).');
         }
 
         try {
@@ -287,12 +289,14 @@ class RegistroManual
                 "SELECT {$m['numero']} AS numero, {$p}_RutaPago AS ruta, ISNULL({$m['pagado']}, 0) AS pagado,
                         CONVERT(VARCHAR(19), {$p}_FechaPresentacion, 120) AS presentada,
                         CONVERT(VARCHAR(10), {$p}_FechaPago, 120) AS fechaPago, {$p}_ValorPago AS valorPago,
-                        {$p}_BancoPago AS bancoPago
+                        {$p}_BancoPago AS bancoPago"
+                      . (BancosPago::hayColumna($con, $m) ? ", {$p}_IdBancoPago AS idBancoPago" : '') . "
                    FROM {$m['tabla']} WHERE {$m['pk']} = ?", [$id]
             ));
             $pm  = $con->obnerFila($con->consultar(
                 "SELECT pma_Id, CONVERT(VARCHAR(10), pma_FechaPago, 120) AS fecha, pma_Valor AS valor, pma_Medio AS medio,
-                        pma_Banco AS banco, pma_Referencia AS referencia, pma_Observacion AS observacion, pma_IdUsuario AS usuario
+                        pma_Banco AS banco, pma_Referencia AS referencia, pma_Observacion AS observacion, pma_IdUsuario AS usuario"
+                      . (BancosPago::hayColumnaManual($con) ? ', pma_IdBanco AS idBanco' : '') . "
                    FROM ind_pagos_manuales WHERE pma_Modulo = ? AND pma_IdDeclaracion = ?", [$m['clave'], $id]
             ));
             $his = $con->obnerFila($con->consultar(
@@ -303,11 +307,11 @@ class RegistroManual
 
             if (!$fila || !$pm) {
                 $con->rollback();
-                return self::_no('Esta declaración no tiene un registro manual que anular.');
+                return self::_no('Esta declaración no tiene un pago manual que eliminar.');
             }
             if ((string) $fila['ruta'] !== PagoDeclaracion::VIA_MANUAL) {
                 $con->rollback();
-                return self::_no('El pago de esta declaración no es manual (entró por ' . ($fila['ruta'] ?: 'otra vía') . '): no se anula aquí.');
+                return self::_no('El pago de esta declaración no es manual (entró por ' . ($fila['ruta'] ?: 'otra vía') . '): no se elimina aquí.');
             }
 
             // Una ya pagada con corrección encima no vuelve a borrador: la
@@ -319,7 +323,7 @@ class RegistroManual
                 ));
                 if ((int) ($corr['n'] ?? 0) > 0) {
                     $con->rollback();
-                    return self::_no('Esta declaración tiene una corrección. Bórrela o anúlela primero.');
+                    return self::_no('Esta declaración tiene una corrección. Bórrela, o elimine su pago, primero.');
                 }
             }
 
@@ -329,6 +333,7 @@ class RegistroManual
                  UPDATE {$m['tabla']}
                     SET {$m['pagado']} = 0, {$p}_FechaPago = NULL, {$p}_FechaRealPago = NULL, {$p}_ValorPago = NULL,
                         {$p}_BancoPago = NULL, {$p}_AnioPago = NULL, {$p}_RutaPago = NULL"
+                      . (BancosPago::hayColumna($con, $m) ? ", {$p}_IdBancoPago = NULL" : '')
                       . ($his ? ", {$p}_Estado = NULL, {$p}_FechaPresentacion = NULL" : '') . "
                   WHERE {$m['pk']} = ? AND {$p}_RutaPago = ?;
                  SELECT @@ROWCOUNT AS n;",
@@ -336,7 +341,7 @@ class RegistroManual
             ));
             if ((int) ($hecho['n'] ?? 0) !== 1) {
                 $con->rollback();
-                return self::_no('La declaración cambió mientras se anulaba. Recargue la lista y revise su estado.');
+                return self::_no('La declaración cambió mientras se eliminaba el pago. Recargue la lista y revise su estado.');
             }
 
             $datos = ['declaracion' => $fila, 'pagoManual' => $pm, 'historica' => $his ?: null];
@@ -360,15 +365,15 @@ class RegistroManual
         } catch (\Throwable $e) {
             try { $con->rollback(); } catch (\Throwable $e2) { /* ya cerrada */ }
             error_log('[registro manual] anular ' . $m['clave'] . ' ' . $id . ': ' . $e->getMessage());
-            return self::_no('No se pudo anular: no quedó ningún cambio. Intente de nuevo.');
+            return self::_no('No se pudo eliminar el pago: no quedó ningún cambio. Intente de nuevo.');
         }
 
-        error_log(sprintf('[registro manual] usuario %d anuló el registro manual de la %s %d: %s',
+        error_log(sprintf('[registro manual] usuario %d eliminó el pago manual de la %s %d: %s',
             (int) $idUsuario, $m['clave'], $id, $motivo));
 
         return ['ok' => true, 'mensaje' => $his
-            ? 'Registro anulado: la declaración volvió a borrador.'
-            : 'Pago manual anulado: la declaración quedó presentada sin pagar.'];
+            ? 'Pago eliminado: la declaración, que se había registrado ya pagada, volvió a borrador.'
+            : 'Pago eliminado: la declaración quedó presentada sin pagar.'];
     }
 
     /* =====================================================================
@@ -461,8 +466,12 @@ class RegistroManual
         return $t;
     }
 
-    /** Los datos del pago, validados. Devuelve el arreglo o el mensaje de error. */
-    private static function _leerPago(array $d)
+    /**
+     * Los datos del pago, validados. Devuelve el arreglo o el mensaje de error.
+     * El banco se elige de la lista (ind_bancos, migración 045): llega su id y
+     * se guarda su nombre; antes era texto libre.
+     */
+    private static function _leerPago($con, array $d)
     {
         $fecha = self::_fecha($d['fechaPago'] ?? '', 'de pago');
         if (is_array($fecha)) { return $fecha['mensaje']; }
@@ -478,15 +487,18 @@ class RegistroManual
         $medio = strtoupper(trim((string) ($d['medio'] ?? '')));
         if (!isset(self::MEDIOS[$medio])) { return 'Elija el medio de pago.'; }
 
-        $banco = trim((string) ($d['banco'] ?? ''));
+        $idBanco = trim((string) ($d['idBanco'] ?? ''));
+        $banco   = preg_match('/^[0-9]{1,9}$/', $idBanco) ? BancosPago::activo($con, (int) $idBanco) : null;
+        if (!$banco) { return 'Elija el banco por el que entró el pago.'; }
+
         $ref   = trim((string) ($d['referencia'] ?? ''));
         $obs   = trim((string) ($d['observacion'] ?? ''));
-        if (mb_strlen($banco) > 60 || mb_strlen($ref) > 60) { return 'El banco y la referencia van hasta 60 caracteres.'; }
+        if (mb_strlen($ref) > 60) { return 'La referencia va hasta 60 caracteres.'; }
         if (mb_strlen($obs) > 500) { return 'La observación va hasta 500 caracteres.'; }
 
         return [
             'fecha' => $fecha, 'valor' => round((float) $txt, 2), 'medio' => $medio,
-            'banco' => $banco, 'referencia' => $ref, 'observacion' => $obs,
+            'banco' => $banco['nombre'], 'idBanco' => $banco['id'], 'referencia' => $ref, 'observacion' => $obs,
         ];
     }
 
@@ -588,21 +600,26 @@ class RegistroManual
         $marcada = PagoDeclaracion::registrar($con, $id, [
             'valor'     => $pago['valor'],
             'banco'     => $banco,
+            'idBanco'   => $pago['idBanco'],
             'via'       => PagoDeclaracion::VIA_MANUAL,
             'fechaPago' => $pago['fecha'],
         ], $m);
         if (!$marcada) { return false; }
 
+        $conBanco = BancosPago::hayColumnaManual($con);
+        $params = [$m['clave'], (int) $id, $pago['fecha'], $pago['valor'], $pago['medio'],
+                   // pma_Banco es VARCHAR(60); el nombre del catálogo admite más.
+                   $pago['banco'] !== '' ? mb_substr($pago['banco'], 0, 60) : null,
+                   $pago['referencia'] !== '' ? $pago['referencia'] : null,
+                   $pago['observacion'] !== '' ? $pago['observacion'] : null,
+                   $idSoporte ?: null, (int) $idUsuario];
+        if ($conBanco) { $params[] = (int) $pago['idBanco']; }
         $con->consultar(
             "INSERT INTO ind_pagos_manuales
                 (pma_Modulo, pma_IdDeclaracion, pma_FechaPago, pma_Valor, pma_Medio, pma_Banco,
-                 pma_Referencia, pma_Observacion, pma_IdSoporte, pma_IdUsuario)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [$m['clave'], (int) $id, $pago['fecha'], $pago['valor'], $pago['medio'],
-             $pago['banco'] !== '' ? $pago['banco'] : null,
-             $pago['referencia'] !== '' ? $pago['referencia'] : null,
-             $pago['observacion'] !== '' ? $pago['observacion'] : null,
-             $idSoporte ?: null, (int) $idUsuario]
+                 pma_Referencia, pma_Observacion, pma_IdSoporte, pma_IdUsuario" . ($conBanco ? ', pma_IdBanco' : '') . ")
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?" . ($conBanco ? ', ?' : '') . ")",
+            $params
         );
         return true;
     }
