@@ -29,6 +29,13 @@ class InformePagos
         'RECAUDO_BANCARIO' => 'Banco (recaudo)',
         'MANUAL'           => 'Manual',
     ];
+    /** El medio de un pago manual, corto para la columna "Medio" (cabe completo en el PDF). */
+    const MEDIOS_CORTOS = [
+        'TRANSFERENCIA' => 'Transferencia',
+        'CONSIGNACION'  => 'Consignación',
+        'VENTANILLA'    => 'Ventanilla',
+        'OTRO'          => 'Otro medio',
+    ];
 
     /** Columnas de año y período de cada módulo (del mapa fijo, nunca del usuario). */
     private static function columnas(array $m)
@@ -110,7 +117,7 @@ class InformePagos
             ]))));
             $canal = self::CANALES[(string) $r['ruta']] ?? 'Sin dato';
             if ((string) $r['ruta'] === 'MANUAL' && !empty($r['medio'])) {
-                $canal = RegistroManual::MEDIOS[$r['medio']] ?? $canal;
+                $canal = self::MEDIOS_CORTOS[$r['medio']] ?? $canal;
             }
             $filas[] = [
                 'documento'      => self::documento($r['doc'], $r['dv'], $r['tipoDoc']),

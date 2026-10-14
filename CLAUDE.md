@@ -1935,6 +1935,13 @@ Pedido de la Alcaldía de Paipa, definido con Diego:
   `menuOculto` de localStorage se borra. En pantallas angostas sigue flotando.
 - Suite: `probar_banco_informes` (37: banco por vía, el parámetro y su cambio,
   el informe con permisos, Excel leído parte por parte).
+- **Migración 046** (2026-10-14): los pagos manuales anteriores a la 045 con el
+  banco escrito a mano ("confiar", "BANCO BOGOTA") toman su banco si el
+  nombre del catálogo EMPIEZA por lo escrito, sin tildes, puntos, "DE" ni
+  "SA", y es UN solo banco (en Paipa quedaban tres). En el informe el medio
+  de un pago manual sale corto ("Ventanilla"). Prueba: `probar_046` (11).
+- Paipa eligió "Banco del pago en línea" = BANCO DE BOGOTÁ (AvalPay) el
+  2026-10-14.
 
 ### PSE con AvalPay antes de producción en Paipa (2026-10-06)
 
