@@ -5,6 +5,7 @@ namespace erpsoftsas;
 require_once __DIR__ . '/class.pseModulo.php';
 require_once __DIR__ . '/class.pagoDeclaracion.php';
 require_once __DIR__ . '/class.bancosPago.php';
+require_once __DIR__ . '/class.vencimientoICA.php';
 
 /**
  * Lo que registra la Alcaldía a mano sobre una declaración (migración 044).
@@ -208,6 +209,8 @@ class RegistroManual
         if ((int) $fila['estado'] !== 2) { return self::_no('Solo se registra el pago de una declaración presentada.'); }
         if ((int) $fila['pagado'] === 1) { return self::_no('Esa declaración ya figura como pagada.'); }
         if ((float) $fila['total'] <= 0) { return self::_no('Esta declaración no tiene valor a pagar.'); }
+        $intereses = self::_intereses($m, $fila, $pago['fecha'], $datos['intereses'] ?? '');
+        if (is_string($intereses)) { return self::_no($intereses); }
         // La fecha de pago es lo único que se escribe: antes de la presentación
         // casi siempre es un error de digitación (un año equivocado). Se acepta
         // solo confirmado, como en "Ya pagada".
@@ -250,8 +253,12 @@ class RegistroManual
                 self::_borrar($guardados);
                 return self::_no($tramite);
             }
-            // El valor es el total de la declaración, leído bajo el candado.
-            $pago['valor'] = round((float) $fila['total'], 2);
+            // El valor es el total de la declaración, leído bajo el candado, más
+            // los intereses de mora si los hubo (ICA vencida).
+            $pago['valor'] = round((float) $fila['total'], 2) + $intereses;
+            if ($intereses > 0) {
+                $pago['observacion'] = 'Intereses de mora: $ ' . number_format($intereses, 0, ',', '.');
+            }
             if ($pago['valor'] <= 0) {
                 $con->rollback();
                 self::_borrar($guardados);
@@ -450,6 +457,39 @@ class RegistroManual
             $r[(int) $f['id']]['soportes'][] = ['id' => (int) $f['sop'], 'tipo' => $f['tipo'], 'nombre' => $f['nombre']];
         }
         return $r;
+    }
+
+    /**
+     * Los intereses de mora del pago manual (Diego, 2026-10-15). Una ICA
+     * VENCIDA en la fecha de pago se paga con intereses (recibo y PSE ya lo
+     * hacen): la casilla aparece y lo escrito se suma al total. Sin vencer, o
+     * en retención y autorretención, no lleva (vacío o 0). Pesos enteros, como
+     * en el recibo (VencimientoICA::leerIntereses). Devuelve el valor o el
+     * mensaje de error.
+     */
+    private static function _intereses(array $m, array $fila, $fechaPago, $texto)
+    {
+        $texto = trim((string) $texto);
+        $valor = $texto === '' ? 0 : VencimientoICA::leerIntereses($texto);
+        if ($valor === null) { return 'Escriba los intereses de mora en pesos, sin centavos (0 si no se cobraron).'; }
+        if ($valor > 0 && !self::vencidaAlPagar($m, $fila['anio'] ?? null, $fechaPago)) {
+            return 'La declaración no estaba vencida en esa fecha de pago: no lleva intereses de mora.';
+        }
+        return (float) $valor;
+    }
+
+    /** ¿La ICA estaba vencida en la fecha de pago? Retención y autorretención aún no tienen fecha límite. */
+    public static function vencidaAlPagar(array $m, $anio, $fechaPago)
+    {
+        return $m['clave'] === 'ica' && VencimientoICA::diasDeMora((int) $anio, $fechaPago) > 0;
+    }
+
+    /** La fecha límite de la declaración (AAAA-MM-DD), para que la pantalla muestre la casilla; null si no tiene. */
+    public static function fechaLimite($con, $clave, $id)
+    {
+        if (!PseModulo::existe($clave) || PseModulo::get($clave)['clave'] !== 'ica') { return null; }
+        $fila = self::_fila($con, PseModulo::get($clave), (int) $id);
+        return $fila ? VencimientoICA::fechaLimite((int) $fila['anio']) : null;
     }
 
     /**
@@ -689,6 +729,7 @@ class RegistroManual
             "SELECT {$m['pk']} AS id, ISNULL({$p}_Estado, 0) AS estado, ISNULL({$m['pagado']}, 0) AS pagado,
                     ISNULL({$m['valor']}, 0) AS total,
                     CONVERT(VARCHAR(10), {$p}_FechaPresentacion, 120) AS presentada,
+                    " . ($m['clave'] === 'ica' ? 'dec_AnioDeclaracion' : "{$p}_Anio") . " AS anio,
                     {$p}_PSE_RequestId AS pse_req, {$p}_PSE_Estado AS pse_est
                FROM {$m['tabla']} WHERE {$m['pk']} = ?",
             [(int) $id]

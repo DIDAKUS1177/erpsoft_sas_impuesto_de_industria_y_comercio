@@ -60,7 +60,9 @@ var RegistroManual = (function () {
              + '</div>';
     }
 
-    /* El pago manual: fecha, banco y soporte. El valor se muestra, no se escribe. */
+    /* El pago manual: fecha, banco y soporte. El valor se muestra, no se escribe.
+       En una ICA vencida en la fecha de pago aparece además "Intereses de mora"
+       (Diego, 2026-10-15), que se suman al total (ver intereses() abajo). */
     function seccionPagoSimple(valor) {
         return '<h6 style="margin:6px 0 10px;font-weight:700;">El pago</h6>'
              + '<div class="form-row">'
@@ -68,8 +70,43 @@ var RegistroManual = (function () {
              + campo('Banco', '<select name="idBanco" class="form-control" required><option value="">Cargando bancos…</option></select>',
                      'Por el que entró la plata.', 6)
              + '</div>'
-             + '<p style="font-size:13px;color:#4B5563;margin:0 0 8px;">Valor que se registra: <b>$ ' + esc(pesos(valor) || '0')
-             + '</b> (el total a pagar de la declaración).</p>';
+             + '<div class="form-row js-intereses" style="display:none;">'
+             + campo('Intereses de mora pagados (pesos)', '<input type="text" name="intereses" class="form-control" inputmode="numeric" '
+                   + 'maxlength="13" placeholder="0" autocomplete="off">', '<span class="js-intereses-ayuda"></span>', 6)
+             + '</div>'
+             + '<p style="font-size:13px;color:#4B5563;margin:0 0 8px;">Valor que se registra: <b class="js-valor-registra">$ '
+             + esc(pesos(valor) || '0') + '</b> <span class="js-valor-detalle">(el total a pagar de la declaración)</span>.</p>';
+    }
+
+    /* Muestra la casilla de intereses si la fecha de pago es posterior a la fecha
+       límite (solo ICA) y mantiene al día el valor que se registra. */
+    function intereses(o, $m) {
+        if (o.historica || o.modulo !== 'ica') { return; }
+        var limite = null;
+        var $fecha = $m.find('[name=fechaPago]'), $int = $m.find('[name=intereses]'), $fila = $m.find('.js-intereses');
+        var actualizar = function () {
+            var vencida = !!limite && !!$fecha.val() && $fecha.val() > limite;
+            $fila.toggle(vencida);
+            if (!vencida) { $int.val(''); }
+            var extra = vencida ? (parseInt(String($int.val()).replace(/[^0-9]/g, ''), 10) || 0) : 0;
+            $m.find('.js-valor-registra').text('$ ' + (pesos((Number(o.valor) || 0) + extra) || '0'));
+            $m.find('.js-valor-detalle').text(extra > 0 ? '(el total de la declaración más los intereses)' : '(el total a pagar de la declaración)');
+        };
+        $fecha.on('change input', actualizar);
+        $int.on('input', function () {
+            var limpio = String($(this).val()).replace(/[^0-9.]/g, '');
+            if (limpio !== $(this).val()) { $(this).val(limpio); }
+            actualizar();
+        });
+        $.ajax({ url: URL, type: 'POST', dataType: 'json', global: false, data: { funcion: 5, modulo: o.modulo, id: o.id } })
+            .done(function (r) {
+                limite = (r && r.datos && r.datos.fechaLimite) || null;
+                if (limite) {
+                    var p = limite.split('-');
+                    $m.find('.js-intereses-ayuda').text('Venció el ' + p[2] + '/' + p[1] + '/' + p[0] + '. Escriba 0 si no se cobraron.');
+                }
+                actualizar();
+            });
     }
 
     function seccionPago(valor) {
@@ -179,6 +216,7 @@ var RegistroManual = (function () {
         $m.on('hide.bs.modal', function (e) { if ($m.data('enviando')) { e.preventDefault(); } });
         $m.on('hidden.bs.modal', function () { $m.remove(); });
         cargarBancos($m);
+        intereses(o, $m);
         $m.modal('show');
     }
 

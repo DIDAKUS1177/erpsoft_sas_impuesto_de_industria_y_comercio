@@ -1967,6 +1967,13 @@ Pedido de la Alcaldía de Paipa, definido con Diego:
   `NO_INDICADO` (047 amplía `CK_pma_Medio`; sin la 047 se guarda `OTRO`) y el
   texto del banco es solo su nombre. "Ya pagada" conserva el formulario
   completo.
+- **Intereses de mora en el pago manual** (Diego, 2026-10-15): en una ICA
+  VENCIDA en la fecha de pago (`VencimientoICA::diasDeMora > 0`) aparece la
+  casilla "Intereses de mora pagados" (la pantalla pide la fecha límite con la
+  función 5 del controlador y la muestra al elegir una fecha posterior). Se
+  suman al total en `ind_pagos_manuales.pma_Valor` y `*_ValorPago`, y quedan
+  anotados en `pma_Observacion` ("Intereses de mora: $ X"). Sin vencer, o en
+  retención y autorretención (sin fecha límite), no se aceptan.
 - **Valor de actividad editable** en retención y autorretención
   (`rea_ValorManual` / `aua_ValorManual`, 047): se calcula solo (base x
   tarifa, a miles) y se puede escribir a mano; la fila queda marcada y
@@ -1978,7 +1985,7 @@ Pedido de la Alcaldía de Paipa, definido con Diego:
   autorretención.
 - "Corregir" se apaga por rol en Usuarios y roles → Roles (no hizo falta
   código).
-- Pruebas: `probar_banco_informes` (40), `probar_registro_manual` (50),
+- Pruebas: `probar_banco_informes` (40), `probar_registro_manual` (54),
   `probar_valor_manual` (18).
 
 ### Recaudo: la referencia puede ser el documento del contribuyente (2026-10-15)
