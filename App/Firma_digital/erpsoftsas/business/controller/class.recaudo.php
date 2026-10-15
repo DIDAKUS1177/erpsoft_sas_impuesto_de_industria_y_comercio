@@ -415,7 +415,54 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
             }
 
             if (!$candidatas) {
-                $sinDeclaracion[] = ['referencia' => $ref, 'valor' => $d['valor']];
+                /*
+                 * LA REFERENCIA PUEDE SER EL DOCUMENTO DEL CONTRIBUYENTE.
+                 *
+                 * Cuando se paga en ventanilla sin el código de barras, el cajero
+                 * digita la cédula o el NIT (a veces con el DV pegado) y no el
+                 * número de la declaración: así llegó el archivo del Banco de
+                 * Bogotá de Paipa (2026-10-15), con el NIT del municipio en vez
+                 * del EAN en el lote. Se busca ese documento y, de ese
+                 * contribuyente, las declaraciones presentadas por el valor
+                 * EXACTO del pago. Nunca se aplica solo: va a "Revisar a mano" con
+                 * la sugerida y la Alcaldía la confirma (función 4).
+                 */
+                $porDoc = $this->_candidatasPorDocumento($con, $ref, $d['valor']);
+                if (!$porDoc['quien']) {
+                    $sinDeclaracion[] = ['referencia' => $ref, 'valor' => $d['valor']];
+                    continue;
+                }
+                if ($fechaArchivo !== null
+                    && $vistas[$clavePago] <= $this->_contarAplicados($porDoc['candidatas'], $d['valor'], $fechaArchivo)) {
+                    $yaPagadas[] = ['referencia' => $ref, 'valor' => $d['valor'], 'etiqueta' => 'este mismo pago ya estaba aplicado'];
+                    continue;
+                }
+                $pendDoc = array_values(array_filter($porDoc['candidatas'], function ($c) { return !$c['pagada']; }));
+                $pagDoc  = array_values(array_filter($porDoc['candidatas'], function ($c) { return $c['pagada']; }));
+                $nombrar = function ($c) { return $c['etiqueta'] . ' N° ' . $c['numero']; };
+                if ($pendDoc) {
+                    $revisar[] = [
+                        'referencia' => $ref,
+                        'valor'      => $d['valor'],
+                        'motivo'     => 'La referencia es el documento de ' . $porDoc['quien'] . ', no un número de declaración. '
+                                      . (count($pendDoc) === 1
+                                          ? 'Su ' . $nombrar($pendDoc[0]) . ' tiene exactamente ese valor.'
+                                          : 'Tiene ' . count($pendDoc) . ' declaraciones sin pagar por ese valor ('
+                                            . implode(', ', array_map($nombrar, $pendDoc)) . ').')
+                                      . ' Confírmelo con el comprobante del banco y aplíquelo aquí.',
+                        'candidatas' => $pendDoc,
+                    ];
+                    continue;
+                }
+                if ($pagDoc) {
+                    $yaPagadas[] = ['referencia' => $ref, 'valor' => $d['valor'],
+                                    'etiqueta' => 'documento de ' . $porDoc['quien'] . ': '
+                                                . implode(', ', array_map($nombrar, $pagDoc)) . ' con ese valor ya estaba pagada'];
+                    continue;
+                }
+                $sinDeclaracion[] = ['referencia' => $ref, 'valor' => $d['valor'],
+                                     'nota' => 'Es el documento de ' . $porDoc['quien']
+                                             . ', pero no tiene una declaración presentada por ese valor.'];
                 continue;
             }
 
@@ -540,7 +587,7 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
             if (!$this->_existeTabla($con, $m['tabla'])) { continue; }
             $p = $m['prefijo'];
             $stmt = $con->consultar(
-                "SELECT d.{$m['pk']} AS id, d.{$m['estado']} AS estado,
+                "SELECT d.{$m['pk']} AS id, d.{$m['numero']} AS numero, d.{$m['estado']} AS estado,
                         ISNULL(d.{$m['pagado']}, 0) AS pagado, d.{$m['valor']} AS total,
                         d.{$p}_RutaPago AS ruta, ISNULL(d.{$p}_ValorPago, 0) AS valorPago,
                         CONVERT(VARCHAR(10), d.{$p}_FechaPago, 23) AS fechaPago,
@@ -557,6 +604,7 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
                     'modulo'        => $clave,
                     'etiqueta'      => self::_etiqueta($clave),
                     'id'            => (int) $f['id'],
+                    'numero'        => (string) $f['numero'],
                     'presentada'    => (int) $f['estado'] === 2,
                     'pagada'        => (int) $f['pagado'] === 1,
                     'total'         => (float) $f['total'],
@@ -570,6 +618,81 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
             }
         }
         return $lista;
+    }
+
+    /**
+     * La referencia leída como documento del contribuyente (ver _analizar):
+     * tal cual, o sin su último dígito si es el DV de un NIT (tipo 5) que
+     * coincide. ind_NumeroIdentificacion es INT: lo que no cabe no se busca.
+     * Devuelve quién es ("NOMBRE (documento)") y, de ese contribuyente, las
+     * declaraciones PRESENTADAS por el valor exacto del pago, con la misma
+     * forma que _candidatas.
+     *
+     * @return array ['quien' => string|null, 'candidatas' => array]
+     */
+    private function _candidatasPorDocumento($con, $ref, $valor)
+    {
+        $vacio = ['quien' => null, 'candidatas' => []];
+        $ref = (string) $ref;
+        if (!ctype_digit($ref) || strlen($ref) < 4 || strlen($ref) > 11) { return $vacio; }
+
+        $variantes = [];
+        if (strlen($ref) <= 10 && (int) $ref <= 2147483647) { $variantes[] = [(int) $ref, null]; }
+        $sinDv = substr($ref, 0, -1);
+        if ((int) $sinDv > 0 && (int) $sinDv <= 2147483647) { $variantes[] = [(int) $sinDv, (int) substr($ref, -1)]; }
+
+        $contribuyentes = [];
+        foreach ($variantes as [$doc, $dv]) {
+            $st = $con->consultar(
+                "SELECT ind_Id, ind_NumeroIdentificacion AS doc,
+                        LTRIM(RTRIM(CONCAT(ind_PrimerNombre, ' ', ind_SegundoNombre, ' ', ind_PrimerApellido, ' ', ind_SegundoApellido))) AS nombre
+                   FROM ind_contribuyentes
+                  WHERE ind_NumeroIdentificacion = ?" . ($dv === null ? '' : ' AND ind_IdTipoDocumento = 5 AND ind_DV = ?'),
+                $dv === null ? [$doc] : [$doc, $dv]
+            );
+            while ($f = $con->obnerFila($st)) {
+                $contribuyentes[(int) $f['ind_Id']] = preg_replace('/\s+/', ' ', (string) $f['nombre']) . ' (' . $f['doc'] . ')';
+            }
+        }
+        if (!$contribuyentes) { return $vacio; }
+
+        $ids = implode(',', array_map('intval', array_keys($contribuyentes)));   // enteros: seguro interpolarlos
+        $lista = [];
+        foreach (\erpsoftsas\PseModulo::claves() as $clave) {
+            $m = \erpsoftsas\PseModulo::get($clave);
+            if (!$this->_existeTabla($con, $m['tabla'])) { continue; }
+            $p = $m['prefijo'];
+            $colC = $clave === 'ica' ? 'dec_IdContribuyente' : "{$p}_IdContribuyente";
+            $stmt = $con->consultar(
+                "SELECT d.{$m['pk']} AS id, d.{$m['numero']} AS numero, d.{$colC} AS c,
+                        ISNULL(d.{$m['pagado']}, 0) AS pagado, d.{$m['valor']} AS total,
+                        d.{$p}_RutaPago AS ruta, ISNULL(d.{$p}_ValorPago, 0) AS valorPago,
+                        CONVERT(VARCHAR(10), d.{$p}_FechaPago, 23) AS fechaPago
+                   FROM {$m['tabla']} d
+                  WHERE d.{$colC} IN ($ids) AND d.{$m['estado']} = 2
+                    AND ABS(ISNULL(d.{$m['valor']}, 0) - ?) < 0.005
+                  ORDER BY d.{$m['pk']}",
+                [round((float) $valor, 2)]
+            );
+            while ($f = $con->obnerFila($stmt)) {
+                $lista[] = [
+                    'modulo'        => $clave,
+                    'etiqueta'      => self::_etiqueta($clave),
+                    'id'            => (int) $f['id'],
+                    'numero'        => (string) $f['numero'],
+                    'presentada'    => true,
+                    'pagada'        => (int) $f['pagado'] === 1,
+                    'total'         => (float) $f['total'],
+                    'contribuyente' => $contribuyentes[(int) $f['c']] ?? '',
+                    'documento'     => '',
+                    'ruta'          => (string) $f['ruta'],
+                    'valorPago'     => (float) $f['valorPago'],
+                    'fechaPago'     => (string) $f['fechaPago'],
+                    'porDocumento'  => true,
+                ];
+            }
+        }
+        return ['quien' => implode(' / ', array_values($contribuyentes)), 'candidatas' => $lista];
     }
 
     /* ====================================================================
@@ -659,23 +782,30 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
                 return [];
             }
 
-            if ($this->_contarAplicados($this->_candidatas($con, $ref), $valor, $fechaPago) >= $lineas) {
+            // Por número de declaración o, si la referencia es un documento, la
+            // del contribuyente con ese valor exacto (lo mismo que se sugirió).
+            $cands = $this->_candidatas($con, $ref);
+            if (!$cands) { $cands = $this->_candidatasPorDocumento($con, $ref, $valor)['candidatas']; }
+
+            if ($this->_contarAplicados($cands, $valor, $fechaPago) >= $lineas) {
                 $con->rollback();
                 $this->_ok = 0;
                 $this->_mensaje = 'Ese pago ya se aplicó. No se hizo nada.';
                 return [];
             }
 
-            $dec = $con->obnerFila($con->consultar(
-                "SELECT {$m['pk']} AS id FROM {$m['tabla']}
-                  WHERE {$m['pk']} = ? AND {$m['numero']} = ?
-                    AND {$m['estado']} = 2 AND ISNULL({$m['pagado']}, 0) = 0",
-                [$id, $ref]
-            ));
+            $dec = null; $esDeEste = false;
+            foreach ($cands as $c) {
+                if ($c['modulo'] !== $clave || $c['id'] !== $id) { continue; }
+                $esDeEste = true;
+                if ($c['presentada'] && !$c['pagada']) { $dec = $c; }
+            }
             if (!$dec) {
                 $con->rollback();
                 $this->_ok = 0;
-                $this->_mensaje = 'Esa declaración ya no está presentada y sin pagar. Vuelva a cargar el archivo para ver el estado actual.';
+                $this->_mensaje = $esDeEste
+                    ? 'Esa declaración ya no está presentada y sin pagar. Vuelva a cargar el archivo para ver el estado actual.'
+                    : 'Esa declaración no corresponde a este pago: ni su número es la referencia, ni es del contribuyente de ese documento por ese valor.';
                 return [];
             }
 
@@ -714,7 +844,7 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
         }
 
         $this->_ok = 1;
-        $this->_mensaje = 'Pago aplicado a la ' . self::_etiqueta($clave) . ' N° ' . $ref . '.';
+        $this->_mensaje = 'Pago aplicado a la ' . self::_etiqueta($clave) . ' N° ' . $dec['numero'] . '.';
         return ['modulo' => $clave, 'id' => $id];
     }
 

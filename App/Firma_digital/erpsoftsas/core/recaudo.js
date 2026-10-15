@@ -54,13 +54,19 @@ function pintarFilas(idCuerpo, lista, columnas, vacio) {
 function botonAsignar(lista, i, c, cand) {
     // "Asignar pagos a mano" del panel de Roles: sin el, solo se ve la candidata.
     if (typeof erpPuede === 'function' && !erpPuede('alcaldia.recaudo.asignar')) {
-        return '<div class="small text-muted mb-1">Candidata: ' + escapar(cand.etiqueta) + ' '
+        return '<div class="small text-muted mb-1">Candidata: ' + escapar(cand.etiqueta) + numeroDe(cand) + ' '
              + escapar(cand.contribuyente || cand.documento || '') + ' (total ' + pesos(cand.total) + ')</div>';
     }
     return '<button type="button" class="btn btn-sm btn-outline-primary mb-1 js-asignar"'
          + ' data-lista="' + lista + '" data-i="' + i + '" data-c="' + c + '">'
-         + 'Aplicar a ' + escapar(cand.etiqueta) + ': ' + escapar(cand.contribuyente || cand.documento || '')
+         + 'Aplicar a ' + escapar(cand.etiqueta) + numeroDe(cand) + ': ' + escapar(cand.contribuyente || cand.documento || '')
          + ' (total ' + pesos(cand.total) + ')</button>';
+}
+
+/* El número de la declaración, cuando no es la misma referencia del archivo
+   (la referencia era el documento del contribuyente: ver class.recaudo.php). */
+function numeroDe(cand) {
+    return cand.numero ? ' N° ' + escapar(cand.numero) : '';
 }
 
 function pintarResumen(d) {
@@ -115,7 +121,9 @@ function pintarResumen(d) {
     ], 'Ninguna.');
 
     pintarFilas('tbodySinDeclaracion', d.sinDeclaracion, [
-        function (x) { return escapar(x.referencia); },
+        // La nota: la referencia era el documento de un contribuyente sin
+        // declaración presentada por ese valor (class.recaudo.php).
+        function (x) { return escapar(x.referencia) + (x.nota ? '<div class="small text-muted">' + escapar(x.nota) + '</div>' : ''); },
         function (x) { return pesos(x.valor); }
     ], 'Ninguna: todas las referencias del archivo existen en el sistema.');
 
@@ -187,7 +195,7 @@ $('#tbodyRevisar, #tbodyAplicables').on('click', '.js-asignar', function () {
     swal({
         title: '¿Aplicar este pago?',
         text: 'La referencia ' + fila.referencia + ' por ' + pesos(fila.valor) + ' quedará como pago de la '
-            + cand.etiqueta + ' de ' + (cand.contribuyente || cand.documento || 'este contribuyente')
+            + cand.etiqueta + (cand.numero ? ' N° ' + cand.numero : '') + ' de ' + (cand.contribuyente || cand.documento || 'este contribuyente')
             + '. Hágalo solo si el comprobante del banco lo confirma.',
         type: 'warning', showCancelButton: true,
         confirmButtonText: 'Sí, aplicar', cancelButtonText: 'Cancelar'

@@ -1978,8 +1978,31 @@ Pedido de la Alcaldía de Paipa, definido con Diego:
   autorretención.
 - "Corregir" se apaga por rol en Usuarios y roles → Roles (no hizo falta
   código).
-- Pruebas: `probar_banco_informes` (36), `probar_registro_manual` (49),
+- Pruebas: `probar_banco_informes` (40), `probar_registro_manual` (50),
   `probar_valor_manual` (18).
+
+### Recaudo: la referencia puede ser el documento del contribuyente (2026-10-15)
+
+Paipa subió dos archivos Asobancaria y uno no se reconocía. El del Banco
+Popular traía como referencia el NÚMERO de la declaración (pagada con el código
+de barras, EAN 7709998161047 en el lote). El del Banco de Bogotá traía la
+CÉDULA o el NIT del contribuyente (con el DV pegado: 8600029644), y en el lote
+el NIT del municipio en vez del EAN: se pagó en ventanilla sin el código de
+barras y el cajero digitó el documento. Los valores coincidían exactos con
+declaraciones presentadas de esos contribuyentes.
+- `class.recaudo.php::_candidatasPorDocumento`: si la referencia no es el
+  número de ninguna declaración, se lee como documento (tal cual, o sin el
+  último dígito si es el DV de un NIT tipo 5 que coincide; lo que no cabe en el
+  INT no se busca) y se proponen las declaraciones PRESENTADAS de ese
+  contribuyente por el valor EXACTO. Nunca se aplica solo: sin pagar va a
+  "Revisar a mano" con la sugerida; ya pagada, a "Ya estaban pagadas";
+  documento conocido sin valor que coincida, a "Sin declaración" con una nota.
+- La función 4 (asignar a mano) acepta la sugerida por documento, con las
+  mismas reglas: no se aplica dos veces (reenvío del archivo) y no se le puede
+  asignar a la declaración de otro contribuyente.
+- Lo de fondo sigue siendo pedirle al Banco de Bogotá que recaude con el código
+  de barras del formulario o del recibo.
+- Prueba: `probar_recaudo_documento` (14).
 
 ### PSE con AvalPay antes de producción en Paipa (2026-10-06)
 
