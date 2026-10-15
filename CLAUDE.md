@@ -2000,9 +2000,21 @@ declaraciones presentadas de esos contribuyentes.
 - La función 4 (asignar a mano) acepta la sugerida por documento, con las
   mismas reglas: no se aplica dos veces (reenvío del archivo) y no se le puede
   asignar a la declaración de otro contribuyente.
+- El DV se CALCULA (algoritmo de la DIAN, `DAO_Contribuyentes::digitoVerificacion`),
+  no se toma de `ind_DV`: muchos NIT del padrón tienen DV 0.
+- **Migración 048** (`ind_recaudo_aplicaciones`): qué línea del archivo
+  (referencia, valor, fecha) pagó qué declaración; la anotan "Aplicar" y la
+  función 4. Con ella, un pago por documento "ya aplicado" se cuenta por su
+  referencia: contando las declaraciones del contribuyente pagadas ese día por
+  ese valor, un pago por número de OTRA del mismo valor tapaba el pago por
+  cédula (revisión del mismo día). Sin la 048 se descuentan al menos las que
+  paga otra línea del archivo. La sugerida tampoco puede ser una que ya paga
+  otra línea por su número.
+- "Sin declaración" de un documento conocido dice qué tiene sin pagar (una ICA
+  vencida pagada con intereses no coincide con su total: va por pago manual).
 - Lo de fondo sigue siendo pedirle al Banco de Bogotá que recaude con el código
   de barras del formulario o del recibo.
-- Prueba: `probar_recaudo_documento` (14).
+- Prueba: `probar_recaudo_documento` (20).
 
 ### PSE con AvalPay antes de producción en Paipa (2026-10-06)
 

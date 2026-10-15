@@ -281,6 +281,14 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
                 ]
             );
 
+            // Qué línea pagó qué declaración (048).
+            $arc = $con->obnerFila($con->consultar("SELECT arc_Id FROM ind_archivos_asobancaria WHERE arc_Hash = ?", [$hash]));
+            foreach ($analisis['aplicables'] as $item) {
+                if (empty($item['aplicado'])) { continue; }
+                $this->_anotarAplicacion($con, (int) ($arc['arc_Id'] ?? 0), $item['referencia'], $item['valor'],
+                                         $fechaPago, $item['modulo'], $item['id']);
+            }
+
             $con->commit();
 
         } catch (\Throwable $e) {
@@ -433,11 +441,14 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
                     continue;
                 }
                 if ($fechaArchivo !== null
-                    && $vistas[$clavePago] <= $this->_contarAplicados($porDoc['candidatas'], $d['valor'], $fechaArchivo)) {
+                    && $vistas[$clavePago] <= $this->_yaAplicadosPorDocumento($con, $ref, $d['valor'], $fechaArchivo, $porDoc['candidatas'], $destinos)) {
                     $yaPagadas[] = ['referencia' => $ref, 'valor' => $d['valor'], 'etiqueta' => 'este mismo pago ya estaba aplicado'];
                     continue;
                 }
-                $pendDoc = array_values(array_filter($porDoc['candidatas'], function ($c) { return !$c['pagada']; }));
+                // Sin la que ya paga otra línea de este archivo (por su número).
+                $pendDoc = array_values(array_filter($porDoc['candidatas'], function ($c) use ($destinos) {
+                    return !$c['pagada'] && !isset($destinos[$c['modulo'] . ':' . $c['id']]);
+                }));
                 $pagDoc  = array_values(array_filter($porDoc['candidatas'], function ($c) { return $c['pagada']; }));
                 $nombrar = function ($c) { return $c['etiqueta'] . ' N° ' . $c['numero']; };
                 if ($pendDoc) {
@@ -460,9 +471,16 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
                                                 . implode(', ', array_map($nombrar, $pagDoc)) . ' con ese valor ya estaba pagada'];
                     continue;
                 }
+                // Una ICA vencida pagada con recibo + intereses no coincide con su
+                // total: se dicen las que tiene sin pagar, para el pago manual.
+                $otras = array_map(function ($c) {
+                    return $c['etiqueta'] . ' N° ' . $c['numero'] . ' ($' . number_format($c['total'], 0, ',', '.') . ')';
+                }, $porDoc['pendientes']);
                 $sinDeclaracion[] = ['referencia' => $ref, 'valor' => $d['valor'],
                                      'nota' => 'Es el documento de ' . $porDoc['quien']
-                                             . ', pero no tiene una declaración presentada por ese valor.'];
+                                             . ', pero no tiene una declaración presentada por ese valor.'
+                                             . ($otras ? ' Sin pagar tiene: ' . implode(', ', $otras)
+                                                         . '. Si el pago incluye intereses, regístrelo como pago manual.' : '')];
                 continue;
             }
 
@@ -620,6 +638,47 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
         return $lista;
     }
 
+    /** ¿Ya corrió la 048 (ind_recaudo_aplicaciones)? */
+    private function _hayAplicaciones($con)
+    {
+        return $this->_existeTabla($con, 'ind_recaudo_aplicaciones');
+    }
+
+    /** Anota qué línea del archivo pagó qué declaración (048). Sin la tabla, nada. */
+    private function _anotarAplicacion($con, $idArchivo, $ref, $valor, $fecha, $modulo, $id)
+    {
+        if (!$this->_hayAplicaciones($con) || $fecha === null) { return; }
+        $con->consultar(
+            "INSERT INTO ind_recaudo_aplicaciones
+                (rap_IdArchivo, rap_Referencia, rap_Valor, rap_FechaPago, rap_Modulo, rap_IdDeclaracion, rap_IdUsuario)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [$idArchivo ?: null, mb_substr((string) $ref, 0, 48), round((float) $valor, 2), $fecha, $modulo, (int) $id,
+             (int) ($_SESSION['id_usuario'] ?? 0) ?: null]
+        );
+    }
+
+    /**
+     * Cuántas veces ya se aplicó ESTE pago por documento (misma referencia,
+     * valor y fecha). Con la 048 se cuenta lo anotado; sin ella, las
+     * declaraciones del contribuyente pagadas por recaudo ese día por ese
+     * valor que no paga otra línea de este archivo (antes se contaban todas, y
+     * un pago por número de otra declaración del mismo valor tapaba este).
+     */
+    private function _yaAplicadosPorDocumento($con, $ref, $valor, $fecha, array $candidatas, array $destinos)
+    {
+        if ($this->_hayAplicaciones($con)) {
+            $f = $con->obnerFila($con->consultar(
+                "SELECT COUNT(*) AS n FROM ind_recaudo_aplicaciones
+                  WHERE rap_Referencia = ? AND rap_FechaPago = ? AND ABS(rap_Valor - ?) < 0.005",
+                [(string) $ref, $fecha, round((float) $valor, 2)]
+            ));
+            return (int) ($f['n'] ?? 0);
+        }
+        return $this->_contarAplicados(array_values(array_filter($candidatas, function ($c) use ($destinos) {
+            return !isset($destinos[$c['modulo'] . ':' . $c['id']]);
+        })), $valor, $fecha);
+    }
+
     /**
      * La referencia leída como documento del contribuyente (ver _analizar):
      * tal cual, o sin su último dígito si es el DV de un NIT (tipo 5) que
@@ -632,23 +691,30 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
      */
     private function _candidatasPorDocumento($con, $ref, $valor)
     {
-        $vacio = ['quien' => null, 'candidatas' => []];
+        $vacio = ['quien' => null, 'candidatas' => [], 'pendientes' => []];
         $ref = (string) $ref;
         if (!ctype_digit($ref) || strlen($ref) < 4 || strlen($ref) > 11) { return $vacio; }
 
+        // Tal cual, o sin el último dígito si es el DV de ese número: se calcula
+        // con el algoritmo de la DIAN (en el padrón muchos NIT tienen DV 0, y una
+        // cédula se digita a veces con el DV del RUT).
+        include_once SERVER . '/business/DAO/DAO_Contribuyentes.php';
         $variantes = [];
-        if (strlen($ref) <= 10 && (int) $ref <= 2147483647) { $variantes[] = [(int) $ref, null]; }
+        if (strlen($ref) <= 10 && (int) $ref <= 2147483647) { $variantes[] = (int) $ref; }
         $sinDv = substr($ref, 0, -1);
-        if ((int) $sinDv > 0 && (int) $sinDv <= 2147483647) { $variantes[] = [(int) $sinDv, (int) substr($ref, -1)]; }
+        if ((int) $sinDv > 0 && (int) $sinDv <= 2147483647
+            && \erpsoftsas\DAO_Contribuyentes::digitoVerificacion($sinDv) === (int) substr($ref, -1)) {
+            $variantes[] = (int) $sinDv;
+        }
 
         $contribuyentes = [];
-        foreach ($variantes as [$doc, $dv]) {
+        foreach ($variantes as $doc) {
             $st = $con->consultar(
                 "SELECT ind_Id, ind_NumeroIdentificacion AS doc,
                         LTRIM(RTRIM(CONCAT(ind_PrimerNombre, ' ', ind_SegundoNombre, ' ', ind_PrimerApellido, ' ', ind_SegundoApellido))) AS nombre
                    FROM ind_contribuyentes
-                  WHERE ind_NumeroIdentificacion = ?" . ($dv === null ? '' : ' AND ind_IdTipoDocumento = 5 AND ind_DV = ?'),
-                $dv === null ? [$doc] : [$doc, $dv]
+                  WHERE ind_NumeroIdentificacion = ?",
+                [$doc]
             );
             while ($f = $con->obnerFila($st)) {
                 $contribuyentes[(int) $f['ind_Id']] = preg_replace('/\s+/', ' ', (string) $f['nombre']) . ' (' . $f['doc'] . ')';
@@ -658,6 +724,7 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
 
         $ids = implode(',', array_map('intval', array_keys($contribuyentes)));   // enteros: seguro interpolarlos
         $lista = [];
+        $pendientes = [];
         foreach (\erpsoftsas\PseModulo::claves() as $clave) {
             $m = \erpsoftsas\PseModulo::get($clave);
             if (!$this->_existeTabla($con, $m['tabla'])) { continue; }
@@ -670,11 +737,17 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
                         CONVERT(VARCHAR(10), d.{$p}_FechaPago, 23) AS fechaPago
                    FROM {$m['tabla']} d
                   WHERE d.{$colC} IN ($ids) AND d.{$m['estado']} = 2
-                    AND ABS(ISNULL(d.{$m['valor']}, 0) - ?) < 0.005
                   ORDER BY d.{$m['pk']}",
-                [round((float) $valor, 2)]
+                []
             );
             while ($f = $con->obnerFila($stmt)) {
+                // Las de otro valor solo sirven para la nota (sin pagar y con valor).
+                if (abs((float) $f['total'] - round((float) $valor, 2)) >= 0.005) {
+                    if ((int) $f['pagado'] !== 1 && (float) $f['total'] > 0 && count($pendientes) < 6) {
+                        $pendientes[] = ['etiqueta' => self::_etiqueta($clave), 'numero' => (string) $f['numero'], 'total' => (float) $f['total']];
+                    }
+                    continue;
+                }
                 $lista[] = [
                     'modulo'        => $clave,
                     'etiqueta'      => self::_etiqueta($clave),
@@ -692,7 +765,7 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
                 ];
             }
         }
-        return ['quien' => implode(' / ', array_values($contribuyentes)), 'candidatas' => $lista];
+        return ['quien' => implode(' / ', array_values($contribuyentes)), 'candidatas' => $lista, 'pendientes' => $pendientes];
     }
 
     /* ====================================================================
@@ -785,9 +858,13 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
             // Por número de declaración o, si la referencia es un documento, la
             // del contribuyente con ese valor exacto (lo mismo que se sugirió).
             $cands = $this->_candidatas($con, $ref);
-            if (!$cands) { $cands = $this->_candidatasPorDocumento($con, $ref, $valor)['candidatas']; }
+            $porDocumento = !$cands;
+            if ($porDocumento) { $cands = $this->_candidatasPorDocumento($con, $ref, $valor)['candidatas']; }
 
-            if ($this->_contarAplicados($cands, $valor, $fechaPago) >= $lineas) {
+            $yaAplicados = $porDocumento
+                ? $this->_yaAplicadosPorDocumento($con, $ref, $valor, $fechaPago, $cands, [])
+                : $this->_contarAplicados($cands, $valor, $fechaPago);
+            if ($yaAplicados >= $lineas) {
                 $con->rollback();
                 $this->_ok = 0;
                 $this->_mensaje = 'Ese pago ya se aplicó. No se hizo nada.';
@@ -823,14 +900,16 @@ class ControladorRecaudo extends \erpsoftsas\Cabecera
                 return [];
             }
 
-            // Queda en el historial del archivo: quién lo asignó y a qué.
+            $this->_anotarAplicacion($con, (int) $archivo['arc_Id'], $ref, $valor, $fechaPago, $clave, $id);
+
+            // Queda en el historial del archivo: quién lo asignó y a qué declaración.
             $con->consultar(
                 "UPDATE ind_archivos_asobancaria
                     SET arc_TotalAplicados = arc_TotalAplicados + 1,
                         arc_TotalFallidos  = CASE WHEN arc_TotalFallidos > 0 THEN arc_TotalFallidos - 1 ELSE 0 END,
                         arc_Descripcion    = CONCAT(arc_Descripcion, N' | A mano: ', ?, N' a ', ?, N' (usuario ', ?, N')')
                   WHERE arc_Id = ?",
-                [$ref, self::_etiqueta($clave), (int) $_SESSION['id_usuario'], (int) $archivo['arc_Id']]
+                [$ref, self::_etiqueta($clave) . ' N° ' . $dec['numero'], (int) $_SESSION['id_usuario'], (int) $archivo['arc_Id']]
             );
 
             $con->commit();
