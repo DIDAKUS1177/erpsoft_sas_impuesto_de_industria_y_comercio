@@ -7,9 +7,9 @@
  *       presentó en papel y se pagó fuera de la plataforma. Pide el número y
  *       la fecha del papel, el pago y dos PDF (original y soporte).
  *   RegistroManual.pago(modulo, id, numero, valor)
- *       Una declaración presentada queda pagada con un pago manual: solo la
- *       fecha de pago, el banco y el soporte en PDF (Paipa, 2026-10-14); el
- *       valor es el total de la declaración.
+ *       Una declaración presentada queda pagada con un pago manual: solo las
+ *       fechas de presentación y de pago, el banco y el soporte en PDF (Paipa,
+ *       2026-10-14 y 15); el valor es el total de la declaración.
  *   RegistroManual.anular(modulo, id, numero)
  *       "Eliminar pago" (se llamó "Anular" hasta el 2026-10-13): deshace un
  *       registro manual hecho por error, con motivo.
@@ -60,13 +60,19 @@ var RegistroManual = (function () {
              + '</div>';
     }
 
-    /* El pago manual: fecha, banco y soporte. El valor se muestra, no se escribe.
-       En una ICA vencida en la fecha de pago aparece además "Intereses de mora"
-       (Diego, 2026-10-15), que se suman al total (ver intereses() abajo). */
+    /* El pago manual: fechas de presentación y de pago, banco y soporte. El valor
+       se muestra, no se escribe. La fecha de presentación (Juan, 2026-10-15)
+       llega llena con la de la plataforma y se cambia si se presentó en otra
+       fecha. En una ICA vencida en la fecha de pago aparece además "Intereses de
+       mora" (Diego, 2026-10-15), que se suman al total. Ver fechas() abajo. */
     function seccionPagoSimple(valor) {
         return '<h6 style="margin:6px 0 10px;font-weight:700;">El pago</h6>'
              + '<div class="form-row">'
+             + campo('Fecha de presentación', '<input type="date" name="fechaPresentacion" class="form-control" required max="' + hoy() + '">',
+                     '<span class="js-presentacion-ayuda">Cámbiela si se presentó en otra fecha.</span>', 6)
              + campo('Fecha de pago', '<input type="date" name="fechaPago" class="form-control" required max="' + hoy() + '">', '', 6)
+             + '</div>'
+             + '<div class="form-row">'
              + campo('Banco', '<select name="idBanco" class="form-control" required><option value="">Cargando bancos…</option></select>',
                      'Por el que entró la plata.', 6)
              + '</div>'
@@ -78,10 +84,17 @@ var RegistroManual = (function () {
              + esc(pesos(valor) || '0') + '</b> <span class="js-valor-detalle">(el total a pagar de la declaración)</span>.</p>';
     }
 
-    /* Muestra la casilla de intereses si la fecha de pago es posterior a la fecha
-       límite (solo ICA) y mantiene al día el valor que se registra. */
-    function intereses(o, $m) {
-        if (o.historica || o.modulo !== 'ica') { return; }
+    function fechaTexto(f) {
+        var p = String(f).split('-');
+        return p[2] + '/' + p[1] + '/' + p[0];
+    }
+
+    /* Llena la fecha de presentación con la de la plataforma (si nadie escribió
+       otra) y, en la ICA, muestra la casilla de intereses si la fecha de pago es
+       posterior a la fecha límite, manteniendo al día el valor que se registra. */
+    function fechas(o, $m) {
+        if (o.historica) { return; }
+        var ica = o.modulo === 'ica';
         var limite = null;
         var $fecha = $m.find('[name=fechaPago]'), $int = $m.find('[name=intereses]'), $fila = $m.find('.js-intereses');
         var actualizar = function () {
@@ -92,18 +105,34 @@ var RegistroManual = (function () {
             $m.find('.js-valor-registra').text('$ ' + (pesos((Number(o.valor) || 0) + extra) || '0'));
             $m.find('.js-valor-detalle').text(extra > 0 ? '(el total de la declaración más los intereses)' : '(el total a pagar de la declaración)');
         };
-        $fecha.on('change input', actualizar);
-        $int.on('input', function () {
-            var limpio = String($(this).val()).replace(/[^0-9.]/g, '');
-            if (limpio !== $(this).val()) { $(this).val(limpio); }
-            actualizar();
-        });
+        if (ica) {
+            $fecha.on('change input', actualizar);
+            $int.on('input', function () {
+                var limpio = String($(this).val()).replace(/[^0-9.]/g, '');
+                if (limpio !== $(this).val()) { $(this).val(limpio); }
+                actualizar();
+            });
+        }
+        // Lo que alguien empezó a escribir no se pisa con la respuesta (una fecha
+        // a medio escribir se lee vacía).
+        var $pre = $m.find('[name=fechaPresentacion]'), tocada = false;
+        $pre.one('input change', function () { tocada = true; });
+        var sinFecha = function () {
+            $m.find('.js-presentacion-ayuda').text('No se pudo traer la fecha de la plataforma: escríbala.');
+        };
         $.ajax({ url: URL, type: 'POST', dataType: 'json', global: false, data: { funcion: 5, modulo: o.modulo, id: o.id } })
+            .fail(sinFecha)
             .done(function (r) {
-                limite = (r && r.datos && r.datos.fechaLimite) || null;
+                if (!r || Number(r.ok) !== 1) { sinFecha(); return; }
+                var d = r.datos || {};
+                if (d.presentada) {
+                    if (!tocada && !$pre.val()) { $pre.val(d.presentada); }
+                    $m.find('.js-presentacion-ayuda').text('En la plataforma: ' + fechaTexto(d.presentada) + '. Cámbiela si se presentó en otra fecha.');
+                }
+                if (!ica) { return; }
+                limite = d.fechaLimite || null;
                 if (limite) {
-                    var p = limite.split('-');
-                    $m.find('.js-intereses-ayuda').text('Venció el ' + p[2] + '/' + p[1] + '/' + p[0] + '. Escriba 0 si no se cobraron.');
+                    $m.find('.js-intereses-ayuda').text('Venció el ' + fechaTexto(limite) + '. Escriba 0 si no se cobraron.');
                 }
                 actualizar();
             });
@@ -215,8 +244,13 @@ var RegistroManual = (function () {
         // que la persona creyó cancelado.
         $m.on('hide.bs.modal', function (e) { if ($m.data('enviando')) { e.preventDefault(); } });
         $m.on('hidden.bs.modal', function () { $m.remove(); });
+        // Si corrige una fecha, la confirmación de "pago anterior a la
+        // presentación" ya no aplica: se quita y se vuelve a revisar al enviar.
+        $m.on('change input', '[name=fechaPago], [name=fechaPresentacion]', function () {
+            $m.find('#rmConfirmaFechas').closest('.alert').remove();
+        });
         cargarBancos($m);
-        intereses(o, $m);
+        fechas(o, $m);
         $m.modal('show');
     }
 

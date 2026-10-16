@@ -558,6 +558,26 @@ class RitFirma
     }
 
     /**
+     * El funcionario de la casilla 31 ("Firma del Funcionario"), de Municipio y
+     * bancos (migración 049): ['nombre' => ..., 'cargo' => ...], '' si no está.
+     *
+     * Antes la casilla traía una imagen de firma, la misma en los cuatro
+     * municipios, y debajo el nombre y la cédula de quien firmó el RIT en la
+     * plataforma: casi siempre el propio contribuyente (Juan, Paipa,
+     * 2026-10-15: "¿por qué está saliendo el nombre del contribuyente?"). No
+     * entra en la huella: no es lo que firma el contribuyente, y cambiarlo no
+     * invalida las firmas ya hechas.
+     */
+    public static function funcionario()
+    {
+        include_once __DIR__ . '/class.parametros.php';
+        return [
+            'nombre' => (string) Parametros::valor('RIT_FUNCIONARIO_NOMBRE'),
+            'cargo'  => (string) Parametros::valor('RIT_FUNCIONARIO_CARGO'),
+        ];
+    }
+
+    /**
      * Primera fecha que traiga valor, como la imprime el formulario (dd-mm-aaaa).
      * 1900-01-01 es el "vacio" de SQL Server, no una fecha: se salta. Es la
      * funcion _fecha() que tenia ritActualizado.php; ahora la usan los dos.

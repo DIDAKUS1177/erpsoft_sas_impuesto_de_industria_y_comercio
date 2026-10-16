@@ -616,6 +616,8 @@ en Plesk habrían reventado con *"Unable to write file"*. Ya están aplanados
 (los originales quedaron como `*_ORIGINAL_con_alfa.png`). `escudo-paipa.png`
 **no** se aplanó porque la web lo usa sobre fondos de color: se generó
 `escudo-paipa-pdf.png` y los PDF la toman por `MUNICIPIO_LOGO_PDF`.
+(`firma_rit.png` ya no existe: el 2026-10-16 la casilla 31 pasó a nombre y
+cargo del funcionario, migración 049.)
 **Antes de dar por bueno un PDF nuevo, comprobar el byte 25 de cada PNG que
 imprima** (2 = RGB sin alfa, 6 = RGB+alfa).
 
@@ -2022,6 +2024,32 @@ declaraciones presentadas de esos contribuyentes.
 - Lo de fondo sigue siendo pedirle al Banco de Bogotá que recaude con el código
   de barras del formulario o del recibo.
 - Prueba: `probar_recaudo_documento` (20).
+
+### Fecha de presentación en el pago manual y funcionario del RIT (2026-10-16, migración 049)
+
+Pedido de Juan (Paipa, 2026-10-15), tres cosas:
+- **"Registrar pago manual" pide también la fecha de presentación.** Viene
+  llena con la de la plataforma (la función 5 del controlador ahora devuelve
+  `{presentada, fechaLimite}`) y se cambia si se presentó en otra fecha (sello
+  del banco, ventanilla). Se guarda en `ind_pagos_manuales.pma_FechaPresentacion`
+  y es la que sale en Informes (`COALESCE` con la de la declaración); la
+  `{p}_FechaPresentacion` de la declaración NO se toca (es la constancia de la
+  plataforma). El aviso "pago anterior a la presentación" (FECHAS) compara con
+  la escrita; si no llega (pantalla vieja en caché), con la de la plataforma.
+  Sin la 049 el campo se valida pero no se guarda.
+- **Casilla 31 del RIT ("Firma del Funcionario").** Traía la imagen de una
+  firma (`firma_rit.png`, la misma en los cuatro municipios) y, en NOMBRE y No.,
+  a quien firmó el RIT en la plataforma: casi siempre el contribuyente (71 de
+  83 RIT en Paipa). Ahora: nombre y cargo de los parámetros
+  `RIT_FUNCIONARIO_NOMBRE` / `RIT_FUNCIONARIO_CARGO` (Municipio y bancos),
+  `RitFirma::funcionario()`, en el PDF y en la pantalla; sin cédula. Vacíos,
+  la casilla queda en blanco para firmar a mano. La 049 los llena solo en
+  Paipa ("Juan Gabriel Suárez A", "Director de impuestos"). No entran en la
+  huella del RIT: cambiarlos no invalida firmas. La imagen se quitó del
+  repositorio (sigue en el historial de git).
+- **Corregir para contribuyentes**: se apaga en Roles, rol "Externos - ICA"
+  (sin código; el Administrador lo conserva).
+- Pruebas: `probar_registro_manual` (62), `probar_rit_funcionario` (12).
 
 ### PSE con AvalPay antes de producción en Paipa (2026-10-06)
 

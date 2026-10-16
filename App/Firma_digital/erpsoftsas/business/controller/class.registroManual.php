@@ -19,8 +19,9 @@ include_once SERVER . '/business/class.registroManual.php';
  *              (alcaldia.registro.anular): motivo obligatorio.
  *   funcion 4  los bancos para elegir en el formulario (migración 045), a
  *              quien puede registrar alguno de los dos.
- *   funcion 5  la fecha límite de la declaración (solo ICA), para mostrar la
- *              casilla de intereses de mora del pago manual.
+ *   funcion 5  las fechas del formulario del pago manual: la de presentación
+ *              en la plataforma (para llenar la casilla) y la fecha límite
+ *              (solo ICA), para mostrar la de intereses de mora.
  *
  * POST multipart: modulo (ica | reteica | autorreteica), id (el id interno de
  * la declaración), los datos del pago y los archivos "declaracion" y
@@ -85,9 +86,8 @@ class ControladorRegistroManual extends \erpsoftsas\Cabecera
                 return;
             }
             if ($funcion === 5) {
-                echo json_encode(['ok' => 1, 'mensaje' => '', 'datos' => [
-                    'fechaLimite' => RegistroManual::fechaLimite($con, (string) ($_POST['modulo'] ?? ''), (int) ($_POST['id'] ?? 0)),
-                ]]);
+                echo json_encode(['ok' => 1, 'mensaje' => '',
+                    'datos' => RegistroManual::fechasDe($con, (string) ($_POST['modulo'] ?? ''), (int) ($_POST['id'] ?? 0))]);
                 return;
             }
 

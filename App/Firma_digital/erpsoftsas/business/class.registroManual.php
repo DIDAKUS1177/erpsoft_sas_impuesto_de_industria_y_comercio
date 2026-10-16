@@ -186,11 +186,13 @@ class RegistroManual
     /**
      * Presentada sin pagar → pagada, con su soporte.
      *
-     * Pide solo la fecha de pago, el banco y el soporte (Paipa, 2026-10-14):
-     * el valor es el total a pagar de la declaración y el medio queda
-     * SIN_MEDIO. Lo demás que llegue se ignora.
+     * Pide solo la fecha de pago, el banco y el soporte (Paipa, 2026-10-14),
+     * y la fecha de presentación (2026-10-15, migración 049): el valor es el
+     * total a pagar de la declaración y el medio queda SIN_MEDIO. Lo demás que
+     * llegue se ignora. La fecha de presentación se guarda con el pago manual;
+     * la de la declaración no se toca.
      *
-     * @param array $datos fechaPago, idBanco
+     * @param array $datos fechaPago, fechaPresentacion, idBanco, intereses
      */
     public static function registrarPago($con, $clave, $id, array $datos, array $archivos, $idUsuario)
     {
@@ -211,11 +213,12 @@ class RegistroManual
         if ((float) $fila['total'] <= 0) { return self::_no('Esta declaración no tiene valor a pagar.'); }
         $intereses = self::_intereses($m, $fila, $pago['fecha'], $datos['intereses'] ?? '');
         if (is_string($intereses)) { return self::_no($intereses); }
-        // La fecha de pago es lo único que se escribe: antes de la presentación
-        // casi siempre es un error de digitación (un año equivocado). Se acepta
-        // solo confirmado, como en "Ya pagada".
-        if (!empty($fila['presentada']) && $pago['fecha'] < $fila['presentada'] && empty($datos['confirmaFechas'])) {
-            return self::_no('La fecha de pago es anterior a la presentación de la declaración (' . $fila['presentada']
+        // Un pago antes de la presentación (la escrita o, si no llegó, la de la
+        // plataforma) casi siempre es un error de digitación (un año
+        // equivocado). Se acepta solo confirmado, como en "Ya pagada".
+        $presentada = !empty($pago['presentacion']) ? $pago['presentacion'] : ($fila['presentada'] ?? null);
+        if (!empty($presentada) && $pago['fecha'] < $presentada && empty($datos['confirmaFechas'])) {
+            return self::_no('La fecha de pago es anterior a la fecha de presentación (' . $presentada
                            . '). Revísela; si es correcta, confírmelo.', 'FECHAS');
         }
         $tramite = self::_pagoEnLinea($con, $m, $id, $fila);
@@ -328,7 +331,8 @@ class RegistroManual
             $pm  = $con->obnerFila($con->consultar(
                 "SELECT pma_Id, CONVERT(VARCHAR(10), pma_FechaPago, 120) AS fecha, pma_Valor AS valor, pma_Medio AS medio,
                         pma_Banco AS banco, pma_Referencia AS referencia, pma_Observacion AS observacion, pma_IdUsuario AS usuario"
-                      . (BancosPago::hayColumnaManual($con) ? ', pma_IdBanco AS idBanco' : '') . "
+                      . (BancosPago::hayColumnaManual($con) ? ', pma_IdBanco AS idBanco' : '')
+                      . (self::hayFechaPresentacion($con) ? ', CONVERT(VARCHAR(10), pma_FechaPresentacion, 120) AS fechaPresentacion' : '') . "
                    FROM ind_pagos_manuales WHERE pma_Modulo = ? AND pma_IdDeclaracion = ?", [$m['clave'], $id]
             ));
             $his = $con->obnerFila($con->consultar(
@@ -484,12 +488,20 @@ class RegistroManual
         return $m['clave'] === 'ica' && VencimientoICA::diasDeMora((int) $anio, $fechaPago) > 0;
     }
 
-    /** La fecha límite de la declaración (AAAA-MM-DD), para que la pantalla muestre la casilla; null si no tiene. */
-    public static function fechaLimite($con, $clave, $id)
+    /**
+     * Las fechas que el formulario del pago manual necesita (AAAA-MM-DD o
+     * null): la de presentación en la plataforma, para llenar la casilla, y la
+     * fecha límite (solo ICA), para mostrar la de intereses de mora.
+     */
+    public static function fechasDe($con, $clave, $id)
     {
-        if (!PseModulo::existe($clave) || PseModulo::get($clave)['clave'] !== 'ica') { return null; }
-        $fila = self::_fila($con, PseModulo::get($clave), (int) $id);
-        return $fila ? VencimientoICA::fechaLimite((int) $fila['anio']) : null;
+        if (!PseModulo::existe($clave)) { return ['presentada' => null, 'fechaLimite' => null]; }
+        $m    = PseModulo::get($clave);
+        $fila = self::_fila($con, $m, (int) $id);
+        return [
+            'presentada'  => $fila && !empty($fila['presentada']) ? (string) $fila['presentada'] : null,
+            'fechaLimite' => ($fila && $m['clave'] === 'ica') ? VencimientoICA::fechaLimite((int) $fila['anio']) : null,
+        ];
     }
 
     /**
@@ -560,13 +572,21 @@ class RegistroManual
         $fecha = self::_fecha($d['fechaPago'] ?? '', 'de pago');
         if (is_array($fecha)) { return $fecha['mensaje']; }
 
-        // Pago manual: fecha y banco; valor (el total) y medio los pone quien llama.
+        // Pago manual: fechas y banco; valor (el total) y medio los pone quien llama.
         if ($simple) {
+            // La fecha de presentación (Juan, 2026-10-15) llega llena con la de
+            // la plataforma y se cambia si se presentó en otra fecha. Si no
+            // llega (pantalla vieja en caché), vale la de la plataforma.
+            $presentacion = null;
+            if (trim((string) ($d['fechaPresentacion'] ?? '')) !== '') {
+                $presentacion = self::_fecha($d['fechaPresentacion'], 'de presentación');
+                if (is_array($presentacion)) { return $presentacion['mensaje']; }
+            }
             $idBanco = trim((string) ($d['idBanco'] ?? ''));
             $banco   = preg_match('/^[0-9]{1,9}$/', $idBanco) ? BancosPago::activo($con, (int) $idBanco) : null;
             if (!$banco) { return 'Elija el banco por el que entró el pago.'; }
             return [
-                'fecha' => $fecha, 'valor' => 0, 'medio' => self::_sinMedio($con), 'simple' => true,
+                'fecha' => $fecha, 'presentacion' => $presentacion, 'valor' => 0, 'medio' => self::_sinMedio($con), 'simple' => true,
                 'banco' => $banco['nombre'], 'idBanco' => $banco['id'], 'referencia' => '', 'observacion' => '',
             ];
         }
@@ -705,6 +725,7 @@ class RegistroManual
         if (!$marcada) { return false; }
 
         $conBanco = BancosPago::hayColumnaManual($con);
+        $conPresentacion = !empty($pago['presentacion']) && self::hayFechaPresentacion($con);
         $params = [$m['clave'], (int) $id, $pago['fecha'], $pago['valor'], $pago['medio'],
                    // pma_Banco es VARCHAR(60); el nombre del catálogo admite más.
                    $pago['banco'] !== '' ? mb_substr($pago['banco'], 0, 60) : null,
@@ -712,14 +733,29 @@ class RegistroManual
                    $pago['observacion'] !== '' ? $pago['observacion'] : null,
                    $idSoporte ?: null, (int) $idUsuario];
         if ($conBanco) { $params[] = (int) $pago['idBanco']; }
+        if ($conPresentacion) { $params[] = $pago['presentacion']; }
         $con->consultar(
             "INSERT INTO ind_pagos_manuales
                 (pma_Modulo, pma_IdDeclaracion, pma_FechaPago, pma_Valor, pma_Medio, pma_Banco,
-                 pma_Referencia, pma_Observacion, pma_IdSoporte, pma_IdUsuario" . ($conBanco ? ', pma_IdBanco' : '') . ")
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?" . ($conBanco ? ', ?' : '') . ")",
+                 pma_Referencia, pma_Observacion, pma_IdSoporte, pma_IdUsuario"
+                 . ($conBanco ? ', pma_IdBanco' : '') . ($conPresentacion ? ', pma_FechaPresentacion' : '') . ")
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?" . ($conBanco ? ', ?' : '') . ($conPresentacion ? ', ?' : '') . ")",
             $params
         );
         return true;
+    }
+
+    /** ¿Ya corrió la 049 (fecha de presentación del pago manual)? Se cachea por petición. */
+    public static function hayFechaPresentacion($con)
+    {
+        static $hay = null;
+        if ($hay === null) {
+            $f = $con->obnerFila($con->consultar(
+                "SELECT COL_LENGTH('dbo.ind_pagos_manuales', 'pma_FechaPresentacion') AS n", []
+            ));
+            $hay = !empty($f['n']);
+        }
+        return $hay;
     }
 
     private static function _fila($con, array $m, $id)

@@ -726,7 +726,19 @@
 								<div style="border:1px solid #dee2e6; border-radius:4px; padding:14px; min-height:110px;">
 									<small class="text-muted d-block mb-2">31. Firma del Funcionario</small>
 									<div class="text-center">
-										<img src="../extensiones/tcpdf/pdf/img/firma_rit.png" style="height:46px;">
+										<?php
+										// Nombre y cargo del funcionario (Municipio y bancos, 049), como en el
+										// PDF del RIT; antes, la imagen de una firma (Juan, Paipa, 2026-10-15).
+										include_once SERVER . '/business/class.conexionSqlServer.php';
+										include_once SERVER . '/business/class.ritFirma.php';
+										$funcionarioRit = \erpsoftsas\RitFirma::funcionario();
+										if ($funcionarioRit['nombre'] !== '') {
+											echo '<b>' . htmlspecialchars($funcionarioRit['nombre'], ENT_QUOTES, 'UTF-8') . '</b>';
+											if ($funcionarioRit['cargo'] !== '') {
+												echo '<br><small class="text-muted">' . htmlspecialchars($funcionarioRit['cargo'], ENT_QUOTES, 'UTF-8') . '</small>';
+											}
+										}
+										?>
 									</div>
 								</div>
 							</div>

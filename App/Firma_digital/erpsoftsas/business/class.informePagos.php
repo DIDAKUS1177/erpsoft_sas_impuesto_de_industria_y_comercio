@@ -102,14 +102,19 @@ class InformePagos
         if (!empty($f['periodo']))   { $where[] = "d.{$c['periodo']} = ?"; $params[] = (int) $f['periodo']; }
         // ind_NumeroIdentificacion es INT: el documento va como entero (sin DV).
         if (!empty($f['documento'])) { $where[] = "c.ind_NumeroIdentificacion = ?"; $params[] = (int) $f['documento']; }
-        $orden = $estado === 'pagadas'
-            ? "d.{$p}_FechaPago, d.{$m['numero']}"
-            : "d.{$p}_FechaPresentacion, d.{$m['numero']}";
-
         $joinManual = $conManual
             ? "LEFT JOIN ind_pagos_manuales pm ON pm.pma_Modulo = '{$m['clave']}' AND pm.pma_IdDeclaracion = d.$pk"
             : '';
         $colMedio = $conManual ? 'pm.pma_Medio' : 'CAST(NULL AS VARCHAR(20))';
+        // La fecha de presentación escrita en el pago manual (049) manda sobre
+        // la de la plataforma: es la que la Alcaldía registró como real. Se
+        // ordena por la misma que se muestra.
+        $colPresentacion = ($conManual && RegistroManual::hayFechaPresentacion($con))
+            ? "COALESCE(pm.pma_FechaPresentacion, CAST(d.{$p}_FechaPresentacion AS DATE))"
+            : "d.{$p}_FechaPresentacion";
+        $orden = $estado === 'pagadas'
+            ? "d.{$p}_FechaPago, d.{$m['numero']}"
+            : "$colPresentacion, d.{$m['numero']}";
         $joinBanco = $conBanco ? "LEFT JOIN ind_bancos b ON b.ban_Id = d.{$p}_IdBancoPago" : '';
         $colBanco  = $conBanco ? "COALESCE(b.ban_Nombre, d.{$p}_BancoPago)" : "d.{$p}_BancoPago";
 
@@ -117,7 +122,7 @@ class InformePagos
         $st = $con->consultar(
             "SELECT d.$pk AS id, d.{$m['numero']} AS numero, d.{$c['anio']} AS anio, d.{$c['periodo']} AS periodo,
                     CONVERT(VARCHAR(10), d.{$p}_FechaPago, 120) AS fechaPago,
-                    CONVERT(VARCHAR(10), d.{$p}_FechaPresentacion, 120) AS fechaPresentacion,
+                    CONVERT(VARCHAR(10), $colPresentacion, 120) AS fechaPresentacion,
                     $pagadaSql AS pagado, $corregidaSql AS corregida,
                     ISNULL(d.{$m['valor']}, 0) AS valorDeclarado, ISNULL(d.{$p}_ValorPago, 0) AS valorPagado,
                     $colBanco AS banco, d.{$p}_RutaPago AS ruta, $colMedio AS medio,

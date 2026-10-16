@@ -370,12 +370,6 @@ $esc = function ($v) {
 };
 
 /* ---------------------------------------------------------------------------
-   El usuario que tramita el RIT, para la casilla 31.
-
-   Se prefiere el firmante sobre el de la sesion: si el formulario ya esta
-   firmado, quien lo tramito es quien firmo, aunque hoy lo imprima otro.
-   --------------------------------------------------------------------------- */
-/* ---------------------------------------------------------------------------
    Los documentos adjuntos, para que el formulario diga cuales se aportaron.
 
    El cliente pregunto el 2026-09-01 «¿donde quedan los archivos que se suben?,
@@ -396,31 +390,8 @@ $listaAnexos = \erpsoftsas\RitFirma::documentosImpresos($con, (int) $row['ind_Id
 
 $anexosTexto = $listaAnexos ? $esc(implode(' · ', $listaAnexos)) : 'Ninguno';
 
-$usuarioTramite = ['nombre' => '', 'documento' => ''];
-
-$idUsuarioTramite = $firmaRit['rif_IdUsuario'] ?? ($_SESSION['id_usuario'] ?? null);
-
-if ($idUsuarioTramite) {
-    $filaUsuario = $con->obnerFila($con->consultar(
-        "SELECT usu_Nombres, usu_Apellidos, usu_NumeroDocumento
-           FROM conf_usuarios WHERE usu_Id = ?",
-        [(int) $idUsuarioTramite]
-    ));
-
-    if ($filaUsuario) {
-        $usuarioTramite['nombre'] = trim(
-            (string) ($filaUsuario['usu_Nombres'] ?? '') . ' ' .
-            (string) ($filaUsuario['usu_Apellidos'] ?? '')
-        );
-        $usuarioTramite['documento'] = (string) ($filaUsuario['usu_NumeroDocumento'] ?? '');
-    }
-}
-
-// Respaldo: si el usuario no esta en conf_usuarios -no deberia pasar-, al
-// menos el nombre que quedo guardado con la firma, antes que una casilla vacia.
-if ($usuarioTramite['nombre'] === '' && !empty($firmaRit['rif_NombreUsuario'])) {
-    $usuarioTramite['nombre'] = (string) $firmaRit['rif_NombreUsuario'];
-}
+// El funcionario de la casilla 31 (ver 'nombre_funcionario' mas abajo).
+$funcionarioRit = \erpsoftsas\RitFirma::funcionario();
 
 // Lo que el papel toma del establecimiento (razon social de respaldo, matricula,
 // fechas, direccion y telefono de la actividad). Sale de la MISMA funcion que la
@@ -594,9 +565,16 @@ $d = [
  * De conf_usuarios se toman nombre COMPLETO y numero de documento, porque
  * ind_rit_firmas solo guarda rif_NombreUsuario y ahi cabe unicamente el
  * nombre de pila -medido: la firma del contribuyente 30 dice solo «Prueba»-.
+ *
+ * 2026-10-15 (Juan, Paipa): eso dejaba al CONTRIBUYENTE como funcionario en
+ * casi todos los RIT (71 de 83 los firmo el propio contribuyente). La casilla
+ * es del funcionario de la Alcaldia: nombre y cargo de Municipio y bancos
+ * (RitFirma::funcionario, migracion 049), sin cedula. Vacios, queda en blanco
+ * para firmar a mano.
  */
-'nombre_funcionario' => $esc($usuarioTramite['nombre']),
-'cc_funcionario' => $esc($usuarioTramite['documento']),
+'nombre_funcionario' => $esc($funcionarioRit['nombre']),
+'cargo_funcionario' => $esc($funcionarioRit['cargo']),
+'cc_funcionario' => '',
 
 
 // CONTADOR
@@ -1287,8 +1265,13 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 </td>
 <td width="50%">
 <div align="left"><b>31. Firma del Funcionario</b></div>
-<div align="center"><img src="tcpdf/pdf/img/firma_rit.png" width="84" height="28"><br>
-<span style="font-size:6px;">&nbsp;</span></div>
+<div align="center">'.
+/* Nombre y cargo del funcionario en vez de la imagen de una firma (Juan,
+   Paipa, 2026-10-15). Sin funcionario configurado, el espacio para firmar. */
+($d['nombre_funcionario'] !== ''
+    ? '<br><b>'.$d['nombre_funcionario'].'</b>'.($d['cargo_funcionario'] !== '' ? '<br>'.$d['cargo_funcionario'] : '').'<br>'
+    : '<br><br><br>').
+'</div>
 </td>
 </tr>
 
@@ -1309,7 +1292,7 @@ FORMATO DE INSCRIPCION Y/O NOVEDADES DE CONTRIBUYENTES
 <td width="20%">No. '.$d['cc_representante'].'</td>
 
 <td width="7%">CC</td>
-<td width="3%">X</td>
+<td width="3%">'.($d['cc_funcionario'] !== '' ? 'X' : '').'</td>
 <td width="7%">CE</td>
 <td width="3%"></td>
 <td width="7%">OTRO</td>
