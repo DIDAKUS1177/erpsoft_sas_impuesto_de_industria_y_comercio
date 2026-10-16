@@ -2047,8 +2047,10 @@ Pedido de Juan (Paipa, 2026-10-15), tres cosas:
   Paipa ("Juan Gabriel Suárez A", "Director de impuestos"). No entran en la
   huella del RIT: cambiarlos no invalida firmas. La imagen se quitó del
   repositorio (sigue en el historial de git).
-- **Corregir para contribuyentes**: se apaga en Roles, rol "Externos - ICA"
-  (sin código; el Administrador lo conserva).
+- **Corregir para contribuyentes**: apagado en Paipa con la **migración 050**
+  (solo Paipa: quita ica/reteica/autorreteica.corregir del rol "Externos -
+  ICA", igual que el panel de Roles, que pedía iniciar sesión como
+  administrador). El Administrador lo conserva; se vuelve a prender en Roles.
 - Pruebas: `probar_registro_manual` (62), `probar_rit_funcionario` (12).
 
 ### PSE con AvalPay antes de producción en Paipa (2026-10-06)
