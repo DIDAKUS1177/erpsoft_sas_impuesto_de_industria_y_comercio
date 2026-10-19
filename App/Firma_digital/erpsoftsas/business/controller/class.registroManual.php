@@ -18,7 +18,8 @@ include_once SERVER . '/business/class.registroManual.php';
  *   funcion 3  "Eliminar pago": deshace un registro manual hecho por error
  *              (alcaldia.registro.anular): motivo obligatorio.
  *   funcion 4  los bancos para elegir en el formulario (migración 045), a
- *              quien puede registrar alguno de los dos.
+ *              quien puede registrar alguno de los dos; cada uno con sus
+ *              cuentas contables del año (migración 051).
  *   funcion 5  las fechas del formulario del pago manual: la de presentación
  *              en la plataforma (para llenar la casilla) y la fecha límite
  *              (solo ICA), para mostrar la de intereses de mora.
@@ -82,7 +83,14 @@ class ControladorRegistroManual extends \erpsoftsas\Cabecera
 
             if ($funcion === 4) {
                 require_once SERVER . '/business/class.bancosPago.php';
-                echo json_encode(['ok' => 1, 'mensaje' => '', 'datos' => BancosPago::lista($con)]);
+                // Cada banco con sus cuentas contables del año (051), para elegirla
+                // después del banco; sin cuentas, la lista viene vacía y no se pide.
+                $cuentas = BancosPago::cuentasContables($con, BancosPago::anioCuentas());
+                $bancos  = array_map(function ($b) use ($cuentas) {
+                    $b['cuentas'] = $cuentas[$b['id']] ?? [];
+                    return $b;
+                }, BancosPago::lista($con));
+                echo json_encode(['ok' => 1, 'mensaje' => '', 'datos' => $bancos]);
                 return;
             }
             if ($funcion === 5) {

@@ -8,7 +8,8 @@ include_once SERVER . '/business/controller/class.cabecera.php';
 include_once SERVER . '/business/class.permisosRol.php';
 
 /**
- * Configuración del municipio: parámetros y cuentas de los bancos.
+ * Configuración del municipio: parámetros, cuentas de los bancos y cuentas
+ * contables del pago manual (funciones 8 a 11, migración 051).
  *
  * POR QUÉ EXISTE
  *
@@ -54,6 +55,7 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
      * sesión. Tras INTENTOS_MAXIMOS fallos seguidos hay que esperar
      * MINUTOS_ESPERA. Las cuentas de los bancos no la piden (cliente,
      * 2026-09-30): las cambia quien tenga "Municipio y bancos", y queda quién.
+     * Las cuentas contables (051) tampoco, por lo mismo.
      *
      * Solo se guarda el hash; la contraseña la tiene el dueño y no se escribe en
      * el código ni en la documentación del repositorio. Para cambiarla, un
@@ -91,7 +93,7 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
         // X-Requested-With y un formulario de otro sitio no puede ponerlo, así
         // que una página ajena no cambia una cuenta con la sesión abierta de un
         // funcionario. Para las cuentas eso lo cuidaba el candado.
-        if (in_array((int) $_obj->_funcion, [2, 4], true) && !self::_desdeLaPantalla()) {
+        if (in_array((int) $_obj->_funcion, [2, 4, 9, 10, 11], true) && !self::_desdeLaPantalla()) {
             header('Content-type: application/json');
             echo json_encode([
                 'ok' => 0,
@@ -143,6 +145,20 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
                     $_obj->_ok = 1;
                     $_obj->_mensaje = 'Edición bloqueada.';
                     $respuesta = self::_estadoEdicion();
+                    break;
+                // Cuentas contables (migración 051). Como las cuentas de los
+                // bancos, sin la contraseña de edición; queda quién y cuándo.
+                case 8:
+                    $respuesta = $_obj->_consultarCuentasContables();
+                    break;
+                case 9:
+                    $respuesta = $_obj->_agregarCuentaContable();
+                    break;
+                case 10:
+                    $respuesta = $_obj->_guardarDescripcionCuenta();
+                    break;
+                case 11:
+                    $respuesta = $_obj->_quitarCuentaContable();
                     break;
                 default:
                     $_obj->_mensaje = 'Función no válida';
@@ -586,8 +602,12 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
             }
         }
 
-        $valores = [$contable !== '' ? $contable : null,
-                    $recaudadora !== '' ? $recaudadora : null];
+        // La cuenta contable de una sola por banco ya no está en la pantalla:
+        // ahora son varias por banco y año (Cuentas contables, 051). Si no
+        // llega, se deja como está.
+        $conContable = array_key_exists('ban_CuentaContable', $_POST);
+        $valores = $conContable ? [$contable !== '' ? $contable : null] : [];
+        $valores[] = $recaudadora !== '' ? $recaudadora : null;
         $autor = '';
         if (self::_hayAutorBancos($con)) {
             $autor = ', ban_ActualizadoPor = ?';
@@ -597,7 +617,7 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
 
         $con->consultar(
             "UPDATE ind_bancos
-                SET ban_CuentaContable = ?, ban_CuentaRecaudadora = ?,
+                SET " . ($conContable ? 'ban_CuentaContable = ?, ' : '') . "ban_CuentaRecaudadora = ?,
                     ban_FechaActualizacion = GETDATE()$autor
               WHERE ban_Id = ?",
             $valores
@@ -620,6 +640,206 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
             }
         }
         return ['ban_Id' => $id];
+    }
+
+    /* =====================================================================
+     * CUENTAS CONTABLES (migración 051)
+     *
+     * Las cuentas con las que se hace el ingreso de cada pago manual: varias
+     * por banco y por año, en ind_bancos_cuenta (la tabla que creó Javier en
+     * Paipa). Pedido de Paipa (2026-10-19): con auditoría de qué administrador
+     * la creó y cuándo (creador, fecha_creador). Como las cuentas de los
+     * bancos, no piden la contraseña de edición.
+     * ===================================================================== */
+
+    private function _hayCuentasContables($con)
+    {
+        require_once SERVER . '/business/class.bancosPago.php';
+        if (\erpsoftsas\BancosPago::hayCuentasContables($con)) { return true; }
+        $this->_mensaje = 'Las cuentas contables aún no están instaladas en este municipio (falta la migración 051).';
+        return false;
+    }
+
+    /** La cuenta como se escribe: dígitos y, de separadores, guiones, puntos o espacios. */
+    private static function _leerCuenta($texto)
+    {
+        $cuenta = trim((string) $texto);
+        if ($cuenta === '') { return 'Escriba el número de la cuenta contable.'; }
+        if (!preg_match('/^[0-9.\- ]+$/', $cuenta) || !preg_match('/[0-9]/', $cuenta)) {
+            return 'La cuenta contable solo admite números, guiones y puntos.';
+        }
+        if (strlen($cuenta) > 70) { return 'La cuenta contable admite hasta 70 caracteres.'; }
+        return ['cuenta' => $cuenta];
+    }
+
+    /** Descripción opcional, sin caracteres de control; hasta 100. */
+    private static function _leerDescripcion($texto)
+    {
+        $d = trim(preg_replace('/[\x00-\x1F\x7F]/u', ' ', (string) $texto) ?? '');
+        if (mb_strlen($d) > 100) { return 'La descripción admite hasta 100 caracteres.'; }
+        return ['descripcion' => $d];
+    }
+
+    /** Función 8: las cuentas de un año (el actual si no se pide otro), los años y los bancos. */
+    private function _consultarCuentasContables()
+    {
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        if (!$this->_hayCuentasContables($con)) { return []; }
+
+        $hoy  = \erpsoftsas\BancosPago::anioCuentas();
+        $anio = (int) ($_POST['anio'] ?? 0);
+        if ($anio < 2000 || $anio > $hoy + 1) { $anio = $hoy; }
+
+        // Los años con cuentas, el actual y el siguiente (para cargarlas antes).
+        $anios = [$hoy, $hoy + 1];
+        $st = $con->consultar("SELECT DISTINCT ano FROM ind_bancos_cuenta", []);
+        while ($f = $con->obnerFila($st)) { $anios[] = (int) $f['ano']; }
+        $anios = array_values(array_unique($anios));
+        rsort($anios);
+
+        // "usuario N" (un usuario de más de 20 caracteres) se muestra con su nombre.
+        $st = $con->consultar(
+            "SELECT c.Id AS id, c.Id_banco AS idBanco, b.ban_Nombre AS banco, LTRIM(RTRIM(c.cuenta)) AS cuenta,
+                    LTRIM(RTRIM(ISNULL(c.descripcion, ''))) AS descripcion,
+                    COALESCE(NULLIF(LTRIM(RTRIM(ISNULL(u.usu_Nombres, '') + ' ' + ISNULL(u.usu_Apellidos, ''))), ''), c.creador) AS creador,
+                    CONVERT(VARCHAR(16), c.fecha_creador, 120) AS fecha,
+                    (SELECT COUNT(*) FROM ind_pagos_manuales p WHERE p.pma_IdCuentaContable = c.Id) AS usos
+               FROM ind_bancos_cuenta c
+               LEFT JOIN ind_bancos b ON b.ban_Id = c.Id_banco
+               LEFT JOIN conf_usuarios u ON c.creador = 'usuario ' + CAST(u.usu_Id AS VARCHAR(12))
+              WHERE c.ano = ?
+              ORDER BY b.ban_Nombre, c.cuenta",
+            [$anio]
+        );
+        $cuentas = [];
+        while ($f = $con->obnerFila($st)) {
+            $f['id'] = (int) $f['id']; $f['idBanco'] = (int) $f['idBanco']; $f['usos'] = (int) $f['usos'];
+            $cuentas[] = $f;
+        }
+
+        // En diciembre, aviso si el año siguiente todavía no tiene cuentas: el
+        // 1 de enero el pago manual dejaría de pedirlas.
+        $siguiente = $con->obnerFila($con->consultar("SELECT COUNT(*) AS n FROM ind_bancos_cuenta WHERE ano = ?", [$hoy + 1]));
+        $mes = (int) (new \DateTime('now', new \DateTimeZone('America/Bogota')))->format('n');
+
+        $this->_ok = 1;
+        $this->_mensaje = count($cuentas) . ' cuenta(s)';
+        return [
+            'anio' => $anio, 'anioActual' => $hoy, 'anios' => $anios, 'cuentas' => $cuentas,
+            'bancos' => \erpsoftsas\BancosPago::lista($con),
+            'faltaSiguiente' => $mes === 12 && (int) ($siguiente['n'] ?? 0) === 0,
+        ];
+    }
+
+    /** Función 9: agrega una cuenta (banco activo, año, número y descripción). */
+    private function _agregarCuentaContable()
+    {
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        if (!$this->_hayCuentasContables($con)) { return []; }
+
+        $banco = \erpsoftsas\BancosPago::activo($con, (int) ($_POST['idBanco'] ?? 0));
+        if (!$banco) { $this->_mensaje = 'Elija el banco de la cuenta.'; return []; }
+
+        $hoy  = \erpsoftsas\BancosPago::anioCuentas();
+        $anio = (int) ($_POST['anio'] ?? 0);
+        if ($anio < 2000 || $anio > $hoy + 1) {
+            $this->_mensaje = 'El año de la cuenta debe estar entre 2000 y ' . ($hoy + 1) . '.';
+            return [];
+        }
+
+        $c = self::_leerCuenta($_POST['cuenta'] ?? '');
+        if (is_string($c)) { $this->_mensaje = $c; return []; }
+        $d = self::_leerDescripcion($_POST['descripcion'] ?? '');
+        if (is_string($d)) { $this->_mensaje = $d; return []; }
+
+        $repetida = $con->obnerFila($con->consultar(
+            "SELECT COUNT(*) AS n FROM ind_bancos_cuenta WHERE Id_banco = ? AND ano = ? AND LTRIM(RTRIM(cuenta)) = ?",
+            [$banco['id'], $anio, $c['cuenta']]
+        ));
+        if ((int) ($repetida['n'] ?? 0) > 0) {
+            $this->_mensaje = 'La cuenta ' . $c['cuenta'] . ' ya está en ' . $banco['nombre'] . ' para ' . $anio . '.';
+            return [];
+        }
+
+        // creador: el usuario con el que entró (VARCHAR(20), como lo dejó Javier).
+        // Uno más largo (un correo) no se recorta, que dejaría la auditoría
+        // ambigua: va "usuario N" y la pantalla muestra su nombre.
+        $idUsuario = (int) ($_SESSION['id_usuario'] ?? 0);
+        $u = $con->obnerFila($con->consultar("SELECT usu_Usuario FROM conf_usuarios WHERE usu_Id = ?", [$idUsuario]));
+        $login = trim((string) ($u['usu_Usuario'] ?? ''));
+        $creador = ($login !== '' && strlen($login) <= 20) ? $login : 'usuario ' . $idUsuario;
+
+        $con->consultar(
+            "INSERT INTO ind_bancos_cuenta (Id_banco, ano, cuenta, creador, fecha_creador, descripcion)
+             VALUES (?, ?, ?, ?, GETDATE(), ?)",
+            [$banco['id'], $anio, $c['cuenta'], $creador, $d['descripcion'] !== '' ? $d['descripcion'] : null]
+        );
+        error_log(sprintf('[configuracion] usuario %d agrego la cuenta contable %s de %s (%d)',
+            $idUsuario, $c['cuenta'], $banco['nombre'], $anio));
+
+        $this->_ok = 1;
+        $this->_mensaje = 'Cuenta contable agregada: ' . $banco['nombre'] . ' · ' . $c['cuenta'] . ' (' . $anio . ').';
+        return ['anio' => $anio];
+    }
+
+    /** Función 10: cambia la descripción de una cuenta (el número no: se quita y se agrega). */
+    private function _guardarDescripcionCuenta()
+    {
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        if (!$this->_hayCuentasContables($con)) { return []; }
+
+        $id = (int) ($_POST['id'] ?? 0);
+        $d  = self::_leerDescripcion($_POST['descripcion'] ?? '');
+        if (is_string($d)) { $this->_mensaje = $d; return []; }
+
+        $f = $con->obnerFila($con->consultar(
+            "SET NOCOUNT ON; UPDATE ind_bancos_cuenta SET descripcion = ? WHERE Id = ?; SELECT @@ROWCOUNT AS n;",
+            [$d['descripcion'] !== '' ? $d['descripcion'] : null, $id]
+        ));
+        if ((int) ($f['n'] ?? 0) !== 1) { $this->_mensaje = 'La cuenta contable no existe.'; return []; }
+
+        $this->_ok = 1;
+        $this->_mensaje = 'Descripción guardada.';
+        return ['id' => $id];
+    }
+
+    /** Función 11: quita una cuenta que ningún pago usó; la usada se queda (los pagos la nombran). */
+    private function _quitarCuentaContable()
+    {
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        if (!$this->_hayCuentasContables($con)) { return []; }
+
+        $id = (int) ($_POST['id'] ?? 0);
+        $c = $con->obnerFila($con->consultar(
+            "SELECT c.cuenta, c.ano, b.ban_Nombre AS banco,
+                    (SELECT COUNT(*) FROM ind_pagos_manuales p WHERE p.pma_IdCuentaContable = c.Id) AS usos
+               FROM ind_bancos_cuenta c LEFT JOIN ind_bancos b ON b.ban_Id = c.Id_banco WHERE c.Id = ?", [$id]
+        ));
+        if (!$c) { $this->_mensaje = 'La cuenta contable no existe.'; return []; }
+        if ((int) $c['usos'] > 0) {
+            $this->_mensaje = 'La cuenta ' . trim((string) $c['cuenta']) . ' ya se usó en ' . (int) $c['usos']
+                            . ((int) $c['usos'] === 1 ? ' pago manual' : ' pagos manuales') . ': no se puede quitar.';
+            return [];
+        }
+
+        // En el mismo DELETE, otra vez "sin usar": un pago pudo guardarse con
+        // ella entre la consulta de arriba y aquí.
+        $borrada = $con->obnerFila($con->consultar(
+            "SET NOCOUNT ON;
+             DELETE FROM ind_bancos_cuenta
+              WHERE Id = ? AND NOT EXISTS (SELECT 1 FROM ind_pagos_manuales p WHERE p.pma_IdCuentaContable = ?);
+             SELECT @@ROWCOUNT AS n;", [$id, $id]
+        ));
+        if ((int) ($borrada['n'] ?? 0) !== 1) {
+            $this->_mensaje = 'La cuenta acaba de usarse en un pago manual: no se quitó.';
+            return [];
+        }
+        error_log(sprintf('[configuracion] usuario %s quito la cuenta contable %s de %s (%d)',
+            $_SESSION['id_usuario'] ?? '?', trim((string) $c['cuenta']), $c['banco'], (int) $c['ano']));
+
+        $this->_ok = 1;
+        $this->_mensaje = 'Cuenta contable quitada.';
+        return ['id' => $id];
     }
 }
 

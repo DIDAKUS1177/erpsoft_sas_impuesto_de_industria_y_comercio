@@ -65,7 +65,7 @@ class RegistroManual
      * Borrador → presentada y pagada.
      *
      * @param array $datos   numeroPapel, fechaPresentacion, fechaPago, valor,
-     *                       medio, idBanco, referencia, observacion
+     *                       medio, idBanco, idCuentaContable, referencia, observacion
      * @param array $archivos 'declaracion' y 'soporte' de $_FILES
      * @return array ['ok' => bool, 'mensaje' => string]
      */
@@ -192,7 +192,7 @@ class RegistroManual
      * llegue se ignora. La fecha de presentación se guarda con el pago manual;
      * la de la declaración no se toca.
      *
-     * @param array $datos fechaPago, fechaPresentacion, idBanco, intereses
+     * @param array $datos fechaPago, fechaPresentacion, idBanco, idCuentaContable, intereses
      */
     public static function registrarPago($con, $clave, $id, array $datos, array $archivos, $idUsuario)
     {
@@ -332,7 +332,8 @@ class RegistroManual
                 "SELECT pma_Id, CONVERT(VARCHAR(10), pma_FechaPago, 120) AS fecha, pma_Valor AS valor, pma_Medio AS medio,
                         pma_Banco AS banco, pma_Referencia AS referencia, pma_Observacion AS observacion, pma_IdUsuario AS usuario"
                       . (BancosPago::hayColumnaManual($con) ? ', pma_IdBanco AS idBanco' : '')
-                      . (self::hayFechaPresentacion($con) ? ', CONVERT(VARCHAR(10), pma_FechaPresentacion, 120) AS fechaPresentacion' : '') . "
+                      . (self::hayFechaPresentacion($con) ? ', CONVERT(VARCHAR(10), pma_FechaPresentacion, 120) AS fechaPresentacion' : '')
+                      . (BancosPago::hayCuentasContables($con) ? ', pma_IdCuentaContable AS idCuentaContable, pma_CuentaContable AS cuentaContable' : '') . "
                    FROM ind_pagos_manuales WHERE pma_Modulo = ? AND pma_IdDeclaracion = ?", [$m['clave'], $id]
             ));
             $his = $con->obnerFila($con->consultar(
@@ -585,9 +586,12 @@ class RegistroManual
             $idBanco = trim((string) ($d['idBanco'] ?? ''));
             $banco   = preg_match('/^[0-9]{1,9}$/', $idBanco) ? BancosPago::activo($con, (int) $idBanco) : null;
             if (!$banco) { return 'Elija el banco por el que entró el pago.'; }
+            $cuenta = BancosPago::cuentaDelPago($con, $banco['id'], $d['idCuentaContable'] ?? '');
+            if (is_string($cuenta)) { return $cuenta; }
             return [
                 'fecha' => $fecha, 'presentacion' => $presentacion, 'valor' => 0, 'medio' => self::_sinMedio($con), 'simple' => true,
                 'banco' => $banco['nombre'], 'idBanco' => $banco['id'], 'referencia' => '', 'observacion' => '',
+                'cuenta' => $cuenta,
             ];
         }
 
@@ -605,6 +609,9 @@ class RegistroManual
         $idBanco = trim((string) ($d['idBanco'] ?? ''));
         $banco   = preg_match('/^[0-9]{1,9}$/', $idBanco) ? BancosPago::activo($con, (int) $idBanco) : null;
         if (!$banco) { return 'Elija el banco por el que entró el pago.'; }
+        // La cuenta contable (051): obligatoria si el banco tiene cuentas este año.
+        $cuenta = BancosPago::cuentaDelPago($con, $banco['id'], $d['idCuentaContable'] ?? '');
+        if (is_string($cuenta)) { return $cuenta; }
 
         $ref   = trim((string) ($d['referencia'] ?? ''));
         $obs   = trim((string) ($d['observacion'] ?? ''));
@@ -614,6 +621,7 @@ class RegistroManual
         return [
             'fecha' => $fecha, 'valor' => round((float) $txt, 2), 'medio' => $medio,
             'banco' => $banco['nombre'], 'idBanco' => $banco['id'], 'referencia' => $ref, 'observacion' => $obs,
+            'cuenta' => $cuenta,
         ];
     }
 
@@ -726,6 +734,8 @@ class RegistroManual
 
         $conBanco = BancosPago::hayColumnaManual($con);
         $conPresentacion = !empty($pago['presentacion']) && self::hayFechaPresentacion($con);
+        // La cuenta contable (051): su id y el número tal como estaba hoy.
+        $conCuenta = !empty($pago['cuenta']) && BancosPago::hayCuentasContables($con);
         $params = [$m['clave'], (int) $id, $pago['fecha'], $pago['valor'], $pago['medio'],
                    // pma_Banco es VARCHAR(60); el nombre del catálogo admite más.
                    $pago['banco'] !== '' ? mb_substr($pago['banco'], 0, 60) : null,
@@ -734,12 +744,15 @@ class RegistroManual
                    $idSoporte ?: null, (int) $idUsuario];
         if ($conBanco) { $params[] = (int) $pago['idBanco']; }
         if ($conPresentacion) { $params[] = $pago['presentacion']; }
+        if ($conCuenta) { $params[] = (int) $pago['cuenta']['id']; $params[] = mb_substr($pago['cuenta']['cuenta'], 0, 70); }
         $con->consultar(
             "INSERT INTO ind_pagos_manuales
                 (pma_Modulo, pma_IdDeclaracion, pma_FechaPago, pma_Valor, pma_Medio, pma_Banco,
                  pma_Referencia, pma_Observacion, pma_IdSoporte, pma_IdUsuario"
-                 . ($conBanco ? ', pma_IdBanco' : '') . ($conPresentacion ? ', pma_FechaPresentacion' : '') . ")
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?" . ($conBanco ? ', ?' : '') . ($conPresentacion ? ', ?' : '') . ")",
+                 . ($conBanco ? ', pma_IdBanco' : '') . ($conPresentacion ? ', pma_FechaPresentacion' : '')
+                 . ($conCuenta ? ', pma_IdCuentaContable, pma_CuentaContable' : '') . ")
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?" . ($conBanco ? ', ?' : '') . ($conPresentacion ? ', ?' : '')
+                 . ($conCuenta ? ', ?, ?' : '') . ")",
             $params
         );
         return true;

@@ -2053,6 +2053,35 @@ Pedido de Juan (Paipa, 2026-10-15), tres cosas:
   administrador). El Administrador lo conserva; se vuelve a prender en Roles.
 - Pruebas: `probar_registro_manual` (62), `probar_rit_funcionario` (12).
 
+### Cuenta contable del pago manual (2026-10-19, migración 051)
+
+Pedido de Paipa: como en el sistema anterior ("Registrar Pago": Banco → Cuenta
+contable), el pago manual lleva la cuenta contable con la que se hace el
+ingreso. Un banco puede tener varias y van por año.
+- Catálogo: `ind_bancos_cuenta` (Id, Id_banco FK a ind_bancos, ano, cuenta,
+  creador, fecha_creador), la tabla que **creó Javier a mano en la base de
+  Paipa** con las cuentas de 2026. La 051 la crea igual donde no existe, le
+  agrega `descripcion` (para distinguir las de un mismo banco) y
+  `pma_IdCuentaContable` / `pma_CuentaContable` (el número tal como estaba) en
+  `ind_pagos_manuales`. Sin la 051 nada de esto aparece.
+- Se usan las cuentas del **año en que se registra** el pago (hoy en Colombia,
+  `BancosPago::anioCuentas`), como "Año registro de pago" del sistema anterior.
+  Si el banco tiene cuentas ese año, el formulario la pide (pago manual y "ya
+  pagada"); si no tiene, no aparece. El servidor valida que sea de ese banco y
+  ese año (`BancosPago::cuentaDelPago`).
+- Municipio y bancos → **Cuentas contables** (funciones 8-11 de
+  `class.configuracion.php`): agregar (banco, año actual o siguiente, número,
+  descripción; `creador` = el usuario, `fecha_creador`), cambiar la
+  descripción y quitar solo las que ningún pago usó. Sin la contraseña de
+  edición, como las cuentas de los bancos. La columna vieja "Cuenta contable"
+  (una por banco, `ban_CuentaContable`, vacía) salió de la tabla de bancos;
+  guardar la recaudadora ya no la toca.
+- Informes (PDF y Excel): columna "Cuenta contable" (la del pago manual).
+- **Migración 052, solo Macanal**: Bancolombia con la cuenta recaudadora
+  492-735031-87 (ahorros, Industria y Comercio; certificación del banco del
+  2026-10-19), si estaba vacía. Sale en el recibo de pago.
+- Prueba: `probar_cuentas_contables` (37) y `probar_051_052` (9).
+
 ### PSE con AvalPay antes de producción en Paipa (2026-10-06)
 
 AvalPay entregó las credenciales productivas (sitio "ICA - WC"; la dirección

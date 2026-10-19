@@ -62,7 +62,7 @@
 					<div>
 						<div class="h5 mb-1" id="candadoTitulo"><i class="fa fa-lock"></i> Parámetros protegidos</div>
 						<div class="text-muted" id="candadoTexto" style="font-size: 13px;">
-							Para cambiar los parámetros del municipio se pide la contraseña de edición. Las cuentas de los bancos se cambian sin ella.
+							Para cambiar los parámetros del municipio se pide la contraseña de edición. Las cuentas de los bancos y las contables se cambian sin ella.
 						</div>
 					</div>
 					<button type="button" class="btn btn-primary" id="btnCandado">Desbloquear edición</button>
@@ -125,7 +125,8 @@
 
 			<!-- ===================== CUENTAS DE LOS BANCOS ===================== -->
 			<!-- Los bancos están cargados desde la migración 006 (Confiar, desde la
-			     041). Solo se editan las dos cuentas: el código y el código
+			     041). Solo se edita la cuenta recaudadora (la contable pasó a
+			     "Cuentas contables", 051): el código y el código
 			     Asobancaria los fija el banco, no la Alcaldía, y dejarlos
 			     editables invita a "corregir" un código que en realidad es el
 			     correcto. La cuenta recaudadora es la que sale en el recibo de
@@ -152,17 +153,77 @@
 					<table class="table table-hover">
 						<thead>
 							<tr>
-								<th style="width:7%;">Código</th>
-								<th style="width:24%;">Banco</th>
-								<th style="width:9%;">Asobancaria</th>
-								<th style="width:19%;">Cuenta contable</th>
-								<th style="width:20%;">Cuenta recaudadora <small class="text-muted" style="font-weight:400;">(sale en el recibo)</small></th>
-								<th style="width:13%;">Último cambio</th>
-								<th style="width:8%;">Acciones</th>
+								<th style="width:8%;">Código</th>
+								<th style="width:30%;">Banco</th>
+								<th style="width:10%;">Asobancaria</th>
+								<th style="width:26%;">Cuenta recaudadora <small class="text-muted" style="font-weight:400;">(sale en el recibo)</small></th>
+								<th style="width:16%;">Último cambio</th>
+								<th style="width:10%;">Acciones</th>
 							</tr>
 						</thead>
 						<tbody id="tbodyBancos">
-							<tr><td colspan="7" class="text-center text-muted py-3">Cargando…</td></tr>
+							<tr><td colspan="6" class="text-center text-muted py-3">Cargando…</td></tr>
+						</tbody>
+					</table>
+				</div>
+			</div>
+
+			<!-- ===================== CUENTAS CONTABLES ===================== -->
+			<!-- Pedido de Paipa (2026-10-19, migración 051): el pago manual lleva la
+			     cuenta contable con la que se hace el ingreso, como en el sistema
+			     anterior. Varias por banco y por año (ind_bancos_cuenta, la tabla
+			     que creó Javier). Queda quién la agregó y cuándo. Sin la contraseña
+			     de edición, como las cuentas de los bancos. -->
+			<div class="card-box mb-30">
+				<div class="pd-20 d-flex flex-wrap justify-content-between align-items-center" style="gap: 12px;">
+					<div>
+						<h4 class="h4 mb-1">Cuentas contables</h4>
+						<p class="text-muted mb-0" style="font-size:13px;">
+							Con estas cuentas se hace el ingreso de cada pago manual: al registrarlo,
+							después del banco se elige una de sus cuentas del año en curso. Queda
+							quién agregó cada cuenta y cuándo.
+						</p>
+					</div>
+					<div class="d-flex align-items-center" style="gap: 8px;">
+						<label for="anioCuentas" class="mb-0" style="font-size:13px;">Año</label>
+						<select id="anioCuentas" class="form-control form-control-sm" style="width:auto;"
+						        onchange="configuracion.cargarCuentasContables()"></select>
+					</div>
+				</div>
+				<div class="pb-20 pl-20 pr-20">
+					<form id="formCuentaContable" class="form-row align-items-end mb-3" novalidate>
+						<div class="form-group col-md-4 mb-2">
+							<label for="ccBanco" style="font-size:13px;font-weight:600;">Banco</label>
+							<select id="ccBanco" class="form-control form-control-sm" required>
+								<option value="">Cargando bancos…</option>
+							</select>
+						</div>
+						<div class="form-group col-md-3 mb-2">
+							<label for="ccCuenta" style="font-size:13px;font-weight:600;">Cuenta contable</label>
+							<input type="text" id="ccCuenta" class="form-control form-control-sm" maxlength="70"
+							       autocomplete="off" placeholder="Ej. 1110060305" required>
+						</div>
+						<div class="form-group col-md-3 mb-2">
+							<label for="ccDescripcion" style="font-size:13px;font-weight:600;">Descripción</label>
+							<input type="text" id="ccDescripcion" class="form-control form-control-sm" maxlength="100"
+							       autocomplete="off" placeholder="Ej. Industria y comercio">
+						</div>
+						<div class="form-group col-md-2 mb-2">
+							<button type="submit" class="btn btn-sm btn-primary btn-block" id="btnAgregarCuenta">Agregar</button>
+						</div>
+					</form>
+					<table class="table table-hover">
+						<thead>
+							<tr>
+								<th style="width:26%;">Banco</th>
+								<th style="width:16%;">Cuenta contable</th>
+								<th style="width:30%;">Descripción</th>
+								<th style="width:14%;">Agregada</th>
+								<th style="width:14%;">Acciones</th>
+							</tr>
+						</thead>
+						<tbody id="tbodyCuentasContables">
+							<tr><td colspan="5" class="text-center text-muted py-3">Cargando…</td></tr>
 						</tbody>
 					</table>
 				</div>

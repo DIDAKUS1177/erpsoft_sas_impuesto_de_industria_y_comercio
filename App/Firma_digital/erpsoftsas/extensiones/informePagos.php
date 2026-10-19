@@ -106,35 +106,38 @@ $totalPagado    = array_sum(array_column($filas, 'valorPagado'));
 
 // [rótulo, ancho PDF (mm), ancho Excel, alineación, campo]. Suman 259.4 mm (carta
 // apaisada menos márgenes). El ICA es anual (el mes es siempre diciembre): sin
-// esa columna, Contribuyente, Banco y Medio caben completos.
+// esa columna, Contribuyente, Banco y Medio caben completos. La cuenta contable
+// (2026-10-19) es la del pago manual; los demás pagos no la llevan.
 if ($clave === 'ica') {
     $columnas = [
         ['NIT / Documento',  22, 16, 'L', 'documento'],
-        ['Contribuyente',    46, 40, 'L', 'contribuyente'],
+        ['Contribuyente',    38, 40, 'L', 'contribuyente'],
         ['Año',              10,  7, 'C', 'anio'],
         ['N° declaración',   21, 15, 'C', 'numero'],
         ['Presentada',       18, 13, 'C', 'fechaPresentacion'],
         ['Estado',           16, 11, 'C', 'estado'],
         ['Fecha de pago',    18, 13, 'C', 'fechaPago'],
-        ['Banco',            36, 32, 'L', 'banco'],
-        ['Medio',            23, 14, 'L', 'canal'],
-        ['Valor a pagar',    24.7, 16, 'R', 'valorDeclarado'],
-        ['Valor pagado',     24.7, 16, 'R', 'valorPagado'],
+        ['Banco',            31, 32, 'L', 'banco'],
+        ['Cuenta contable',  18, 15, 'C', 'cuentaContable'],
+        ['Medio',            20, 14, 'L', 'canal'],
+        ['Valor a pagar',    23.7, 16, 'R', 'valorDeclarado'],
+        ['Valor pagado',     23.7, 16, 'R', 'valorPagado'],
     ];
 } else {
     $columnas = [
-        ['NIT / Documento',  22, 16, 'L', 'documento'],
-        ['Contribuyente',    32, 36, 'L', 'contribuyente'],
+        ['NIT / Documento',  20, 16, 'L', 'documento'],
+        ['Contribuyente',    28, 36, 'L', 'contribuyente'],
         ['Año',              10,  7, 'C', 'anio'],
-        [$clave === 'autorreteica' ? 'Bimestre' : 'Mes', 20, 18, 'L', 'periodo'],
-        ['N° declaración',   21, 15, 'C', 'numero'],
+        [$clave === 'autorreteica' ? 'Bimestre' : 'Mes', 18, 18, 'L', 'periodo'],
+        ['N° declaración',   19, 15, 'C', 'numero'],
         ['Presentada',       18, 13, 'C', 'fechaPresentacion'],
         ['Estado',           16, 11, 'C', 'estado'],
         ['Fecha de pago',    18, 13, 'C', 'fechaPago'],
-        ['Banco',            34, 32, 'L', 'banco'],
+        ['Banco',            30, 32, 'L', 'banco'],
+        ['Cuenta contable',  18, 15, 'C', 'cuentaContable'],
         ['Medio',            20, 14, 'L', 'canal'],
-        ['Valor a pagar',    24.2, 16, 'R', 'valorDeclarado'],
-        ['Valor pagado',     24.2, 16, 'R', 'valorPagado'],
+        ['Valor a pagar',    22.2, 16, 'R', 'valorDeclarado'],
+        ['Valor pagado',     22.2, 16, 'R', 'valorPagado'],
     ];
 }
 $FECHAS = ['fechaPago', 'fechaPresentacion'];
@@ -174,7 +177,7 @@ if ($formato === 'xlsx') {
             } elseif ($campo === 'anio') {
                 $x->numero($n, $i + 1, $f[$campo], \erpsoftsas\XlsxSimple::CENTRADO);
             } else {
-                $x->texto($n, $i + 1, $f[$campo], in_array($campo, ['numero', 'estado'], true) ? \erpsoftsas\XlsxSimple::CENTRADO : \erpsoftsas\XlsxSimple::TEXTO);
+                $x->texto($n, $i + 1, $f[$campo], in_array($campo, ['numero', 'estado', 'cuentaContable'], true) ? \erpsoftsas\XlsxSimple::CENTRADO : \erpsoftsas\XlsxSimple::TEXTO);
             }
         }
     }
@@ -183,7 +186,7 @@ if ($formato === 'xlsx') {
         $x->autofiltro('A' . $cab . ':' . $ultimaCol . $n);
         // SUBTOTAL(109, …): el total sigue a los filtros que se apliquen en Excel.
         $t = $n + 1;
-        $cv = count($columnas) - 1;                         // valor a pagar (K) y valor pagado (L)
+        $cv = count($columnas) - 1;                         // las dos columnas de valor, al final
         $colA = \erpsoftsas\XlsxSimple::columna($cv);
         $colB = \erpsoftsas\XlsxSimple::columna($cv + 1);
         $x->texto($t, 1, 'Total', \erpsoftsas\XlsxSimple::TOTAL);
@@ -263,8 +266,9 @@ class InformePagosPdf extends TCPDF
         $this->SetTextColor(255, 255, 255);
         $this->SetDrawColor(255, 255, 255);
         $this->SetFont('helvetica', 'B', 7);
+        // Un rótulo que no cabe se comprime en vez de salirse de su celda.
         foreach ($this->columnas as $c) {
-            $this->Cell($c[1], 7, $c[0], 'LR', 0, $c[3], true, '', 0);
+            $this->Cell($c[1], 7, $c[0], 'LR', 0, $c[3], true, '', 1);
         }
         $this->Ln();
     }
@@ -335,6 +339,12 @@ foreach ($filas as $i => $f) {
         if (in_array($c[4], $PESOS, true)) {
             // Una cifra nunca se recorta: si no cabe, se comprime.
             $pdf->Cell($c[1], $alto, '$ ' . number_format($v, 0, ',', '.'), 'B', 0, $c[3], $zebra, '', 1);
+            continue;
+        }
+        // El número de cuenta y el nombre del banco no se recortan: si no
+        // caben, se comprimen (como las cifras).
+        if (in_array($c[4], ['cuentaContable', 'banco'], true)) {
+            $pdf->Cell($c[1], $alto, (string) $v, 'B', 0, $c[3], $zebra, '', 1);
             continue;
         }
         if (in_array($c[4], $FECHAS, true)) {

@@ -9,7 +9,8 @@
  *
  * La contraseña de edición protege solo los PARÁMETROS. Las cuentas de los
  * bancos (las del recibo de pago) se cambian sin ella: el cliente pidió que la
- * Alcaldía las maneje sin pedírselas a nadie (2026-09-30).
+ * Alcaldía las maneje sin pedírselas a nadie (2026-09-30). Las cuentas
+ * contables del pago manual (migración 051, 2026-10-19), tampoco.
  */
 class Configuracion {
 
@@ -51,7 +52,7 @@ class Configuracion {
         } else {
             $('#candadoTitulo').html('<i class="fa fa-lock"></i> Parámetros protegidos');
             $('#candadoTexto').text('Para cambiar los parámetros del municipio se pide la contraseña de edición. '
-                + 'Las cuentas de los bancos se cambian sin ella.');
+                + 'Las cuentas de los bancos y las contables se cambian sin ella.');
             $('#btnCandado').text('Desbloquear edición').removeClass('btn-outline-secondary').addClass('btn-primary');
         }
         this.bloquearTablas();
@@ -248,7 +249,7 @@ class Configuracion {
             success: function (resp) {
                 if (resp.ok != 1) {
                     $('#tbodyBancos').html(
-                        '<tr><td colspan="7" class="text-center text-muted py-3">' +
+                        '<tr><td colspan="6" class="text-center text-muted py-3">' +
                         self.escapeHtml(resp.mensaje || 'No se pudo cargar.') + '</td></tr>');
                     return;
                 }
@@ -258,7 +259,7 @@ class Configuracion {
             error: function (xhr) {
                 console.log('Error al cargar bancos:', xhr.responseText);
                 $('#tbodyBancos').html(
-                    '<tr><td colspan="7" class="text-center text-muted py-3">Error de conexión.</td></tr>');
+                    '<tr><td colspan="6" class="text-center text-muted py-3">Error de conexión.</td></tr>');
             }
         });
     }
@@ -274,9 +275,9 @@ class Configuracion {
         const self = this;
         const soloConCuenta = $('#soloConCuenta').is(':checked');
 
-        const tiene = (b) =>
-            (b.ban_CuentaContable && String(b.ban_CuentaContable).trim() !== '') ||
-            (b.ban_CuentaRecaudadora && String(b.ban_CuentaRecaudadora).trim() !== '');
+        // La cuenta contable ya no va aquí (son varias por banco y año: ver
+        // "Cuentas contables"); "con cuenta" es con cuenta recaudadora.
+        const tiene = (b) => b.ban_CuentaRecaudadora && String(b.ban_CuentaRecaudadora).trim() !== '';
 
         const lista = soloConCuenta ? self._bancos.filter(tiene) : self._bancos;
 
@@ -287,10 +288,6 @@ class Configuracion {
                 '<td>' + self.escapeHtml(b.ban_Codigo) + '</td>' +
                 '<td>' + self.escapeHtml(b.ban_Nombre) + '</td>' +
                 '<td>' + self.escapeHtml(b.ban_Asobancaria) + '</td>' +
-                '<td><input type="text" class="form-control form-control-sm" ' +
-                    'id="cta_' + Number(b.ban_Id) + '" maxlength="30" ' +
-                    'aria-label="Cuenta contable de ' + self.escapeHtml(b.ban_Nombre) + '" ' +
-                    'value="' + self.escapeHtml(b.ban_CuentaContable) + '"></td>' +
                 '<td><input type="text" class="form-control form-control-sm" ' +
                     'id="rec_' + Number(b.ban_Id) + '" maxlength="30" ' +
                     'aria-label="Cuenta recaudadora de ' + self.escapeHtml(b.ban_Nombre) + '" ' +
@@ -305,7 +302,7 @@ class Configuracion {
         });
 
         $('#tbodyBancos').html(filas ||
-            '<tr><td colspan="7" class="text-center text-muted py-3">' +
+            '<tr><td colspan="6" class="text-center text-muted py-3">' +
             (soloConCuenta ? 'Ningún banco tiene cuentas configuradas todavía.' : 'No hay bancos.') +
             '</td></tr>');
         self.bloquearTablas();
@@ -314,7 +311,7 @@ class Configuracion {
     /**
      * Cambiar la cuenta recaudadora cambia lo que imprime el recibo de pago de
      * todo el municipio, y ya no lo frena la contraseña: se confirma con el
-     * antes y el después a la vista. La cuenta contable sola no lo pide.
+     * antes y el después a la vista.
      */
     guardarCuentas(idBanco) {
         const self = this;
@@ -357,7 +354,6 @@ class Configuracion {
             data: {
                 funcion: 4,
                 ban_Id: idBanco,
-                ban_CuentaContable: $('#cta_' + idBanco).val(),
                 ban_CuentaRecaudadora: $('#rec_' + idBanco).val()
             },
             success: function (resp) {
@@ -375,6 +371,168 @@ class Configuracion {
             }
         });
     }
+
+    /* ==================== CUENTAS CONTABLES (051) ==================== */
+
+    /** Las del año elegido (la primera vez, el actual), los años y los bancos. */
+    cargarCuentasContables() {
+        const self = this;
+        const anio = $('#anioCuentas').val() || '';
+        $.ajax({
+            url: '../business/controller/class.configuracion.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { funcion: 8, anio: anio },
+            success: function (resp) {
+                if (resp.ok != 1) {
+                    $('#tbodyCuentasContables').html(
+                        '<tr><td colspan="5" class="text-center text-muted py-3">' +
+                        self.escapeHtml(resp.mensaje || 'No se pudo cargar.') + '</td></tr>');
+                    $('#formCuentaContable :input').prop('disabled', true);
+                    return;
+                }
+                self.pintarCuentasContables(resp.datos || {});
+            },
+            error: function (xhr) {
+                console.log('Error al cargar las cuentas contables:', xhr.responseText);
+                $('#formCuentaContable :input').prop('disabled', true);
+                $('#tbodyCuentasContables').html(
+                    '<tr><td colspan="5" class="text-center text-muted py-3">Error de conexión.</td></tr>');
+            }
+        });
+    }
+
+    pintarCuentasContables(d) {
+        const self = this;
+        const anio = Number(d.anio);
+        $('#anioCuentas').html((d.anios || []).map(function (a) {
+            return '<option value="' + Number(a) + '"' + (Number(a) === anio ? ' selected' : '') + '>' + Number(a) + '</option>';
+        }).join(''));
+
+        // Los bancos del formulario: primero los que tienen cuenta recaudadora.
+        const $banco = $('#ccBanco');
+        const elegido = $banco.val();
+        $banco.html('<option value="">Elija el banco</option>' + (d.bancos || []).map(function (b) {
+            return '<option value="' + Number(b.id) + '">' + self.escapeHtml(b.nombre) + '</option>';
+        }).join(''));
+        if (elegido) { $banco.val(elegido); }
+        $('#formCuentaContable :input').prop('disabled', false);
+        $('#btnAgregarCuenta').text('Agregar a ' + anio);
+
+        const cuentas = d.cuentas || [];
+        let filas = '';
+        cuentas.forEach(function (c) {
+            const usos = Number(c.usos) || 0;
+            filas +=
+                '<tr>' +
+                '<td>' + self.escapeHtml(c.banco) + '</td>' +
+                '<td><b>' + self.escapeHtml(c.cuenta) + '</b></td>' +
+                '<td><div class="d-flex" style="gap:6px;">' +
+                    '<input type="text" class="form-control form-control-sm" id="ccDesc_' + Number(c.id) + '" maxlength="100" ' +
+                    'aria-label="Descripción de la cuenta ' + self.escapeHtml(c.cuenta) + '" ' +
+                    'value="' + self.escapeHtml(c.descripcion) + '">' +
+                    '<button type="button" class="btn btn-sm btn-outline-primary" ' +
+                    'aria-label="Guardar la descripción de la cuenta ' + self.escapeHtml(c.cuenta) + '" ' +
+                    'onclick="configuracion.guardarDescripcion(' + Number(c.id) + ')">Guardar</button></div></td>' +
+                '<td><small>' + self.escapeHtml(c.fecha || '') +
+                    (c.creador ? '<br><span class="text-muted">' + self.escapeHtml(c.creador) + '</span>' : '') + '</small></td>' +
+                '<td>' + (usos > 0
+                    // La usada no se quita: los pagos manuales la nombran.
+                    ? '<small class="text-muted">Usada en ' + usos + (usos === 1 ? ' pago' : ' pagos') + '</small>'
+                    : '<button type="button" class="btn btn-sm btn-outline-danger" ' +
+                      'aria-label="Quitar la cuenta ' + self.escapeHtml(c.cuenta) + '" ' +
+                      'onclick="configuracion.quitarCuentaContable(' + Number(c.id) + ')">Quitar</button>') + '</td>' +
+                '</tr>';
+        });
+        $('#tbodyCuentasContables').html(filas ||
+            '<tr><td colspan="5" class="text-center text-muted py-3">No hay cuentas contables para ' + anio + '.' +
+            (anio === Number(d.anioActual) ? ' Mientras un banco no tenga, el pago manual no la pide.' : '') + '</td></tr>');
+        // En diciembre, si el año siguiente no tiene cuentas: el 1 de enero el
+        // pago manual dejaría de pedirlas.
+        $('#avisoCuentasSiguiente').remove();
+        if (d.faltaSiguiente) {
+            $('#formCuentaContable').before('<div class="alert alert-warning py-2" id="avisoCuentasSiguiente" style="font-size:13px;">' +
+                'Todavía no hay cuentas contables para ' + (Number(d.anioActual) + 1) + '. Cárguelas antes del 1 de enero ' +
+                '(elija ' + (Number(d.anioActual) + 1) + ' arriba): desde ese día el pago manual usa las del año nuevo.</div>');
+        }
+    }
+
+    /**
+     * Lo que responde el servidor: aviso y, si se pide, la lista recargada. Al
+     * guardar una descripción no se recarga: se perderían las que se están
+     * escribiendo en otras filas.
+     */
+    resultadoCuenta(resp, recargar) {
+        swal({
+            type: resp && resp.ok == 1 ? 'success' : 'error',
+            title: resp && resp.ok == 1 ? 'Listo' : 'No se pudo',
+            text: (resp && resp.mensaje) || ''
+        });
+        if (resp && resp.ok == 1 && recargar !== false) { this.cargarCuentasContables(); }
+    }
+
+    agregarCuentaContable() {
+        const self = this;
+        const form = document.getElementById('formCuentaContable');
+        if (form.checkValidity && !form.checkValidity()) { if (form.reportValidity) { form.reportValidity(); } return; }
+        $('#btnAgregarCuenta').prop('disabled', true);
+        $.ajax({
+            url: '../business/controller/class.configuracion.php',
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                funcion: 9, anio: $('#anioCuentas').val(), idBanco: $('#ccBanco').val(),
+                cuenta: $('#ccCuenta').val(), descripcion: $('#ccDescripcion').val()
+            },
+            success: function (resp) {
+                $('#btnAgregarCuenta').prop('disabled', false);
+                if (resp && resp.ok == 1) { $('#ccCuenta').val(''); $('#ccDescripcion').val(''); }
+                self.resultadoCuenta(resp);
+            },
+            error: function () {
+                $('#btnAgregarCuenta').prop('disabled', false);
+                swal({ type: 'error', title: 'Error en el servidor', text: 'No se recibió respuesta válida.' });
+            }
+        });
+    }
+
+    guardarDescripcion(id) {
+        const self = this;
+        $.ajax({
+            url: '../business/controller/class.configuracion.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { funcion: 10, id: id, descripcion: $('#ccDesc_' + Number(id)).val() },
+            success: function (resp) {
+                if (resp && resp.ok == 1) { $('#ccDesc_' + Number(id)).val(String($('#ccDesc_' + Number(id)).val()).trim()); }
+                self.resultadoCuenta(resp, false);
+            },
+            error: function () { swal({ type: 'error', title: 'Error en el servidor', text: 'No se recibió respuesta válida.' }); }
+        });
+    }
+
+    quitarCuentaContable(id) {
+        const self = this;
+        swal({
+            title: '¿Quitar la cuenta contable?',
+            text: 'Deja de salir en el pago manual. Ningún pago la ha usado todavía.',
+            type: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            confirmButtonText: 'Sí, quitarla',
+            cancelButtonText: 'Cancelar'
+        }).then(function (r) {
+            if (!r || !r.value) { return; }
+            $.ajax({
+                url: '../business/controller/class.configuracion.php',
+                type: 'POST',
+                dataType: 'json',
+                data: { funcion: 11, id: id },
+                success: function (resp) { self.resultadoCuenta(resp); },
+                error: function () { swal({ type: 'error', title: 'Error en el servidor', text: 'No se recibió respuesta válida.' }); }
+            });
+        });
+    }
 }
 
 const configuracion = new Configuracion();
@@ -383,6 +541,11 @@ $(function () {
     configuracion.consultarCandado();
     configuracion.cargarParametros();
     configuracion.cargarBancos();
+    configuracion.cargarCuentasContables();
+    $('#formCuentaContable').on('submit', function (e) {
+        e.preventDefault();
+        configuracion.agregarCuentaContable();
+    });
 
     $('#btnCandado').on('click', function () {
         if (configuracion._desbloqueada) { configuracion.bloquear(); } else { configuracion.abrirClave(); }

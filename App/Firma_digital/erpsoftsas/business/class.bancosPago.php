@@ -84,6 +84,85 @@ class BancosPago
         return $f ? ['id' => (int) $f['ban_Id'], 'nombre' => trim((string) $f['ban_Nombre'])] : null;
     }
 
+    /* =====================================================================
+     * CUENTAS CONTABLES (migración 051)
+     *
+     * Pedido de Paipa (2026-10-19): el pago manual lleva, además del banco, la
+     * cuenta contable con la que se hace el ingreso, como en el sistema
+     * anterior. El catálogo es ind_bancos_cuenta (Javier la creó en Paipa): un
+     * banco puede tener varias y van por año. Se usan las del año en que se
+     * REGISTRA el pago ("Año registro de pago" del sistema anterior).
+     * ===================================================================== */
+
+    /** ¿Ya corrió la 051 (catálogo con descripción y columnas del pago manual)? */
+    public static function hayCuentasContables($con)
+    {
+        static $hay = null;
+        if ($hay === null) {
+            $f = $con->obnerFila($con->consultar(
+                "SELECT CASE WHEN COL_LENGTH('dbo.ind_bancos_cuenta', 'descripcion') IS NOT NULL
+                              AND COL_LENGTH('dbo.ind_pagos_manuales', 'pma_IdCuentaContable') IS NOT NULL
+                             THEN 1 ELSE 0 END AS n", []
+            ));
+            $hay = (int) ($f['n'] ?? 0) === 1;
+        }
+        return $hay;
+    }
+
+    /** El año de las cuentas contables: el de hoy en Colombia (año de registro del pago). */
+    public static function anioCuentas()
+    {
+        return (int) (new \DateTime('now', new \DateTimeZone('America/Bogota')))->format('Y');
+    }
+
+    /**
+     * Las cuentas contables de un año, agrupadas por banco.
+     *
+     * @return array idBanco => [['id' => int, 'cuenta' => string, 'descripcion' => string, 'anio' => int], ...]
+     */
+    public static function cuentasContables($con, $anio)
+    {
+        if (!self::hayCuentasContables($con)) { return []; }
+        $st = $con->consultar(
+            "SELECT Id, Id_banco, ano, LTRIM(RTRIM(cuenta)) AS cuenta, LTRIM(RTRIM(ISNULL(descripcion, ''))) AS descripcion
+               FROM ind_bancos_cuenta WHERE ano = ? ORDER BY Id_banco, cuenta", [(int) $anio]
+        );
+        $r = [];
+        while ($f = $con->obnerFila($st)) {
+            $r[(int) $f['Id_banco']][] = ['id' => (int) $f['Id'], 'cuenta' => (string) $f['cuenta'],
+                                          'descripcion' => (string) $f['descripcion'], 'anio' => (int) $f['ano']];
+        }
+        return $r;
+    }
+
+    /**
+     * La cuenta contable de un pago: null si el banco no tiene cuentas ese año
+     * (no se pide); la cuenta si la elegida es de ese banco y ese año; si no,
+     * el mensaje de error.
+     *
+     * @return array|string|null
+     */
+    public static function cuentaDelPago($con, $idBanco, $idCuenta)
+    {
+        $anio     = self::anioCuentas();
+        $cuentas  = self::cuentasContables($con, $anio)[(int) $idBanco] ?? [];
+        $idCuenta = trim((string) $idCuenta);
+        if (!$cuentas) {
+            // Llegó una cuenta y el banco ya no tiene cuentas este año (la
+            // página se abrió el 31 de diciembre, o se quitaron): no se guarda
+            // el pago sin decirlo.
+            return $idCuenta === '' ? null
+                : 'La cuenta contable elegida ya no está vigente para ' . $anio . '. Recargue la página (F5) y vuelva a registrar.';
+        }
+        if (!preg_match('/^[0-9]{1,9}$/', $idCuenta)) {
+            return 'Elija la cuenta contable del banco. Si no ve la casilla, recargue la página (F5).';
+        }
+        foreach ($cuentas as $c) {
+            if ($c['id'] === (int) $idCuenta) { return $c; }
+        }
+        return 'La cuenta contable elegida no es de ese banco para ' . $anio . '. Elíjala de nuevo.';
+    }
+
     /**
      * El banco de los pagos en línea (PASARELA_BANCO), si está elegido y
      * sigue activo; si no, null y el pago queda sin banco, como antes.

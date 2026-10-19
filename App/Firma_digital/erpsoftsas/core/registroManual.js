@@ -15,7 +15,8 @@
  *       registro manual hecho por error, con motivo.
  *
  * El banco se elige de la lista de ind_bancos (migración 045): primero los que
- * tienen cuenta recaudadora del municipio.
+ * tienen cuenta recaudadora del municipio. Si el banco tiene cuentas contables
+ * este año (ind_bancos_cuenta, migración 051), se elige además una.
  *
  * El servidor (business/controller/class.registroManual.php) valida todo de
  * nuevo y exige los permisos alcaldia.declaraciones.historicas y
@@ -75,6 +76,7 @@ var RegistroManual = (function () {
              + '<div class="form-row">'
              + campo('Banco', '<select name="idBanco" class="form-control" required><option value="">Cargando bancos…</option></select>',
                      'Por el que entró la plata.', 6)
+             + campoCuenta()
              + '</div>'
              + '<div class="form-row js-intereses" style="display:none;">'
              + campo('Intereses de mora pagados (pesos)', '<input type="text" name="intereses" class="form-control" inputmode="numeric" '
@@ -148,11 +150,40 @@ var RegistroManual = (function () {
              + campo('Medio', '<select name="medio" class="form-control" required>' + opciones + '</select>', '', 4)
              + campo('Banco', '<select name="idBanco" class="form-control" required><option value="">Cargando bancos…</option></select>',
                      'Por el que entró la plata.', 6)
+             + campoCuenta()
              + campo('Referencia o comprobante', '<input type="text" name="referencia" class="form-control" maxlength="60">', '', 6)
              // Alto fijo: la hoja de retención le da a los textarea un alto mínimo enorme.
              + campo('Observación', '<textarea name="observacion" class="form-control" rows="2" maxlength="500" '
                    + 'style="min-height:0;height:64px;"></textarea>', '', 12)
              + '</div>';
+    }
+
+    /* La cuenta contable (migración 051): aparece al elegir un banco que tiene
+       cuentas este año, y entonces es obligatoria. Ver cuentas() abajo. */
+    function campoCuenta() {
+        return '<div class="form-group col-md-6 js-cuenta-contable" style="display:none;">'
+             + '<label style="font-weight:600;">Cuenta contable</label>'
+             + '<select name="idCuentaContable" class="form-control"></select>'
+             + '<small class="form-text text-muted js-cuenta-ayuda"></small></div>';
+    }
+
+    /* Llena la cuenta contable con las del banco elegido (o la esconde si no tiene). */
+    function cuentas($m) {
+        var id = Number($m.find('select[name=idBanco]').val()) || 0;
+        var banco = (bancos || []).filter(function (b) { return Number(b.id) === id; })[0];
+        var lista = (banco && banco.cuentas) || [];
+        var $grupo = $m.find('.js-cuenta-contable'), $sel = $grupo.find('select');
+        if (!lista.length) {
+            $grupo.hide();
+            $sel.prop('required', false).html('');
+            return;
+        }
+        $sel.html('<option value="">Elija la cuenta</option>' + lista.map(function (c) {
+            return '<option value="' + Number(c.id) + '">' + esc(c.cuenta) + (c.descripcion ? ' · ' + esc(c.descripcion) : '') + '</option>';
+        }).join('')).prop('required', true);
+        if (lista.length === 1) { $sel.val(String(Number(lista[0].id))); }
+        $grupo.find('.js-cuenta-ayuda').text('Con la que se hace el ingreso (cuentas de ' + Number(lista[0].anio) + ').');
+        $grupo.show();
     }
 
     /*
@@ -162,7 +193,9 @@ var RegistroManual = (function () {
     var bancos = null;
     function cargarBancos($m) {
         var $sel = $m.find('select[name=idBanco]');
+        $sel.off('change.cuenta').on('change.cuenta', function () { cuentas($m); });
         var pintar = function (lista) {
+            var elegido = $sel.val();
             var propias = lista.filter(function (b) { return b.cuenta; });
             var otras   = lista.filter(function (b) { return !b.cuenta; });
             var op = function (b) {
@@ -176,6 +209,9 @@ var RegistroManual = (function () {
                 html += lista.map(op).join('');
             }
             $sel.html(html);
+            // Al recargar la lista (ver enviar()) se conserva el banco elegido.
+            if (elegido) { $sel.val(elegido); }
+            cuentas($m);
         };
         if (bancos) { pintar(bancos); return; }
         $.ajax({ url: URL, type: 'POST', dataType: 'json', global: false, data: { funcion: 4 } })
@@ -298,6 +334,9 @@ var RegistroManual = (function () {
                 }
                 if (r && r.codigo === 'FECHAS') { pedirConfirmacionFechas($m, r.mensaje); return; }
                 if (r && Number(r.sinSesion) === 1) { location.reload(); return; }
+                // Las cuentas contables cambiaron con la página abierta: se vuelven
+                // a pedir para que la casilla aparezca (o se actualice).
+                if (r && /cuenta contable/i.test(r.mensaje || '')) { bancos = null; cargarBancos($m); }
                 swal({ type: 'error', title: 'No se registró', text: (r && r.mensaje) || 'No se pudo registrar. Intente de nuevo.' });
             })
             .fail(function () {

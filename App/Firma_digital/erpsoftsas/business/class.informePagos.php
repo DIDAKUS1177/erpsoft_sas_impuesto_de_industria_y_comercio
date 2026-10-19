@@ -8,7 +8,8 @@ require_once __DIR__ . '/class.registroManual.php';
 /**
  * Informe de declaraciones presentadas, pagadas o las dos (pedido de la
  * Alcaldía de Paipa, 2026-10-13 y 14): NIT, contribuyente, año, período,
- * número, fecha de presentación, estado, fecha de pago, banco y valores, para
+ * número, fecha de presentación, estado, fecha de pago, banco, cuenta contable
+ * del pago manual (2026-10-19) y valores, para
  * descargar en PDF o Excel desde el módulo Informes (extensiones/informePagos.php).
  * Quién puede (alcaldia.informes.pagos) lo decide quien llama.
  *
@@ -115,6 +116,8 @@ class InformePagos
         $orden = $estado === 'pagadas'
             ? "d.{$p}_FechaPago, d.{$m['numero']}"
             : "$colPresentacion, d.{$m['numero']}";
+        // La cuenta contable con la que se hizo el ingreso del pago manual (051).
+        $colCuenta = ($conManual && BancosPago::hayCuentasContables($con)) ? 'pm.pma_CuentaContable' : 'CAST(NULL AS VARCHAR(70))';
         $joinBanco = $conBanco ? "LEFT JOIN ind_bancos b ON b.ban_Id = d.{$p}_IdBancoPago" : '';
         $colBanco  = $conBanco ? "COALESCE(b.ban_Nombre, d.{$p}_BancoPago)" : "d.{$p}_BancoPago";
 
@@ -125,7 +128,7 @@ class InformePagos
                     CONVERT(VARCHAR(10), $colPresentacion, 120) AS fechaPresentacion,
                     $pagadaSql AS pagado, $corregidaSql AS corregida,
                     ISNULL(d.{$m['valor']}, 0) AS valorDeclarado, ISNULL(d.{$p}_ValorPago, 0) AS valorPagado,
-                    $colBanco AS banco, d.{$p}_RutaPago AS ruta, $colMedio AS medio,
+                    $colBanco AS banco, d.{$p}_RutaPago AS ruta, $colMedio AS medio, $colCuenta AS cuentaContable,
                     c.ind_NumeroIdentificacion AS doc, c.ind_DV AS dv, c.ind_IdTipoDocumento AS tipoDoc,
                     c.ind_PrimerNombre, c.ind_SegundoNombre, c.ind_PrimerApellido, c.ind_SegundoApellido
                FROM {$m['tabla']} d
@@ -161,6 +164,7 @@ class InformePagos
                 'estado'         => $estadoTxt,
                 'fechaPago'      => $pagada ? (string) $r['fechaPago'] : '',
                 'banco'          => $pagada ? trim((string) $r['banco']) : '',
+                'cuentaContable' => $pagada ? trim((string) $r['cuentaContable']) : '',
                 'canal'          => $canal,
                 'valorDeclarado' => round((float) $r['valorDeclarado']),
                 'valorPagado'    => $pagada ? round((float) $r['valorPagado']) : 0,
