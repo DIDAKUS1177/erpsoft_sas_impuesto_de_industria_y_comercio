@@ -49,10 +49,41 @@ var InformePagos = (function () {
     function parametros(formato) {
         var p = { modulo: $('#infModulo').val(), formato: formato, estado: $('#infEstado').val() };
         var anio = $('#infAnio').val(), periodo = $('#infPeriodo').val(), doc = documento();
+        var desde = $('#infDesde').val(), hasta = $('#infHasta').val();
         if (anio) { p.anio = anio; }
         if (periodo && $('#campoPeriodo').is(':visible')) { p.periodo = periodo; }
         if (doc) { p.documento = doc; }
+        if (desde) { p.desde = desde; }
+        if (hasta) { p.hasta = hasta; }
         return p;
+    }
+
+    /* El rango de fechas (2026-10-20): de pago en las pagadas, de presentación
+       en las demás. El rótulo lo dice. */
+    function rotularRango() {
+        var que = $('#infEstado').val() === 'pagadas' ? 'Pagadas' : 'Presentadas';
+        $('#lblDesde').text(que + ' desde');
+        $('#lblHasta').text(que + ' hasta');
+    }
+
+    /* "Desde" después de "hasta" se avisa aquí: el PDF se abre en otra pestaña
+       y ahí solo se vería el texto del error. */
+    function rangoValido() {
+        // Una fecha a medio escribir (o con un año de más de 4 cifras) se lee
+        // vacía y el rango se ignoraría sin aviso.
+        var mala = $('#infDesde, #infHasta').filter(function () {
+            return (this.validity && this.validity.badInput) || (this.value && !/^\d{4}-\d{2}-\d{2}$/.test(this.value));
+        });
+        if (mala.length) {
+            aviso('Revise las fechas del rango: escríbalas completas (día/mes/año) o déjelas vacías.');
+            return false;
+        }
+        var desde = $('#infDesde').val(), hasta = $('#infHasta').val();
+        if (desde && hasta && desde > hasta) {
+            aviso('La fecha "desde" es posterior a la fecha "hasta". Corríjalas y vuelva a descargar.');
+            return false;
+        }
+        return true;
     }
 
     /* El PDF en otra pestaña, con un formulario POST (window.open solo hace GET). */
@@ -130,13 +161,16 @@ var InformePagos = (function () {
 
         pintarAnios();
         pintarPeriodos();
+        rotularRango();
         $('#infModulo').on('change', pintarPeriodos);
+        $('#infEstado').on('change', rotularRango);
         // Dígitos y, a lo sumo, un guion: lo que va después (el DV) no se usa.
         $('#infDocumento').on('input', function () {
             var limpio = String($(this).val()).replace(/[^0-9-]/g, '');
             if (limpio !== $(this).val()) { $(this).val(limpio); }
         });
         $('.informe-acciones').on('click', '.btn-informe', function () {
+            if (!rangoValido()) { return; }
             if ($(this).data('formato') === 'pdf') { pdf(); }
             else { excel($(this)); }
         });

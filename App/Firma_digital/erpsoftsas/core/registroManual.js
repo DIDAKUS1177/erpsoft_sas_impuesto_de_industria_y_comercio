@@ -71,7 +71,8 @@ var RegistroManual = (function () {
              + '<div class="form-row">'
              + campo('Fecha de presentación', '<input type="date" name="fechaPresentacion" class="form-control" required max="' + hoy() + '">',
                      '<span class="js-presentacion-ayuda">Cámbiela si se presentó en otra fecha.</span>', 6)
-             + campo('Fecha de pago', '<input type="date" name="fechaPago" class="form-control" required max="' + hoy() + '">', '', 6)
+             + campo('Fecha de pago', '<input type="date" name="fechaPago" class="form-control" required max="' + hoy() + '">',
+                     'Viene igual a la de presentación; cámbiela si se pagó otro día. Puede pegar una fecha copiada.', 6)
              + '</div>'
              + '<div class="form-row">'
              + campo('Banco', '<select name="idBanco" class="form-control" required><option value="">Cargando bancos…</option></select>',
@@ -89,6 +90,92 @@ var RegistroManual = (function () {
     function fechaTexto(f) {
         var p = String(f).split('-');
         return p[2] + '/' + p[1] + '/' + p[0];
+    }
+
+    /* Una fecha escrita o copiada ("29/09/2026", "29-9-2026", "2026-09-29") en
+       AAAA-MM-DD, o null si no es una fecha que exista. */
+    function fechaDeTexto(t) {
+        var s = String(t || '').trim(), x, d, m, a;
+        if ((x = /^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/.exec(s))) { a = +x[1]; m = +x[2]; d = +x[3]; }
+        else if ((x = /^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})$/.exec(s))) { d = +x[1]; m = +x[2]; a = +x[3]; }
+        else { return null; }
+        var f = new Date(a, m - 1, d);
+        if (f.getFullYear() !== a || f.getMonth() !== m - 1 || f.getDate() !== d) { return null; }
+        return a + '-' + (m < 10 ? '0' : '') + m + '-' + (d < 10 ? '0' : '') + d;
+    }
+
+    /*
+     * Copiar y pegar fechas (Paipa, 2026-10-20). La casilla de fecha del
+     * navegador no acepta texto pegado: aquí se lee lo pegado como fecha, y
+     * Ctrl+C copia la fecha como dd/mm/aaaa. Además la fecha de pago viene igual
+     * a la de presentación mientras nadie la cambie ("predeterminada la fecha de
+     * presentación").
+     */
+    function fechasCopiables($m) {
+        var $todas = $m.find('input[type=date]');
+        var poner = function ($i, valor) {
+            $i.data('tocada', true).val(valor).trigger('input').trigger('change');
+        };
+        // La casilla de fecha con el foco, si es de este formulario.
+        var enFoco = function () {
+            var el = document.activeElement;
+            return (el && el.type === 'date' && $m[0].contains(el)) ? $(el) : null;
+        };
+        /* Chrome no le entrega "paste" ni "copy" a la casilla de fecha (no es un
+           campo de texto): llegan al documento, con el foco en ella. Se escuchan
+           ahí y se sueltan al cerrar el formulario. No piden permisos y sirven
+           también por http. */
+        $(document).off('.rmFecha')
+            .on('paste.rmFecha', function (e) {
+                var $i = enFoco();
+                if (!$i) { return; }
+                $i.data('pegada', true);
+                var cb = e.originalEvent && e.originalEvent.clipboardData;
+                var valor = fechaDeTexto(cb ? cb.getData('text') : '');
+                if (!valor) { return; }
+                e.preventDefault();
+                poner($i, valor);
+            })
+            .on('copy.rmFecha', function (e) {
+                var $i = enFoco(), cb = e.originalEvent && e.originalEvent.clipboardData;
+                if (!$i || !$i.val() || !cb) { return; }
+                e.preventDefault();
+                cb.setData('text/plain', fechaTexto($i.val()));
+                $i.data('copiada', true);
+            });
+        $m.on('hidden.bs.modal', function () { $(document).off('.rmFecha'); });
+
+        $todas.on('keydown', function (e) {
+            var $i = $(this), tecla = String(e.key || '').toLowerCase();
+            // Escribir (aunque la fecha aún esté incompleta) la marca como suya.
+            if (!(e.ctrlKey || e.metaKey) && tecla !== 'tab' && tecla.length === 1) { $i.data('tocada', true); }
+            if (!(e.ctrlKey || e.metaKey) || !navigator.clipboard) { return; }
+            // Último recurso, solo si el navegador no mandó el evento (puede pedir
+            // permiso la primera vez y no existe por http).
+            if (tecla === 'c' && $i.val() && navigator.clipboard.writeText) {
+                $i.data('copiada', false);
+                setTimeout(function () {
+                    if (!$i.data('copiada')) { navigator.clipboard.writeText(fechaTexto($i.val())).catch(function () {}); }
+                }, 60);
+            }
+            if (tecla === 'v' && navigator.clipboard.readText) {
+                $i.data('pegada', false);
+                setTimeout(function () {
+                    if ($i.data('pegada')) { return; }
+                    navigator.clipboard.readText().then(function (t) {
+                        var valor = fechaDeTexto(t);
+                        if (valor) { poner($i, valor); }
+                    }).catch(function () {});
+                }, 60);
+            }
+        });
+        // Lo que escribe la persona marca la casilla como suya.
+        $todas.on('input change', function (e) { if (!e.isTrigger) { $(this).data('tocada', true); } });
+
+        var $pre = $m.find('[name=fechaPresentacion]'), $pago = $m.find('[name=fechaPago]');
+        $pre.on('input change', function () {
+            if ($pago.length && !$pago.data('tocada') && $pre.val()) { $pago.val($pre.val()).trigger('change'); }
+        });
     }
 
     /* Llena la fecha de presentación con la de la plataforma (si nadie escribió
@@ -128,7 +215,8 @@ var RegistroManual = (function () {
                 if (!r || Number(r.ok) !== 1) { sinFecha(); return; }
                 var d = r.datos || {};
                 if (d.presentada) {
-                    if (!tocada && !$pre.val()) { $pre.val(d.presentada); }
+                    // Con "change": la fecha de pago la toma (ver fechasCopiables).
+                    if (!tocada && !$pre.val()) { $pre.val(d.presentada).trigger('change'); }
                     $m.find('.js-presentacion-ayuda').text('En la plataforma: ' + fechaTexto(d.presentada) + '. Cámbiela si se presentó en otra fecha.');
                 }
                 if (!ica) { return; }
@@ -144,7 +232,8 @@ var RegistroManual = (function () {
         var opciones = MEDIOS.map(function (m) { return '<option value="' + m[0] + '">' + m[1] + '</option>'; }).join('');
         return '<h6 style="margin:6px 0 10px;font-weight:700;">El pago</h6>'
              + '<div class="form-row">'
-             + campo('Fecha de pago', '<input type="date" name="fechaPago" class="form-control" required max="' + hoy() + '">', '', 4)
+             + campo('Fecha de pago', '<input type="date" name="fechaPago" class="form-control" required max="' + hoy() + '">',
+                     'Igual a la de presentación mientras no la cambie.', 4)
              + campo('Valor pagado (pesos)', '<input type="text" name="valor" class="form-control" required inputmode="numeric" '
                    + 'placeholder="Ej. 1.250.000" value="' + esc(pesos(valor)) + '">', 'Lo que entró a la cuenta, con intereses si los hubo.', 4)
              + campo('Medio', '<select name="medio" class="form-control" required>' + opciones + '</select>', '', 4)
@@ -285,6 +374,7 @@ var RegistroManual = (function () {
         $m.on('change input', '[name=fechaPago], [name=fechaPresentacion]', function () {
             $m.find('#rmConfirmaFechas').closest('.alert').remove();
         });
+        fechasCopiables($m);
         cargarBancos($m);
         fechas(o, $m);
         $m.modal('show');

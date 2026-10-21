@@ -10,6 +10,8 @@
  *   estado         pagadas | sinpagar | todas (presentadas)
  *   anio, periodo  filtros opcionales
  *   documento      NIT o cédula, solo dígitos (vacío = todos los contribuyentes)
+ *   desde, hasta   rango de fechas AAAA-MM-DD, opcionales (2026-10-20): de pago
+ *                  en las pagadas, de presentación en las demás
  *
  * Quién: sesión, alcaldia.informes.pagos (que solo cuenta en un rol de la
  * Alcaldía) y el "Ver" del módulo.
@@ -62,6 +64,21 @@ if ($documento !== '' && (!ctype_digit($documento) || strlen($documento) > 10
                           || (int) $documento <= 0 || (int) $documento > 2147483647)) {
     informe_fin(400, 'Escriba el NIT o la cédula solo con números y sin dígito de verificación.');
 }
+// El rango de fechas (Paipa, 2026-10-20), los dos extremos opcionales.
+$fechaInforme = function ($t) {
+    $t = trim((string) $t);
+    if ($t === '') { return null; }
+    if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $t, $x) || !checkdate((int) $x[2], (int) $x[3], (int) $x[1])) { return false; }
+    return $t;
+};
+$desde = $fechaInforme($IN['desde'] ?? '');
+$hasta = $fechaInforme($IN['hasta'] ?? '');
+if ($desde === false || $hasta === false) {
+    informe_fin(400, 'Escriba las fechas del rango como día/mes/año.');
+}
+if ($desde !== null && $hasta !== null && $desde > $hasta) {
+    informe_fin(400, 'La fecha "desde" es posterior a la fecha "hasta".');
+}
 
 /* ---- Quién --------------------------------------------------------------------- */
 foreach (['alcaldia.informes.pagos', $clave . '.ver'] as $permiso) {
@@ -80,7 +97,8 @@ if ((int) ini_get('memory_limit') > 0 && (int) ini_get('memory_limit') < 256) { 
 /* ---- Los datos ----------------------------------------------------------------- */
 try {
     $filas = InformePagos::filas($con, $clave, ['estado' => $estado, 'anio' => $anio, 'periodo' => $periodo,
-                                                'documento' => $documento !== '' ? (int) $documento : null]);
+                                                'documento' => $documento !== '' ? (int) $documento : null,
+                                                'desde' => $desde, 'hasta' => $hasta]);
 } catch (\Throwable $e) {
     error_log('[informe de pagos] ' . $e->getMessage());
     informe_fin(500, 'No se pudo generar el informe. Intente de nuevo.');
@@ -96,59 +114,74 @@ $titulos   = ['pagadas' => 'Declaraciones pagadas', 'sinpagar' => 'Declaraciones
               'todas' => 'Todas las declaraciones presentadas'];
 $titulo    = $titulos[$estado];
 $subtitulo = $modulos[$clave] . ' · Municipio de ' . MUNICIPIO_CIUDAD;
-$filtros   = 'Año: ' . ($anio ?: 'todos')
+$dmy = function ($f) { return substr($f, 8, 2) . '/' . substr($f, 5, 2) . '/' . substr($f, 0, 4); };
+$rango = '';
+if ($desde !== null || $hasta !== null) {
+    $rango = ($estado === 'pagadas' ? 'Pagadas' : 'Presentadas')
+           . ($desde !== null && $hasta !== null ? ' del ' . $dmy($desde) . ' al ' . $dmy($hasta)
+              : ($desde !== null ? ' desde el ' . $dmy($desde) : ' hasta el ' . $dmy($hasta))) . ' · ';
+}
+$filtros   = $rango . 'Año: ' . ($anio ?: 'todos')
            . ($clave === 'ica' ? '' : ' · Período: ' . ($periodo ? InformePagos::nombrePeriodo($clave, $periodo) : 'todos'))
            . ' · Contribuyente: ' . ($documento === '' ? 'todos' : InformePagos::nombrePorDocumento($con, $documento));
 $generado  = 'Generado el ' . $ahora->format('d/m/Y \a \l\a\s h:i a') . ($quien !== '' ? ' por ' . $quien : '');
 
 $totalDeclarado = array_sum(array_column($filas, 'valorDeclarado'));
 $totalPagado    = array_sum(array_column($filas, 'valorPagado'));
+$totalIntereses = array_sum(array_map('floatval', array_filter(array_column($filas, 'intereses'), 'is_numeric')));
+$TOTALES = ['valorDeclarado' => $totalDeclarado, 'valorPagado' => $totalPagado, 'intereses' => $totalIntereses];
 
 // [rótulo, ancho PDF (mm), ancho Excel, alineación, campo]. Suman 259.4 mm (carta
 // apaisada menos márgenes). El ICA es anual (el mes es siempre diciembre): sin
 // esa columna, Contribuyente, Banco y Medio caben completos. La cuenta contable
-// (2026-10-19) es la del pago manual; los demás pagos no la llevan.
+// (2026-10-19) es la del pago manual; los demás pagos no la llevan. Intereses
+// (2026-10-20): lo pagado menos lo que había que pagar, nunca negativo.
 if ($clave === 'ica') {
     $columnas = [
-        ['NIT / Documento',  22, 16, 'L', 'documento'],
-        ['Contribuyente',    38, 40, 'L', 'contribuyente'],
+        ['NIT / Documento',  21, 16, 'L', 'documento'],
+        ['Contribuyente',    34, 40, 'L', 'contribuyente'],
         ['Año',              10,  7, 'C', 'anio'],
-        ['N° declaración',   21, 15, 'C', 'numero'],
-        ['Presentada',       18, 13, 'C', 'fechaPresentacion'],
-        ['Estado',           16, 11, 'C', 'estado'],
-        ['Fecha de pago',    18, 13, 'C', 'fechaPago'],
-        ['Banco',            31, 32, 'L', 'banco'],
-        ['Cuenta contable',  18, 15, 'C', 'cuentaContable'],
-        ['Medio',            20, 14, 'L', 'canal'],
-        ['Valor a pagar',    23.7, 16, 'R', 'valorDeclarado'],
-        ['Valor pagado',     23.7, 16, 'R', 'valorPagado'],
+        ['N° declaración',   20, 15, 'C', 'numero'],
+        ['Presentada',       17, 13, 'C', 'fechaPresentacion'],
+        ['Estado',           15, 11, 'C', 'estado'],
+        ['Fecha de pago',    17, 13, 'C', 'fechaPago'],
+        ['Banco',            28, 32, 'L', 'banco'],
+        ['Cuenta contable',  16, 15, 'C', 'cuentaContable'],
+        ['Medio',            18, 14, 'L', 'canal'],
+        ['Valor a pagar',    21.7, 16, 'R', 'valorDeclarado'],
+        ['Valor pagado',     21.7, 16, 'R', 'valorPagado'],
+        ['Intereses',        20, 14, 'R', 'intereses'],
     ];
 } else {
     $columnas = [
         ['NIT / Documento',  20, 16, 'L', 'documento'],
-        ['Contribuyente',    28, 36, 'L', 'contribuyente'],
+        ['Contribuyente',    25, 36, 'L', 'contribuyente'],
         ['Año',              10,  7, 'C', 'anio'],
-        [$clave === 'autorreteica' ? 'Bimestre' : 'Mes', 18, 18, 'L', 'periodo'],
-        ['N° declaración',   19, 15, 'C', 'numero'],
-        ['Presentada',       18, 13, 'C', 'fechaPresentacion'],
-        ['Estado',           16, 11, 'C', 'estado'],
+        [$clave === 'autorreteica' ? 'Bimestre' : 'Mes', 16, 18, 'L', 'periodo'],
+        ['N° declaración',   18, 15, 'C', 'numero'],
+        ['Presentada',       17, 13, 'C', 'fechaPresentacion'],
+        ['Estado',           15, 11, 'C', 'estado'],
         ['Fecha de pago',    18, 13, 'C', 'fechaPago'],
-        ['Banco',            30, 32, 'L', 'banco'],
-        ['Cuenta contable',  18, 15, 'C', 'cuentaContable'],
-        ['Medio',            20, 14, 'L', 'canal'],
-        ['Valor a pagar',    22.2, 16, 'R', 'valorDeclarado'],
-        ['Valor pagado',     22.2, 16, 'R', 'valorPagado'],
+        ['Banco',            27, 32, 'L', 'banco'],
+        ['Cuenta contable',  16, 15, 'C', 'cuentaContable'],
+        ['Medio',            18, 14, 'L', 'canal'],
+        ['Valor a pagar',    20.2, 16, 'R', 'valorDeclarado'],
+        ['Valor pagado',     20.2, 16, 'R', 'valorPagado'],
+        ['Intereses',        19, 14, 'R', 'intereses'],
     ];
 }
 $FECHAS = ['fechaPago', 'fechaPresentacion'];
-$PESOS  = ['valorDeclarado', 'valorPagado'];
+$PESOS  = ['valorDeclarado', 'valorPagado', 'intereses'];
+// Las columnas de valor van al final; el total va debajo de cada una.
+$primeraValor = array_search('valorDeclarado', array_column($columnas, 4), true);
 
 $color = ltrim(defined('MUNICIPIO_COLOR') ? (string) MUNICIPIO_COLOR : '#1fa49d', '#');
 if (!preg_match('/^[0-9a-fA-F]{6}$/', $color)) { $color = '1fa49d'; }
 
 $nombres = ['pagadas' => 'Pagadas', 'sinpagar' => 'Sin_pagar', 'todas' => 'Presentadas'];
 $base = 'Declaraciones_' . $nombres[$estado] . '_' . preg_replace('/[^A-Za-z]/', '', ucfirst($clave)) . '_'
-      . ($anio ?: 'todos-los-anios') . ($documento !== '' ? '_' . $documento : '') . '_' . $ahora->format('Ymd');
+      . ($anio ?: 'todos-los-anios') . ($desde !== null ? '_desde-' . $desde : '') . ($hasta !== null ? '_hasta-' . $hasta : '')
+      . ($documento !== '' ? '_' . $documento : '') . '_' . $ahora->format('Ymd');
 
 /* ==== EXCEL ======================================================================== */
 if ($formato === 'xlsx') {
@@ -170,8 +203,8 @@ if ($formato === 'xlsx') {
             $campo = $c[4];
             if (in_array($campo, $FECHAS, true)) {
                 $x->fecha($n, $i + 1, $f[$campo]);
-            } elseif ($campo === 'valorPagado' && $f['estado'] !== 'Pagada') {
-                $x->texto($n, $i + 1, '', \erpsoftsas\XlsxSimple::PESOS);   // sin pagar: en blanco
+            } elseif (($campo === 'valorPagado' && $f['estado'] !== 'Pagada') || ($campo === 'intereses' && $f['intereses'] === null)) {
+                $x->texto($n, $i + 1, '', \erpsoftsas\XlsxSimple::PESOS);   // sin pagar o sin intereses: en blanco
             } elseif (in_array($campo, $PESOS, true)) {
                 $x->numero($n, $i + 1, $f[$campo], \erpsoftsas\XlsxSimple::PESOS);
             } elseif ($campo === 'anio') {
@@ -186,17 +219,17 @@ if ($formato === 'xlsx') {
         $x->autofiltro('A' . $cab . ':' . $ultimaCol . $n);
         // SUBTOTAL(109, …): el total sigue a los filtros que se apliquen en Excel.
         $t = $n + 1;
-        $cv = count($columnas) - 1;                         // las dos columnas de valor, al final
-        $colA = \erpsoftsas\XlsxSimple::columna($cv);
-        $colB = \erpsoftsas\XlsxSimple::columna($cv + 1);
         $x->texto($t, 1, 'Total', \erpsoftsas\XlsxSimple::TOTAL);
-        for ($i = 2; $i < $cv; $i++) { $x->texto($t, $i, '', \erpsoftsas\XlsxSimple::TOTAL); }
+        for ($i = 2; $i <= $primeraValor; $i++) { $x->texto($t, $i, '', \erpsoftsas\XlsxSimple::TOTAL); }
         // La columna del número (cuenta las filas visibles) depende del módulo.
         $colNum = \erpsoftsas\XlsxSimple::columna(array_search('numero', array_column($columnas, 4), true) + 1);
         $x->formula($t, 2, 'SUBTOTAL(103,' . $colNum . ($cab + 1) . ':' . $colNum . $n . ')&" declaraciones"', \erpsoftsas\XlsxSimple::TOTAL,
                     count($filas) . ' declaraciones');
-        $x->formula($t, $cv,     'SUBTOTAL(109,' . $colA . ($cab + 1) . ':' . $colA . $n . ')', \erpsoftsas\XlsxSimple::TOTAL_PESOS, $totalDeclarado);
-        $x->formula($t, $cv + 1, 'SUBTOTAL(109,' . $colB . ($cab + 1) . ':' . $colB . $n . ')', \erpsoftsas\XlsxSimple::TOTAL_PESOS, $totalPagado);
+        foreach ($columnas as $i => $c) {
+            if (!isset($TOTALES[$c[4]])) { continue; }
+            $col = \erpsoftsas\XlsxSimple::columna($i + 1);
+            $x->formula($t, $i + 1, 'SUBTOTAL(109,' . $col . ($cab + 1) . ':' . $col . $n . ')', \erpsoftsas\XlsxSimple::TOTAL_PESOS, $TOTALES[$c[4]]);
+        }
     } else {
         $x->texto($cab + 1, 1, 'No hay declaraciones con estos filtros.', \erpsoftsas\XlsxSimple::SUBTITULO);
         $x->unir('A' . ($cab + 1), $ultimaCol . ($cab + 1));
@@ -332,8 +365,8 @@ foreach ($filas as $i => $f) {
     $zebra = $i % 2 === 1;
     foreach ($columnas as $c) {
         $v = $f[$c[4]];
-        if ($c[4] === 'valorPagado' && $f['estado'] !== 'Pagada') {
-            $pdf->Cell($c[1], $alto, '', 'B', 0, $c[3], $zebra, '', 0);   // sin pagar: en blanco
+        if (($c[4] === 'valorPagado' && $f['estado'] !== 'Pagada') || ($c[4] === 'intereses' && $v === null)) {
+            $pdf->Cell($c[1], $alto, '', 'B', 0, $c[3], $zebra, '', 0);   // sin pagar o sin intereses: en blanco
             continue;
         }
         if (in_array($c[4], $PESOS, true)) {
@@ -341,9 +374,10 @@ foreach ($filas as $i => $f) {
             $pdf->Cell($c[1], $alto, '$ ' . number_format($v, 0, ',', '.'), 'B', 0, $c[3], $zebra, '', 1);
             continue;
         }
-        // El número de cuenta y el nombre del banco no se recortan: si no
-        // caben, se comprimen (como las cifras).
-        if (in_array($c[4], ['cuentaContable', 'banco'], true)) {
+        // El número de cuenta, el banco, el período, el estado y el medio no se
+        // recortan: si no caben, se comprimen (como las cifras).
+        if (in_array($c[4], ['cuentaContable', 'banco', 'estado', 'canal'], true)
+            || ($c[4] === 'periodo' && $clave !== 'autorreteica')) {
             $pdf->Cell($c[1], $alto, (string) $v, 'B', 0, $c[3], $zebra, '', 1);
             continue;
         }
@@ -363,12 +397,13 @@ if ($filas) {
     $pdf->SetTextColor(17, 24, 39);
     $pdf->SetFillColor(238, 242, 246);
     $pdf->SetDrawColor($pdf->rgb[0], $pdf->rgb[1], $pdf->rgb[2]);
-    $cv = count($columnas) - 2;                             // las dos columnas de valor, al final
-    $antes = array_sum(array_column(array_slice($columnas, 0, $cv), 1));
+    $antes = array_sum(array_column(array_slice($columnas, 0, $primeraValor), 1));
     $n = count($filas);
     $pdf->Cell($antes, 8, 'Total: ' . $n . ($n === 1 ? ' declaración' : ' declaraciones'), 'T', 0, 'L', true);
-    $pdf->Cell($columnas[$cv][1], 8, '$ ' . number_format($totalDeclarado, 0, ',', '.'), 'T', 0, 'R', true, '', 1);
-    $pdf->Cell($columnas[$cv + 1][1], 8, '$ ' . number_format($totalPagado, 0, ',', '.'), 'T', 1, 'R', true, '', 1);
+    $valores = array_slice($columnas, $primeraValor);
+    foreach ($valores as $k => $c) {
+        $pdf->Cell($c[1], 8, '$ ' . number_format($TOTALES[$c[4]], 0, ',', '.'), 'T', $k === count($valores) - 1 ? 1 : 0, 'R', true, '', 1);
+    }
 }
 
 $pdf->Output($base . '.pdf', 'I');

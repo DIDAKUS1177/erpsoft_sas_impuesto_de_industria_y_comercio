@@ -87,6 +87,16 @@
 							<label for="infPeriodo">Período</label>
 							<select id="infPeriodo"></select>
 						</div>
+						<!-- Rango de fechas (2026-10-20): de pago en las pagadas, de
+						     presentación en las demás; el rótulo lo dice (informePagos.js). -->
+						<div class="campo">
+							<label for="infDesde" id="lblDesde">Pagadas desde</label>
+							<input type="date" id="infDesde" min="2000-01-01" max="9999-12-31">
+						</div>
+						<div class="campo">
+							<label for="infHasta" id="lblHasta">Pagadas hasta</label>
+							<input type="date" id="infHasta" min="2000-01-01" max="9999-12-31">
+						</div>
 						<div class="campo">
 							<label for="infDocumento">Contribuyente (NIT o cédula)</label>
 							<input type="text" id="infDocumento" inputmode="numeric" maxlength="12" placeholder="Todos (sin DV)" autocomplete="off">
@@ -103,8 +113,9 @@
 					</div>
 					<p class="informe-ayuda">
 						El PDF se abre en otra pestaña; el Excel queda en Descargas. Sin NIT o cédula salen todos
-						los contribuyentes; el NIT va sin dígito de verificación. "Sin pagar" deja fuera las de $0
-						y las que ya tienen una corrección presentada.
+						los contribuyentes; el NIT va sin dígito de verificación. Las fechas son un rango: las pagadas
+						por fecha de pago, las demás por fecha de presentación (las dos casillas son opcionales).
+						"Sin pagar" deja fuera las de $0 y las que ya tienen una corrección presentada.
 					</p>
 				</div>
 			</div>

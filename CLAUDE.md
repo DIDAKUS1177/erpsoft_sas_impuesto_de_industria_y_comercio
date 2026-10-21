@@ -2082,6 +2082,38 @@ ingreso. Un banco puede tener varias y van por año.
   2026-10-19), si estaba vacía. Sale en el recibo de pago.
 - Prueba: `probar_cuentas_contables` (37) y `probar_051_052` (9).
 
+### Reunión con Paipa del 2026-10-20: informe por fechas, intereses, fechas copiables y limpieza (migración 053)
+
+- **Informes entre fechas**: "Desde" y "Hasta" (un rango, los dos opcionales y
+  los extremos incluidos). En "Pagadas" es la fecha de PAGO; en "Sin pagar" y
+  "Todas", la de PRESENTACIÓN (la que se muestra: la escrita en el pago manual
+  o la de la plataforma). El rango sale en el encabezado y en el nombre del
+  archivo. Fechas inválidas o "desde" > "hasta": 400 (y la pantalla lo avisa
+  antes de pedir el PDF).
+- **Columna "Intereses"** en Informes (PDF y Excel, con total): valor pagado −
+  valor a pagar. **Nunca negativa**: si se pagó menos (solo pasa con una "ya
+  pagada", donde el valor se escribe a mano; en Paipa la ICA 2026100013), va
+  vacía, igual que en las no pagadas. Los textos cortos del PDF (banco, cuenta,
+  período, estado, medio) se comprimen en vez de recortarse.
+- **Pago manual**: la fecha de pago viene igual a la de presentación hasta que
+  la persona la cambie, y las casillas de fecha aceptan **pegar** una fecha
+  copiada (dd/mm/aaaa, d-m-aaaa o aaaa-mm-dd; la casilla de fecha del navegador
+  no acepta texto) y Ctrl+C la copia como dd/mm/aaaa (`fechasCopiables` en
+  `core/registroManual.js`).
+- **Migración 053, solo Paipa**: quita las declaraciones (y lo que cuelga:
+  actividades, firmas, soportes, pagos manuales, históricas, anulados,
+  aplicaciones del recaudo) de PRUEBA FIRMAS (900900900) y SISTEMA ERPSOFT
+  (901632232, dos veces en el padrón), **menos la retención 2026200003** ($1.000
+  reales por PSE). Usuarios, contribuyentes, RIT y establecimientos se quedan.
+  Antes copia todo a tablas `bkp053_*` y va en una transacción; si las
+  `bkp053_` existen no vuelve a correr. Guarda: si no hay exactamente los 3
+  registros de esos NIT o la retención de $1.000 no está presentada y pagada,
+  se detiene sin borrar ni registrarse. Correrla con `--aplicar 053` (en Paipa
+  la 042 está pendiente a propósito).
+- Pendiente aparte: el número de la declaración se asigna al PRESENTAR (hoy al
+  crear el borrador); la firma está guardada por número y hay que pasarla a id.
+- Pruebas: `probar_informe_rango` (16), `probar_053` (9).
+
 ### PSE con AvalPay antes de producción en Paipa (2026-10-06)
 
 AvalPay entregó las credenciales productivas (sitio "ICA - WC"; la dirección

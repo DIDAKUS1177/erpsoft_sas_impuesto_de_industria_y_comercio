@@ -9,7 +9,7 @@ require_once __DIR__ . '/class.registroManual.php';
  * Informe de declaraciones presentadas, pagadas o las dos (pedido de la
  * Alcaldía de Paipa, 2026-10-13 y 14): NIT, contribuyente, año, período,
  * número, fecha de presentación, estado, fecha de pago, banco, cuenta contable
- * del pago manual (2026-10-19) y valores, para
+ * del pago manual (2026-10-19), valores e intereses (2026-10-20), para
  * descargar en PDF o Excel desde el módulo Informes (extensiones/informePagos.php).
  * Quién puede (alcaldia.informes.pagos) lo decide quien llama.
  *
@@ -68,7 +68,9 @@ class InformePagos
      * Las presentadas del módulo: pagadas, sin pagar o todas.
      *
      * @param array $f estado ('pagadas' | 'sinpagar' | 'todas'), anio (int|null),
-     *                 periodo (int|null), documento (int: NIT o cédula sin DV; null = todos)
+     *                 periodo (int|null), documento (int: NIT o cédula sin DV; null = todos),
+     *                 desde / hasta (AAAA-MM-DD o null; 2026-10-20): un rango de fechas,
+     *                 de PAGO en las pagadas y de PRESENTACIÓN en las demás
      * @return array filas listas para pintar: las pagadas por fecha de pago, las
      *               demás por fecha de presentación
      */
@@ -121,6 +123,13 @@ class InformePagos
         $joinBanco = $conBanco ? "LEFT JOIN ind_bancos b ON b.ban_Id = d.{$p}_IdBancoPago" : '';
         $colBanco  = $conBanco ? "COALESCE(b.ban_Nombre, d.{$p}_BancoPago)" : "d.{$p}_BancoPago";
 
+        // Rango de fechas (Paipa, 2026-10-20: "entre fechas, por ejemplo del 1 de
+        // octubre de 2025 al 7 de noviembre de 2026"): de pago en las pagadas, de
+        // presentación (la que se muestra) en las demás. Ambos extremos incluidos.
+        $colRango = $estado === 'pagadas' ? "CAST(d.{$p}_FechaPago AS DATE)" : "CAST($colPresentacion AS DATE)";
+        if (!empty($f['desde'])) { $where[] = "$colRango >= ?"; $params[] = (string) $f['desde']; }
+        if (!empty($f['hasta'])) { $where[] = "$colRango <= ?"; $params[] = (string) $f['hasta']; }
+
         // Tabla y columnas salen del mapa fijo de PseModulo; los filtros van como parámetros.
         $st = $con->consultar(
             "SELECT d.$pk AS id, d.{$m['numero']} AS numero, d.{$c['anio']} AS anio, d.{$c['periodo']} AS periodo,
@@ -154,6 +163,10 @@ class InformePagos
             if ($pagada && (string) $r['ruta'] === 'MANUAL' && !empty($r['medio'])) {
                 $canal = self::MEDIOS_CORTOS[$r['medio']] ?? $canal;
             }
+            // Intereses = lo pagado menos lo que había que pagar (Paipa,
+            // 2026-10-20). Nunca negativo: si se pagó menos (una "ya pagada" con el
+            // valor escrito a mano), la casilla va vacía (null).
+            $diferencia = $pagada ? round((float) $r['valorPagado']) - round((float) $r['valorDeclarado']) : null;
             $filas[] = [
                 'documento'      => self::documento($r['doc'], $r['dv'], $r['tipoDoc']),
                 'contribuyente'  => $nombre,
@@ -168,6 +181,7 @@ class InformePagos
                 'canal'          => $canal,
                 'valorDeclarado' => round((float) $r['valorDeclarado']),
                 'valorPagado'    => $pagada ? round((float) $r['valorPagado']) : 0,
+                'intereses'      => ($diferencia !== null && $diferencia >= 0) ? $diferencia : null,
             ];
         }
         return $filas;
