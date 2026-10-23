@@ -510,7 +510,7 @@ _crearDeclaracionDelAnio(idEstablecimiento,idContribuyente,anio) {
              * Se cae al id si la declaracion es anterior a esa migracion y no
              * tiene numero propio.
              */
-            $("#numDeclaracion").val(d.dec_NumeroDeclaracion || d.dec_Id);
+            FormularioDeclaracion.ponerNumero(d.dec_NumeroDeclaracion || d.dec_Id);
 
             // Y si el servidor reabrio una que ya existia, se dice. Un formulario
             // que aparece con cifras que uno no escribio, sin explicacion, se lee
@@ -690,7 +690,9 @@ pintarDeclaracionesFiltradas() {
         // se pintaban con el texto literal "null". El sistema usa el propio
         // dec_Id como numero (asi se cruza con firmas_declaraciones), por lo
         // que sirve de respaldo.
-        var numero = d.dec_NumeroDeclaracion || d.dec_Id;
+        // Un borrador (una corrección en curso) no tiene numero hasta presentarse.
+        var numero = NumerosCOP.numeroDeclaracion(d.dec_NumeroDeclaracion || d.dec_Id,
+                                                  '<span style="color:#6B7280;">Sin número</span>');
 
         filas +=
             '<tr>' +
@@ -2081,7 +2083,8 @@ establecimientos._intentarPresentar = function(dec_Id, idEstablecimiento) {
                 swal('Error', resp.mensaje || 'No se pudo presentar la declaración', 'error');
                 return;
             }
-            swal('¡Presentada!', 'La declaración ha sido presentada con éxito.', 'success').then(() => {
+            // El número se asigna al presentar (2026-10-23): el mensaje del servidor lo dice.
+            swal('¡Presentada!', resp.mensaje || 'La declaración ha sido presentada con éxito.', 'success').then(() => {
                 if (idEstablecimiento) {
                     establecimientos.consultarDeclaraciones(idEstablecimiento, establecimientos._idContribuyenteActual);
                 } else {

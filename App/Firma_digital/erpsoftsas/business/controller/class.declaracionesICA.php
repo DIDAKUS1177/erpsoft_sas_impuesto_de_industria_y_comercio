@@ -6,6 +6,7 @@ include_once SERVER . '/business/DAO/DAO_DeclaracionesICA.php';
 include_once SERVER . '/business/class.sessions.php';
 include_once SERVER . '/business/controller/class.logs.php';
 include_once SERVER . '/business/config.tributario.php';
+include_once SERVER . '/business/class.numeroDeclaracion.php';
 
 class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera 
 {
@@ -25,52 +26,6 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
      * Mismo vinculo que usan los demas controladores:
      * conf_usuarios.usu_NumeroDocumento = ind_contribuyentes.ind_NumeroIdentificacion.
      */
-
-    /**
-     * Siguiente numero de formulario para el año dado.
-     *
-     * Formato AAAA + consecutivo de 6 digitos -2026000001-, que es el que usa
-     * la Alcaldia en su formulario impreso. Antes NO habia generador: se
-     * copiaba el IDENTITY de la fila, asi que el "numero de declaracion" era
-     * el id interno de la tabla y iba por 218.
-     *
-     * El reparto lo hace sp_siguiente_numero_declaracion (migracion 012), que
-     * incrementa y captura en una sola sentencia bajo el bloqueo de la fila:
-     * dos contribuyentes declarando a la vez no pueden llevarse el mismo
-     * numero. Un SELECT MAX + 1 si lo permitiria.
-     *
-     * Si el procedimiento no existiera -base sin la migracion 012- se cae al
-     * comportamiento anterior devolviendo null, y quien llama usa el id. Asi
-     * una instalacion sin migrar sigue funcionando en vez de romperse.
-     *
-     * EL AÑO DEL NUMERO ES EL DE HOY, NO EL DE LA DECLARACION. Juan (Paipa,
-     * 2026-10-05), al habilitar las declaraciones de años anteriores: «Aunque
-     * sea de otro año sigue el consecutivo de este año». Una declaracion de
-     * 2023 creada hoy sale 2026100024, y la correccion de una vieja tambien
-     * toma la serie de hoy. Descartar un borrador devuelve el numero a la fila
-     * del año que lleva el NUMERO (sus cuatro primeras cifras), asi que la
-     * regla cuadra. Año de Colombia: el servidor esta en UTC.
-     */
-    private function _siguienteNumeroDeclaracion($con)
-    {
-        $anio = (int) (new \DateTime('now', new \DateTimeZone('America/Bogota')))->format('Y');
-
-        try {
-            $fila = $con->obnerFila($con->consultar(
-                "DECLARE @n BIGINT;
-                 EXEC dbo.sp_siguiente_numero_declaracion @ANIO = ?, @NUMERO = @n OUTPUT;
-                 SELECT @n AS numero;",
-                [(int) $anio]
-            ));
-
-            $n = isset($fila['numero']) ? (float) $fila['numero'] : 0;
-            return ($n > 0) ? $n : null;
-
-        } catch (\Exception $e) {
-            error_log('[declaraciones] no se pudo generar el consecutivo: ' . $e->getMessage());
-            return null;
-        }
-    }
 
     /**
      * Trae a la declaracion nueva el anticipo que se liquido el año pasado.
@@ -201,6 +156,21 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
     private static function _filaDeLaDeclaracion($con, $numeroOId)
     {
         $v = trim((string) $numeroOId);
+        // Un borrador lleva número provisional (-id) desde el 2026-10-23: ese
+        // se busca solo por número (ningún id es negativo).
+        if (preg_match('/^-[0-9]{1,18}$/', $v)) {
+            $fila = $con->obnerFila($con->consultar(
+                "SELECT TOP 1 dec_Id, dec_NumeroDeclaracion, dec_AnioDeclaracion, dec_MesDeclaracion
+                   FROM ind_declaraciones_ica WHERE dec_NumeroDeclaracion = ?", [$v]
+            ));
+            if (!isset($fila['dec_Id'])) { return null; }
+            return [
+                'id'     => (int) $fila['dec_Id'],
+                'numero' => $fila['dec_NumeroDeclaracion'],
+                'anio'   => $fila['dec_AnioDeclaracion'],
+                'mes'    => $fila['dec_MesDeclaracion'],
+            ];
+        }
         if ($v === '' || !ctype_digit($v)) { return null; }
 
         $fila = $con->obnerFila($con->consultar(
@@ -608,7 +578,8 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
          * nunca uno futuro.
          *
          * Lo que arrastra el año, y por que esta bien asi:
-         *   - el NUMERO no: sigue la serie de hoy (_siguienteNumeroDeclaracion);
+         *   - el NUMERO no: sigue la serie de hoy, y se asigna al presentar
+         *     (NumeroDeclaracion::asignar, 2026-10-23);
          *   - las formulas: las del año declarado o, si no hay, las mas
          *     antiguas cargadas (sp_calculo_comercio, migracion 036);
          *   - el vencimiento: el de ese año (VencimientoICA), asi que una de
@@ -744,41 +715,30 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
             $id = $_obj->get_dec_Id();
 
             /*
-             * Numero de formulario.
+             * Numero de formulario: PROVISIONAL (-id) mientras sea borrador.
              *
-             * Aqui decia "ACTUALIZAR NUMERO DECLARACION = ID" y hacia
-             * literalmente eso: copiaba el IDENTITY de la fila. Por eso el
-             * numero iba por 218 en vez del 2026000001 que usa el formulario
-             * de la Alcaldia. Ahora lo reparte el generador atomico de la
-             * migracion 012.
-             *
-             * Se sigue asignando AQUI, al crear el borrador, y no al
-             * presentar: hay cuatro consultas del flujo de liquidacion que
-             * localizan la fila por dec_NumeroDeclaracion, y con el numero en
-             * NULL durante el borrador dejarian de encontrarla. Mover la
-             * asignacion exige antes cambiarlas para que busquen por dec_Id.
-             *
-             * Si el generador no esta disponible se cae al id, que es el
-             * comportamiento anterior: una base sin la migracion 012 sigue
-             * creando declaraciones en vez de fallar.
+             * El consecutivo (2026100001, migraciones 012 y 043) se asigna al
+             * PRESENTAR desde el 2026-10-23 (reunion con Paipa del 20): cada
+             * borrador que no se presentaba dejaba un hueco en la serie. El
+             * provisional no se muestra; sirve para que las consultas que
+             * localizan la fila por dec_NumeroDeclaracion (el calculo oficial,
+             * la pantalla) la sigan encontrando. Ver class.numeroDeclaracion.php.
              */
-            $numero = $this->_siguienteNumeroDeclaracion($con);
-            if ($numero === null) {
-                $numero = $id;
-                error_log('[declaraciones] sin consecutivo disponible; se usa el id ' . $id);
+            try {
+                $numero = NumeroDeclaracion::marcarProvisional($con, 'ica', $id);
+            } catch (\Throwable $e) {
+                $this->_ok = 0;
+                $this->_mensaje = 'No se pudo crear la declaración. Intente de nuevo; '
+                                . 'si persiste, avise a la Alcaldía indicando la hora.';
+                return [];
             }
-
-            $con->consultar(
-                "UPDATE ind_declaraciones_ica SET dec_NumeroDeclaracion = ? WHERE dec_Id = ?",
-                [$numero, $id]
-            );
 
             // El anticipo que liquido el año pasado entra ya diligenciado, en
             // vez de tener que copiarlo a mano de la declaracion anterior.
             $this->_cruzarAnticipoDelAnioAnterior($con, $id, $idContribuyente, $anio);
 
             $this->_ok = 1;
-            $this->_mensaje = "Declaración creada correctamente, N° $numero";
+            $this->_mensaje = 'Declaración creada correctamente. El número se le asigna al presentarla.';
 
             /*
              * Se devuelve la FILA, no el objeto.
@@ -997,12 +957,29 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
 
         try {
             // Solo si sigue siendo borrador: la Alcaldía pudo registrarla
-            // presentada y pagada en el intervalo (registro manual, 044).
+            // presentada y pagada en el intervalo (registro manual, 044), o
+            // presentarla otra pestaña. En una transacción y contando lo
+            // borrado: si la fila no se borró, no se devuelve ningún número
+            // (devolverlo con la declaración viva atascaba la serie: el
+            // siguiente "Presentar" pedía un número que ya tenía otra).
+            $con->begin();
             $sigueBorrador = "EXISTS (SELECT 1 FROM ind_declaraciones_ica b
                                        WHERE b.dec_Id = ? AND ISNULL(b.dec_Estado, 0) <> 2 AND ISNULL(b.dec_Pagado, 0) = 0)";
             $con->consultar("DELETE FROM ind_declaraciones_ica_actividades WHERE dia_IdDeclaracion = ? AND $sigueBorrador", [$id, $id]);
-            $con->consultar("DELETE FROM ind_declaraciones_ica WHERE dec_Id = ? AND ISNULL(dec_Estado, 0) <> 2 AND ISNULL(dec_Pagado, 0) = 0", [$id]);
+            $borro = $con->obnerFila($con->consultar(
+                "SET NOCOUNT ON;
+                 DELETE FROM ind_declaraciones_ica WHERE dec_Id = ? AND ISNULL(dec_Estado, 0) <> 2 AND ISNULL(dec_Pagado, 0) = 0;
+                 SELECT @@ROWCOUNT AS n;", [$id]
+            ));
+            if ((int) ($borro['n'] ?? 0) !== 1) {
+                $con->rollback();
+                $this->_ok = 0;
+                $this->_mensaje = 'La declaración ya no es un borrador (se presentó o se registró pagada): no se borró. Recargue la lista.';
+                return [];
+            }
+            $con->commit();
         } catch (\Throwable $e) {
+            try { $con->rollback(); } catch (\Throwable $e2) { /* ya cerrada */ }
             error_log('[declaraciones] no se pudo borrar el borrador ' . $id . ': ' . $e->getMessage());
             $this->_ok = 0;
             $this->_mensaje = 'No se pudo borrar la declaración. Intente de nuevo; si persiste, avise a soporte.';
@@ -1035,8 +1012,13 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
          * (2026000001) de los historicos de dos y tres digitos, que no pasan
          * por ningun contador y no hay nada que devolverles.
          */
+        /*
+         * Desde el 2026-10-23 un borrador nuevo no tiene consecutivo (numero
+         * provisional, negativo): no hay nada que devolver. Esto queda para
+         * los borradores de antes, que ya traian su numero.
+         */
         $numero = $d['dec_NumeroDeclaracion'] ?? null;
-        if ($numero !== null && strlen((string) $numero) >= 10) {
+        if ($numero !== null && !NumeroDeclaracion::esProvisional($numero) && strlen((string) $numero) >= 10) {
             try {
                 $anio      = (int) substr((string) $numero, 0, 4);
                 $secuencia = (int) substr((string) $numero, 4);
@@ -1057,7 +1039,7 @@ class ControladorDeclaracionesICA extends \erpsoftsas\Cabecera
 
         // Queda constancia: es un borrado real.
         error_log(sprintf('[declaraciones] usuario %s borro el borrador %s (N° %s)',
-            $_SESSION['id_usuario'] ?? '?', $id, $d['dec_NumeroDeclaracion'] ?: $id));
+            $_SESSION['id_usuario'] ?? '?', $id, NumeroDeclaracion::texto($d['dec_NumeroDeclaracion'])));
 
         $this->_ok = 1;
         $this->_mensaje = 'Borrador descartado. Puede crear la declaración de nuevo.';
@@ -1934,20 +1916,46 @@ private function _presentarDeclaracion(){
      */
     $ahora = (new \DateTime('now', new \DateTimeZone('America/Bogota')))->format('Y-m-d H:i:s');
 
-    $con->consultar(
-        "UPDATE ind_declaraciones_ica
-         SET dec_Estado = 2, dec_FechaPresentacion = ?
-         WHERE dec_Id = ? AND ISNULL(dec_Estado, 0) <> 2",
-        [$ahora, $idDeclaracion]
-    );
+    /*
+     * EL NUMERO SE ASIGNA AQUI (2026-10-23, reunion con Paipa del 20): el
+     * borrador traia uno provisional. Numero y presentacion van en la misma
+     * transaccion: o queda presentada con su consecutivo, o nada (y el
+     * consecutivo pedido vuelve al contador). Ver class.numeroDeclaracion.php.
+     */
+    try {
+        $con->begin();
+        $hecho = $con->obnerFila($con->consultar(
+            "SET NOCOUNT ON;
+             UPDATE ind_declaraciones_ica
+                SET dec_Estado = 2, dec_FechaPresentacion = ?
+              WHERE dec_Id = ? AND ISNULL(dec_Estado, 0) <> 2;
+             SELECT @@ROWCOUNT AS n;",
+            [$ahora, $idDeclaracion]
+        ));
+        if ((int) ($hecho['n'] ?? 0) !== 1) {
+            $con->rollback();
+            $this->_ok = 0;
+            $this->_mensaje = "La declaración ya está presentada.";
+            return [];
+        }
+        $numero = NumeroDeclaracion::asignar($con, 'ica', $idDeclaracion);
+        $con->commit();
+    } catch (\Throwable $e) {
+        try { $con->rollback(); } catch (\Throwable $e2) { /* ya cerrada */ }
+        error_log('[declaraciones] no se pudo presentar ' . $idDeclaracion . ': ' . $e->getMessage());
+        $this->_ok = 0;
+        $this->_mensaje = 'No se pudo presentar la declaración: no quedó ningún cambio. '
+                        . 'Intente de nuevo; si persiste, avise a la Alcaldía.';
+        return [];
+    }
 
     $res = $con->consultar(
-        "SELECT dec_Id, dec_Estado, dec_FechaPresentacion FROM ind_declaraciones_ica WHERE dec_Id = ?",
+        "SELECT dec_Id, dec_NumeroDeclaracion, dec_Estado, dec_FechaPresentacion FROM ind_declaraciones_ica WHERE dec_Id = ?",
         [$idDeclaracion]
     );
 
     $this->_ok = 1;
-    $this->_mensaje = "Declaración presentada correctamente";
+    $this->_mensaje = "Declaración presentada correctamente con el N° $numero";
 
     return $con->obnerFila($res);
 }
@@ -2189,7 +2197,8 @@ private function _crearCorreccion(){
         $this->_ok = 1;
         $this->_mensaje = 'Ya tenía una corrección en curso de la N° '
             . ($orig['dec_NumeroDeclaracion'] ?: $orig['dec_Id'])
-            . ': la N° ' . ($enCurso['dec_NumeroDeclaracion'] ?: $enCurso['dec_Id'])
+            . (NumeroDeclaracion::esProvisional($enCurso['dec_NumeroDeclaracion'])
+                ? ' (en borrador)' : ': la N° ' . $enCurso['dec_NumeroDeclaracion'])
             . '. Se abre esa, con lo que hubiera guardado. No se creó otra.'
             . ($firmada ? ' Está firmada: para editarla se le quitarán las firmas.' : '');
 
@@ -2315,20 +2324,17 @@ private function _crearCorreccion(){
      *
      * Una correccion es una declaracion NUEVA -ligada a la original por
      * dec_DeclaracionCorrige-, asi que le toca su propio consecutivo, no una
-     * copia del id. Mismo generador atomico que el flujo de creacion
-     * (migracion 012), con la misma caida al id si no esta disponible.
+     * copia del id. Como todo borrador, desde el 2026-10-23 nace con numero
+     * provisional y recibe el consecutivo al presentarla.
      */
     if ($idNuevo) {
-        $numeroNuevo = $this->_siguienteNumeroDeclaracion($con);
-        if ($numeroNuevo === null) {
-            $numeroNuevo = $idNuevo;
-            error_log('[declaraciones] correccion sin consecutivo; se usa el id ' . $idNuevo);
+        try {
+            NumeroDeclaracion::marcarProvisional($con, 'ica', $idNuevo);
+        } catch (\Throwable $e) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No se pudo crear la corrección. Intente de nuevo.';
+            return [];
         }
-
-        $con->consultar(
-            "UPDATE ind_declaraciones_ica SET dec_NumeroDeclaracion = ? WHERE dec_Id = ?",
-            [$numeroNuevo, $idNuevo]
-        );
 
         // Se replican las actividades gravadas de la original.
         $con->consultar(

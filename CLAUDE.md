@@ -2110,9 +2110,63 @@ ingreso. Un banco puede tener varias y van por año.
   registros de esos NIT o la retención de $1.000 no está presentada y pagada,
   se detiene sin borrar ni registrarse. Correrla con `--aplicar 053` (en Paipa
   la 042 está pendiente a propósito).
-- Pendiente aparte: el número de la declaración se asigna al PRESENTAR (hoy al
-  crear el borrador); la firma está guardada por número y hay que pasarla a id.
 - Pruebas: `probar_informe_rango` (16), `probar_053` (9).
+
+### El número de la declaración se asigna al PRESENTAR (2026-10-23)
+
+Pedido de la reunión del 2026-10-20: cada borrador consumía un consecutivo y
+los que no se presentaban dejaban huecos. Ahora la serie solo avanza con lo
+presentado, en ICA, retención y autorretención (también "Ya pagada", que
+presenta). Todo en `business/class.numeroDeclaracion.php`:
+- **Borrador = número PROVISIONAL, menos su id** (`-1081`), al crear y al
+  corregir. No NULL: el número identifica la fila en medio sistema
+  (`sp_calculo_comercio`, la ventana de firma de retención, las firmas de
+  `firmas_declaraciones` por número y módulo, las funciones 6/7/14 del ICA) y
+  con -id todo eso sigue igual. Ningún número real es negativo y los índices
+  únicos filtrados lo admiten. `_filaDeLaDeclaracion` acepta `-N` (solo por número).
+- **Al presentar** (`NumeroDeclaracion::asignar`, dentro de la transacción del
+  cambio de estado y con candado `erp_numero_<modulo>_<id>`): si es provisional
+  pide el consecutivo (ICA: año de HOY; retención y autorretención: año de la
+  declaración, como antes), lo escribe y pasa las firmas del provisional al real
+  (las del ICA van por `dec_Id` y no cambian). Si algo falla, nada queda: el
+  consecutivo pedido vuelve al contador con el rollback. Sin el procedimiento
+  (base sin 012/030) se numera con el id. El ICA ahora presenta en transacción
+  y con `@@ROWCOUNT` (presentar dos veces no pide otro número).
+- **Borradores de antes** (con número real) lo conservan al presentar. Descartar
+  un provisional no devuelve nada a la serie (sigue devolviendo el número de un
+  borrador viejo si era el último repartido). Una "Ya pagada" que se elimina
+  vuelve a borrador con su número real.
+- **Nunca se muestra el provisional**: `NumerosCOP.numeroDeclaracion` /
+  `esNumeroProvisional` (core/numeros.js) en los listados ("Sin número"), el
+  formulario del ICA (`#numDeclaracion` quedó oculto y lo visible es
+  `#numDeclaracionVer`: "Se asigna al presentar"), "En corrección (borrador)",
+  el modal de "Ya pagada" ("La declaración en borrador") y el encabezado de
+  retención; `NumeroDeclaracion::texto` en los PDF (casilla en blanco) y en el
+  asunto del correo del código ("ICA en borrador"). Código de barras, recibo,
+  PSE, Wompi, recaudo e informes solo trabajan con presentadas: no lo ven.
+- **Revisión del mismo día**:
+  - Descartar un borrador del ICA va en transacción y cuenta lo borrado
+    (`@@ROWCOUNT`): solo devuelve el número a la serie si la fila se borró.
+    Antes lo devolvía aunque el DELETE no tocara nada (la presentaron en el
+    intervalo) y el siguiente "Presentar" pedía un número ya usado.
+  - `asignar` salta un número que ya tiene otra declaración (hasta
+    `INTENTOS` = 50 seguidos) en vez de chocar con el índice único.
+  - Presentar en retención relee el estado con `UPDLOCK` al abrir la
+    transacción y el UPDATE exige `Estado <> 2` con `@@ROWCOUNT`: presentar
+    dos veces no reescribe la fecha.
+  - La firma (función 7 de la API) se inserta solo si la declaración sigue en
+    borrador con ese número (`INSERT … SELECT … WHERE EXISTS`): no queda una
+    firma huérfana con el provisional.
+  - Regla única de NULL: es "sin número" en el servidor y en `NumerosCOP`.
+    `marcarProvisional` nunca deja NULL (si falla, borra la fila recién creada
+    y la creación avisa); los borradores de retención que ya estaban en NULL
+    reciben el provisional al listarlos o abrirlos (`_borradoresSinNumero`).
+    Una PRESENTADA vieja sin número sigue mostrando su id (PDF de retención y
+    autorretención, listados), como el recibo.
+- Prueba: `probar_numero_al_presentar` (46). Ajustadas a la regla nueva:
+  `probar_anio_declaracion`, `probar_consecutivos` (usan `asignar_numero.php`,
+  que asigna como "Presentar"), `probar_ica_revision`, `probar_retenciones_flujo`
+  y `probar_cambios_finales`.
 
 ### PSE con AvalPay antes de producción en Paipa (2026-10-06)
 

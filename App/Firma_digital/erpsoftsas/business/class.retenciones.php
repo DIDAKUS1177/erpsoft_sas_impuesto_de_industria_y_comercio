@@ -52,6 +52,7 @@ include_once SERVER . '/business/controller/class.cabecera.php';
 include_once SERVER . '/business/class.catalogoAnio.php';
 include_once SERVER . '/business/class.permisosRol.php';
 include_once SERVER . '/business/class.pasarela.php';
+include_once SERVER . '/business/class.numeroDeclaracion.php';
 
 abstract class ControladorRetencion extends \erpsoftsas\Cabecera
 {
@@ -227,33 +228,14 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
      * ===================================================================== */
 
     /**
-     * Pide el siguiente consecutivo del modulo para el año dado.
-     *
-     * Lo reparte sp_siguiente_numero_retencion (migracion 030), que incrementa
-     * y captura en la MISMA sentencia: dos contribuyentes declarando a la vez
-     * no pueden llevarse el mismo numero. Un SELECT MAX + 1 si lo permitiria.
-     *
-     * Si el procedimiento no existe -base sin migrar- devuelve null y quien
-     * llama cae al id de la fila, igual que hacia el ICA antes de la 012. Una
-     * instalacion sin migrar sigue funcionando en vez de romperse.
+     * El consecutivo (sp_siguiente_numero_retencion, migracion 030, con el año
+     * de la declaracion) se asigna al PRESENTAR desde el 2026-10-23 (reunion
+     * con Paipa del 20); el borrador lleva uno provisional, -id, que no se
+     * muestra. Ver business/class.numeroDeclaracion.php.
      */
-    protected function _siguienteNumero($con, $anio)
+    protected function _claveModulo()
     {
-        try {
-            $fila = $con->obnerFila($con->consultar(
-                "DECLARE @n BIGINT;
-                 EXEC dbo.sp_siguiente_numero_retencion @TIPO = ?, @ANIO = ?, @NUMERO = @n OUTPUT;
-                 SELECT @n AS numero;",
-                [$this->modulo, (int) $anio]
-            ));
-
-            $n = isset($fila['numero']) ? (float) $fila['numero'] : 0;
-            return ($n > 0) ? $n : null;
-
-        } catch (\Throwable $e) {
-            error_log('[' . $this->modulo . '] sin consecutivo: ' . $e->getMessage());
-            return null;
-        }
+        return strtolower($this->modulo);
     }
 
 
@@ -514,22 +496,21 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
             return [];
         }
 
-        $numero = $this->_siguienteNumero($con, $anio);
-        if ($numero === null) {
-            $numero = $id;
-            error_log('[' . $this->modulo . '] sin consecutivo; se usa el id ' . $id);
+        // Numero provisional: el consecutivo se asigna al presentar.
+        try {
+            $numero = NumeroDeclaracion::marcarProvisional($con, $this->_claveModulo(), $id);
+        } catch (\Throwable $e) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No se pudo crear la declaración. Intente de nuevo; '
+                            . 'si persiste, avise a la Alcaldía indicando la hora.';
+            return [];
         }
-
-        $con->consultar(
-            "UPDATE {$this->tabla} SET {$this->c('NumeroDeclaracion')} = ? WHERE {$this->pk()} = ?",
-            [$numero, $id]
-        );
 
         // Cada modulo decide con que filas de actividad nace la declaracion.
         $this->_sembrarActividades($con, $id, $idContribuyente, $anio);
 
         $this->_ok = 1;
-        $this->_mensaje = "Declaración creada correctamente, N° $numero";
+        $this->_mensaje = 'Declaración creada correctamente. El número se le asigna al presentarla.';
 
         return ['id' => $id, 'numero' => $numero, 'nueva' => 1];
     }
@@ -549,9 +530,28 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
      * FUNCION 2 - Listado
      * ===================================================================== */
 
+    /**
+     * Un borrador sin número (NULL: de antes de la migración 030, o uno al que
+     * no se le pudo marcar) recibe el provisional (-id). Regla única desde el
+     * 2026-10-23: un borrador SIEMPRE tiene número (provisional o real); sin
+     * él la ventana de firma, que firma por número, no lo encontraría.
+     */
+    protected function _borradoresSinNumero($con)
+    {
+        try {
+            $con->consultar(
+                "UPDATE {$this->tabla} SET {$this->c('NumeroDeclaracion')} = -{$this->pk()}
+                  WHERE {$this->c('NumeroDeclaracion')} IS NULL AND ISNULL({$this->c('Estado')}, 0) <> 2"
+            );
+        } catch (\Throwable $e) {
+            error_log('[' . $this->modulo . '] borradores sin numero: ' . $e->getMessage());
+        }
+    }
+
     protected function _listar()
     {
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        $this->_borradoresSinNumero($con);
 
         /*
          * NO HAY COLUMNA DE RAZON SOCIAL. ind_contribuyentes guarda el nombre
@@ -765,6 +765,7 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
     protected function _abrir()
     {
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        $this->_borradoresSinNumero($con);
 
         $fila = $this->_filaAutorizada($con, isset($_POST['id']) ? $_POST['id'] : 0);
         if ($fila === null) {
@@ -1281,6 +1282,19 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
         try {
             $con->begin();
 
+            // Bajo candado de la fila: si otra pestaña la presentó mientras
+            // tanto, no se recalcula ni se le reescribe la fecha.
+            $vigente = $con->obnerFila($con->consultar(
+                "SELECT ISNULL({$this->c('Estado')}, 0) AS e FROM {$this->tabla} WITH (UPDLOCK, HOLDLOCK) WHERE {$this->pk()} = ?",
+                [$id]
+            ));
+            if (!$vigente || (int) $vigente['e'] === 2) {
+                $con->rollback();
+                $this->_ok = 0;
+                $this->_mensaje = 'Esta declaración ya fue presentada.';
+                return [];
+            }
+
             $antes = $this->_huella($con, $id);
             $this->_liquidar($con, $id, true);
 
@@ -1311,13 +1325,24 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
             // en UTC: una presentada a las 8 p. m. salia fechada al dia siguiente).
             $ahora = (new \DateTime('now', new \DateTimeZone('America/Bogota')))->format('Y-m-d H:i:s');
 
-            $con->consultar(
-                "UPDATE {$this->tabla}
+            $hecho = $con->obnerFila($con->consultar(
+                "SET NOCOUNT ON;
+                 UPDATE {$this->tabla}
                     SET {$this->c('Estado')} = 2,
                         {$this->c('FechaPresentacion')} = ?
-                  WHERE {$this->pk()} = ?",
+                  WHERE {$this->pk()} = ? AND ISNULL({$this->c('Estado')}, 0) <> 2;
+                 SELECT @@ROWCOUNT AS n;",
                 [$ahora, $id]
-            );
+            ));
+            if ((int) ($hecho['n'] ?? 0) !== 1) {
+                $con->rollback();
+                $this->_ok = 0;
+                $this->_mensaje = 'Esta declaración ya fue presentada.';
+                return [];
+            }
+
+            // El consecutivo se asigna aqui, en la misma transaccion (2026-10-23).
+            $numero = NumeroDeclaracion::asignar($con, $this->_claveModulo(), $id);
 
             $con->commit();
 
@@ -1331,8 +1356,8 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
         }
 
         $this->_ok = 1;
-        $this->_mensaje = 'Declaración presentada correctamente';
-        return ['id' => $id];
+        $this->_mensaje = 'Declaración presentada correctamente con el N° ' . $numero;
+        return ['id' => $id, 'numero' => $numero];
     }
 
 
@@ -1434,13 +1459,14 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
             return [];
         }
 
-        $numero = $this->_siguienteNumero($con, $anio);
-        if ($numero === null) { $numero = $id; }
-
-        $con->consultar(
-            "UPDATE {$this->tabla} SET {$this->c('NumeroDeclaracion')} = ? WHERE {$this->pk()} = ?",
-            [$numero, $id]
-        );
+        // Como todo borrador, numero provisional hasta presentarla.
+        try {
+            $numero = NumeroDeclaracion::marcarProvisional($con, $this->_claveModulo(), $id);
+        } catch (\Throwable $e) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No se pudo crear la corrección.';
+            return [];
+        }
 
         // La correccion arranca con lo mismo que decia la vigente: se corrige
         // partiendo de lo declarado, no de una hoja en blanco.
@@ -1448,7 +1474,7 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
         $this->_liquidar($con, $id);
 
         $this->_ok = 1;
-        $this->_mensaje = "Corrección creada, N° $numero";
+        $this->_mensaje = 'Corrección creada. El número se le asigna al presentarla.';
         return ['id' => $id, 'numero' => $numero];
     }
 

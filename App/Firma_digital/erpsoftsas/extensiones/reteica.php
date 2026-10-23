@@ -58,7 +58,12 @@ $stmt = $con->consultar(
 while ($f = $con->obnerFila($stmt)) { $actividades[] = $f; }
 
 $numero        = $row['ret_NumeroDeclaracion'] ?: $row['ret_Id'];
+// Lo que se imprime: un borrador no tiene número hasta presentarse (2026-10-23).
+// $numero sigue siendo el de las firmas.
 $estaPresentada = ((int) $row['ret_Estado'] === 2);
+// Una presentada vieja sin número (NULL) sigue imprimiendo su id, como antes y
+// como reciboPago.php; un borrador, nada.
+$numeroVer     = \erpsoftsas\NumeroDeclaracion::texto($row['ret_NumeroDeclaracion'] ?: ($estaPresentada ? $row['ret_Id'] : null), '');
 
 $firmas     = pdfret_firmasDe($con, $numero, 'RETEICA');
 $fechaSello = pdfret_fechaSello($row['ret_FechaPresentacion'], $firmas['declarante']);
@@ -143,7 +148,7 @@ $html = '
     <td width="10%"><b>FECHA</b></td>
     <td width="15%" align="center">' . htmlspecialchars($fechaDoc) . '</td>
     <td width="10%"><b>No. FORM.</b></td>
-    <td width="10%" align="center">' . htmlspecialchars((string) $numero) . '</td>
+    <td width="10%" align="center">' . htmlspecialchars((string) $numeroVer) . '</td>
 </tr>
 <tr>
     <td width="20%" bgcolor="#e1dada"><b>RÉGIMEN</b></td>
@@ -374,7 +379,7 @@ $pdf->writeHTML($htmlFirmas, true, false, true, false, '');
 $yFinFirmas = $pdf->GetY() - DESFASE_GETY_RET;
 pdfret_textoVertical($pdf, 'D. FIRMAS', 10, $ySecD, $yFinFirmas);
 
-$yFin = pdfret_bloqueBarras($pdf, $numero, $row['ret_ValorConcepto17'], $estaPresentada);
+$yFin = pdfret_bloqueBarras($pdf, $numeroVer, $row['ret_ValorConcepto17'], $estaPresentada);
 
 /* La marca de agua va AL FINAL. Dibujarla justo despues del AddPage cuelga el
    worker de PHP-FPM indefinidamente; ver pdfRetenciones.php. */
@@ -391,4 +396,4 @@ if (!empty($_GET['medir'])) {
     exit;
 }
 
-$pdf->Output('RETEICA_' . $numero . '.pdf', 'I');
+$pdf->Output('RETEICA_' . ($numeroVer !== '' ? $numeroVer : 'borrador') . '.pdf', 'I');

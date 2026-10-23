@@ -25,6 +25,7 @@ include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
 include_once SERVER . '/business/class.codigoBarrasRecaudo.php';
 include_once SERVER . '/business/class.vencimientoICA.php';
+include_once SERVER . '/business/class.numeroDeclaracion.php';
 require_once('./tcpdf/tcpdf.php');
 
 // Cargar configuración del municipio. Ubicación real (Plesk/producción): un
@@ -412,7 +413,8 @@ $revisor_num_doc     = "";
 $revisor_tp          = "";
 
 $codigo_barras       = "";
-$referencia_recaudo  = $row['dec_NumeroDeclaracion'] ?? '';
+// En blanco mientras sea borrador: el número se asigna al presentar (2026-10-23).
+$referencia_recaudo  = \erpsoftsas\NumeroDeclaracion::texto($row['dec_NumeroDeclaracion'] ?? null, '');
 
 /* ============================================================
    FUNCIONES AUXILIARES

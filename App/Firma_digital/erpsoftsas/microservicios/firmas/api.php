@@ -309,16 +309,20 @@ class FirmasAPI
                 "SELECT dec_NumeroDeclaracion AS n FROM ind_declaraciones_ica WHERE dec_Id = ?",
                 [(int) $numero]
             ));
-            if (!empty($f['n'])) { $numero = (string) $f['n']; }
+            // Sin número (NULL) también es un borrador: no se escribe el id como si fuera el número.
+            $numero = !empty($f['n']) ? (string) $f['n'] : '0';
         }
 
         $corto  = ['ICA' => 'ICA', 'RETEICA' => 'Retención', 'AUTORRETEICA' => 'Autorretención'][$modulo];
         $largo  = ['ICA' => 'la declaración de ICA', 'RETEICA' => 'la retención', 'AUTORRETEICA' => 'la autorretención'][$modulo];
         $quien  = ($rol === 'contador') ? 'firma del contador o revisor fiscal' : 'firma del declarante';
 
+        // Un borrador lleva número provisional (negativo) hasta presentarse
+        // (2026-10-23): ese no se escribe en el correo.
+        $n = (preg_match('/^-?[0-9]+$/', (string) $numero) && (float) $numero <= 0) ? ' en borrador' : ' N° ' . $numero;
         return [
-            'corto' => $corto . ' N° ' . $numero,
-            'largo' => $largo . ' N° ' . $numero . ' (' . $quien . ')',
+            'corto' => $corto . $n,
+            'largo' => $largo . $n . ' (' . $quien . ')',
         ];
     }
 
@@ -882,13 +886,33 @@ class FirmasAPI
             );
             $msg = 'Declaración refirmada correctamente';
         } else {
-            $conSql->consultar(
-                "INSERT INTO firmas_declaraciones
+            /*
+             * Solo si la declaración SIGUE en borrador con ese número (o id, en
+             * el ICA). Desde el 2026-10-23 el número de un borrador es
+             * provisional y cambia al presentar: si otra pestaña la presentó
+             * mientras se escribía el código, la firma quedaría huérfana con
+             * el número viejo.
+             */
+            $sigueBorrador = [
+                'RETEICA'      => "SELECT 1 FROM ind_reteica WHERE CAST(ret_NumeroDeclaracion AS VARCHAR(30)) = ? AND ISNULL(ret_Estado, 0) <> 2",
+                'AUTORRETEICA' => "SELECT 1 FROM ind_autorreteica WHERE CAST(aut_NumeroDeclaracion AS VARCHAR(30)) = ? AND ISNULL(aut_Estado, 0) <> 2",
+                'ICA'          => "SELECT 1 FROM ind_declaraciones_ica WHERE ? IN (CAST(dec_Id AS VARCHAR(30)), CAST(dec_NumeroDeclaracion AS VARCHAR(30)))
+                                      AND ISNULL(dec_Estado, 0) <> 2",
+            ][$modulo];
+            $hecho = $conSql->obnerFila($conSql->consultar(
+                "SET NOCOUNT ON;
+                 INSERT INTO firmas_declaraciones
                     (fd_NumeroDeclaracion, fd_IdUsuario, fd_NombreUsuario, fd_EmailUsuario,
                      fd_Rol, fd_Modulo, fd_FechaHora)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [$numeroDeclaracion, $idUsuario, $nombre, $email, $rol, $modulo, $ahora]
-            );
+                 SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS ($sigueBorrador);
+                 SELECT @@ROWCOUNT AS n;",
+                [$numeroDeclaracion, $idUsuario, $nombre, $email, $rol, $modulo, $ahora, (string) $numeroDeclaracion]
+            ));
+            if ((int) ($hecho['n'] ?? 0) !== 1) {
+                header('Content-type: application/json');
+                echo json_encode(['ok' => 0, 'mensaje' => 'La declaración ya no está en borrador (se presentó): no se registró la firma. Recargue la lista.']);
+                return;
+            }
             $msg = $rol === 'contador'
                  ? 'Declaración firmada por el contador / revisor fiscal'
                  : 'Declaración firmada correctamente';

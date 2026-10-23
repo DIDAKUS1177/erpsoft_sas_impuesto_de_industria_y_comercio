@@ -6,14 +6,15 @@ require_once __DIR__ . '/class.pseModulo.php';
 require_once __DIR__ . '/class.pagoDeclaracion.php';
 require_once __DIR__ . '/class.bancosPago.php';
 require_once __DIR__ . '/class.vencimientoICA.php';
+require_once __DIR__ . '/class.numeroDeclaracion.php';
 
 /**
  * Lo que registra la Alcaldía a mano sobre una declaración (migración 044).
  *
  *   - registrarHistorica: un borrador ya llenado con el formulario de siempre
- *     queda PRESENTADO y PAGADO, con la fecha y el número del papel, los PDF de
- *     la declaración original y del soporte de pago. Es la declaración que se
- *     presentó y pagó fuera de la plataforma (Juan, Paipa, 2026-10-09).
+ *     queda PRESENTADO y PAGADO. Es la declaración que se presentó y pagó fuera
+ *     de la plataforma (Juan, Paipa, 2026-10-09). Desde el 2026-10-23 pide lo
+ *     mismo que el pago manual (fechas, banco y un PDF; el valor es el total).
  *   - registrarPago: una declaración presentada y sin pagar queda pagada con
  *     un pago hecho por transferencia, consignación..., con su soporte.
  *
@@ -64,9 +65,15 @@ class RegistroManual
     /**
      * Borrador → presentada y pagada.
      *
-     * @param array $datos   numeroPapel, fechaPresentacion, fechaPago, valor,
-     *                       medio, idBanco, idCuentaContable, referencia, observacion
-     * @param array $archivos 'declaracion' y 'soporte' de $_FILES
+     * Pide lo mismo que el pago manual (Paipa, 2026-10-23: "solo fecha de
+     * presentación, fecha de pago, banco y el PDF"): el valor es el total de la
+     * declaración, más los intereses de mora de una ICA vencida, y el medio
+     * queda SIN_MEDIO. El número del papel y el PDF de la declaración original
+     * ya no se piden; si llegan (pantalla vieja en caché) se guardan igual.
+     *
+     * @param array $datos   fechaPresentacion, fechaPago, idBanco, idCuentaContable,
+     *                       intereses (y, opcional, numeroPapel)
+     * @param array $archivos 'soporte' de $_FILES (y, opcional, 'declaracion')
      * @return array ['ok' => bool, 'mensaje' => string]
      */
     public static function registrarHistorica($con, $clave, $id, array $datos, array $archivos, $idUsuario)
@@ -79,11 +86,11 @@ class RegistroManual
         if (is_string($pago)) { return self::_no($pago); }
 
         $papel = trim((string) ($datos['numeroPapel'] ?? ''));
-        if (!preg_match('#^[A-Za-z0-9][A-Za-z0-9 ./-]{0,29}$#', $papel)) {
-            return self::_no('Escriba el número que tiene la declaración en papel (letras, números, puntos, guiones o barras; hasta 30).');
+        if ($papel !== '' && !preg_match('#^[A-Za-z0-9][A-Za-z0-9 ./-]{0,29}$#', $papel)) {
+            return self::_no('El número del papel admite letras, números, puntos, guiones o barras (hasta 30).');
         }
-        $presentacion = self::_fecha($datos['fechaPresentacion'] ?? '', 'de presentación');
-        if (is_array($presentacion)) { return $presentacion; }
+        $presentacion = $pago['presentacion'];
+        if (empty($presentacion)) { return self::_no('Escriba la fecha de presentación.'); }
         if ($pago['fecha'] < $presentacion) {
             // No se bloquea por regla de negocio dudosa: un anticipo se paga
             // antes de presentar. Pero casi siempre es un error de digitación.
@@ -93,9 +100,13 @@ class RegistroManual
             }
         }
 
-        $decl = self::_archivo($archivos['declaracion'] ?? null, 'la declaración original');
-        if (is_string($decl)) { return self::_no($decl); }
-        $sop  = self::_archivo($archivos['soporte'] ?? null, 'el soporte de pago');
+        $decl = null;
+        $hayDecl = is_array($archivos['declaracion'] ?? null) && ($archivos['declaracion']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+        if ($hayDecl) {
+            $decl = self::_archivo($archivos['declaracion'], 'la declaración original');
+            if (is_string($decl)) { return self::_no($decl); }
+        }
+        $sop  = self::_archivo($archivos['soporte'] ?? null, 'el soporte');
         if (is_string($sop)) { return self::_no($sop); }
 
         $fila = self::_fila($con, $m, $id);
@@ -110,10 +121,13 @@ class RegistroManual
         if ((float) $fila['total'] <= 0) {
             return self::_no('El total a pagar está en $0: llene la declaración con los valores del papel y guárdela antes de registrarla.');
         }
+        $intereses = self::_intereses($m, $fila, $pago['fecha'], $datos['intereses'] ?? '');
+        if (is_string($intereses)) { return self::_no($intereses); }
 
         $guardados = [];
         try {
-            $guardados[] = self::_guardarPdf($m, $id, $decl);
+            // Con dos, el primero es la declaración original (_insertarSoportes).
+            if ($decl) { $guardados[] = self::_guardarPdf($m, $id, $decl); }
             $guardados[] = self::_guardarPdf($m, $id, $sop);
         } catch (\Throwable $e) {
             self::_borrar($guardados);
@@ -137,7 +151,18 @@ class RegistroManual
                 return self::_no('La declaración cambió mientras se registraba. Recargue la lista y revise su estado.');
             }
 
-            // Presentada con la fecha del papel. Sin firma: el original es el PDF.
+            // El valor es el total, leído bajo el candado, más los intereses.
+            $pago['valor'] = round((float) $fila['total'], 2) + $intereses;
+            if ($intereses > 0) {
+                $pago['observacion'] = 'Intereses de mora: $ ' . number_format($intereses, 0, ',', '.');
+            }
+            if ($pago['valor'] <= 0) {
+                $con->rollback();
+                self::_borrar($guardados);
+                return self::_no('El total a pagar está en $0: llene la declaración con los valores del papel y guárdela antes de registrarla.');
+            }
+
+            // Presentada con la fecha del papel. Sin firma: el respaldo es el PDF.
             // Si no tocó la fila (la presentaron o la borraron en el intervalo),
             // no se sigue: registrar() vería "presentada" y la pagaría igual.
             $p = $m['prefijo'];
@@ -153,6 +178,10 @@ class RegistroManual
                 self::_borrar($guardados);
                 return self::_no('La declaración cambió mientras se registraba. Recargue la lista y revise su estado.');
             }
+
+            // Queda presentada: le toca su consecutivo (2026-10-23; el borrador
+            // traía uno provisional). Misma transacción.
+            $numero = NumeroDeclaracion::asignar($con, $m['clave'], $id);
 
             $idSop = self::_insertarSoportes($con, $m, $id, $guardados, $idUsuario);
 
@@ -177,10 +206,10 @@ class RegistroManual
             return self::_no('No se pudo registrar: no quedó ningún cambio. Intente de nuevo.');
         }
 
-        error_log(sprintf('[registro manual] usuario %d registró la %s %d como presentada y pagada (papel N° %s)',
-            (int) $idUsuario, $m['clave'], $id, $papel));
+        error_log(sprintf('[registro manual] usuario %d registró la %s %d como presentada y pagada (%s)',
+            (int) $idUsuario, $m['clave'], $id, $papel !== '' ? 'papel N° ' . $papel : 'sin número del papel'));
 
-        return ['ok' => true, 'mensaje' => 'Declaración registrada como presentada y pagada.'];
+        return ['ok' => true, 'mensaje' => 'Declaración registrada como presentada y pagada, con el N° ' . $numero . '.'];
     }
 
     /**
@@ -200,7 +229,7 @@ class RegistroManual
         $m  = PseModulo::get($clave);
         $id = (int) $id;
 
-        $pago = self::_leerPago($con, $datos, true);
+        $pago = self::_leerPago($con, $datos);
         if (is_string($pago)) { return self::_no($pago); }
 
         $sop = self::_archivo($archivos['soporte'] ?? null, 'el soporte de pago');
@@ -568,59 +597,29 @@ class RegistroManual
      * El banco se elige de la lista (ind_bancos, migración 045): llega su id y
      * se guarda su nombre; antes era texto libre.
      */
-    private static function _leerPago($con, array $d, $simple = false)
+    private static function _leerPago($con, array $d)
     {
         $fecha = self::_fecha($d['fechaPago'] ?? '', 'de pago');
         if (is_array($fecha)) { return $fecha['mensaje']; }
 
-        // Pago manual: fechas y banco; valor (el total) y medio los pone quien llama.
-        if ($simple) {
-            // La fecha de presentación (Juan, 2026-10-15) llega llena con la de
-            // la plataforma y se cambia si se presentó en otra fecha. Si no
-            // llega (pantalla vieja en caché), vale la de la plataforma.
-            $presentacion = null;
-            if (trim((string) ($d['fechaPresentacion'] ?? '')) !== '') {
-                $presentacion = self::_fecha($d['fechaPresentacion'], 'de presentación');
-                if (is_array($presentacion)) { return $presentacion['mensaje']; }
-            }
-            $idBanco = trim((string) ($d['idBanco'] ?? ''));
-            $banco   = preg_match('/^[0-9]{1,9}$/', $idBanco) ? BancosPago::activo($con, (int) $idBanco) : null;
-            if (!$banco) { return 'Elija el banco por el que entró el pago.'; }
-            $cuenta = BancosPago::cuentaDelPago($con, $banco['id'], $d['idCuentaContable'] ?? '');
-            if (is_string($cuenta)) { return $cuenta; }
-            return [
-                'fecha' => $fecha, 'presentacion' => $presentacion, 'valor' => 0, 'medio' => self::_sinMedio($con), 'simple' => true,
-                'banco' => $banco['nombre'], 'idBanco' => $banco['id'], 'referencia' => '', 'observacion' => '',
-                'cuenta' => $cuenta,
-            ];
+        // Fechas y banco; valor (el total) y medio los pone quien llama. Desde el
+        // 2026-10-23 también para "Ya pagada" (antes pedía valor, medio,
+        // referencia y observación). La fecha de presentación (Juan,
+        // 2026-10-15) llega llena con la de la plataforma; si no llega
+        // (pantalla vieja en caché), vale la de la plataforma.
+        $presentacion = null;
+        if (trim((string) ($d['fechaPresentacion'] ?? '')) !== '') {
+            $presentacion = self::_fecha($d['fechaPresentacion'], 'de presentación');
+            if (is_array($presentacion)) { return $presentacion['mensaje']; }
         }
-
-        // Pesos con puntos de miles o coma decimal, como se escriben a mano.
-        $txt = preg_replace('/[\s$]/', '', (string) ($d['valor'] ?? ''));
-        if (preg_match('/^\d{1,3}(\.\d{3})+(,\d{1,2})?$/', $txt)) { $txt = str_replace(['.', ','], ['', '.'], $txt); }
-        elseif (preg_match('/^\d+,\d{1,2}$/', $txt))             { $txt = str_replace(',', '.', $txt); }
-        if (!preg_match('/^\d{1,13}(\.\d{1,2})?$/', $txt) || (float) $txt <= 0) {
-            return 'Escriba el valor pagado, en pesos.';
-        }
-
-        $medio = strtoupper(trim((string) ($d['medio'] ?? '')));
-        if (!isset(self::MEDIOS[$medio])) { return 'Elija el medio de pago.'; }
-
         $idBanco = trim((string) ($d['idBanco'] ?? ''));
         $banco   = preg_match('/^[0-9]{1,9}$/', $idBanco) ? BancosPago::activo($con, (int) $idBanco) : null;
         if (!$banco) { return 'Elija el banco por el que entró el pago.'; }
-        // La cuenta contable (051): obligatoria si el banco tiene cuentas este año.
         $cuenta = BancosPago::cuentaDelPago($con, $banco['id'], $d['idCuentaContable'] ?? '');
         if (is_string($cuenta)) { return $cuenta; }
-
-        $ref   = trim((string) ($d['referencia'] ?? ''));
-        $obs   = trim((string) ($d['observacion'] ?? ''));
-        if (mb_strlen($ref) > 60) { return 'La referencia va hasta 60 caracteres.'; }
-        if (mb_strlen($obs) > 500) { return 'La observación va hasta 500 caracteres.'; }
-
         return [
-            'fecha' => $fecha, 'valor' => round((float) $txt, 2), 'medio' => $medio,
-            'banco' => $banco['nombre'], 'idBanco' => $banco['id'], 'referencia' => $ref, 'observacion' => $obs,
+            'fecha' => $fecha, 'presentacion' => $presentacion, 'valor' => 0, 'medio' => self::_sinMedio($con),
+            'banco' => $banco['nombre'], 'idBanco' => $banco['id'], 'referencia' => '', 'observacion' => '',
             'cuenta' => $cuenta,
         ];
     }
@@ -718,14 +717,10 @@ class RegistroManual
     /** El pago: en la declaración (vía MANUAL) y su detalle. false si no se marcó. */
     private static function _registrarPago($con, array $m, $id, array $pago, $idSoporte, $idUsuario)
     {
-        // El pago simple (sin medio) lleva solo el nombre del banco.
-        $banco = empty($pago['simple'])
-            ? self::MEDIOS[$pago['medio']] . ($pago['banco'] !== '' ? ' - ' . $pago['banco'] : '')
-            : $pago['banco'];
-
+        // Sin medio (desde el 2026-10-14 y 23): el texto es solo el nombre del banco.
         $marcada = PagoDeclaracion::registrar($con, $id, [
             'valor'     => $pago['valor'],
-            'banco'     => $banco,
+            'banco'     => $pago['banco'],
             'idBanco'   => $pago['idBanco'],
             'via'       => PagoDeclaracion::VIA_MANUAL,
             'fechaPago' => $pago['fecha'],

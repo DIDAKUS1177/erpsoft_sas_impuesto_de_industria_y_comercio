@@ -48,7 +48,8 @@ class ControladorRegistroManual extends \erpsoftsas\Cabecera
             2 => ['alcaldia.pagos.manual'],
             3 => ['alcaldia.registro.anular'],
             4 => ['alcaldia.declaraciones.historicas', 'alcaldia.pagos.manual'],
-            5 => ['alcaldia.pagos.manual'],
+            // La usan los dos formularios (fecha de presentación y fecha límite).
+            5 => ['alcaldia.declaraciones.historicas', 'alcaldia.pagos.manual'],
         ];
         if (!isset($claves[$funcion])) {
             echo json_encode(['ok' => 0, 'mensaje' => 'Función no válida.', 'datos' => []]);

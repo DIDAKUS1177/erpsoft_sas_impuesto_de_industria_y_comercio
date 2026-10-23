@@ -187,8 +187,9 @@ var DeclaracionesUI = (function () {
                                        : 'El total a pagar está en $0: ábrala con Editar, revise los valores del papel y pulse Guardar.',
                                off: true })
                     : accBtn({ permiso: 'alcaldia.declaraciones.historicas', tipo: 'success', icono: 'fa-archive', texto: 'Ya pagada',
-                               title: 'Registrar como presentada y pagada fuera de la plataforma (con el PDF original y el soporte de pago)',
-                               onclick: 'RegistroManual.historica(&quot;ica&quot;, ' + d.dec_Id + ', ' + numeroJs + ')' }))) +
+                               title: 'Registrar como presentada y pagada fuera de la plataforma (con el soporte en PDF)',
+                               onclick: 'RegistroManual.historica(&quot;ica&quot;, ' + d.dec_Id + ', ' + numeroJs + ', '
+                                      + Number(d.dec_ValorConcepto20 || 0) + ')' }))) +
                 accBtn({ permiso: 'ica.editar', tipo: 'danger',    icono: 'fa-trash',           texto: 'Borrar', title: 'Borrar borrador',
                          onclick: objJs + '.borrarDeclaracion(' + d.dec_Id + ')' })
             );
@@ -452,10 +453,12 @@ var DeclaracionesUI = (function () {
             var ultima = correcciones[correcciones.length - 1];
             var suNumero = ultima.dec_NumeroDeclaracion || ultima.dec_Id;
             // "Que diga que está siendo corregida": en borrador todavía no la
-            // reemplaza; ya presentada, sí.
+            // reemplaza; ya presentada, sí. Una corrección en borrador no tiene
+            // número todavía (se asigna al presentar).
             html += estado(ultima).paso >= 5
-                ? '<div style="font-size:11px;color:#B45309;">Corregida por la N° ' + suNumero + '</div>'
-                : '<div style="font-size:11px;color:#B45309;">En corrección: N° ' + suNumero + '</div>';
+                ? '<div style="font-size:11px;color:#B45309;">Corregida por la N° ' + NumerosCOP.numeroDeclaracion(suNumero) + '</div>'
+                : '<div style="font-size:11px;color:#B45309;">En corrección' + (NumerosCOP.esNumeroProvisional(suNumero)
+                      ? ' (borrador)' : ': N° ' + suNumero) + '</div>';
         }
         html += notaRegistroManual(d.registro_manual);
         return html;
@@ -475,7 +478,8 @@ var DeclaracionesUI = (function () {
      */
     function resumenDeclaracion(d) {
         var numero = d.dec_NumeroDeclaracion || d.dec_Id;
-        return '<span>Declaración No. ' + numero + ' &mdash; Año gravable ' + d.dec_AnioDeclaracion + '</span> ' + chipEstado(d);
+        var titulo = NumerosCOP.esNumeroProvisional(numero) ? 'Declaración en borrador' : 'Declaración No. ' + numero;
+        return '<span>' + titulo + ' &mdash; Año gravable ' + d.dec_AnioDeclaracion + '</span> ' + chipEstado(d);
     }
 
     /**
@@ -913,7 +917,7 @@ function limpiarFormularioDeclaracion() {
     $('#tbodyActividades').empty();
     $('#totalBaseGravable, #totalImpuesto').val('');
 
-    $('#numDeclaracion, #anioDeclaracion, #periodoDeclaracion').val('');
+    $('#numDeclaracion, #numDeclaracionVer, #anioDeclaracion, #periodoDeclaracion').val('');
     $('#fechaDeclaracion, #horaDeclaracion').val('');
 
     // La sancion vuelve a "Ninguna", que es como nace el formulario.
@@ -1036,6 +1040,16 @@ var FormularioDeclaracion = {
         var hora  = crudo(d.dec_HoraDeclaracion).match(/\d{2}:\d{2}(:\d{2})?/);
         $('#fechaDeclaracion').val(/^\d{4}-\d{2}-\d{2}$/.test(fecha) && fecha !== '1900-01-01' ? fecha : '');
         $('#horaDeclaracion').val(hora ? hora[0] : '');
+    },
+
+    /**
+     * El numero en el formulario. #numDeclaracion (oculto) es el que viaja al
+     * servidor; #numDeclaracionVer el que se ve. Un borrador lleva numero
+     * provisional hasta presentarse (2026-10-23) y no se muestra.
+     */
+    ponerNumero: function (numero) {
+        $('#numDeclaracion').val(numero);
+        $('#numDeclaracionVer').val(NumerosCOP.numeroDeclaracion(numero, 'Se asigna al presentar'));
     },
 
     /**
@@ -1276,7 +1290,7 @@ var EditarDeclaracion = (function () {
                 // ve el contribuyente, y el servidor busca primero por numero,
                 // que es unico. Con el id, una declaracion vieja cuyo numero
                 // coincidiera con este id se tomaria por esta.
-                $('#numDeclaracion').val(d.dec_NumeroDeclaracion || d.dec_Id);
+                FormularioDeclaracion.ponerNumero(d.dec_NumeroDeclaracion || d.dec_Id);
                 $('#anioDeclaracion').val(d.dec_AnioDeclaracion);
                 $('#periodoDeclaracion').val(d.dec_MesDeclaracion);
 

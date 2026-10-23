@@ -80,12 +80,32 @@ var NumerosCOP = (function () {
         return Math.floor(aCifra(valor));
     }
 
+    /**
+     * Número de declaración PROVISIONAL: desde el 2026-10-23 (reunión con
+     * Paipa del 20) el consecutivo se asigna al presentar, y el borrador lleva
+     * menos su id (business/class.numeroDeclaracion.php). Ese no se muestra.
+     * Misma regla que el servidor (NumeroDeclaracion::esProvisional): vacío
+     * también es "sin número". Una PRESENTADA vieja sin número muestra su id:
+     * eso lo resuelve quien llama (numero || id), como siempre.
+     */
+    function esNumeroProvisional(numero) {
+        if (numero === null || numero === undefined || String(numero).trim() === '') { return true; }
+        return !(Number(numero) > 0);
+    }
+
+    /** El número para mostrar; el provisional sale como sinNumero ("Sin número"). */
+    function numeroDeclaracion(numero, sinNumero) {
+        return esNumeroProvisional(numero) ? (sinNumero === undefined ? 'Sin número' : sinNumero) : String(numero);
+    }
+
     var api = {
         aCifra: aCifra,
         deBaseDeDatos: deBaseDeDatos,
         deBaseDeDatosAInput: deBaseDeDatosAInput,
         formatear: formatear,
-        aEntero: aEntero
+        aEntero: aEntero,
+        esNumeroProvisional: esNumeroProvisional,
+        numeroDeclaracion: numeroDeclaracion
     };
 
     if (typeof module !== 'undefined' && module.exports) {

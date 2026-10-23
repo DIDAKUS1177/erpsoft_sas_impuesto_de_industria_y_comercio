@@ -587,9 +587,13 @@ Guardar
                                     <!-- Es el numero del formulario, lo asigna el sistema. Ya era readonly;
                                          le faltaba VERSE bloqueado -el cliente creyo que
                                          podia escribirlo-. -->
-                                    <input type="text" id="numDeclaracion"
+                                    <!-- #numDeclaracion es el que se manda (el número, o el
+                                         provisional de un borrador); #numDeclaracionVer el que se ve:
+                                         el número se asigna al presentar (2026-10-23). -->
+                                    <input type="hidden" id="numDeclaracion">
+                                    <input type="text" id="numDeclaracionVer"
                                            class="form-control input-sm campo-bloqueado" readonly
-                                           title="Lo asigna el sistema">
+                                           title="Lo asigna el sistema al presentar la declaración">
                                 </div>
 
                                 <!-- AÑO -->

@@ -35,6 +35,7 @@ include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
 include_once SERVER . '/business/class.codigoBarrasRecaudo.php';
 include_once SERVER . '/business/class.catalogoAnio.php';
+include_once SERVER . '/business/class.numeroDeclaracion.php';
 
 /*
  * La configuracion del municipio. Ubicacion real (Plesk/produccion): un nivel

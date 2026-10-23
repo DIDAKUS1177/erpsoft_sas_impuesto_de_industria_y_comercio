@@ -2,10 +2,11 @@
  * Registro manual de la Alcaldía sobre una declaración (migración 044), en las
  * pantallas de ICA, retención y autorretención:
  *
- *   RegistroManual.historica(modulo, id, numero)
+ *   RegistroManual.historica(modulo, id, numero, valor)
  *       Un borrador ya llenado queda PRESENTADO y PAGADO: declaración que se
- *       presentó en papel y se pagó fuera de la plataforma. Pide el número y
- *       la fecha del papel, el pago y dos PDF (original y soporte).
+ *       presentó en papel y se pagó fuera de la plataforma. Desde el
+ *       2026-10-23 (Paipa) pide lo mismo que el pago manual: fechas de
+ *       presentación y de pago, banco y un PDF; el valor es el total.
  *   RegistroManual.pago(modulo, id, numero, valor)
  *       Una declaración presentada queda pagada con un pago manual: solo las
  *       fechas de presentación y de pago, el banco y el soporte en PDF (Paipa,
@@ -29,12 +30,6 @@
 var RegistroManual = (function () {
 
     var URL = '../business/controller/class.registroManual.php';
-    var MEDIOS = [
-        ['TRANSFERENCIA', 'Transferencia'],
-        ['CONSIGNACION', 'Consignación'],
-        ['VENTANILLA', 'Pago en ventanilla'],
-        ['OTRO', 'Otro medio']
-    ];
     var NOMBRE = { ica: 'Industria y Comercio', reteica: 'Retención de ICA', autorreteica: 'Autorretención de ICA' };
 
     function esc(t) {
@@ -66,11 +61,12 @@ var RegistroManual = (function () {
        llega llena con la de la plataforma y se cambia si se presentó en otra
        fecha. En una ICA vencida en la fecha de pago aparece además "Intereses de
        mora" (Diego, 2026-10-15), que se suman al total. Ver fechas() abajo. */
-    function seccionPagoSimple(valor) {
+    function seccionPagoSimple(valor, historica) {
         return '<h6 style="margin:6px 0 10px;font-weight:700;">El pago</h6>'
              + '<div class="form-row">'
              + campo('Fecha de presentación', '<input type="date" name="fechaPresentacion" class="form-control" required max="' + hoy() + '">',
-                     '<span class="js-presentacion-ayuda">Cámbiela si se presentó en otra fecha.</span>', 6)
+                     '<span class="js-presentacion-ayuda">' + (historica ? 'La del sello de la declaración en papel.'
+                                                                         : 'Cámbiela si se presentó en otra fecha.') + '</span>', 6)
              + campo('Fecha de pago', '<input type="date" name="fechaPago" class="form-control" required max="' + hoy() + '">',
                      'Viene igual a la de presentación; cámbiela si se pagó otro día. Puede pegar una fecha copiada.', 6)
              + '</div>'
@@ -182,7 +178,6 @@ var RegistroManual = (function () {
        otra) y, en la ICA, muestra la casilla de intereses si la fecha de pago es
        posterior a la fecha límite, manteniendo al día el valor que se registra. */
     function fechas(o, $m) {
-        if (o.historica) { return; }
         var ica = o.modulo === 'ica';
         var limite = null;
         var $fecha = $m.find('[name=fechaPago]'), $int = $m.find('[name=intereses]'), $fila = $m.find('.js-intereses');
@@ -226,25 +221,6 @@ var RegistroManual = (function () {
                 }
                 actualizar();
             });
-    }
-
-    function seccionPago(valor) {
-        var opciones = MEDIOS.map(function (m) { return '<option value="' + m[0] + '">' + m[1] + '</option>'; }).join('');
-        return '<h6 style="margin:6px 0 10px;font-weight:700;">El pago</h6>'
-             + '<div class="form-row">'
-             + campo('Fecha de pago', '<input type="date" name="fechaPago" class="form-control" required max="' + hoy() + '">',
-                     'Igual a la de presentación mientras no la cambie.', 4)
-             + campo('Valor pagado (pesos)', '<input type="text" name="valor" class="form-control" required inputmode="numeric" '
-                   + 'placeholder="Ej. 1.250.000" value="' + esc(pesos(valor)) + '">', 'Lo que entró a la cuenta, con intereses si los hubo.', 4)
-             + campo('Medio', '<select name="medio" class="form-control" required>' + opciones + '</select>', '', 4)
-             + campo('Banco', '<select name="idBanco" class="form-control" required><option value="">Cargando bancos…</option></select>',
-                     'Por el que entró la plata.', 6)
-             + campoCuenta()
-             + campo('Referencia o comprobante', '<input type="text" name="referencia" class="form-control" maxlength="60">', '', 6)
-             // Alto fijo: la hoja de retención le da a los textarea un alto mínimo enorme.
-             + campo('Observación', '<textarea name="observacion" class="form-control" rows="2" maxlength="500" '
-                   + 'style="min-height:0;height:64px;"></textarea>', '', 12)
-             + '</div>';
     }
 
     /* La cuenta contable (migración 051): aparece al elegir un banco que tiene
@@ -322,24 +298,22 @@ var RegistroManual = (function () {
         $('#modal-RegistroManual').modal('hide').remove();
 
         var titulo = o.historica ? 'Registrar declaración ya pagada' : 'Registrar pago manual';
+        // Un borrador no tiene número hasta presentarse (2026-10-23): se le asigna al registrarla.
+        var provisional = NumerosCOP.esNumeroProvisional(o.numero);
+        var cual = provisional ? 'La declaración en borrador' : 'La declaración N° <b>' + esc(o.numero) + '</b>';
         var intro = o.historica
-            ? 'La declaración N° <b>' + esc(o.numero) + '</b> (' + esc(NOMBRE[o.modulo] || '') + ') quedará <b>presentada y pagada</b> '
-              + 'con los datos que se llenaron en el formulario, sin firma por código: el respaldo son los PDF. '
+            ? cual + ' (' + esc(NOMBRE[o.modulo] || '') + ') quedará <b>presentada y pagada</b> '
+              + 'con los datos que se llenaron en el formulario' + (provisional ? ' y recibirá su número de la serie' : '') + ', '
+              + 'sin firma por código: el respaldo es el PDF. '
               + 'Revise antes que el formulario tenga los mismos valores del papel.'
             : 'La declaración N° <b>' + esc(o.numero) + '</b> (' + esc(NOMBRE[o.modulo] || '') + ') quedará <b>pagada</b> '
               + 'con este pago hecho fuera de la plataforma.';
 
-        var papel = !o.historica ? '' :
-              '<h6 style="margin:6px 0 10px;font-weight:700;">La declaración en papel</h6>'
-            + '<div class="form-row">'
-            + campo('Número en el papel', '<input type="text" name="numeroPapel" class="form-control" required maxlength="30">',
-                    'El sistema le da un número nuevo de su serie; este queda de referencia.', 6)
-            + campo('Fecha de presentación', '<input type="date" name="fechaPresentacion" class="form-control" required max="' + hoy() + '">', '', 6)
-            + '</div>';
-
-        var archivos = '<h6 style="margin:6px 0 10px;font-weight:700;">Soportes</h6><div class="form-row">'
-            + (o.historica ? pdf('declaracion', 'Declaración original (PDF)') : '')
-            + pdf('soporte', 'Soporte de pago (PDF)')
+        // "Ya pagada" pide lo mismo que el pago manual (Paipa, 2026-10-23): un
+        // solo PDF, que puede llevar la declaración en papel y el comprobante.
+        var archivos = '<h6 style="margin:6px 0 10px;font-weight:700;">Soporte</h6><div class="form-row">'
+            + (o.historica ? pdf('soporte', 'Soporte (PDF)', 'La declaración en papel y el comprobante de pago. Solo PDF, hasta 10 MB.')
+                           : pdf('soporte', 'Soporte de pago (PDF)'))
             + '</div>';
 
         var html =
@@ -350,7 +324,7 @@ var RegistroManual = (function () {
           + '<button type="button" class="close" data-dismiss="modal" aria-label="Cerrar"><span aria-hidden="true">&times;</span></button></div>'
           + '<div class="modal-body">'
           + '<p style="font-size:13px;color:#4B5563;">' + intro + '</p>'
-          + papel + (o.historica ? seccionPago(o.valor) : seccionPagoSimple(o.valor)) + archivos
+          + seccionPagoSimple(o.valor, o.historica) + archivos
           + '</div>'
           + '<div class="modal-footer">'
           + '<button type="button" class="btn btn-link" data-dismiss="modal">Cancelar</button>'
@@ -488,7 +462,9 @@ var RegistroManual = (function () {
         if (!rm) { return ''; }
         var html = '';
         if (rm.historica) {
-            html += '<div style="font-size:11px;color:#0F766E;">Presentada en papel N° ' + esc(rm.historica.numeroPapel)
+            // Desde el 2026-10-23 no se pide el número del papel.
+            html += '<div style="font-size:11px;color:#0F766E;">Presentada en papel'
+                  + (rm.historica.numeroPapel ? ' N° ' + esc(rm.historica.numeroPapel) : '')
                   + ' (' + esc(rm.historica.fechaPresentacion) + ')</div>';
         }
         if (rm.pagoManual) {
@@ -510,7 +486,7 @@ var RegistroManual = (function () {
     }
 
     return {
-        historica: function (modulo, id, numero) { abrir({ historica: true, modulo: modulo, id: id, numero: numero }); },
+        historica: function (modulo, id, numero, valor) { abrir({ historica: true, modulo: modulo, id: id, numero: numero, valor: valor }); },
         pago: function (modulo, id, numero, valor) { abrir({ historica: false, modulo: modulo, id: id, numero: numero, valor: valor }); },
         anular: anular,
         nota: nota,

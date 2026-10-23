@@ -189,6 +189,23 @@ var Retenciones = (function () {
         return $('<div>').text(t === null || t === undefined ? '' : t).html();
     }
 
+    /** ¿Ya presentada (o pagada)? */
+    function yaPresentada(f) {
+        return f.estadoClave === 'presentada' || f.estadoClave === 'pagada';
+    }
+
+    /**
+     * El número en pantalla: un borrador no tiene hasta presentarse
+     * (2026-10-23); una presentada vieja sin número muestra su id, como antes.
+     */
+    function numeroDe(f) {
+        return f.numero || (yaPresentada(f) ? f.id : null);
+    }
+    function numeroVisible(f) {
+        var n = numeroDe(f);
+        return NumerosCOP.esNumeroProvisional(n) ? '<span style="color:#6B7280;">Sin número</span>' : escapar(n);
+    }
+
     /*
      * Boton de accion en TARJETA (icono + texto), IGUAL que el ICA.
      * Pedido del cliente 2026-09-14: los mismos botones y funciones de siempre,
@@ -325,8 +342,8 @@ var Retenciones = (function () {
               // Solo un borrador ya guardado con valores (el servidor lo exige igual).
               + (typeof RegistroManual === 'undefined' || !(Number(f.total) > 0) ? '' :
                  accBtn({ permiso: 'alcaldia.declaraciones.historicas', tipo: 'success', icono: 'fa-archive', texto: 'Ya pagada',
-                          title: 'Registrar como presentada y pagada fuera de la plataforma (con el PDF original y el soporte de pago)',
-                          clase: 'js-ya-pagada', id: f.id, numero: f.numero }))
+                          title: 'Registrar como presentada y pagada fuera de la plataforma (con el soporte en PDF)',
+                          clase: 'js-ya-pagada', id: f.id, numero: f.numero, valor: f.total }))
               + accBtn({ permiso: mod + '.editar', tipo: 'danger',    icono: 'fa-trash',           texto: 'Borrar', title: 'Borrar borrador', clase: 'js-borrar', id: f.id });
         }
         return accCards(b);
@@ -348,7 +365,7 @@ var Retenciones = (function () {
         if (typeof RegistroManual === 'undefined') { return; }
         var mod = String(cfg.modulo || '').toLowerCase();
         $tabla.on('click', '.js-ya-pagada', function () {
-            RegistroManual.historica(mod, $(this).data('id'), String($(this).data('numero') || ''));
+            RegistroManual.historica(mod, $(this).data('id'), String($(this).data('numero') || ''), Number($(this).data('valor') || 0));
         });
         $tabla.on('click', '.js-pago-manual', function () {
             RegistroManual.pago(mod, $(this).data('id'), String($(this).data('numero') || ''), Number($(this).data('valor') || 0));
@@ -694,9 +711,12 @@ var Retenciones = (function () {
             if (por.length) {
                 var ultima = por[por.length - 1];
                 var yaPresentada = ultima.estadoClave === 'presentada' || ultima.estadoClave === 'pagada';
+                // Una corrección en borrador no tiene número todavía (2026-10-23).
                 html += '<div style="font-size:11px;color:#B45309;">'
-                      + (yaPresentada ? 'Corregida por la N° ' : 'En corrección: N° ')
-                      + escapar(ultima.numero) + '</div>';
+                      + (yaPresentada ? 'Corregida por la N° ' + escapar(ultima.numero)
+                         : (NumerosCOP.esNumeroProvisional(ultima.numero) ? 'En corrección (borrador)'
+                            : 'En corrección: N° ' + escapar(ultima.numero)))
+                      + '</div>';
             }
             return html;
         }
@@ -733,7 +753,7 @@ var Retenciones = (function () {
                     '<tr>'
                   + '<td>' + f.anio + '</td>'
                   + '<td>' + nombrePeriodo(cfg, f.periodo) + '</td>'
-                  + '<td>' + escapar(f.numero) + '</td>'
+                  + '<td>' + numeroVisible(f) + '</td>'
                   + '<td>' + insignia(f) + '</td>'
                   + '<td>' + tipoDeclaracion(f, todas) + '</td>'
                   // Fecha de pago y banco, como en el Consultar del ICA (2026-10-13).
@@ -891,7 +911,7 @@ var Retenciones = (function () {
                             '<tr>'
                           + '<td>' + f.anio + '</td>'
                           + '<td>' + nombrePeriodo(cfg, f.periodo) + '</td>'
-                          + '<td>' + escapar(f.numero) + '</td>'
+                          + '<td>' + numeroVisible(f) + '</td>'
                           + '<td>' + insignia(f) + '</td>'
                           + '<td style="text-align:right;">' + pesos(f.total) + '</td>'
                           + '<td class="text-center">' + accionesRetencion(f, cfg) + '</td>'
@@ -1009,7 +1029,7 @@ var Retenciones = (function () {
             var d = abierta.declaracion;
             var editable = abierta.editable == 1;
 
-            $('#encNumero').text(d.numero);
+            $('#encNumero').text(NumerosCOP.numeroDeclaracion(numeroDe(d), 'Se asigna al presentar'));
             $('#encAnio').text(d.anio);
             $('#encPeriodo').text(nombrePeriodo(cfg, d.periodo));
             $('#encEstado').html(insignia(d));
@@ -1446,9 +1466,10 @@ var Retenciones = (function () {
             presentando = true;
             pedir(cfg, 6, { id: id },
 
-                function () {
+                function (r) {
                     volverAlListado();
-                    Swal.fire('Presentada', 'La declaración quedó presentada. Está en "Consultar Declaraciones".', 'success');
+                    // El servidor dice el número que se le asignó al presentar (2026-10-23).
+                    Swal.fire('Presentada', (r.mensaje || 'La declaración quedó presentada.') + ' Está en "Consultar Declaraciones".', 'success');
                 },
 
                 function (r) {

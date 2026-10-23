@@ -28,6 +28,7 @@ include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
 include_once SERVER . '/business/class.codigoBarrasRecaudo.php';
 include_once SERVER . '/business/class.vencimientoICA.php';
+include_once SERVER . '/business/class.numeroDeclaracion.php';
 
 // Cargar configuración del municipio. Ubicación real (Plesk/producción): un
 // nivel arriba de /erpsoftsas; fallback dentro de /erpsoftsas solo para
@@ -594,7 +595,9 @@ $d = [
     // documentos de la misma declaracion con años distintos.
     'anio'        => (string) ($row['dec_AnioDeclaracion'] ?? date('Y')),
     'fecha_max'   => date('d/m/Y', strtotime($fechaLimite)),
-    'num_form' => $row['dec_NumeroDeclaracion'],
+    // Un borrador no tiene número hasta presentarse (2026-10-23): la casilla
+    // queda en blanco en vez de imprimir el provisional.
+    'num_form' => \erpsoftsas\NumeroDeclaracion::texto($row['dec_NumeroDeclaracion'], ''),
 
     // Datos contribuyente
     /*
@@ -1746,7 +1749,7 @@ if (!empty($actividadesResto)) {
     <table cellpadding="2">
       <tr>
         <td width="100%" style="border:none; font-size:7pt;">
-          Esta hoja es parte integral de la declaración N° ' . $d['num_form'] . '
+          Esta hoja es parte integral de la declaración ' . ($d['num_form'] !== '' ? 'N° ' . $d['num_form'] : 'en borrador') . '
           y no tiene validez por separado. Los totales de las casillas 16 y 17
           de la primera hoja incluyen las actividades de esta continuación.
         </td>

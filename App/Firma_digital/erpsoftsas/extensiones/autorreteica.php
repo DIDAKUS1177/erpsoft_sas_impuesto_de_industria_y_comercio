@@ -46,7 +46,11 @@ $stmt = $con->consultar(
 while ($f = $con->obnerFila($stmt)) { $actividades[] = $f; }
 
 $numero         = $row['aut_NumeroDeclaracion'] ?: $row['aut_Id'];
+// Lo que se imprime: un borrador no tiene número hasta presentarse (2026-10-23).
 $estaPresentada = ((int) $row['aut_Estado'] === 2);
+// Una presentada vieja sin número (NULL) sigue imprimiendo su id, como antes y
+// como reciboPago.php; un borrador, nada.
+$numeroVer      = \erpsoftsas\NumeroDeclaracion::texto($row['aut_NumeroDeclaracion'] ?: ($estaPresentada ? $row['aut_Id'] : null), '');
 
 $firmas     = pdfret_firmasDe($con, $numero, 'AUTORRETEICA');
 $fechaSello = pdfret_fechaSello($row['aut_FechaPresentacion'], $firmas['declarante']);
@@ -388,7 +392,7 @@ $pdf->writeHTML($htmlFirmas, true, false, true, false, '');
 $yFinFirmas = $pdf->GetY() - DESFASE_GETY_RET;
 pdfret_textoVertical($pdf, 'E. FIRMAS', 10, $ySecE, $yFinFirmas);
 
-$yFin = pdfret_bloqueBarras($pdf, $numero, $row['aut_ValorConcepto23'], $estaPresentada);
+$yFin = pdfret_bloqueBarras($pdf, $numeroVer, $row['aut_ValorConcepto23'], $estaPresentada);
 
 pdfret_marcaDeAgua($pdf, $marcaAgua);
 
@@ -402,4 +406,4 @@ if (!empty($_GET['medir'])) {
     exit;
 }
 
-$pdf->Output('AUTORRETEICA_' . $numero . '.pdf', 'I');
+$pdf->Output('AUTORRETEICA_' . ($numeroVer !== '' ? $numeroVer : 'borrador') . '.pdf', 'I');

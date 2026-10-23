@@ -546,7 +546,8 @@ _crearDeclaracionDelAnio(idEstablecimiento,idContribuyente,anio) {
              * Se cae al id si la declaracion es anterior a esa migracion y no
              * tiene numero propio.
              */
-            $("#numDeclaracion").val(d.dec_NumeroDeclaracion || d.dec_Id);
+            // Un borrador nuevo trae numero provisional: se ve "Se asigna al presentar".
+            FormularioDeclaracion.ponerNumero(d.dec_NumeroDeclaracion || d.dec_Id);
 
             // Y si el servidor reabrio una que ya existia, se dice. Un formulario
             // que aparece con cifras que uno no escribio, sin explicacion, se lee
@@ -696,7 +697,9 @@ consultarDeclaraciones(idEstablecimiento, idContribuyente) {
 
                 // Hay declaraciones antiguas con dec_NumeroDeclaracion en
                 // NULL, que se pintaban con el texto literal "null".
-                var numero = d.dec_NumeroDeclaracion || d.dec_Id;
+                // Un borrador no tiene numero hasta presentarse (2026-10-23).
+                var numero = NumerosCOP.numeroDeclaracion(d.dec_NumeroDeclaracion || d.dec_Id,
+                                                          '<span style="color:#6B7280;">Sin número</span>');
 
                 filas +=
                     '<tr>' +
@@ -2308,7 +2311,8 @@ establecimientos._intentarPresentar = function(dec_Id, idEstablecimiento) {
                 swal('Error', resp.mensaje || 'No se pudo presentar la declaración', 'error');
                 return;
             }
-            swal('¡Presentada!', 'La declaración ha sido presentada con éxito.', 'success').then(() => {
+            // El número se asigna al presentar (2026-10-23): el mensaje del servidor lo dice.
+            swal('¡Presentada!', resp.mensaje || 'La declaración ha sido presentada con éxito.', 'success').then(() => {
                 // Refresca los botones de la tabla para reflejar el nuevo estado,
                 // en vez de dejarlos desactualizados hasta que se recargue la pagina.
                 establecimientos.pintarAccionesDeclaracionContribuyente();

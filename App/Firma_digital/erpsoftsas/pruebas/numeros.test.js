@@ -72,6 +72,16 @@ comprobar('formatea cero',                N.formatear(0), '0');
 comprobar('trunca decimales', N.aEntero('1.500,90'), 1500);
 comprobar('entero se queda igual', N.aEntero('1.500'), 1500);
 
+/* ---------- numero de declaracion (se asigna al presentar, 2026-10-23) ---------- */
+comprobar('provisional negativo', N.esNumeroProvisional(-1081), true);
+comprobar('provisional como texto', N.esNumeroProvisional('-1081'), true);
+comprobar('numero real no es provisional', N.esNumeroProvisional('2026100001'), false);
+comprobar('vacio cuenta como sin numero (misma regla que el servidor)', N.esNumeroProvisional(null), true);
+comprobar('cero cuenta como sin numero', N.esNumeroProvisional('0'), true);
+comprobar('el provisional no se muestra', N.numeroDeclaracion(-1081), 'Sin número');
+comprobar('con otro texto', N.numeroDeclaracion('-5', 'Se asigna al presentar'), 'Se asigna al presentar');
+comprobar('el real se muestra tal cual', N.numeroDeclaracion(2026100001), '2026100001');
+
 /* ---------- resultado ---------- */
 console.log(`\n  ${pasadas} pruebas pasaron`);
 if (fallidas.length) {
