@@ -46,7 +46,9 @@ class Establecimientos {
         swal({
             type: 'info',
             title: 'Creación de establecimiento',
-            text: 'Para la creación de un nuevo establecimiento diríjase de manera presencial a la secretaria de Hacienda del municipio de Paipa o realice el trámite a través del correo impuestos@paipa-boyaca.gov.co.',
+            // El contacto sale de Municipio y bancos (window.ERP_CONTACTO, ver
+            // core/contacto.js): antes decía Paipa y su correo en todos los municipios.
+            text: ErpContacto.textoNuevoEstablecimiento(),
             confirmButtonText: 'Entendido',
             allowOutsideClick: false,
             allowEscapeKey: false

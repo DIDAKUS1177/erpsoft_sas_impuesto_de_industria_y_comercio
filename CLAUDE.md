@@ -2347,3 +2347,161 @@ certificada con Evertec. Cada entidad usa SU pasarela con el mismo recorrido.
   "Revisión 2026-09-25, lo que falta". Faltan las fechas de vencimiento de
   retención y autorretención, y pasar el recibo por el escáner del banco antes de
   anunciarlo (misma certificación pendiente del GS1-128).
+
+## Pedidos del 2026-11-09/10: contacto por municipio, cobro del RIT, informe general y herramientas (LOCAL, sin commit)
+
+### Contacto del municipio (migración 054)
+
+### Contacto del municipio (2026-11-09, migración 054)
+
+Pedido de Diego: poder cambiar los números de contacto desde la configuración del municipio, porque en los demás municipios salían los de Paipa. Estaban escritos en el código: el pie del ingreso decía «Secretaría de Hacienda - Dirección de Impuestos, Rentas y Jurisdicción Coactiva» y «Soporte: 318 530 9285» en TODOS los municipios, y seis avisos de las pantallas mandaban a impuestos@paipa-boyaca.gov.co.
+
+- **Tres parámetros** en conf_parametros: CONTACTO_DEPENDENCIA (hasta 150, sin < >), CONTACTO_TELEFONO (hasta 80; dígitos, espacio y + ( ) . , / -) y CONTACTO_CORREO (hasta 120). Nacen vacíos; la 054 los llena solo en erpsofts_ind_comercio_paip (guarda DB_NAME) con los datos públicos de siempre, y solo si siguen vacíos.
+- **Se editan en Municipio y bancos > Contacto del municipio SIN la contraseña de edición** (basta parametros.municipio y X-Requested-With). Es la función 12 de class.configuracion.php: valida los tres con el par_Patron de cada fila, guarda todo o nada y deja en el registro de PHP quién cambió qué. La función 2 deja pasar sin contraseña solo esas tres filas; cualquier otro parámetro la sigue pidiendo. Las tres filas no salen en la tabla genérica (par_Contacto en la función 1).
+- **Un solo lugar que los lee**: business/class.contacto.php (Contacto::dependencia/telefono/correo/ciudad, null si no hay; nunca un valor de Paipa por defecto). Re-valida al leer. Respaldo solo para la dependencia: MUNICIPIO_SECRETARIA y MUNICIPIO_DEPENDENCIA_TRIBUTARIA. Los valores salen sin escapar: HTML con htmlspecialchars, <script> con JSON_HEX_*.
+- **Usos**: pie de index.php (Contacto::paraIngreso, lectura con LoginTimeout de 3 s: con la base caída la conexión normal espera 15 s); window.ERP_CONTACTO que inyecta dist/menu.php y core/contacto.js, que arma los dos avisos («Creación de establecimiento» y «Presentación y pago») en icaWebPresentar, icaWebConsultar, icaWebRit y establecimientos (con el contacto de Paipa el texto es el de siempre, incluida la errata «transferecia», que se dejó); remitente y firma del correo de recuperación (MUNICIPIO_NOMBRE); NIT y dirección de declaracion.php y liquidacion.php desde MUNICIPIO_NIT y MUNICIPIO_DIRECCION; declaracion.php lee MUNICIPIO_SECRETARIA; pdfRetenciones.php ya no trae el NIT de Paipa por defecto.
+- **Trampa de PCRE**: el verbo (*UTF8) de par_Patron cuenta letras pero PHP no valida entonces el UTF-8; un valor con bytes sueltos pasa y revienta en el driver («error translating string to UCS-2»). Para el contacto las expresiones llevan los modificadores u y D (Contacto::expresion). El resto de parámetros (función 2) no los tiene.
+- **Al desplegar**: los archivos nuevos van por ruta en el mismo commit (el repo es público): BD/migraciones/054_contacto_del_municipio.sql, business/class.contacto.php, core/contacto.js y las pruebas. Pull y enseguida `--aplicar 054` (solo ese número): entre uno y otro el pie de Paipa sale sin esas dos líneas y los avisos sin correo. Antes de subir, comprobar que el config.municipio.php de Paipa EN PLESK define MUNICIPIO_NIT, MUNICIPIO_DIRECCION y MUNICIPIO_CIUDAD (el de la copia local sí; los PDF y los avisos de Paipa dependen de ellos). Guateque, Macanal y Sutatenza arrancan con el contacto vacío hasta que cada Alcaldía lo escriba.
+- **Pruebas**: node pruebas/contacto.test.js (32), node pruebas/contacto_pantalla.test.js (38) y php pruebas/probar_contacto.php en el contenedor (104; restaura las tres filas; se niega a correr contra una base llamada erpsofts_ind_comercio_*).
+- **Pendientes que quedaron fuera de esta pista**: ver la lista de fugas de Paipa en dist/dashboard.php (pie con la misma dependencia), pdfRetenciones.php (MUNICIPIO_CIUDAD por defecto «Paipa» y el texto por defecto de la dependencia, también en ritActualizado.php), declaracion.php (dep_notif «BOYACA»), reciboPago.php («NIT» sin número si falta la constante), RIT_PAIPA.pdf y los nombres por defecto de index.php, menu.php y dashboard.php.
+
+### Cobro de la inscripción del RIT (migración 055)
+
+### Cobro de la inscripción del RIT por municipio (2026-11-10, migración 055)
+
+Pedido de Diego (2026-11-09): Macanal y Guateque cobran la inscripción del RIT; Paipa no (es gratis). El valor es
+personalizable y se escribe en «Municipio y bancos», no en el código.
+
+- **Por qué un registro aparte.** Hasta hoy nada cobraba por el RIT, y todo lo que cobra (recibo con código de
+  barras, PSE, Wompi, recaudo por archivo, pago manual) está atado a una DECLARACIÓN presentada: meter el RIT ahí
+  habría tocado piezas que cobran en producción en Paipa. El contribuyente paga FUERA del sistema (ventanilla,
+  consignación...) y un funcionario con permiso lo registra, o lo exonera con un motivo. NO se tocaron `PseModulo`,
+  `PagoDeclaracion`, `reciboPago.php`, el recaudo, las pasarelas, el webhook, el cron, `_guardarRIT`, `RitFirma`
+  (huella y `VERSION`) ni `ritActualizado.php`.
+- **Configuración** (Municipio y bancos, detrás de la contraseña de edición como los demás; la 055 no siembra
+  ningún valor, el repositorio es público):
+  - `RIT_VALOR_INSCRIPCION`: pesos enteros, sin puntos ni $ (`^[0-9]{1,9}$`). Vacío o 0 = GRATIS: no aparece nada
+    (Paipa). Un valor que no se entiende («50.000») también vale gratis: falla hacia gratis, nunca hacia un cobro mal leído.
+  - `RIT_PAGO_INSTRUCCIONES`: texto libre de hasta 500 caracteres, sin `<` ni `>`: dónde y cómo pagar.
+  - `RIT_PAGO_PREVIO_A_FIRMAR`: `1` = el servidor no deja firmar el RIT hasta registrar el pago o la exoneración;
+    nace en `0` = solo informa.
+- **A quién se le cobra** (`RitCobro::estado()`): PENDIENTE = valor > 0, NINGUNA fila en `ind_rit_firmas` y
+  `RitFirma::opcionDeUso` = «Inscripción» (sin cese ni declaraciones presentadas). Quien firmó o declaró antes de
+  que se activara el cobro NO paga; el cese nunca se cobra. PAGADO y EXONERADO salen de la fila vigente de
+  `ind_rit_cobros`. **El pendiente no se guarda, se deduce.** Consecuencia: con el pago previo en `0` («solo
+  informa»), quien firma antes de que la Alcaldía registre su pago deja de figurar con cobro y ya no se puede
+  registrar ni exonerar. El municipio que cobra y quiere que el sistema conserve quién pagó debe poner
+  `RIT_PAGO_PREVIO_A_FIRMAR` = 1.
+- **Tabla `ind_rit_cobros`**: una fila por contribuyente y concepto (`INSCRIPCION`) cuando la Alcaldía registra el
+  pago o exonera. Misma familia de columnas de pago que las declaraciones (`rit_Pagado`, `_FechaPago`,
+  `_FechaRealPago`, `_ValorPago`, `_BancoPago`, `_IdBancoPago`, `_AnioPago`, `_RutaPago` = `MANUAL`) más
+  `rit_Referencia` (N° del recibo o de la consignación), `rit_Exonerado` y `rit_MotivoExoneracion`. `rit_Valor` es
+  la FOTO del valor de ese día: cambiar el parámetro no toca lo ya registrado (los pendientes sí siguen el valor
+  de hoy). CHECK: pagado XOR exonerado, pagado con fecha y valor, motivo de 10 o más caracteres. Índice único
+  filtrado `UX_rit_cobros_vigente` (contribuyente + concepto con `rit_Estado = 2`): `2` vigente, `9` anulado.
+- **Permiso `alcaldia.rit.cobro`** («Registrar el pago de la inscripción del RIT»; grupo Alcaldía; arrastra
+  «Gestionar a un contribuyente» y «Ver el RIT»). El administrador lo tiene siempre. El contribuyente ve el cobro con
+  `rit.ver` y NUNCA registra su propio pago.
+- **Código**: `business/class.ritCobro.php` (`valor`, `estado`, `motivoDeBloqueo`, `resumen`, `registrarPago`,
+  `exonerar`); `business/controller/class.ritCobro.php` (funciones 1 consultar, 2 registrar el pago, 3 exonerar; NO
+  incluye `class.contribuyentes.php` ni `class.configuracion.php`, que se auto-ejecutan: el contribuyente de la
+  sesión se resuelve con su propio SQL); `microservicios/firmas/api.php`; `dist/icaWebRit.php` y `core/icaWebRit.js`
+  (tarjeta «Derechos de inscripción» y dos ventanas).
+  - **El servidor bloquea en DOS puertas** (la pantalla es cortesía y se salta desde la consola): `_generarCodigo`
+    rama RIT (antes de mandar el correo) y `_firmarRit` (antes de gastar el código; un código pedido antes de activar
+    el cobro tampoco firma). Va después de `_faltantesRit`: un RIT incompleto sigue diciendo primero lo que falta.
+    Guardar, subir documentos y descargar el PDF siguen libres. Si la comprobación del cobro lanza una excepción se
+    deja firmar y se anota en el log (el cobro es un añadido; no tumba la firma).
+  - **La función 10 solo lleva la clave `cobro` cuando hay algo que mostrar**: con el valor vacío (Paipa), o a quien
+    no le corresponde, la respuesta es idéntica byte a byte a la de HEAD (comprobado en los 9 contribuyentes locales)
+    y el PDF del RIT sale con el mismo texto y tamaño.
+  - Registrar y exonerar: candado `sp_getapplock 'erp_ritcobro_<id>'` + transacción + relectura del estado bajo el
+    candado; el índice único es la última red. Hora de Colombia (`RitCobro::hoy/ahora`; `GETDATE()` del servidor es
+    UTC). Fecha de pago no futura (Colombia) y desde el 2000. Referencia de hasta 60: letras (con tildes), números y
+    `. , : # ° / _ - ( )`, empieza por letra o número. Banco opcional pero activo. Exigen permiso + «Gestionar» +
+    `X-Requested-With` + NOMBRAR al contribuyente (sin id no se cae en «el propio» del funcionario). Un dato que no es
+    texto (`campo[]=x`) se rechaza.
+  - **El soporte del pago NO se sube como anexo del RIT**: los anexos entran en la huella
+    (`RitFirma::documentosImpresos`) y agregar uno deja «Firma desactualizada». Hoy no se guarda PDF del pago, solo el
+    N° del recibo o de la consignación.
+- **Migración 055**: re-ejecutable, aditiva e inerte (tabla vacía, dos parámetros vacíos, uno en `0`, un permiso); sin
+  ramas por `DB_NAME()`. Necesita la 040 (catálogo de permisos): sin ella el lote del permiso falla de forma visible y
+  no se registra (como la 044). **Aplicarla SIEMPRE por número** (`php BD/aplicar_migraciones.php --aplicar 055`):
+  la 042 sigue pendiente a propósito en Paipa. El código tolera que la tabla o los parámetros no existan todavía.
+- **Poner en marcha un municipio** (Macanal, Guateque): aplicar la 055; en Municipio y bancos escribir el valor, cómo
+  pagar y, si se exige, `RIT_PAGO_PREVIO_A_FIRMAR` = 1; en Roles dar «Registrar el pago de la inscripción del RIT» a
+  quien registra. Paipa: no hacer nada (vacío = gratis).
+- **Trampas**: (1) el árbol de trabajo está en CRLF (autocrlf): una prueba que corte el código fuente por marcadores
+  debe normalizar saltos; (2) `sp_rename` y otros avisos informativos de SQL Server se vuelven error en el driver si no
+  se hace `sqlsrv_configure('WarningsReturnAsErrors', 0)`; (3) con `display_errors=0` un fatal en un proceso hijo de
+  prueba sale mudo: cargar las clases que el trozo necesita.
+- **Pruebas**: `docker exec -w /var/www/html/erpsoftsas erpsoftsas_web_completo php pruebas/probar_rit_cobro.php`
+  (163; cada petición en un proceso aparte, cuatro simultáneas para la carrera del doble registro, sin red, limpia lo
+  que crea y se niega a correr contra una base `erpsofts_ind_comercio_*`) y `node pruebas/rit_cobro_tarjeta.test.js`
+  (54, sin navegador).
+
+### Informe general (migración 056)
+
+### Informe general: informes dinámicos de ICA, retención, autorretención y padrón (2026-11-10, migración 056)
+
+Pedido de la Alcaldía de Paipa (definido con Diego, 2026-11-09): un informe como el «Informe general» de Gestión Predial donde la persona elige qué filas trae (una por declaración, o solo contribuyentes), los filtros, las columnas, su orden y el título de cada una, y guarda plantillas. Esta es la ETAPA 1 (backend); la pantalla es la etapa 2. El Informe rápido (`dist/informes.php`, `core/informePagos.js`, `extensiones/informePagos.php`, `business/class.informePagos.php`) NO se tocó.
+
+```
+business/class.informeCatalogo.php     LISTA BLANCA: fuentes (ica, reteica, autorreteica, contribuyentes), columnas, filtros, expresiones SQL fijas
+business/class.informeConstructor.php  valida la configuración (JSON v1) y arma el SQL con '?'; vista paginada, totales, recorrido por lotes
+business/class.informePlantillas.php   plantillas del sistema (en código) y guardadas (ind_informe_plantillas)
+business/controller/class.informes.php JSON: catalogo, plantillas, plantilla, vista, guardar, borrar
+extensiones/informeGeneral.php         Excel (XlsxSimple); solo POST; errores en texto plano con 400/401/403/405/500
+BD/migraciones/056_informes_plantillas.sql   tabla + 3 permisos
+pruebas/probar_informes_general.php    193 pruebas (217 con --ddl)
+```
+
+- **El navegador solo manda CLAVES del catálogo y valores.** Nunca nombres de tabla o columna ni SQL; el DAO (que concatena) no se usa. Operadores, sentido de orden y estados salen de listas cerradas; todo valor va como parámetro; límites: 60 columnas, 20 filtros, 3 criterios de orden, 50 valores en un `in`, título de columna ≤60 y sin `<` `>`, JSON ≤20 KB. Un error propio (`InformeException`) muestra su mensaje; cualquier otro va a `error_log` y a la pantalla solo un aviso genérico.
+- **Las reglas de cartera son las del Informe rápido** y se REPITEN en el catálogo porque `InformePagos` no se toca: pagada = `*_Pagado = 1` y ruta distinta de `WOMPI_PRUEBA`; sin pagar = presentada, con valor, no pagada y sin corrección presentada encima; fecha de presentación = la del pago manual (049) si existe y si no la de la plataforma; intereses = pagado − a pagar, nunca negativo. Sin filtro de estado se traen las presentadas; los borradores solo si se piden y con el número (provisional, negativo) vacío. La fecha del rango la elige la persona (`fechaPago` o `fechaPresentacion`). **Si cambia una regla de cartera, cambiarla en los dos sitios**: la prueba de oráculo (Todas / Sin pagar / Pagadas contra `InformePagos::filas`, 3 impuestos x 8 variantes de filtros) avisa si divergen.
+- **Tolerancia a migraciones**: lo que depende de 044 (pagos manuales), 045 (banco por id), 049, 051, 038, 008 o de columnas que ninguna migración crea (`dec_FechaPresentacion`, `dec_CapacidadInstalada`, `dec_ValorImpuesto`, `*_RutaPago`) se OCULTA del catálogo si no está (`InformeCatalogo::hay`); sin la 056 el informe y las plantillas del sistema funcionan y guardar avisa. La 047 no aporta columnas.
+- **Permisos** (migración 056 + `PermisosRol::requisitos` y `_todasLasClaves` + `PERMISO_PAGINA['informes.php']` en `core/menu.js`): `alcaldia.informes.personalizados` (usar el Informe general; requiere `alcaldia.informes.pagos`), `alcaldia.informes.plantillas` (compartir con el municipio y modificar/borrar las compartidas ajenas) y `alcaldia.informes.contacto` (correo, teléfono, dirección, representante, contador, revisor y la observación del cese: datos personales, Ley 1581), más el «Ver» de la fuente (`ica.ver`, `reteica.ver`, `autorreteica.ver`, `alcaldia.contribuyentes.ver` para el padrón). **No se reparten a ningún rol** (como la 044 y la 045): el administrador los tiene siempre; los demás los prende él en Roles. Sin el permiso de contacto el catálogo ni menciona esas columnas, y no se pueden pedir, filtrar ni ordenar (las de contacto nunca se ordenan). Se autoriza en CADA ejecución con los permisos de quien ejecuta, no de quien guardó una plantilla.
+- **Plantillas**: 9 del sistema en código (todas, sinpagar, pagadas, bancos, intereses, corregidas, retenciones, autorretenciones, padron), inmutables y con nombre reservado; sirven para los tres impuestos. Guardadas en `ind_informe_plantillas` (una tabla por municipio): `PRIVADA` (solo su dueño; ni el administrador la ve ni la abre) o `MUNICIPIO`; borrar es lógico y libera el nombre; el JSON se valida en PHP (sin `CHECK ISJSON`). Los nombres se miden en unidades UTF-16 (NVARCHAR): 50 emojis caben, 51 no.
+- **Excel**: tope de 50.000 filas y 200.000 celdas (se rechaza con un mensaje que dice cómo acotar, nunca se recorta); se lee por lotes de 1.000 con `OFFSET/FETCH` y orden total (la llave al final). Medido: 50.000 filas x 4 columnas = 3,6 s y 75 MB con `memory_limit` 128M; 700.000 celdas lo agotan. Controlador y Excel hacen `session_write_close()` apenas saben quién es. `XlsxSimple` se AMPLIÓ con los estilos 10 (entero con miles) y 11 (texto con ajuste) al final de `cellXfs`; los 0-9 no cambian (la prueba lo vigila con una huella md5 y el XLSX del Informe rápido sale byte a byte igual).
+- **Trampas de Excel aprendidas**: el año no puede llevar `#,##0` (salía «2,026»; columna de tipo propio `anio`); combinar `A1:A1` (una sola columna) y un nombre de hoja con apóstrofo al principio o al final, con `\ / ? * [ ] :` o «History» hacen que Excel pida reparar el archivo; un apóstrofo dentro del nombre se cambia por `’` porque `XlsxSimple` lo cita en el rango del autofiltro.
+- **Migración 056**: re-ejecutable, con `sp_getapplock`; si falta el catálogo de la 040 falla con error visible y NO se registra (antes quedaba registrada sin permisos y el aplicador no la volvía a correr). Aplicarla SIEMPRE por número (`php BD/aplicar_migraciones.php --aplicar 056`) en cada municipio.
+- **Pruebas**: `docker exec -w /var/www/html/erpsoftsas erpsoftsas_web_completo php pruebas/probar_informes_general.php` (193). La variante `--ddl` renombra tablas y quita columnas dentro de una transacción que se deshace: SOLO sobre una copia desechable (`BACKUP DATABASE … WITH COPY_ONLY` + `RESTORE … WITH MOVE`, y luego `PRUEBA_BD=<copia> php pruebas/probar_informes_general.php --ddl`, 217). Todo lo que siembra va en una transacción que se deshace. Para tocar `conf_permisos` o índices filtrados con `sqlcmd` hay que pasar `-I` (QUOTED_IDENTIFIER). Por HTTP se probó con sesiones de Apache fabricadas (archivo `sess_*` de `www-data`), sin escribir contraseñas.
+- **Trampa de PHP** (costó una vuelta en la prueba): en una cadena entre comillas dobles, `"«$fn»"` toma la `»` como parte del nombre de la variable y emite un aviso; usar concatenación o `{$fn}`.
+- **Pendiente / fuera de esta entrega**: PDF; fecha límite y días de mora; intereses calculados (a mano por decisión del cliente); modos «por contribuyente con declaraciones agrupadas», establecimiento y actividad; «Funcionario» (¿quién registró el pago manual?) y «omisos» (hay que definir «obligado a declarar»); año de la declaración vs año gravable; auditoría de descargas (no hay tabla de auditoría usable); `ConexionSQLServer::consultar` no tiene `QueryTimeout`. En el padrón, un contribuyente repetido por documento sale dos veces (no se agrupa). «RIT firmado» dice que hubo una firma, no que siga vigente.
+
+### Informe general (migración 056)
+
+### Informe general: la pantalla (etapa 2, 2026-11-10)\n\n`dist/informes.php` tiene dos pestañas: «Informe rápido» (el de siempre, sin tocar) e «Informe general» (`core/informeGeneral.js`, se carga la primera vez que se abre). La pestaña solo aparece con `alcaldia.informes.personalizados`; sin él la barra se oculta y la pantalla queda como antes.\n\n- `core/informeGeneral.js` tiene dos partes: `InformeGeneralLogica` (funciones puras, sin DOM, exportadas para node: filtros pantalla/configuración, armado de la configuración v1, lista de columnas, formato de celdas, texto de errores del Excel) e `InformeGeneral` (la pantalla). Pruebas: `node pruebas/informeGeneral.test.js` (66).\n- El navegador solo manda claves del catálogo y valores. La pantalla se arma con lo que devuelve `catalogo` (fuentes, columnas, filtros, `puede`, `limites`): lo que el rol no puede, no existe en pantalla. Todo texto del servidor (títulos, nombres de plantilla, celdas) se pinta con `.text()`; los títulos de columna con `<` o `>` se rechazan antes de enviar.\n- Trampa: `llamar()` debe resolver el `Deferred` con UN solo argumento (`datos`). Con dos, `$.when(a, b)` entrega arreglos y el catálogo llega como `[datos, respuesta]`.\n- Guardar sobre una plantilla propia la sobrescribe; sobre una del sistema o ajena pide un nombre nuevo (modal `#igModalGuardar`). Compartir con el municipio solo se ofrece con `alcaldia.informes.plantillas`.\n- Al cambiar de modo o impuesto se conserva lo que siga existiendo y se avisa de lo quitado; si no queda ninguna columna se abre la plantilla básica del modo.\n- Para probar sin navegador: jsdom en el scratchpad cargando la página real con una sesión de Apache fabricada y `localStorage.erpPermisos` sembrado (`{admin:true, claves:[...]}`)."}
+
+### Herramientas de operación (crear_administrador, verificar_municipio)
+
+### Herramientas de operación para municipios: `crear_administrador.php` y `verificar_municipio.php` (2026-11-10)
+
+Dos scripts de `BD/` para dejar un municipio nuevo (Guateque, Santa Rosa) listo y comprobarlo. Los dos son **solo por línea de comandos** (por web contestan 403 y `BD/` está oculta por el `web.config`), usan la conexión de la propia aplicación (el `config.municipio.php` del dominio donde corren: nadie escribe ni conoce la clave de la base, y la base es siempre la de ese dominio), imprimen solo ASCII, nunca imprimen claves ni huellas y **no se borran del servidor** (están versionados: borrarlos choca con el Pull).
+
+En Plesk (dominio del municipio): Herramientas de desarrollo > Tareas programadas > Agregar tarea > «Ejecutar un script PHP» > ruta = la de `aplicar_migraciones.php` con el nombre cambiado, PHP 8.3 > **«Ejecutar ahora»** y leer la salida. **Nunca «Aceptar»** (guarda la tarea con sus argumentos) y salir con «Cancelar».
+
+**`crear_administrador.php`** crea UNA cuenta de rol 1.
+- Argumentos: `--usuario= --correo= --documento=` (solo números, sin puntos, guion, DV ni ceros a la izquierda) `[--tipo-documento=CC|CE|PASAPORTE|NIT] [--nombres= --apellidos=] --sin-clave [--crear]`. Valores con espacios entre comillas dobles.
+- Dos pasadas: primero sin `--crear` (solo revisa: base conectada, rol 1 activo y de tipo ADMINISTRADOR, migración 040, usuario/correo/documento libres); después lo mismo con `--crear`.
+- `--sin-clave` (lo recomendado): la clave es aleatoria (256 bits), se vuelve huella y se descarta, así que nadie la conoce. La persona entra por «¿Has olvidado tu Contraseña?» con su documento, recibe una clave temporal en el correo de la cuenta, entra con usuario o correo y la cambia (menú de usuario > Cambiar contraseña). `--clave=` existe pero no se recomienda (viaja en los argumentos). El formato viejo `<usuario> <correo> <clave>` se rechaza.
+- Trampas: la pantalla de recuperación dice «Correo enviado» aunque el servidor no haya podido enviarlo (`_enviarCorreoRecuperacion` traga la excepción y `_recuperarUsuario` no mira el resultado): confirmar con la persona que el correo llegó. El documento y el correo son la única puerta de la cuenta. Una persona de la Alcaldía con cuenta de contribuyente y el mismo documento choca con la regla de documento único.
+- Salida: 0 revisión hecha o cuenta creada; 1 argumentos o comprobaciones que fallan; 2 error de la base (no queda nada guardado).
+- Después del primer administrador, los demás se crean en la pantalla Usuarios.
+
+**`verificar_municipio.php`** es un informe de SOLO LECTURA, sin argumentos (solo `--ayuda`), pensado para pegarlo en el chat. Siete secciones: 1 base y config (el nombre de la base identifica el municipio como en las migraciones 039/042/043/049/050/052/053: `erpsofts_ind_comercio_paip|guat|maca|suta`; otro nombre = municipio nuevo y todo dato de Paipa es herencia), 2 migraciones (pendientes por número; 042 y 043 son selectivas), 3 constantes `MUNICIPIO_*`, 4 imágenes (existen y las de los PDF sin canal alfa), 5 parámetros heredados de Paipa (`RECAUDO_EAN`, contacto 054, funcionario del RIT, fecha límite, bancos, pago en línea), 6 administradores (sin hashes), 7 tablas de firma en `dbo`. Niveles OK, INFO, AVISO (revisar) y FALLA (corregir antes de usar el municipio); al final repite fallas y avisos y sale 1 si hay fallas.
+- `MUNICIPIO_NIT` y `MUNICIPIO_DIRECCION` ausentes son FALLA en TODOS los municipios, Paipa incluida: desde el cambio de contacto el código ya no trae los de Paipa por defecto y los PDF salen sin ellos. **El config de producción de Paipa tiene que definirlos.**
+- Solo lectura garantizada: `vm_consulta` rechaza todo lo que no sea un SELECT solo (sin `;` ni `INTO`); lo único que no es SELECT es `SET LOCK_TIMEOUT`. Probado con una base en READ_ONLY, con huella por tabla y con una traza de Extended Events.
+- Base vacía (Sutatenza o recién creada): una sola falla y se omiten migraciones, parámetros, administradores y tablas de firma.
+
+Pruebas: se corrieron contra copias desechables del SQL Server local (`BACKUP ... COPY_ONLY` + `RESTORE` con nombres propios, borradas al terminar) con un `auto_prepend_file` que define `DB_PROD_NAME` y las constantes `MUNICIPIO_*` antes del config, sin tocar ningún `config.municipio.php`. La suite (40 comprobaciones) no está versionada.
+
+### Informe general: ajustes del 2026-11-10
+- Vista previa en el servidor: buscar (documento, nombre, N° declaración; ≤60 car., ≤5 palabras), orden por columna y paginación van por `InformeConstructor::opcionesDeVista`, el MISMO camino del Excel (`informeGeneral.php` acepta `buscar`/`ordenC`/`ordenD`). Toda consulta sobre lo armado empieza con `$q['prefijo']` (WITH del modo agrupado).
+- Totales: el rótulo «Total…» va en la primera columna que no suma; A3 del Excel = filtros + búsqueda + orden.
+- Modo agrupado (`ica:agrup`): suma solo declaraciones vigentes (presentadas y sin corrección presentada encima); permiso = el «Ver» del impuesto.
+- Plantillas: `UX_ipl_nombre` (nombre único entre las activas del municipio); los nombres del sistema están reservados en el servidor. Errores de la base nunca llegan a la persona.
+- Rejilla de filtros: los rangos Desde/Hasta ocupan dos columnas (antes se pisaban); revisado en el navegador.
+
+### Aprovisionamiento de un municipio nuevo (2026-11-10)
+`BD/esquema/` (01_tablas, 02_indices_y_llaves, 03_programacion, catalogos) + `BD/provisionar_municipio.php` (solo CLI, sin `--aplicar` solo muestra el plan, se niega contra la base de Paipa, registra 000-053 menos 042 y 043) + `BD/README.md` con el paso a paso de Plesk. El esquema está atado al nivel 053 (`COBERTURA_ESQUEMA`); 054-056 se aplican encima. Las tarifas y fórmulas son las de Paipa: cada Alcaldía debe validarlas.
+**Pendiente de seguridad**: `business/class.conexionSqlServer.php` trae un servidor, usuario y clave de producción escritos (respaldo si falta `DB_PROD_*`); rotarla y quitarla del código.

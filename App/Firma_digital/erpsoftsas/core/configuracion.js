@@ -10,7 +10,9 @@
  * La contraseña de edición protege solo los PARÁMETROS. Las cuentas de los
  * bancos (las del recibo de pago) se cambian sin ella: el cliente pidió que la
  * Alcaldía las maneje sin pedírselas a nadie (2026-09-30). Las cuentas
- * contables del pago manual (migración 051, 2026-10-19), tampoco.
+ * contables del pago manual (migración 051, 2026-10-19), tampoco. Ni el
+ * contacto del municipio (migración 054, 2026-11-09): dependencia, teléfono y
+ * correo, que salen al pie del ingreso y en los avisos de las pantallas.
  */
 class Configuracion {
 
@@ -18,6 +20,7 @@ class Configuracion {
         this._bancos = [];
         this._desbloqueada = false;   // lo decide el servidor (función 6)
         this._relojCandado = null;
+        this._contactoSucio = false;  // hay algo escrito en Contacto que aún no se guarda
     }
 
     /* ==================== CANDADO DE EDICIÓN ==================== */
@@ -52,7 +55,7 @@ class Configuracion {
         } else {
             $('#candadoTitulo').html('<i class="fa fa-lock"></i> Parámetros protegidos');
             $('#candadoTexto').text('Para cambiar los parámetros del municipio se pide la contraseña de edición. '
-                + 'Las cuentas de los bancos y las contables se cambian sin ella.');
+                + 'El contacto del municipio, las cuentas de los bancos y las contables se cambian sin ella.');
             $('#btnCandado').text('Desbloquear edición').removeClass('btn-outline-secondary').addClass('btn-primary');
         }
         this.bloquearTablas();
@@ -135,11 +138,16 @@ class Configuracion {
                     $('#tbodyParametros').html(
                         '<tr><td colspan="5" class="text-center text-muted py-3">' +
                         self.escapeHtml(resp.mensaje || 'No se pudo cargar.') + '</td></tr>');
+                    self.pintarContacto([], resp.mensaje || 'No se pudo cargar.');
                     return;
                 }
 
+                // Los tres del contacto salen en su propia sección, no en esta tabla.
+                self.pintarContacto(resp.datos || []);
+
                 let filas = '';
                 (resp.datos || []).forEach(function (p) {
+                    if (Number(p.par_Contacto) === 1) { return; }
                     /*
                      * Un parametro sensible -hoy, la clave del convenio de
                      * recaudo- llega SIN valor: el servidor no lo manda nunca,
@@ -205,6 +213,97 @@ class Configuracion {
                 console.log('Error al cargar parámetros:', xhr.responseText);
                 $('#tbodyParametros').html(
                     '<tr><td colspan="5" class="text-center text-muted py-3">Error de conexión.</td></tr>');
+                self.pintarContacto([], 'Error de conexión.');
+            }
+        });
+    }
+
+    /* ==================== CONTACTO DEL MUNICIPIO (054) ==================== */
+
+    /**
+     * Llena "Contacto del municipio" con las tres filas que el servidor marca
+     * con par_Contacto (vienen en la misma respuesta de los parámetros).
+     *
+     * Con $mensaje el formulario queda apagado y lo dice (no se pudo cargar).
+     * Sin las tres filas es que la migración 054 no se ha aplicado en esta base:
+     * también se apaga, para no ofrecer un guardado que no puede funcionar.
+     *
+     * Los parámetros se recargan al guardar uno de ellos; si hay algo escrito en
+     * el contacto que aún no se guarda, esa recarga no lo pisa.
+     */
+    pintarContacto(lista, mensaje) {
+        const filas = {};
+        (lista || []).forEach(function (p) {
+            if (Number(p.par_Contacto) === 1) { filas[p.par_Clave] = p; }
+        });
+        const completo = !!(filas.CONTACTO_DEPENDENCIA && filas.CONTACTO_TELEFONO && filas.CONTACTO_CORREO);
+
+        $('#formContacto :input').prop('disabled', !completo);
+        $('#avisoContacto')
+            .toggleClass('d-none', completo)
+            .text(completo ? '' : (mensaje ||
+                'El contacto del municipio todavía no está disponible en esta base de datos: falta aplicar la migración 054.'));
+        if (!completo) {
+            $('#ctoUltimoCambio').text('');
+            return;
+        }
+
+        if (!this._contactoSucio) {
+            $('#ctoDependencia').val(filas.CONTACTO_DEPENDENCIA.par_Valor || '');
+            $('#ctoTelefono').val(filas.CONTACTO_TELEFONO.par_Valor || '');
+            $('#ctoCorreo').val(filas.CONTACTO_CORREO.par_Valor || '');
+        }
+
+        // Las fechas llegan como "AAAA-MM-DD HH:MM", que se ordenan como texto.
+        const ultima = Object.keys(filas).map(function (k) { return filas[k].par_FechaActualizacion || ''; })
+            .sort().pop();
+        $('#ctoUltimoCambio').text(ultima ? 'Último cambio: ' + ultima : '');
+    }
+
+    /**
+     * Guarda los tres juntos (función 12, sin la contraseña de edición). Si el
+     * servidor rechaza alguno, dice cuál y lo marca; nada queda guardado a medias.
+     */
+    guardarContacto() {
+        const self = this;
+        $('#formContacto .is-invalid').removeClass('is-invalid');
+        $('#btnGuardarContacto').prop('disabled', true);
+
+        $.ajax({
+            url: '../business/controller/class.configuracion.php',
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                funcion: 12,
+                dependencia: $('#ctoDependencia').val(),
+                telefono: $('#ctoTelefono').val(),
+                correo: $('#ctoCorreo').val()
+            },
+            success: function (resp) {
+                $('#btnGuardarContacto').prop('disabled', false);
+
+                if (resp.ok != 1) {
+                    const campos = (resp.datos && Array.isArray(resp.datos.campos)) ? resp.datos.campos : [];
+                    campos.forEach(function (c) {
+                        const $c = { dependencia: $('#ctoDependencia'), telefono: $('#ctoTelefono'), correo: $('#ctoCorreo') }[c];
+                        if ($c) { $c.addClass('is-invalid'); }
+                    });
+                    swal({ type: 'error', title: 'No se pudo guardar', text: resp.mensaje || '' });
+                    return;
+                }
+
+                self._contactoSucio = false;
+                const hubo = !!(resp.datos && Array.isArray(resp.datos.cambiados) && resp.datos.cambiados.length);
+                swal({ type: hubo ? 'success' : 'info', title: hubo ? 'Guardado' : 'Sin cambios', text: resp.mensaje || '' });
+                // Se recarga: los campos vuelven a mostrar lo que quedó (sin espacios
+                // de más) y "Último cambio" se actualiza.
+                self.cargarParametros();
+            },
+            error: function (xhr) {
+                $('#btnGuardarContacto').prop('disabled', false);
+                console.log('Error al guardar el contacto:', xhr.responseText);
+                swal({ type: 'error', title: 'Error en el servidor',
+                       text: 'No se recibió respuesta válida.' });
             }
         });
     }
@@ -545,6 +644,15 @@ $(function () {
     $('#formCuentaContable').on('submit', function (e) {
         e.preventDefault();
         configuracion.agregarCuentaContable();
+    });
+    // Contacto del municipio (054): un Guardar para los tres campos.
+    $('#formContacto').on('submit', function (e) {
+        e.preventDefault();
+        configuracion.guardarContacto();
+    });
+    $('#formContacto').on('input', function () {
+        configuracion._contactoSucio = true;
+        $(this).find('.is-invalid').removeClass('is-invalid');
     });
 
     $('#btnCandado').on('click', function () {

@@ -16,6 +16,26 @@ if (!defined('MUNICIPIO_LOGO')) define('MUNICIPIO_LOGO', '/erpsoftsas/vendors/im
 if (!defined('MUNICIPIO_COLOR')) define('MUNICIPIO_COLOR', '#1fa49d');
 if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756f');
 if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', 'vendors/images/fondo-paipa.jpg');
+
+// Contacto del municipio para el pie: la dependencia y el teléfono de soporte
+// salen de Municipio y bancos > Contacto del municipio (business/class.contacto.php).
+// Antes eran los de Paipa, escritos aquí, en TODOS los municipios. Sin dato, esa
+// línea no sale: nunca se muestra el de otro municipio.
+// Esta pantalla NO puede caerse ni quedarse esperando si la base no responde -es por
+// donde entra todo el mundo-: se lee con una espera corta (paraIngreso, 3 s) y
+// cualquier fallo deja el pie sin esas líneas y se sigue.
+$contactoDependencia = null;
+$contactoTelefono    = null;
+try {
+    if (is_file(__DIR__ . '/business/class.contacto.php')) {
+        include_once __DIR__ . '/business/class.contacto.php';
+        $contactoIngreso     = \erpsoftsas\Contacto::paraIngreso();
+        $contactoDependencia = $contactoIngreso['dependencia'];
+        $contactoTelefono    = $contactoIngreso['telefono'];
+    }
+} catch (\Throwable $e) {
+    error_log('[ingreso] no se pudo leer el contacto del municipio: ' . $e->getMessage());
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -424,10 +444,13 @@ if (!defined('MUNICIPIO_FONDO_LOGIN')) define('MUNICIPIO_FONDO_LOGIN', 'vendors/
 				<img src="vendors/images/deskapp-logo.svg" alt="ERPSoft" class="logo-vendor">
 			</div>
 		</div>
+<?php if ($contactoDependencia !== null) { ?>
 		<div style="margin: 4px 0; font-size: 14px; font-weight: 600; opacity: 0.95;">
-			Secretaría de Hacienda - Dirección de Impuestos, Rentas y Jurisdicción Coactiva
+			<?php echo htmlspecialchars($contactoDependencia, ENT_QUOTES, 'UTF-8'); ?>
+
 		</div>
-		<span style="opacity: 0.75; font-size: 12px;">ERPSOFTSAS © 2026 — <a href="https://erpsoftsas.com" target="_blank" style="color: #FFFFFF; text-decoration: underline;">erpsoftsas.com</a> | Soporte: 318 530 9285</span>
+<?php } ?>
+		<span style="opacity: 0.75; font-size: 12px;">ERPSOFTSAS © 2026 — <a href="https://erpsoftsas.com" target="_blank" style="color: #FFFFFF; text-decoration: underline;">erpsoftsas.com</a><?php if ($contactoTelefono !== null) { echo ' | Soporte: ' . htmlspecialchars($contactoTelefono, ENT_QUOTES, 'UTF-8'); } ?></span>
 	</footer>
 
 	<!-- ================ MODALES (CONSERVADOS) ================ -->

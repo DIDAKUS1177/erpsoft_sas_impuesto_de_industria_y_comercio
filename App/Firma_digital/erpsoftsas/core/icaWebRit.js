@@ -193,7 +193,9 @@ class Establecimientos {
         swal({
             type: 'info',
             title: 'Creación de establecimiento',
-            text: 'Para la creación de un nuevo establecimiento diríjase de manera presencial a la secretaria de Hacienda del municipio de Paipa o realice el trámite a través del correo impuestos@paipa-boyaca.gov.co.',
+            // El contacto sale de Municipio y bancos (window.ERP_CONTACTO, ver
+            // core/contacto.js): antes decía Paipa y su correo en todos los municipios.
+            text: ErpContacto.textoNuevoEstablecimiento(),
             confirmButtonText: 'Entendido',
             allowOutsideClick: false,
             allowEscapeKey: false
@@ -2584,6 +2586,8 @@ actualizarDeclaracionIca(valor, numeroCampo){
                 self._firmaRIT = r;
                 self.modoRIT(r.firmado == 1, r);
                 self.pintarOpcionUso(r);
+                // Derechos de inscripción: la clave solo viene si el municipio cobra.
+                self.pintarCobro(r.cobro || null);
             },
             error: function () { $('#ritEstadoFirma').html(''); }
         });
@@ -2678,6 +2682,264 @@ actualizarDeclaracionIca(valor, numeroCampo){
         }
     }
 
+    /* ================================================================
+       DERECHOS DE INSCRIPCIÓN (migración 055)
+       ================================================================
+       Algunos municipios cobran la inscripción en el RIT (Macanal,
+       Guateque); Paipa no. El valor y el cómo pagar los escribe cada
+       Alcaldía en "Municipio y bancos". El contribuyente paga fuera del
+       sistema y un funcionario con "Registrar el pago de la inscripción del
+       RIT" lo registra aquí, o lo exonera con un motivo.
+
+       Todo lo que se ve viene de la clave "cobro" de la función 10 de la API
+       de firmas (microservicios/firmas/api.php); sin esa clave no hay tarjeta
+       y la pantalla es la de siempre. Que se pueda o no firmar lo decide el
+       SERVIDOR (funciones 1 y 9 de esa API): deshabilitar el botón es solo
+       cortesía y se salta desde la consola.
+       ================================================================ */
+
+    /** AAAA-MM-DD -> dd/mm/aaaa; "AAAA-MM-DD HH:MM" -> "dd/mm/aaaa HH:MM". */
+    _fechaCobro(texto) {
+        var m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}:\d{2}))?/.exec(String(texto || ''));
+        return m ? m[3] + '/' + m[2] + '/' + m[1] + (m[4] ? ' ' + m[4] : '') : '';
+    }
+
+    /** Pesos en formato colombiano ("$25.000"), con core/numeros.js. */
+    _pesosCobro(valor) {
+        return '$' + NumerosCOP.formatear(Math.round(Number(valor) || 0));
+    }
+
+    /**
+     * Pinta la tarjeta «Derechos de inscripción» con lo que contesta el
+     * servidor, o la quita si no hay cobro. Todo lo que viene del servidor o
+     * lo escribió una persona (instrucciones, banco, recibo, motivo, nombres)
+     * pasa por escaparHtml antes de entrar al HTML.
+     */
+    pintarCobro(cobro) {
+        var self = this;
+        var esc = this.escaparHtml;
+        var $tarjeta = $('#ritCobro');
+        this._cobro = cobro || null;
+
+        // Sin cobro (inscripción gratis, o no le corresponde): nada que mostrar.
+        // El botón de firmar solo se suelta si ESTA tarjeta lo había bloqueado: con la
+        // inscripción gratis (Paipa) la pantalla no se toca, ni siquiera con un "disabled=false".
+        if (!cobro) {
+            $tarjeta.hide().empty();
+            if (this._firmaBloqueadaPorCobro) { this._soltarFirmaPorCobro(); }
+            return;
+        }
+
+        var valor  = this._pesosCobro(cobro.valor);
+        var estado = String(cobro.estado);
+        var borde, fondo, chip, cuerpo = '', botones = '';
+        var bloquea = Number(cobro.bloquea) === 1;
+
+        if (estado === 'PAGADO') {
+            var p = cobro.pago || {};
+            borde = '#1B6E45'; fondo = '#F3FBF6';
+            chip = '<span class="chip-estado est-pagada">Pagado</span>';
+            cuerpo =
+                '<div style="margin-top:8px;font-size:14px;">Valor pagado: <b>' + esc(valor) + '</b></div>' +
+                '<div style="margin-top:4px;font-size:13px;color:#374151;">Fecha de pago: ' + esc(this._fechaCobro(p.fecha)) +
+                    (p.banco ? ' · Banco: ' + esc(p.banco) : '') +
+                    (p.referencia ? ' · Recibo o consignación: ' + esc(p.referencia) : '') + '</div>' +
+                '<small class="text-muted d-block mt-1">Registrado por ' + esc(p.registradoPor || '') +
+                    ' el ' + esc(this._fechaCobro(p.registradoEl)) + '</small>';
+        } else if (estado === 'EXONERADO') {
+            var x = cobro.exoneracion || {};
+            borde = '#6B7280'; fondo = '#F9FAFB';
+            chip = '<span class="chip-estado est-firmada">Exonerado</span>';
+            cuerpo =
+                '<div style="margin-top:8px;font-size:14px;">Valor exonerado: <b>' + esc(valor) + '</b></div>' +
+                '<div style="margin-top:4px;font-size:13px;color:#374151;">Motivo: ' + esc(x.motivo || '') + '</div>' +
+                '<small class="text-muted d-block mt-1">Registrado por ' + esc(x.registradoPor || '') +
+                    ' el ' + esc(this._fechaCobro(x.registradoEl)) + '</small>';
+        } else {
+            borde = '#d39e00'; fondo = '#FFFBF0';
+            chip = '<span class="chip-estado est-borrador">Pendiente de pago</span>';
+            cuerpo =
+                '<div style="margin-top:8px;font-size:14px;">Valor de la inscripción: <b>' + esc(valor) + '</b></div>' +
+                (cobro.instrucciones
+                    ? '<div style="margin-top:4px;font-size:13px;color:#374151;"><b>Cómo pagar:</b> ' + esc(cobro.instrucciones) + '</div>'
+                    : '') +
+                '<div style="margin-top:6px;font-size:13px;color:#4B5563;">' +
+                    (bloquea
+                        ? 'No podrá firmar el RIT mientras la Alcaldía no registre este pago.'
+                        : 'La Alcaldía registrará su pago cuando lo reciba.') +
+                '</div>';
+            // Registrar y exonerar: solo quien tiene el permiso (el servidor lo exige igual).
+            if (Number(cobro.puedeRegistrar) === 1 && this.puede('alcaldia.rit.cobro')) {
+                botones =
+                    '<div class="mt-2">' +
+                        '<button type="button" class="btn btn-sm btn-success mr-2" id="btnRitCobroPago">' +
+                            '<i class="fa fa-money"></i> Registrar pago</button>' +
+                        '<button type="button" class="btn btn-sm btn-outline-secondary" id="btnRitCobroExonerar">' +
+                            '<i class="fa fa-ban"></i> Exonerar</button>' +
+                    '</div>';
+            }
+        }
+
+        $tarjeta.html(
+            '<div style="border:1px solid #dee2e6;border-left:4px solid ' + borde + ';background:' + fondo +
+                ';border-radius:4px;padding:14px 16px;">' +
+                '<div class="d-flex justify-content-between align-items-center flex-wrap" style="gap:8px;">' +
+                    '<b><i class="fa fa-money"></i> Derechos de inscripción</b>' + chip +
+                '</div>' + cuerpo + botones +
+            '</div>'
+        ).show();
+
+        // El servidor ya no deja firmar; el botón lo dice antes de gastar un código.
+        if (bloquea) {
+            $('#btnFirmarRIT').prop('disabled', true)
+                .attr('title', 'No se puede firmar hasta que la Alcaldía registre el pago de los derechos de inscripción');
+            this._firmaBloqueadaPorCobro = true;
+        } else if (this._firmaBloqueadaPorCobro) {
+            this._soltarFirmaPorCobro();
+        }
+    }
+
+    /** Devuelve el botón de firmar a como estaba antes de que la tarjeta lo bloqueara. */
+    _soltarFirmaPorCobro() {
+        $('#btnFirmarRIT').prop('disabled', false).removeAttr('title');
+        this._firmaBloqueadaPorCobro = false;
+    }
+
+    /** Abre el formulario del pago, con los bancos que trae el servidor. */
+    abrirPagoCobro() {
+        var self = this;
+        var c = this._cobro;
+        if (!c || c.estado !== 'PENDIENTE') { return; }
+
+        $.ajax({
+            url: '../business/controller/class.ritCobro.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { funcion: 1, id_contribuyente: localStorage.getItem('id_Contribuyente') },
+            success: function (r) {
+                if (!r || r.ok != 1) {
+                    swal({ type: 'error', title: 'No se pudo abrir el registro del pago',
+                           text: (r && r.mensaje) || 'Intente de nuevo.' });
+                    self.consultarFirmaRIT();
+                    return;
+                }
+                if (!r.datos || !r.datos.cobro || r.datos.cobro.estado !== 'PENDIENTE') {
+                    swal({ type: 'info', title: 'Sin cobro pendiente',
+                           text: (r && r.mensaje) || 'La inscripción de este contribuyente ya no está pendiente de pago.' });
+                    self.consultarFirmaRIT();
+                    return;
+                }
+                $('#formRitCobroPago')[0].reset();
+                $('#ritCobroPagoValor').text(self._pesosCobro(r.datos.cobro.valor));
+
+                // option().val().text(): lo que llega de la base nunca se interpreta como HTML.
+                var $banco = $('#ritCobroBanco').empty().append($('<option>').val('').text('Sin banco'));
+                (r.datos.bancos || []).forEach(function (b) {
+                    $banco.append($('<option>').val(String(b.id))
+                        .text(b.nombre + (b.cuenta ? ' (cuenta ' + b.cuenta + ')' : '')));
+                });
+
+                // Por defecto, hoy; el servidor rechaza una fecha futura (hora de Colombia).
+                var d = new Date(), dos = function (n) { return (n < 10 ? '0' : '') + n; };
+                var hoy = d.getFullYear() + '-' + dos(d.getMonth() + 1) + '-' + dos(d.getDate());
+                $('#ritCobroFechaPago').attr('max', hoy).val(hoy);
+
+                $('#modal-RitCobroPago').modal('show');
+            },
+            error: function () {
+                swal({ type: 'error', title: 'Error de conexión', text: 'No se pudo abrir el registro del pago.' });
+            }
+        });
+    }
+
+    /** Registra el pago (función 2 del controlador). */
+    registrarPagoCobro() {
+        var self = this;
+        var $boton = $('#btnRitCobroGuardarPago');
+        $boton.prop('disabled', true);
+
+        $.ajax({
+            url: '../business/controller/class.ritCobro.php',
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                funcion: 2,
+                id_contribuyente: localStorage.getItem('id_Contribuyente'),
+                fechaPago: $('#ritCobroFechaPago').val(),
+                referencia: $('#ritCobroReferencia').val(),
+                idBanco: $('#ritCobroBanco').val()
+            },
+            success: function (r) {
+                if (r.ok != 1) {
+                    swal({ type: 'error', title: 'No se pudo registrar el pago', text: r.mensaje || 'Intente de nuevo.' });
+                    // Otro funcionario ya lo registró: se muestra lo que quedó.
+                    if (r.codigo === 'YA_REGISTRADO' || r.codigo === 'NO_PENDIENTE') {
+                        $('#modal-RitCobroPago').modal('hide');
+                        self.consultarFirmaRIT();
+                    }
+                    return;
+                }
+                $('#modal-RitCobroPago').modal('hide');
+                swal({ type: 'success', title: 'Pago registrado', text: r.mensaje || '', timer: 2500 });
+                self.consultarFirmaRIT();
+            },
+            error: function () {
+                swal({ type: 'error', title: 'Error de conexión', text: 'No se pudo registrar el pago. Verifique en la tarjeta si quedó registrado.' });
+            },
+            complete: function () { $boton.prop('disabled', false); }
+        });
+    }
+
+    /** Abre el formulario de la exoneración. */
+    abrirExonerarCobro() {
+        var c = this._cobro;
+        if (!c || c.estado !== 'PENDIENTE') { return; }
+        $('#formRitCobroExonerar')[0].reset();
+        $('#ritCobroExonerarValor').text(this._pesosCobro(c.valor));
+        $('#modal-RitCobroExonerar').modal('show');
+    }
+
+    /** Exonera de la inscripción, con el motivo (función 3 del controlador). */
+    exonerarCobro() {
+        var self = this;
+        var $boton = $('#btnRitCobroGuardarExoneracion');
+        var motivo = String($('#ritCobroMotivo').val() || '').trim();
+
+        if (motivo.length < 10) {
+            swal({ type: 'warning', title: 'Falta el motivo', text: 'Escriba por qué se exonera la inscripción (mínimo 10 caracteres).' });
+            return;
+        }
+        $boton.prop('disabled', true);
+
+        $.ajax({
+            url: '../business/controller/class.ritCobro.php',
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                funcion: 3,
+                id_contribuyente: localStorage.getItem('id_Contribuyente'),
+                motivo: motivo
+            },
+            success: function (r) {
+                if (r.ok != 1) {
+                    swal({ type: 'error', title: 'No se pudo exonerar', text: r.mensaje || 'Intente de nuevo.' });
+                    if (r.codigo === 'YA_REGISTRADO' || r.codigo === 'NO_PENDIENTE') {
+                        $('#modal-RitCobroExonerar').modal('hide');
+                        self.consultarFirmaRIT();
+                    }
+                    return;
+                }
+                $('#modal-RitCobroExonerar').modal('hide');
+                swal({ type: 'success', title: 'Inscripción exonerada', text: r.mensaje || '', timer: 2500 });
+                self.consultarFirmaRIT();
+            },
+            error: function () {
+                swal({ type: 'error', title: 'Error de conexión', text: 'No se pudo exonerar. Verifique en la tarjeta si quedó registrado.' });
+            },
+            complete: function () { $boton.prop('disabled', false); }
+        });
+    }
+
     /** "Actualizar": desbloquea para registrar una novedad. */
     actualizarRIT() {
         var self = this;
@@ -2708,6 +2970,16 @@ actualizarDeclaracionIca(valor, numeroCampo){
         if (typeof FirmaOTP === 'undefined' || typeof FirmaOTP.abrirRit !== 'function') {
             swal({ type: 'error', title: 'No disponible',
                    text: 'No se pudo abrir la ventana de firma. Recargue la página.' });
+            return;
+        }
+
+        // Derechos de inscripción sin pagar y el municipio exige el pago antes de
+        // firmar: se avisa aquí, sin gastar un código. Es cortesía; el servidor
+        // lo vuelve a comprobar al pedir el código y al firmar.
+        if (this._cobro && Number(this._cobro.bloquea) === 1) {
+            swal({ type: 'warning', title: 'Falta el pago de la inscripción',
+                   text: 'Para firmar el RIT la Alcaldía debe registrar antes el pago de los derechos de inscripción ('
+                       + this._pesosCobro(this._cobro.valor) + ').' });
             return;
         }
 
@@ -3169,6 +3441,26 @@ $(document).on('click', '#btnActualizarRIT', function () {
     establecimientos.actualizarRIT();
 });
 
+// Derechos de inscripción (migración 055): registrar el pago o exonerar. Los
+// botones y los formularios los pinta la tarjeta; el servidor valida todo.
+$(document).on('click', '#btnRitCobroPago', function () {
+    establecimientos.abrirPagoCobro();
+});
+
+$(document).on('click', '#btnRitCobroExonerar', function () {
+    establecimientos.abrirExonerarCobro();
+});
+
+$(document).on('submit', '#formRitCobroPago', function (e) {
+    e.preventDefault();
+    establecimientos.registrarPagoCobro();
+});
+
+$(document).on('submit', '#formRitCobroExonerar', function (e) {
+    e.preventDefault();
+    establecimientos.exonerarCobro();
+});
+
 
 $(document).on('click', '#btnSubirCeseRIT', function () {
     establecimientos.subirAnexoRIT('cese', '#ritCeseArchivo', '#btnSubirCeseRIT');
@@ -3361,7 +3653,8 @@ $("#btnGenerarOficial").off("click").on("click", function () {
         swal({
             type: 'warning',
             title: 'Declaración Liquidada Exitosamente',
-            text:  'Para la PRESENTACIÓN y PAGO de la Declaración diríjase a las entidades financieras o realice transferecia bancaria y envíe los respectivos soportes al correo: impuestos@paipa-boyaca.gov.co.',
+            // Mismo contacto de Municipio y bancos que el aviso de arriba (core/contacto.js).
+            text:  ErpContacto.textoPresentarYPagar(),
             confirmButtonText: 'Entendido'
         });
 

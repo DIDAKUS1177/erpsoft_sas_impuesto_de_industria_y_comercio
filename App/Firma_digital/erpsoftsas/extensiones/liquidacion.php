@@ -239,8 +239,11 @@ foreach ($actividades as $act) {
 // Atlántico, Bolívar, Caquetá, Quindío... casi todos llevan tilde.
 $municipio          = mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8');
 $departamento       = mb_strtoupper(MUNICIPIO_DEPARTAMENTO, 'UTF-8');
-$nit_municipio      = "891801240";
-$direccion_mpio     = "Carrera 22 No 25-14";
+// El NIT y la dirección de la Alcaldía son los del config de ESTE municipio
+// (MUNICIPIO_NIT, MUNICIPIO_DIRECCION). Estaban escritos aquí -los de Paipa- y
+// salían en el formulario de todos los municipios. Sin ellos no se imprimen.
+$nit_municipio      = defined('MUNICIPIO_NIT') ? trim((string) MUNICIPIO_NIT) : '';
+$direccion_mpio     = defined('MUNICIPIO_DIRECCION') ? trim((string) MUNICIPIO_DIRECCION) : '';
 $ciudad_mpio        = mb_strtoupper(MUNICIPIO_CIUDAD, 'UTF-8') . " - " . mb_strtoupper(MUNICIPIO_DEPARTAMENTO, 'UTF-8');
 
 // Fecha límite de pago: la misma regla y el mismo (96) que declaracion.php.
@@ -490,13 +493,14 @@ td { vertical-align: top; font-size:6px; }
 <tr>
 
 <td width="10%" rowspan="10" align="center">
-    <img src="' . $rutaEscudoPdf . '" width="85">
-    <div style="font-size:5px; text-align:center;">NIT ' . $nit_municipio . '</div>
+    <img src="' . $rutaEscudoPdf . '" width="85">' . ($nit_municipio !== ''
+        ? "\n    " . '<div style="font-size:5px; text-align:center;">NIT ' . htmlspecialchars($nit_municipio) . '</div>'
+        : '') . '
 </td>
 
 <td class="tituloPrincipal" width="90%" align="center">
 <b>MUNICIPIO DE ' . htmlspecialchars($municipio) . '</b><br>
-' . $direccion_mpio . ' - ' . $ciudad_mpio . '<br>
+' . ($direccion_mpio !== '' ? htmlspecialchars($direccion_mpio) . ' - ' : '') . $ciudad_mpio . '<br>
 FORMULARIO ÚNICO NACIONAL DE DECLARACIÓN Y PAGO DEL<br>
 IMPUESTO DE INDUSTRIA Y COMERCIO
 </td>

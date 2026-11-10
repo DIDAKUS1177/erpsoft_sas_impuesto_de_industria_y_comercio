@@ -161,6 +161,14 @@ class FirmasAPI
                 echo json_encode(['ok' => 0, 'mensaje' => $faltan]);
                 return;
             }
+            // Cobro de la inscripción (migración 055): con el pago previo exigido
+            // y sin registrar, tampoco se manda el código. Sin cobro, no cambia nada.
+            $sinPagar = $this->_bloqueoPorCobro($conSql, $permiso['id']);
+            if ($sinPagar !== null) {
+                header('Content-type: application/json');
+                echo json_encode(['ok' => 0, 'mensaje' => $sinPagar]);
+                return;
+            }
             $dest   = $this->_correoRepresentante($conSql, $permiso['id'], $idUsuario);
             $email  = $dest['email'];
             $nombre = $dest['nombre'];
@@ -1222,6 +1230,19 @@ class FirmasAPI
             return;
         }
 
+        /*
+         * Cobro de la inscripción (migración 055): con RIT_PAGO_PREVIO_A_FIRMAR = 1
+         * y el pago sin registrar, no se firma. Esta es la barrera de verdad (la
+         * pantalla deshabilita el botón por cortesía, y se salta desde la
+         * consola): un código pedido ANTES de activar el cobro tampoco firma. Va
+         * antes de consumir el código, para no gastarlo.
+         */
+        $sinPagar = $this->_bloqueoPorCobro($conSql, $idContribuyente);
+        if ($sinPagar !== null) {
+            echo json_encode(['ok' => 0, 'mensaje' => $sinPagar]);
+            return;
+        }
+
         // --- OTP: se valida y se consume aqui mismo ---
         $errorCodigo = $this->_consumirCodigo($conSql, $idUsuario, 'rit');
         if ($errorCodigo !== null) {
@@ -1326,7 +1347,7 @@ class FirmasAPI
             ];
         };
 
-        echo json_encode([
+        $respuesta = [
             'ok'             => 1,
             'firmado'        => $estado['firmado'] ? 1 : 0,
             'firma'          => $fmt($estado['firma']),
@@ -1335,7 +1356,47 @@ class FirmasAPI
             'desactualizada' => $fmt($estado['desactualizada']),
             // La misma regla que el PDF (RitFirma::opcionDeUso).
             'opcionUso'      => \erpsoftsas\RitFirma::opcionDeUso($conSql, $idContribuyente),
-        ]);
+        ];
+
+        // La tarjeta «Derechos de inscripción» (migración 055). La clave solo
+        // existe cuando hay un cobro que mostrar: con la inscripción gratis
+        // (Paipa) o sin la migración la respuesta es idéntica a la de siempre.
+        $cobro = $this->_cobroDelRit($conSql, $idContribuyente);
+        if ($cobro !== null) { $respuesta['cobro'] = $cobro; }
+
+        echo json_encode($respuesta);
+    }
+
+    /**
+     * Por qué el RIT no se puede firmar todavía por el cobro de la inscripción,
+     * o null si se puede (sin cobro, con el pago o la exoneración registrados, o
+     * con el cobro configurado solo para informar).
+     *
+     * El cobro es un añadido: si su comprobación falla, se deja firmar y se
+     * anota. Tumbar la firma de los cuatro municipios por un fallo aquí sería
+     * peor que no exigir el pago ese momento.
+     */
+    private function _bloqueoPorCobro($conSql, $idContribuyente)
+    {
+        try {
+            include_once SERVER . '/business/class.ritCobro.php';
+            return \erpsoftsas\RitCobro::motivoDeBloqueo($conSql, $idContribuyente);
+        } catch (\Throwable $e) {
+            error_log('[rit cobro] no se pudo comprobar el cobro al firmar (se deja firmar): ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /** Lo que muestra la tarjeta del cobro en la función 10, o null si no hay cobro. */
+    private function _cobroDelRit($conSql, $idContribuyente)
+    {
+        try {
+            include_once SERVER . '/business/class.ritCobro.php';
+            return \erpsoftsas\RitCobro::resumen($conSql, $idContribuyente, \erpsoftsas\RitCobro::puedeRegistrar());
+        } catch (\Throwable $e) {
+            error_log('[rit cobro] no se pudo consultar el cobro: ' . $e->getMessage());
+            return null;
+        }
     }
 
 }

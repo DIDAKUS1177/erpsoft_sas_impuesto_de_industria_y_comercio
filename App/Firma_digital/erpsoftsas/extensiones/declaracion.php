@@ -576,7 +576,9 @@ if ($corrige !== '') {
 $d = [
     // Encabezado entidad / periodo
     'entidad'     => mb_strtoupper(MUNICIPIO_NOMBRE, 'UTF-8'),
-    'secretaria'  => 'SECRETARÍA DE HACIENDA',
+    // La secretaría del config del municipio (MUNICIPIO_SECRETARIA, la misma que
+    // imprimen el RIT y las retenciones) y, sin ella, el texto de siempre.
+    'secretaria'  => htmlspecialchars(defined('MUNICIPIO_SECRETARIA') ? MUNICIPIO_SECRETARIA : 'SECRETARÍA DE HACIENDA'),
     'dir'         => ' ',
     'tel'         => ' ',
     'web'         => ' ',
@@ -852,6 +854,38 @@ if (defined('MUNICIPIO_LOGO_PDF')) {
         : $__baseEscudo . MUNICIPIO_LOGO;
 }
 
+/*
+ * El NIT bajo el escudo es el del municipio de ESTE despliegue (MUNICIPIO_NIT en
+ * config.municipio.php), con el formato del formulario oficial: puntos de miles y
+ * dígito de verificación (891.801.240-1). Estaba escrito aquí, y era el de Paipa en
+ * los formularios de TODOS los municipios. La constante puede traer solo el número
+ * ("891801240", como la de Paipa) o ya el dígito ("891801240-1"). Sin constante, no
+ * se imprime NIT: un documento tributario sin el dato es mejor que con el de otra
+ * entidad.
+ */
+if (!function_exists('nitDelMunicipioConFormato')) {
+    function nitDelMunicipioConFormato() {
+        $crudo = defined('MUNICIPIO_NIT') ? trim((string) MUNICIPIO_NIT) : '';
+        if ($crudo === '') { return ''; }
+
+        if (preg_match('/^([0-9.\s]+)-\s*([0-9])$/', $crudo, $m)) {
+            $numero = preg_replace('/\D/', '', $m[1]);
+            $dv     = (int) $m[2];
+        } else {
+            $numero = preg_replace('/\D/', '', $crudo);
+            if ($numero === '') { return htmlspecialchars($crudo); }   // no parece un NIT: tal cual
+            // El mismo cálculo que el RIT y las cuentas (algoritmo de la DIAN).
+            include_once SERVER . '/business/DAO/DAO_Contribuyentes.php';
+            $dv = \erpsoftsas\DAO_Contribuyentes::digitoVerificacion($numero);
+        }
+        return number_format((float) $numero, 0, ',', '.') . '-' . $dv;
+    }
+}
+$nitMunicipio      = nitDelMunicipioConFormato();
+$lineaNitMunicipio = $nitMunicipio !== ''
+    ? "\n    " . '<div style="font-size:5px; text-align:center;">NIT ' . $nitMunicipio . '</div>'
+    : '';
+
 $html='
 
 <style>
@@ -870,8 +904,7 @@ td { vertical-align: top; font-size:6px; }
 <tr>
 
 <td width="10%" rowspan="10" align="center" >
-    <img src="' . $rutaEscudoPdf . '" width="58">
-    <div style="font-size:5px; text-align:center;">NIT 891.801.240-1</div>
+    <img src="' . $rutaEscudoPdf . '" width="58">' . $lineaNitMunicipio . '
 </td>
 
 <td class="tituloPrincipal" width="90%" align="center">

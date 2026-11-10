@@ -129,6 +129,13 @@
 					</div>
 				</div>
 
+				<!-- Derechos de inscripción (migración 055). Solo sale cuando el
+				     municipio cobra la inscripción y a este contribuyente le
+				     corresponde, o ya se registró su pago o su exoneración. La llena
+				     pintarCobro() con la clave "cobro" de la función 10 de la API de
+				     firmas; con la inscripción gratis (Paipa) no hay nada que mostrar. -->
+				<div id="ritCobro" class="pd-20 pt-0" style="display:none;"></div>
+
 				<style>
 				/* Un campo readonly se ve identico a uno editable en Bootstrap 4,
 				   y por eso el cliente pidio dos veces "bloquear" campos que ya
@@ -827,6 +834,77 @@
 						<button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Cancelar</button>
 						<button type="button" class="btn btn-success btn-sm" id="btnValidarOTP">Validar y Firmar</button>
 					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- ============ DERECHOS DE INSCRIPCIÓN (migración 055) ============
+		     Los dos formularios de la Alcaldía (permiso alcaldia.rit.cobro). Van
+		     aquí, en el cuerpo, y no dentro de la tarjeta: dentro de una tarjeta
+		     un modal queda debajo del fondo oscuro de Bootstrap. Los llena y envía
+		     core/icaWebRit.js; el servidor valida todo otra vez. -->
+		<div class="modal fade" id="modal-RitCobroPago" role="dialog" aria-hidden="true" data-backdrop="static">
+			<div class="modal-dialog modal-dialog-centered" role="document">
+				<div class="modal-content">
+					<div class="modal-header" style="background: var(--erp-primario); color: white;">
+						<h5 class="modal-title text-white"><i class="fa fa-money"></i> Registrar el pago de la inscripción</h5>
+						<button type="button" class="close text-white" data-dismiss="modal">
+							<span>&times;</span>
+						</button>
+					</div>
+					<form id="formRitCobroPago" autocomplete="off">
+						<div class="modal-body">
+							<p style="font-size:13px; color:#4B5563;">Valor que se registra: <b id="ritCobroPagoValor"></b>
+								<span class="text-muted">(el que tiene hoy el municipio)</span></p>
+							<div class="form-group">
+								<label for="ritCobroFechaPago">Fecha de pago</label>
+								<input type="date" id="ritCobroFechaPago" class="form-control" required>
+								<small class="form-text text-muted">El día en que el contribuyente pagó.</small>
+							</div>
+							<div class="form-group">
+								<label for="ritCobroReferencia">N° del recibo o de la consignación</label>
+								<input type="text" id="ritCobroReferencia" class="form-control" maxlength="60" required>
+							</div>
+							<div class="form-group">
+								<label for="ritCobroBanco">Banco <span class="text-muted font-weight-normal">(si pagó por uno)</span></label>
+								<select id="ritCobroBanco" class="form-control">
+									<option value="">Sin banco</option>
+								</select>
+							</div>
+						</div>
+						<div class="modal-footer justify-content-center">
+							<button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Cancelar</button>
+							<button type="submit" class="btn btn-success btn-sm" id="btnRitCobroGuardarPago">Registrar pago</button>
+						</div>
+					</form>
+				</div>
+			</div>
+		</div>
+
+		<div class="modal fade" id="modal-RitCobroExonerar" role="dialog" aria-hidden="true" data-backdrop="static">
+			<div class="modal-dialog modal-dialog-centered" role="document">
+				<div class="modal-content">
+					<div class="modal-header" style="background: var(--erp-primario); color: white;">
+						<h5 class="modal-title text-white"><i class="fa fa-ban"></i> Exonerar de la inscripción</h5>
+						<button type="button" class="close text-white" data-dismiss="modal">
+							<span>&times;</span>
+						</button>
+					</div>
+					<form id="formRitCobroExonerar" autocomplete="off">
+						<div class="modal-body">
+							<p style="font-size:13px; color:#4B5563;">Valor que se exonera: <b id="ritCobroExonerarValor"></b></p>
+							<div class="form-group">
+								<label for="ritCobroMotivo">Motivo de la exoneración</label>
+								<textarea id="ritCobroMotivo" class="form-control" rows="3" maxlength="500" required
+								          style="height:auto;"></textarea>
+								<small class="form-text text-muted">Entre 10 y 500 caracteres. Queda escrito junto a su nombre y la fecha.</small>
+							</div>
+						</div>
+						<div class="modal-footer justify-content-center">
+							<button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Cancelar</button>
+							<button type="submit" class="btn btn-warning btn-sm" id="btnRitCobroGuardarExoneracion">Exonerar</button>
+						</div>
+					</form>
 				</div>
 			</div>
 		</div>

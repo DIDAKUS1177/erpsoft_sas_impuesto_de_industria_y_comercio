@@ -118,9 +118,19 @@
 					</div>
 					<span>© 2026</span>
 				</div>
+				<?php
+$__erpDependencia = null;
+try {
+	include_once __DIR__ . '/../business/class.contacto.php';
+	$__erpDependencia = \erpsoftsas\Contacto::dependencia();
+} catch (\Throwable $e) {
+	error_log('[dashboard] no se pudo leer la dependencia: ' . $e->getMessage());
+}
+if ($__erpDependencia !== null && $__erpDependencia !== '') { ?>
 				<div style="font-size: 13px; color: #6B7280; font-weight: 600; text-align: left; width: 100%;">
-					Secretaría de Hacienda - Dirección de Impuestos, Rentas y Jurisdicción Coactiva
+					<?php echo htmlspecialchars($__erpDependencia, ENT_QUOTES, 'UTF-8'); ?>
 				</div>
+<?php } ?>
 			</div>
 
 		</div>

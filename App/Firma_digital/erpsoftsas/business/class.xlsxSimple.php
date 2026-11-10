@@ -14,11 +14,17 @@ namespace erpsoftsas;
  *   3 encabezado      4 texto con borde   5 fecha con borde
  *   6 pesos con borde 7 total (rótulo)    8 total (pesos)
  *   9 número centrado con borde
+ *
+ * Estilos agregados para el Informe general (2026-11-09). Van AL FINAL de
+ * cellXfs a propósito: los índices 0 a 9 los usa el informe de pagos
+ * (extensiones/informePagos.php) y mover uno cambiaría su aspecto.
+ *  10 entero con separador de miles y borde
+ *  11 texto largo con ajuste de línea y borde
  */
 class XlsxSimple
 {
     const TITULO = 1, SUBTITULO = 2, ENCABEZADO = 3, TEXTO = 4, FECHA = 5, PESOS = 6,
-          TOTAL = 7, TOTAL_PESOS = 8, CENTRADO = 9;
+          TOTAL = 7, TOTAL_PESOS = 8, CENTRADO = 9, ENTERO = 10, TEXTO_AJUSTADO = 11;
 
     private $filas  = [];   // n => [col => '<c .../>'] ya escrita: un arreglo por celda gastaba ~58 MB con 10.000 filas
     private $anchos = [];
@@ -166,7 +172,7 @@ class XlsxSimple
             . '</fills>'
             . '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>' . $borde . '</borders>'
             . '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-            . '<cellXfs count="10">'
+            . '<cellXfs count="12">'
             . '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
             . '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
             . '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
@@ -177,6 +183,9 @@ class XlsxSimple
             . '<xf numFmtId="0" fontId="4" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>'
             . '<xf numFmtId="165" fontId="4" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>'
             . '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
+            // 10: entero (formato integrado 3, "#,##0"); 11: texto con ajuste de línea.
+            . '<xf numFmtId="3" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
+            . '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>'
             . '</cellXfs>'
             . '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
             . '</styleSheet>';

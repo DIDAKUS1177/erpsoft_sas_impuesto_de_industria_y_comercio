@@ -976,11 +976,19 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
         }
 
         // Enviar correo SOLO si se actualizó la contraseña
-        $this->_enviarCorreoRecuperacion(
+        // Antes se ignoraba el resultado y siempre decía "enviado": si el
+        // correo no salía (servidor de correo, dirección mal escrita), la clave
+        // ya estaba cambiada y la persona se quedaba sin entrar y sin saber por qué.
+        if (!$this->_enviarCorreoRecuperacion(
             $email,
             $usuario->get_usu_Nombres(),
             $claveTemporal
-        );
+        )) {
+            $this->_ok = 0;
+            $this->_mensaje = 'No se pudo enviar el correo de recuperación. '
+                            . 'Intente de nuevo en unos minutos o comuníquese con la Secretaría de Hacienda.';
+            return false;
+        }
 
         $this->_ok = 1;
         $this->_mensaje = 'Correo de recuperación enviado';
@@ -1031,7 +1039,14 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
                 $mail->Port       = 587;
                 $mail->CharSet = 'UTF-8';
 
-                $mail->setFrom('gestor.documental.alcaldia@gmail.com', 'Alcaldia de Paipa');
+                // El remitente y la firma son el municipio de ESTE servidor
+                // (config.municipio.php), como el correo del código de firma:
+                // decían "Alcaldia de Paipa" en todos los municipios.
+                $nombreMunicipio = defined('MUNICIPIO_NOMBRE') ? trim((string) MUNICIPIO_NOMBRE) : '';
+                $firmaMunicipio  = $nombreMunicipio !== ''
+                    ? '<p>' . htmlspecialchars($nombreMunicipio, ENT_QUOTES, 'UTF-8') . '</p>' : '';
+
+                $mail->setFrom('gestor.documental.alcaldia@gmail.com', $nombreMunicipio);
                 $mail->addAddress($email, $nombre);
 
                 $mail->isHTML(true);
@@ -1040,13 +1055,21 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
                     <p>Hola <strong>{$nombre}</strong>,</p>
                     <p>Tu contraseña es:</p>
                     <h2>{$claveTemporal}</h2>
-                    <p>Alcaldia de Paipa</p>
+                    {$firmaMunicipio}
                 ";
+
+                // Versión en texto plano: un correo solo HTML puntúa peor en los
+                // filtros de correo de empresas.
+                $mail->AltBody = 'Hola ' . $nombre . ', tu contraseña es: ' . $claveTemporal
+                               . ($nombreMunicipio !== '' ? ' - ' . $nombreMunicipio : '');
 
                 $mail->send();
                 return true;
 
             } catch (\Exception $e) {
+                // Sin datos personales: solo el motivo del servidor de correo.
+                error_log('[recuperar-clave] correo no enviado: '
+                    . preg_replace('/[\w.+-]+@[\w.-]+/', '<correo>', (string) $mail->ErrorInfo));
                 return false;
             }
         }

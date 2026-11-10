@@ -286,7 +286,7 @@
 <div class="col-md-3">
 <label>Teléfono</label>
 <input type="text" class="form-control" id="est_Telefono" name="est_Telefono"
-       maxlength="30" placeholder="Ej. 8 785 0000">
+       maxlength="30" placeholder="Ej. 300 000 0000">
 </div>
 
 <!-- lo esta trayendo de ind_contribuyentes, no se si es necesario

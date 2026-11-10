@@ -349,7 +349,9 @@ class Establecimientos {
         swal({
             type: 'info',
             title: 'Creación de establecimiento',
-            text: 'Para la creación de un nuevo establecimiento diríjase de manera presencial a la secretaria de Hacienda del municipio de Paipa o realice el trámite a través del correo impuestos@paipa-boyaca.gov.co.',
+            // El contacto sale de Municipio y bancos (window.ERP_CONTACTO, ver
+            // core/contacto.js): antes decía Paipa y su correo en todos los municipios.
+            text: ErpContacto.textoNuevoEstablecimiento(),
             confirmButtonText: 'Entendido',
             allowOutsideClick: false,
             allowEscapeKey: false
@@ -2137,7 +2139,8 @@ $("#btnGenerarOficial").off("click").on("click", function () {
         swal({
             type: 'warning',
             title: 'Declaración Liquidada Exitosamente',
-            text:  'Para la PRESENTACIÓN y PAGO de la Declaración diríjase a las entidades financieras o realice transferecia bancaria y envíe los respectivos soportes al correo: impuestos@paipa-boyaca.gov.co.',
+            // Mismo contacto de Municipio y bancos que el aviso de arriba (core/contacto.js).
+            text:  ErpContacto.textoPresentarYPagar(),
             confirmButtonText: 'Entendido'
         });
 

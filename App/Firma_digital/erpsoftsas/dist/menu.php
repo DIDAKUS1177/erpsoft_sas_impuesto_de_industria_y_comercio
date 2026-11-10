@@ -558,6 +558,25 @@ if (!defined('MUNICIPIO_COLOR_OSCURO')) define('MUNICIPIO_COLOR_OSCURO', '#17756
 
 </div>
 
+<?php
+/*
+ * El contacto del municipio (dependencia, teléfono, correo y ciudad), para los
+ * avisos de las pantallas: core/contacto.js arma con él los textos que antes
+ * decían "Paipa" en todos los municipios. Sale de Municipio y bancos
+ * (business/class.contacto.php). Si la base no responde, queda en nulos y el
+ * aviso sale sin correo, nunca con el de otro municipio. El JSON ya viene
+ * escapado para un <script> (JSON_HEX_*).
+ */
+$__erpContactoJson = '{}';
+try {
+    include_once __DIR__ . '/../business/class.contacto.php';
+    $__erpContactoJson = \erpsoftsas\Contacto::jsonParaPantalla();
+} catch (\Throwable $e) {
+    error_log('[menu] no se pudo leer el contacto del municipio: ' . $e->getMessage());
+}
+?>
+<script>window.ERP_CONTACTO = <?php echo $__erpContactoJson; ?>;</script>
+<script src="../core/contacto.js?v=<?php echo time(); ?>"></script>
 <script src="../src/scripts/jquery.min.js"></script>
 <script src="../core/Permisos.js?v=<?php echo time(); ?>"></script>
 <script src="../core/menu.js?v=<?php echo time(); ?>"></script>

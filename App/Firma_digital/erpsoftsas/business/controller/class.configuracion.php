@@ -6,10 +6,12 @@ include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
 include_once SERVER . '/business/controller/class.cabecera.php';
 include_once SERVER . '/business/class.permisosRol.php';
+include_once SERVER . '/business/class.contacto.php';
 
 /**
- * Configuración del municipio: parámetros, cuentas de los bancos y cuentas
- * contables del pago manual (funciones 8 a 11, migración 051).
+ * Configuración del municipio: parámetros, cuentas de los bancos, cuentas
+ * contables del pago manual (funciones 8 a 11, migración 051) y contacto del
+ * municipio (función 12, migración 054).
  *
  * POR QUÉ EXISTE
  *
@@ -93,7 +95,7 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
         // X-Requested-With y un formulario de otro sitio no puede ponerlo, así
         // que una página ajena no cambia una cuenta con la sesión abierta de un
         // funcionario. Para las cuentas eso lo cuidaba el candado.
-        if (in_array((int) $_obj->_funcion, [2, 4, 9, 10, 11], true) && !self::_desdeLaPantalla()) {
+        if (in_array((int) $_obj->_funcion, [2, 4, 9, 10, 11, 12], true) && !self::_desdeLaPantalla()) {
             header('Content-type: application/json');
             echo json_encode([
                 'ok' => 0,
@@ -108,7 +110,11 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
         // Las cuentas de los bancos (función 4) no: son las del recibo de pago y
         // el cliente pidió que la Alcaldía las cambie sin pedírselas a nadie
         // (2026-09-30). Basta "Municipio y bancos", y queda quién (ban_ActualizadoPor).
-        if ((int) $_obj->_funcion === 2 && !self::_edicionDesbloqueada()) {
+        // El contacto del municipio (función 12, 054) tampoco: es lo que ven los
+        // contribuyentes, no lo que mueve plata, y cada Alcaldía tiene que poder
+        // corregirlo sola (Diego, 2026-11-09). Por eso esas tres filas se dejan
+        // pasar también por la función 2; las demás siguen pidiendo la clave.
+        if ((int) $_obj->_funcion === 2 && !self::_edicionDesbloqueada() && !self::_esFilaDeContacto()) {
             header('Content-type: application/json');
             echo json_encode([
                 'ok' => 0,
@@ -160,6 +166,11 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
                 case 11:
                     $respuesta = $_obj->_quitarCuentaContable();
                     break;
+                // Contacto del municipio (migración 054): dependencia, teléfono
+                // y correo. Sin la contraseña de edición.
+                case 12:
+                    $respuesta = $_obj->_guardarContacto();
+                    break;
                 default:
                     $_obj->_mensaje = 'Función no válida';
             }
@@ -203,6 +214,27 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
     {
         return isset($_SERVER['HTTP_X_REQUESTED_WITH'])
             && strtolower((string) $_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+    }
+
+    /**
+     * ¿La fila que la función 2 quiere guardar (par_Id) es una de las tres del
+     * contacto del municipio (054)? Esas no piden la contraseña de edición. Se
+     * decide por la CLAVE que la base tiene para ese par_Id, nunca por lo que
+     * diga el navegador, y ante cualquier duda (id raro, base que no contesta)
+     * la respuesta es no: se pide la contraseña, como siempre.
+     */
+    private static function _esFilaDeContacto()
+    {
+        $id = (int) ($_POST['par_Id'] ?? 0);
+        if ($id <= 0) { return false; }
+
+        try {
+            $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+            $f = $con->obnerFila($con->consultar("SELECT par_Clave FROM conf_parametros WHERE par_Id = ?", [$id]));
+            return $f && in_array($f['par_Clave'], \erpsoftsas\Contacto::CLAVES, true);
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     /** ind_bancos.ban_ActualizadoPor existe desde la migración 041. */
@@ -322,6 +354,11 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
             }
 
             $f['par_Sensible'] = (int) !empty($f['par_Sensible']);
+
+            // Los tres del contacto del municipio (054) no van en esta tabla:
+            // la pantalla los pinta aparte, en "Contacto del municipio", y se
+            // guardan por la función 12 sin la contraseña.
+            $f['par_Contacto'] = (int) in_array($f['par_Clave'], \erpsoftsas\Contacto::CLAVES, true);
 
             if ($f['par_Sensible']) {
                 // Se sustituye por la unica informacion que la pantalla
@@ -523,6 +560,123 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
 
         // Un valor sensible tampoco vuelve en la respuesta.
         return $sensible ? ['par_Id' => $id] : ['par_Id' => $id, 'par_Valor' => $valor];
+    }
+
+    /**
+     * Guarda el CONTACTO del municipio (migración 054): la dependencia que
+     * atiende, el teléfono y el correo, SIN la contraseña de edición.
+     *
+     * POR QUÉ SIN CONTRASEÑA
+     *
+     * Son lo que ven los contribuyentes (el pie de la pantalla de ingreso y los
+     * avisos de las pantallas), no lo que mueve plata, y en los demás municipios
+     * salían los de Paipa: cada Alcaldía tiene que poder corregirlos ella sola
+     * (Diego, 2026-11-09). Basta "Municipio y bancos" -se comprueba en run()- y
+     * que la petición venga de la pantalla (X-Requested-With), igual que las
+     * cuentas de los bancos. Queda en el registro quién cambió qué.
+     *
+     * Llegan por POST: dependencia, telefono, correo. Vacío quita ese dato; el
+     * que no llegue no se toca. Se validan LOS TRES antes de guardar alguno, con
+     * el par_Patron de cada fila (y, si la fila no lo trae, el de Contacto), y
+     * se guardan en una transacción: nunca queda uno guardado y otro no. Un
+     * valor con el formato malo vuelve con su aviso y la lista de campos
+     * (datos.campos) para marcarlos en la pantalla.
+     */
+    private function _guardarContacto()
+    {
+        $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+
+        $campos = [
+            'dependencia' => \erpsoftsas\Contacto::CLAVE_DEPENDENCIA,
+            'telefono'    => \erpsoftsas\Contacto::CLAVE_TELEFONO,
+            'correo'      => \erpsoftsas\Contacto::CLAVE_CORREO,
+        ];
+
+        $filas = [];
+        $stmt = $con->consultar(
+            "SELECT par_Id, par_Clave, par_Valor, par_Patron
+               FROM conf_parametros
+              WHERE par_Clave IN (?, ?, ?) AND ISNULL(par_Estado, 1) = 1",
+            array_values($campos)
+        );
+        while ($f = $con->obnerFila($stmt)) { $filas[$f['par_Clave']] = $f; }
+
+        // El despliegue del código y el de la migración no son simultáneos.
+        if (count($filas) < count($campos)) {
+            $this->_mensaje = 'El contacto del municipio todavía no está disponible en esta base de datos: '
+                            . 'falta aplicar la migración 054.';
+            return [];
+        }
+
+        $nuevos  = [];   // clave => valor normalizado ('' quita el dato)
+        $errores = [];   // campo => aviso
+        foreach ($campos as $campo => $clave) {
+            if (!array_key_exists($campo, $_POST)) { continue; }
+
+            if (!is_string($_POST[$campo])) {
+                $errores[$campo] = 'El valor enviado para ' . $campo . ' no es válido.';
+                continue;
+            }
+            $valor = \erpsoftsas\Contacto::normalizar($_POST[$campo]);
+
+            if ($valor !== '') {
+                // Los modificadores u y D: PHP rechaza el texto que no sea UTF-8
+                // válido (el verbo (*UTF8) del patrón, solo, no lo comprueba) y
+                // el ancla $ no acepta un salto de línea al final. Ver
+                // Contacto::expresion().
+                $patron    = trim((string) ($filas[$clave]['par_Patron'] ?? ''));
+                $expresion = $patron !== '' ? '#' . str_replace('#', '\#', $patron) . '#uD'
+                                            : \erpsoftsas\Contacto::expresion($clave);
+                if (@preg_match($expresion, $valor) !== 1) {
+                    $errores[$campo] = \erpsoftsas\Contacto::mensajeFormato($clave);
+                    continue;
+                }
+            }
+            $nuevos[$clave] = $valor;
+        }
+
+        if ($errores) {
+            $this->_mensaje = implode(' ', array_values($errores));
+            return ['campos' => array_keys($errores)];
+        }
+
+        $cambios = [];
+        foreach ($nuevos as $clave => $valor) {
+            if (trim((string) $filas[$clave]['par_Valor']) !== $valor) { $cambios[$clave] = $valor; }
+        }
+
+        $this->_ok = 1;
+        if (!$cambios) {
+            $this->_mensaje = 'No hay cambios que guardar.';
+            return [];
+        }
+
+        // La hora de Colombia (el servidor SQL está en UTC), con T para SQL Server.
+        $ahora = (new \DateTime('now', new \DateTimeZone('America/Bogota')))->format('Y-m-d\TH:i:s');
+
+        $con->begin();
+        try {
+            foreach ($cambios as $clave => $valor) {
+                $con->consultar(
+                    "UPDATE conf_parametros SET par_Valor = ?, par_FechaActualizacion = ? WHERE par_Id = ?",
+                    [$valor, $ahora, (int) $filas[$clave]['par_Id']]
+                );
+            }
+            $con->commit();
+        } catch (\Throwable $e) {
+            try { $con->rollback(); } catch (\Throwable $e2) { /* ya no hay nada que deshacer */ }
+            $this->_ok = 0;
+            throw $e;   // run() lo registra y contesta con un aviso
+        }
+
+        foreach ($cambios as $clave => $valor) {
+            error_log(sprintf('[configuracion] usuario %s cambio %s de "%s" a "%s"',
+                $_SESSION['id_usuario'] ?? '?', $clave, trim((string) $filas[$clave]['par_Valor']), $valor));
+        }
+
+        $this->_mensaje = 'Contacto del municipio guardado. Ya se ve en el pie de la pantalla de ingreso '
+                        . 'y en los avisos de las pantallas.';
+        return ['cambiados' => array_keys($cambios)];
     }
 
     private function _consultarBancos()

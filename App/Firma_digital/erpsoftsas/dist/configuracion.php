@@ -62,7 +62,7 @@
 					<div>
 						<div class="h5 mb-1" id="candadoTitulo"><i class="fa fa-lock"></i> Parámetros protegidos</div>
 						<div class="text-muted" id="candadoTexto" style="font-size: 13px;">
-							Para cambiar los parámetros del municipio se pide la contraseña de edición. Las cuentas de los bancos y las contables se cambian sin ella.
+							Para cambiar los parámetros del municipio se pide la contraseña de edición. El contacto del municipio, las cuentas de los bancos y las contables se cambian sin ella.
 						</div>
 					</div>
 					<button type="button" class="btn btn-primary" id="btnCandado">Desbloquear edición</button>
@@ -86,6 +86,51 @@
 							<button type="submit" class="btn btn-primary" id="btnDesbloquear">Desbloquear</button>
 						</div>
 					</form>
+				</div>
+			</div>
+
+			<!-- ===================== CONTACTO DEL MUNICIPIO ===================== -->
+			<!-- Pedido de Diego (2026-11-09, migración 054): poder cambiar los números
+			     de contacto desde aquí, porque en los demás municipios salían los de
+			     Paipa. Son tres parámetros (CONTACTO_DEPENDENCIA, _TELEFONO y _CORREO)
+			     que se guardan juntos y SIN la contraseña de edición: es lo que ven los
+			     contribuyentes, no lo que mueve plata. No se pintan en la tabla de
+			     parámetros de abajo. -->
+			<div class="card-box mb-30" id="cajaContacto">
+				<div class="pd-20">
+					<h4 class="h4 mb-1">Contacto del municipio</h4>
+					<p class="text-muted mb-0" style="font-size:13px;">
+						Es lo que ven los contribuyentes. La dependencia y el teléfono salen al
+						pie de la pantalla de ingreso (el teléfono como "Soporte") y el correo en
+						los avisos que los mandan a la Alcaldía, por ejemplo para crear un
+						establecimiento o enviar los soportes de un pago. Un dato vacío no se
+						muestra. Se cambia sin la contraseña de edición.
+					</p>
+				</div>
+				<div class="pb-20 pl-20 pr-20">
+					<div class="alert alert-warning py-2 d-none" id="avisoContacto" style="font-size:13px;"></div>
+					<form id="formContacto" class="form-row" novalidate autocomplete="off">
+						<div class="form-group col-md-12 mb-2">
+							<label for="ctoDependencia" style="font-size:13px;font-weight:600;">Dependencia que atiende</label>
+							<input type="text" id="ctoDependencia" class="form-control form-control-sm" maxlength="150"
+							       autocomplete="off" placeholder="Ej. Secretaría de Hacienda - Dirección de Impuestos">
+						</div>
+						<div class="form-group col-md-5 mb-2">
+							<label for="ctoTelefono" style="font-size:13px;font-weight:600;">Teléfono</label>
+							<input type="text" id="ctoTelefono" class="form-control form-control-sm" maxlength="80"
+							       autocomplete="off" inputmode="tel" placeholder="Ej. 310 123 4567 o 8 785 0000">
+							<small class="form-text text-muted">Uno o varios números. Solo números, espacios y + ( ) . , / -</small>
+						</div>
+						<div class="form-group col-md-5 mb-2">
+							<label for="ctoCorreo" style="font-size:13px;font-weight:600;">Correo</label>
+							<input type="text" id="ctoCorreo" class="form-control form-control-sm" maxlength="120"
+							       autocomplete="off" inputmode="email" placeholder="Ej. impuestos@municipio.gov.co">
+						</div>
+						<div class="form-group col-md-2 mb-2 d-flex align-items-end">
+							<button type="submit" class="btn btn-sm btn-primary btn-block" id="btnGuardarContacto">Guardar contacto</button>
+						</div>
+					</form>
+					<small class="text-muted" id="ctoUltimoCambio"></small>
 				</div>
 			</div>
 

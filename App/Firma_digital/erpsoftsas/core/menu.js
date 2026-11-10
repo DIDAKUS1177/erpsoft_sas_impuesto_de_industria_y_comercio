@@ -16,7 +16,7 @@ var PERMISO_PAGINA = {
     'contribuyentes.php':            'alcaldia.contribuyentes.ver',
     'establecimientostodos.php':     'alcaldia.establecimientos.ver',
     'recaudo.php':                   'alcaldia.recaudo.cargar alcaldia.recaudo.asignar',
-    'informes.php':                  'alcaldia.informes.pagos',
+    'informes.php':                  'alcaldia.informes.pagos alcaldia.informes.personalizados',
     'icawebrit.php':                 'rit.ver',
     'establecimientos.php':          'establecimientos.ver',
     'icawebpresentar.php':           'ica.editar ica.firmar ica.presentar',

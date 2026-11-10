@@ -59,15 +59,17 @@ if (!defined('MUNICIPIO_LOGO'))         define('MUNICIPIO_LOGO', '/erpsoftsas/ve
 /*
  * El NIT de la entidad, que va bajo el escudo.
  *
- * Estaba escrito a mano -copiado de declaracion.php, donde sigue asi-. En un
- * sistema pensado para varios municipios eso significa que el formulario de
- * OTRA alcaldia saldria con el NIT de Paipa impreso: un documento tributario
- * con el identificador equivocado de la entidad que lo emite.
+ * Estaba escrito a mano -copiado de declaracion.php-. En un sistema pensado para
+ * varios municipios eso significa que el formulario de OTRA alcaldia saldria con
+ * el NIT de Paipa impreso: un documento tributario con el identificador
+ * equivocado de la entidad que lo emite.
  *
- * El valor por defecto es el de Paipa porque es el despliegue original; cada
- * municipio lo define en su config.municipio.php, como el nombre y el escudo.
+ * Cada municipio lo define en su config.municipio.php, como el nombre y el
+ * escudo. Si no lo trae NO hay valor por defecto (antes era el de Paipa): queda
+ * vacio y el encabezado no imprime ningun NIT, igual que el RIT
+ * (ritActualizado.php). Tambien evita el fatal de usar una constante sin definir.
  */
-if (!defined('MUNICIPIO_NIT'))          define('MUNICIPIO_NIT', '891.801.240-1');
+if (!defined('MUNICIPIO_NIT'))          define('MUNICIPIO_NIT', '');
 /* Para la línea "MUNICIPIO DE X - DEPTO" del encabezado. El config de cada
    municipio ya la define (la usan declaracion.php y el RIT); esto solo evita un
    fatal si alguna instalación no la trae. */
@@ -299,8 +301,9 @@ function pdfret_encabezado($titulo, $subtitulo)
 <table border="0" cellpadding="2" width="100%">
 <tr>
     <td width="12%" rowspan="2" align="center">
-        <img src="' . pdfret_rutaEscudo() . '" width="52">
-        <div style="font-size:5px; text-align:center;">NIT ' . htmlspecialchars(MUNICIPIO_NIT) . '</div>
+        <img src="' . pdfret_rutaEscudo() . '" width="52">' . (trim((string) MUNICIPIO_NIT) !== ''
+            ? "\n        " . '<div style="font-size:5px; text-align:center;">NIT ' . htmlspecialchars(MUNICIPIO_NIT) . '</div>'
+            : '') . '
     </td>
     <td class="tituloPrincipal" width="88%" align="center">' . implode('<br>', $lineas) . '</td>
 </tr>

@@ -298,6 +298,16 @@ class PermisosRol
             'alcaldia.registro.anular'          => ['alcaldia.contribuyentes.gestionar'],
             // El informe de pagos de TODOS los contribuyentes (migración 045).
             'alcaldia.informes.pagos'           => ['alcaldia.contribuyentes.ver'],
+            // El Informe general (migración 056) vive en la misma pantalla que el
+            // Informe rápido: quien lo usa tiene que poder entrar a ella, y las
+            // plantillas compartidas y los datos de contacto cuelgan de usarlo.
+            'alcaldia.informes.personalizados'  => ['alcaldia.informes.pagos'],
+            'alcaldia.informes.plantillas'      => ['alcaldia.informes.personalizados'],
+            'alcaldia.informes.contacto'        => ['alcaldia.informes.personalizados'],
+            // Registrar el pago de la inscripción del RIT, o exonerar (migración
+            // 055, business/controller/class.ritCobro.php): se hace sobre el RIT
+            // de otro contribuyente y el cobro se ve en la pantalla del RIT.
+            'alcaldia.rit.cobro'                => ['alcaldia.contribuyentes.gestionar', 'rit.ver'],
             'parametros.actividades'            => ['parametros.ver'],
             'parametros.conceptos'              => ['parametros.ver'],
             'parametros.grupos'                 => ['parametros.ver'],
@@ -467,6 +477,8 @@ class PermisosRol
                   'alcaldia.establecimientos.ver', 'alcaldia.establecimientos.cerrar', 'alcaldia.establecimientos.reabrir',
                   'alcaldia.cese', 'alcaldia.recaudo.cargar', 'alcaldia.recaudo.asignar', 'alcaldia.recibo.intereses',
                   'alcaldia.declaraciones.historicas', 'alcaldia.pagos.manual', 'alcaldia.registro.anular', 'alcaldia.informes.pagos',
+                  'alcaldia.informes.personalizados', 'alcaldia.informes.plantillas', 'alcaldia.informes.contacto',
+                  'alcaldia.rit.cobro',
                   'parametros.ver', 'parametros.actividades', 'parametros.conceptos', 'parametros.grupos', 'parametros.municipio',
                   'rit.ver', 'rit.editar', 'rit.firmar', 'rit.documentos', 'establecimientos.ver', 'establecimientos.editar',
                   'usuarios.ver', 'usuarios.editar', 'usuarios.estado', 'roles.ver', 'roles.editar', 'roles.permisos', 'predial.consultar'];
