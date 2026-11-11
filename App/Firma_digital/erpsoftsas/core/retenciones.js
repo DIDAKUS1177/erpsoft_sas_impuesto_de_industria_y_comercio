@@ -1269,7 +1269,7 @@ var Retenciones = (function () {
             } else if (exento) {
                 $nota.css('color', '#6B7280').text('en cero: el RIT indica \u201csin avisos y tableros\u201d');
             } else {
-                $nota.css('color', '#6B7280').text('calculado, puede modificarlo');
+                $nota.text('');
             }
         }
         $('#panelFormulario').on('input', '.js-aviso', function () {
