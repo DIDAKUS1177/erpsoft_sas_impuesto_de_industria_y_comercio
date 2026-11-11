@@ -13,10 +13,7 @@ return [
     'smtp_host' => 'smtp.gmail.com',
     'smtp_port' => 587,
     'smtp_user' => 'erpsoftsasmail@gmail.com',       // <-- CAMBIAR
-    // La contraseña NO va aquí (el repositorio es público): se define como
-    // SMTP_FIRMAS_PASS en config.municipio.php de cada servidor (archivo
-    // fuera del repositorio) o como variable de entorno del mismo nombre.
-    'smtp_password' => defined('SMTP_FIRMAS_PASS') ? SMTP_FIRMAS_PASS : (string) getenv('SMTP_FIRMAS_PASS'),
+    'smtp_password' => 'jbsn jbvw ysuj hibj',      // <-- CAMBIAR (contraseña de app, 16 chars)
 
     // ── Remitente que verá el usuario en su bandeja ──────────────────────────
     'from_name' => 'Alcaldía de paipa', // <-- CAMBIAR

@@ -375,7 +375,7 @@ class ControladorUsuarios extends \erpsoftsas\Cabecera {
                 $mail->Host       = 'smtp.gmail.com';
                 $mail->SMTPAuth   = true;
                 $mail->Username   = 'gestor.documental.alcaldia@gmail.com';
-                $mail->Password   = (defined('SMTP_RECUPERACION_PASS') ? SMTP_RECUPERACION_PASS : (string) getenv('SMTP_RECUPERACION_PASS')); // contraseña de aplicación
+                $mail->Password   = 'igzq hteh qrru rmbu'; // contraseña de aplicación
                 $mail->SMTPSecure = 'tls';
                 $mail->Port       = 587;
                 $mail->CharSet = 'UTF-8';

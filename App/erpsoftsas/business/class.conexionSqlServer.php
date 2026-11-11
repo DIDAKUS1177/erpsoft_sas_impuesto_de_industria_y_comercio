@@ -202,7 +202,7 @@ class Conexiones_sqlserver {
         'produccion' => array(
             'server' => '178.156.143.97',
             'username' => 'erpsoftweb',
-            'password' => '',
+            'password' => 'E26baAp6bW~xblk!',
             'database' => 'erpsoftweb'
         )
     );
