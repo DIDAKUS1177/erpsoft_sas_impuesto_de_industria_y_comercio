@@ -33,17 +33,23 @@ $(function () {
          *
          *   13 = 9 - 10 - 11 - 12                 (ingresos netos gravados)
          *   15 = actividades + energia            (una sola vez)
-         *   16 = 15 * 15%, redondeado a miles
+         *   16 = escrita a mano, o 0 si el RIT dice "sin avisos y tableros",
+         *        o 15 * 15% redondeado a miles (BD/migraciones/057)
          *   17 = 15 + 16
          *   19 = 17 - 18
          *   20 = manual (saldo a favor que escribe el contribuyente)
          *   23 = 19 - 20 + 21 + 22
          */
-        calcular: function (v, actividades, energia) {
+        // La casilla 16 es calculada pero tambien editable (avisos y tableros).
+        casillaEditable: 16,
+
+        calcular: function (v, actividades, energia, extra) {
+            extra = extra || {};
             var alMil = function (x) { return Math.round(x / 1000) * 1000; };
             var c13 = (v[9] || 0) - (v[10] || 0) - (v[11] || 0) - (v[12] || 0);
             var c15 = actividades + energia;
-            var c16 = alMil(c15 * 0.15);
+            var c16 = extra.avisosManual ? (extra.avisos || 0)
+                    : (extra.sinAvisos ? 0 : alMil(c15 * 0.15));
             var c17 = c15 + c16;
             var c19 = c17 - (v[18] || 0);
             var c23 = c19 - (v[20] || 0) + (v[21] || 0) + (v[22] || 0);

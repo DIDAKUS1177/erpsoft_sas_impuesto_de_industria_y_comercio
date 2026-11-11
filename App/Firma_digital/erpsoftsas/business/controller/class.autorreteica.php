@@ -135,16 +135,57 @@ class ControladorAutorreteica extends \erpsoftsas\ControladorRetencion
      */
     protected function _guardarExtra($con, array $fila)
     {
-        if (!array_key_exists('impuestoEnergia', $_POST)) { return; }
+        if (array_key_exists('impuestoEnergia', $_POST)) {
+            $con->consultar(
+                "UPDATE ind_autorreteica SET aut_ImpuestoEnergia = ? WHERE aut_Id = ?",
+                [$this->_cifra($_POST['impuestoEnergia']), (int) $fila['aut_Id']]
+            );
+        }
+
+        $this->_guardarAvisos($con, $fila);
+    }
+
+    /**
+     * Casilla 16, AVISOS Y TABLEROS: se calcula, pero el contribuyente puede
+     * escribirla (057, decision de Jennifer y Diego 2026-11-10). Es la UNICA
+     * casilla calculada que se puede editar: si se aceptara cualquiera, se
+     * podria presentar una declaracion cuyas casillas no cuadran entre si.
+     *
+     *   avisosManual = 1  -> se guarda el valor escrito y la liquidacion no lo pisa
+     *   avisosManual = 0  -> vuelve a calcularse (15%, o 0 si el RIT esta exento)
+     *
+     * Va ANTES de liquidar, como la energia: la formula de la 16 lee la marca.
+     * Sin la 057 no hay columna: se ignora y la casilla se calcula como siempre.
+     */
+    protected function _guardarAvisos($con, array $fila)
+    {
+        if (!array_key_exists('avisosManual', $_POST)) { return; }
+        if (!$this->_existeColumna($con, $this->tabla, 'aut_AvisosManual')) { return; }
+
+        $manual = !empty($_POST['avisosManual']) && (string) $_POST['avisosManual'] !== '0';
+
+        if (!$manual) {
+            $con->consultar(
+                "UPDATE ind_autorreteica SET aut_AvisosManual = 0 WHERE aut_Id = ?",
+                [(int) $fila['aut_Id']]
+            );
+            return;
+        }
+
+        $valor = $this->_cifra(isset($_POST['avisos']) ? $_POST['avisos'] : 0);
+        if ($valor < 0) { throw new \Exception('AVISOS_VALOR'); }
 
         $con->consultar(
-            "UPDATE ind_autorreteica SET aut_ImpuestoEnergia = ? WHERE aut_Id = ?",
-            [$this->_cifra($_POST['impuestoEnergia']), (int) $fila['aut_Id']]
+            "UPDATE ind_autorreteica SET aut_AvisosManual = 1, aut_ValorConcepto16 = ? WHERE aut_Id = ?",
+            [$valor, (int) $fila['aut_Id']]
         );
     }
 
-    /** La energia tambien se firma: cambiarla quita las firmas, como una casilla. */
-    protected function _columnasFirmadas() { return ['aut_ImpuestoEnergia']; }
+    /**
+     * La energia y la marca de la casilla 16 tambien se firman: cambiarlas quita
+     * las firmas, como una casilla. Sin la 057 la columna no existe y no se lee.
+     */
+    protected function _columnasFirmadas() { return ['aut_ImpuestoEnergia', 'aut_AvisosManual']; }
 
     /**
      * "La suma de ingresos gravados debe ser igual a la casilla 13 INGRESOS
@@ -191,13 +232,41 @@ class ControladorAutorreteica extends \erpsoftsas\ControladorRetencion
               WHERE d.aut_Id = ? AND o.aut_Id = ?",
             [(int) $destino, (int) $origen]
         );
+
+        // La casilla 16 escrita a mano en la original: la correccion parte de lo
+        // mismo (si no, la liquidacion la recalcularia y cambiaria lo declarado).
+        if ($this->_existeColumna($con, $this->tabla, 'aut_AvisosManual')) {
+            $con->consultar(
+                "UPDATE d SET d.aut_AvisosManual = o.aut_AvisosManual,
+                              d.aut_ValorConcepto16 = CASE WHEN o.aut_AvisosManual = 1
+                                                           THEN o.aut_ValorConcepto16
+                                                           ELSE d.aut_ValorConcepto16 END
+                   FROM ind_autorreteica d, ind_autorreteica o
+                  WHERE d.aut_Id = ? AND o.aut_Id = ?",
+                [(int) $destino, (int) $origen]
+            );
+        }
     }
 
     /** Lo que la pantalla necesita y no cabe en el catalogo de renglones. */
     protected function _datosExtra($con, $fila)
     {
+        $hay = $this->_existeColumna($con, $this->tabla, 'aut_AvisosManual');
+
+        // La exencion sale del RIT. La pantalla la usa para la vista previa y
+        // para avisar; la que manda al liquidar es la formula de la casilla 16.
+        $c = $con->obnerFila($con->consultar(
+            "SELECT ISNULL(ind_SinAvisosTableros, 0) AS exento
+               FROM ind_contribuyentes WHERE ind_Id = ?",
+            [(int) $fila['aut_IdContribuyente']]
+        ));
+
         return [
             'impuestoEnergia' => (float) $fila['aut_ImpuestoEnergia'],
+            // Sin la 057 la casilla 16 no se ofrece editable.
+            'avisosEditable'  => $hay ? 1 : 0,
+            'avisosManual'    => ($hay && !empty($fila['aut_AvisosManual'])) ? 1 : 0,
+            'sinAvisos'       => ($c && !empty($c['exento'])) ? 1 : 0,
         ];
     }
 

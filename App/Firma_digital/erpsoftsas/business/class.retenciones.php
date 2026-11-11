@@ -1049,8 +1049,10 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
             $this->_ok = 0;
             $this->_mensaje = $e->getMessage() === 'VALOR_ACTIVIDAD'
                 ? 'El valor de una actividad no es válido: escriba pesos enteros, sin negativos. No quedó ningún cambio.'
+                : ($e->getMessage() === 'AVISOS_VALOR'
+                ? 'El valor de avisos y tableros no es válido: escriba pesos enteros, sin negativos. No quedó ningún cambio.'
                 : 'No se pudo guardar la declaración: no quedó ningún cambio. '
-                  . 'Revise las cifras e intente de nuevo; si persiste, avise a la Alcaldía.';
+                  . 'Revise las cifras e intente de nuevo; si persiste, avise a la Alcaldía.');
             return [];
         }
 

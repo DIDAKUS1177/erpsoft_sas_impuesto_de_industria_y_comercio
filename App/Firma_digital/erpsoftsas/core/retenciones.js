@@ -1211,10 +1211,27 @@ var Retenciones = (function () {
 
             var energia = cfg.campoEnergia ? NumerosCOP.aEntero($('#impuestoEnergia').val()) : 0;
 
-            var derivadas = cfg.calcular(v, sumaActividades, energia) || {};
+            // Casilla calculada que tambien se escribe (avisos y tableros, 057):
+            // la formula necesita saber si va a mano y si el RIT lo exime.
+            var $av = $('.js-aviso');
+            var extra = {
+                avisosManual: $av.length > 0 && Number($av.attr('data-manual')) === 1,
+                avisos: $av.length ? NumerosCOP.aEntero($av.val()) : 0,
+                sinAvisos: !!(abierta && abierta.extra && Number(abierta.extra.sinAvisos) === 1)
+            };
+
+            var derivadas = cfg.calcular(v, sumaActividades, energia, extra) || {};
             Object.keys(derivadas).forEach(function (cod) {
                 $('.js-calculado[data-codigo="' + cod + '"]').text(pesos(derivadas[cod]));
             });
+
+            // La casilla editable muestra el calculado mientras no se escriba a
+            // mano, y no se pisa mientras se esta tecleando en ella.
+            var codAviso = Number($av.data('codigo'));
+            if ($av.length && !extra.avisosManual && $av[0] !== document.activeElement
+                && derivadas[codAviso] !== undefined) {
+                $av.val(NumerosCOP.formatear(derivadas[codAviso]));
+            }
         }
 
         // Recalcular mientras se teclea, sin perder el foco: solo cambian los
@@ -1241,6 +1258,30 @@ var Retenciones = (function () {
         $('#panelFormulario').on('input', '.js-base', function () { valorCalculado($(this).closest('tr')); recalcularEnVivo(); });
         $('#panelFormulario').on('change', '.js-actividad', function () { valorCalculado($(this).closest('tr')); recalcularEnVivo(); });
 
+        // Casilla de avisos y tableros: escribirla la marca a mano; vaciarla
+        // vuelve al calculado (15%, o 0 si el RIT esta exento).
+        function notaAviso($input) {
+            var manual = Number($input.attr('data-manual')) === 1;
+            var exento = !!(abierta && abierta.extra && Number(abierta.extra.sinAvisos) === 1);
+            var $nota = $input.closest('td').find('.js-aviso-nota');
+            if (manual) {
+                $nota.css('color', '#B45309').text('escrito a mano \u00b7 vac\u00ede la casilla para volver al c\u00e1lculo');
+            } else if (exento) {
+                $nota.css('color', '#6B7280').text('en cero: el RIT indica \u201csin avisos y tableros\u201d');
+            } else {
+                $nota.css('color', '#6B7280').text('calculado, puede modificarlo');
+            }
+        }
+        $('#panelFormulario').on('input', '.js-aviso', function () {
+            var vacio = String($(this).val()).replace(/[^0-9]/g, '') === '';
+            $(this).attr('data-manual', vacio ? 0 : 1).toggleClass('valor-manual', !vacio);
+            notaAviso($(this));
+            recalcularEnVivo();
+        });
+        $('#panelFormulario').on('blur', '.js-aviso', function () {
+            if (Number($(this).attr('data-manual')) !== 1) { recalcularEnVivo(); }
+        });
+
         // Cualquier cosa que el usuario escriba o elija es un cambio sin guardar.
         $('#panelFormulario').on('input change', 'input, select', function () { sucio = true; });
 
@@ -1262,11 +1303,23 @@ var Retenciones = (function () {
 
                 var celda;
 
+                var avisoEditable = !r.manual && cfg.casillaEditable === Number(r.codigo)
+                                 && abierta.extra && Number(abierta.extra.avisosEditable) === 1;
+
                 if (r.manual) {
                     celda = '<input type="text" class="form-control form-control-sm text-right js-renglon" '
                           + 'data-codigo="' + r.codigo + '" inputmode="numeric" value="'
                           + NumerosCOP.deBaseDeDatosAInput(r.valor) + '"'
                           + (editable ? '' : ' disabled') + '>';
+                } else if (avisoEditable) {
+                    // Calculada pero editable: NO lleva js-renglon, porque esa clase
+                    // es la de las casillas que el servidor acepta tal cual.
+                    var aMano = Number(abierta.extra.avisosManual) === 1;
+                    celda = '<input type="text" class="form-control form-control-sm text-right js-aviso'
+                          + (aMano ? ' valor-manual' : '') + '" data-codigo="' + r.codigo
+                          + '" data-manual="' + (aMano ? 1 : 0) + '" inputmode="numeric" value="'
+                          + NumerosCOP.formatear(r.valor) + '"' + (editable ? '' : ' disabled') + '>'
+                          + (editable ? '<div class="js-aviso-nota" style="font-size:10px;"></div>' : '');
                 } else {
                     celda = '<span class="js-calculado" data-codigo="' + r.codigo + '">'
                           + pesos(r.valor) + '</span>';
@@ -1294,6 +1347,8 @@ var Retenciones = (function () {
                   + '</tr>'
                 );
             });
+
+            $('.js-aviso').each(function () { notaAviso($(this)); });
 
             $('#avisoPendientes').toggle(
                 abierta.renglones.some(function (r) { return r.pendiente == 1; })
@@ -1326,6 +1381,15 @@ var Retenciones = (function () {
 
             if (cfg.campoEnergia) {
                 datos.impuestoEnergia = NumerosCOP.aEntero($('#impuestoEnergia').val());
+            }
+
+            // Casilla calculada y editable: solo viaja el valor si va a mano; si no,
+            // el servidor la calcula (y le pone cero al exento).
+            var $aviso = $('.js-aviso');
+            if ($aviso.length && !$aviso.prop('disabled')) {
+                var avisoMano = Number($aviso.attr('data-manual')) === 1;
+                datos.avisosManual = avisoMano ? 1 : 0;
+                datos.avisos = avisoMano ? NumerosCOP.aEntero($aviso.val()) : 0;
             }
 
             return datos;
