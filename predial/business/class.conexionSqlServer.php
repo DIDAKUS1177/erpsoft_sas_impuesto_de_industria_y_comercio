@@ -203,7 +203,7 @@ class Conexiones_sqlserver {
         'produccion' => array(
             'server' => '178.156.143.97',
             'username' => 'erpsoftweb',
-            'password' => 'E26baAp6bW~xblk!',
+            'password' => '', // la clave real va en DB_PROD_PASS (fuera del repositorio)
             'database' => 'erpsoftweb'
         )
     );
@@ -228,6 +228,7 @@ class Conexiones_sqlserver {
         $obj->_username = self::$_conexiones[$nomConexion]['username'];
         $obj->_password = self::$_conexiones[$nomConexion]['password'];
         $obj->_database = self::$_conexiones[$nomConexion]['database'];
+        if (defined('DB_PROD_PASS')) $obj->_password = DB_PROD_PASS;
         return $obj;
     }
 }

@@ -13,7 +13,7 @@ return [
     'smtp_host' => 'smtp.gmail.com',
     'smtp_port' => 587,
     'smtp_user' => 'erpsoftsasmail@gmail.com',       // <-- CAMBIAR
-    'smtp_password' => 'jbsn jbvw ysuj hibj',      // <-- CAMBIAR (contraseña de app, 16 chars)
+    'smtp_password' => defined('SMTP_FIRMAS_PASS') ? SMTP_FIRMAS_PASS : (string) getenv('SMTP_FIRMAS_PASS'),      // <-- CAMBIAR (contraseña de app, 16 chars)
 
     // ── Remitente que verá el usuario en su bandeja ──────────────────────────
     'from_name' => 'Alcaldía de paipa', // <-- CAMBIAR

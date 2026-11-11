@@ -252,7 +252,9 @@ class Conexiones_sqlserver {
         'produccion' => array(
             'server' => '178.156.143.97',
             'username' => 'erpsoftweb',
-            'password' => 'E26baAp6bW~xblk!',
+            // La clave real va en DB_PROD_PASS (config.municipio.php, fuera del
+            // repositorio). Nunca escribirla aquí: el repositorio es público.
+            'password' => '',
             'database' => 'erpsoftweb'
         )
     );
