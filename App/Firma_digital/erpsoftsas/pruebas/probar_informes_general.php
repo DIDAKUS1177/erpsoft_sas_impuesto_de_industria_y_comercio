@@ -1283,6 +1283,34 @@ foreach (['ica', 'reteica', 'autorreteica'] as $clave) {
         file_put_contents("$dirSalida/{$clave}_{$slug}.xlsx", $bytes);
     }
 }
+// PDF (segunda entrega): las mismas configuraciones, en carta horizontal.
+seccion('PDF del Informe general');
+foreach (['ica', 'reteica', 'autorreteica'] as $clave) {
+    foreach (['todas', 'sinpagar', 'pagadas'] as $slug) {
+        $v = InformeConstructor::validar($con, configDe($con, $ctx, $slug, $clave), $ctx, 'estricto');
+        $pdfBytes = InformeGeneralPdf::construir($con, $v, $enc);
+        prueba("PDF $clave/$slug: se genera, empieza por %PDF y tiene contenido", strncmp($pdfBytes, '%PDF-', 5) === 0 && strlen($pdfBytes) > 1500, strlen($pdfBytes));
+        file_put_contents("$dirSalida/{$clave}_{$slug}.pdf", $pdfBytes);
+    }
+}
+$cfgMuchas = ['v' => 1, 'modo' => 'declaracion', 'impuesto' => 'ica', 'filtros' => [], 'columnas' => [], 'orden' => []];
+$cat = InformeCatalogo::fuente($con, 'ica');
+foreach (array_keys($cat['columnas']) as $k) { $cfgMuchas['columnas'][] = ['c' => $k]; }
+if (count($cfgMuchas['columnas']) > InformeGeneralPdf::MAX_COLUMNAS) {
+    $mensajeMuchas = lanza(function () use ($con, $ctx, $cfgMuchas, $enc) {
+        InformeGeneralPdf::construir($con, InformeConstructor::validar($con, $cfgMuchas, $ctx, 'estricto'), $enc);
+    });
+    prueba('un PDF con mas de ' . InformeGeneralPdf::MAX_COLUMNAS . ' columnas se rechaza con un mensaje claro', $mensajeMuchas !== null && strpos((string) $mensajeMuchas, 'columnas') !== false, $mensajeMuchas);
+}
+// Columna «Funcionario»: quien registro el pago manual. La consulta corre en las tres fuentes, y en PDF.
+foreach (['ica', 'reteica', 'autorreteica'] as $clave) {
+    $cfgF = ['v' => 1, 'modo' => 'declaracion', 'impuesto' => $clave, 'filtros' => [],
+             'columnas' => [['c' => 'documento'], ['c' => 'estado'], ['c' => 'funcionario']], 'orden' => []];
+    $vF = InformeConstructor::validar($con, $cfgF, $ctx, 'estricto');
+    $pdfF = InformeGeneralPdf::construir($con, $vF, $enc);
+    prueba("columna Funcionario en $clave: la consulta corre y el PDF se genera", strncmp($pdfF, '%PDF-', 5) === 0);
+}
+prueba('el nombre del PDF es ASCII seguro y termina en .pdf', preg_match('/^Informe_[A-Za-z0-9_]+_20261109\.pdf$/', InformeGeneralPdf::nombreArchivo('Pagadas ñ "x"', '20261109')) === 1);
 $vTodo = InformeConstructor::validar($con, configDe($con, $ctx, 'pagadas', 'ica'), $ctx, 'estricto');
 $partes = leerXlsx(InformeGeneralExcel::construir($con, $vTodo, $enc));
 $hoja = $partes['xl/worksheets/sheet1.xml'];
@@ -1547,7 +1575,7 @@ prueba('sin búsqueda ni orden el encabezado no cambia: filtros en A3 y «Genera
 $cfgConFiltros = $cfgB;
 $cfgConFiltros['filtros'] = [['c' => 'anio', 'op' => 'in', 'v' => [2026]], ['c' => 'estado', 'op' => 'in', 'v' => ['pagada', 'sinpagar']]];
 $hF = leerXlsx(InformeGeneralExcel::construir($con, InformeConstructor::validar($con, $cfgConFiltros, $ctx, 'estricto'), $enc))['xl/worksheets/sheet1.xml'];
-prueba('los filtros usados salen escritos en A3', strpos($hF, 'Año: 2026') !== false && strpos($hF, 'Estado: Pagada, Sin pagar') !== false);
+prueba('los filtros usados salen escritos en A3', strpos($hF, 'Año de la declaración: 2026') !== false && strpos($hF, 'Estado: Pagada, Sin pagar') !== false);
 // Misma lista que la vista previa: los mismos documentos/números y el mismo orden.
 $qB = InformeConstructor::armar($vB, $opcB);
 $enVista = [];

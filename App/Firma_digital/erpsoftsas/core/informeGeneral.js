@@ -482,6 +482,7 @@ var InformeGeneral = (typeof window === 'undefined' || typeof jQuery === 'undefi
         S.sucio = true;
         S.excelNo = false;
         $('#igExcel').prop('disabled', false);
+        $('#igPdf').prop('disabled', false);
         // La vista anterior ya no corresponde a lo que hay en pantalla.
         S.ordenVista = L.ordenVigente(S.ordenVista, S.columnas);
         $('#igResultado').empty();
@@ -931,6 +932,7 @@ var InformeGeneral = (typeof window === 'undefined' || typeof jQuery === 'undefi
                 + NumerosCOP.formatear(l.celdasExcel || 200000) + ' celdas). Agregue filtros, por ejemplo un año o un rango de fechas, o quite columnas.', 'aviso');
         }
         $('#igExcel').prop('disabled', S.excelNo || d.total === 0);
+        $('#igPdf').prop('disabled', d.total === 0);
 
         if (d.total === 0) { return; }
         var cols = d.columnas || [];
@@ -1006,20 +1008,25 @@ var InformeGeneral = (typeof window === 'undefined' || typeof jQuery === 'undefi
 
     /* ---------- Excel ---------- */
 
-    function excel() {
+    function excel() { descargar('xlsx'); }
+    function pdf() { descargar('pdf'); }
+
+    /* El mismo informe en Excel o en PDF: lo que cambia es el formato que se pide y el tipo que se espera de vuelta. */
+    function descargar(formato) {
         var cfg = configLista();
         if (!cfg) { return; }
         mensaje('');
-        var $b = $('#igExcel'), html = $b.html();
+        var esPdf = formato === 'pdf';
+        var $b = $(esPdf ? '#igPdf' : '#igExcel'), html = $b.html();
         $b.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Generando…');
-        var libre = function () { $b.prop('disabled', S.excelNo).html(html); };
+        var libre = function () { $b.prop('disabled', esPdf ? false : S.excelNo).html(html); };
         var xhr = new XMLHttpRequest();
         xhr.open('POST', URL_EXCEL);
         xhr.responseType = 'blob';
         xhr.onload = function () {
             libre();
             var tipo = xhr.getResponseHeader('Content-Type') || '';
-            if (xhr.status !== 200 || tipo.indexOf('spreadsheetml') === -1) {
+            if (xhr.status !== 200 || tipo.indexOf(esPdf ? 'application/pdf' : 'spreadsheetml') === -1) {
                 var lector = new FileReader();
                 lector.onload = function () {
                     mensaje(L.mensajeErrorExcel(xhr.status, tipo, String(lector.result || '')));
@@ -1029,7 +1036,7 @@ var InformeGeneral = (typeof window === 'undefined' || typeof jQuery === 'undefi
                 lector.readAsText(xhr.response);
                 return;
             }
-            var nombre = 'Informe_general.xlsx';
+            var nombre = esPdf ? 'Informe_general.pdf' : 'Informe_general.xlsx';
             var m = /filename="([^"]+)"/.exec(xhr.getResponseHeader('Content-Disposition') || '');
             if (m) { nombre = m[1]; }
             var a = document.createElement('a');
@@ -1045,6 +1052,7 @@ var InformeGeneral = (typeof window === 'undefined' || typeof jQuery === 'undefi
         };
         var fd = new FormData();
         fd.append('config', JSON.stringify(cfg));
+        if (esPdf) { fd.append('formato', 'pdf'); }
         if ($('#igExcelVista').prop('checked')) {
             if (S.buscar) { fd.append('buscar', S.buscar); }
             if (S.ordenVista) { fd.append('ordenC', S.ordenVista.c); fd.append('ordenD', S.ordenVista.d); }
@@ -1285,6 +1293,7 @@ var InformeGeneral = (typeof window === 'undefined' || typeof jQuery === 'undefi
         // Resultado
         $('#igVista').on('click', function () { vista(1); });
         $('#igExcel').on('click', excel);
+        $('#igPdf').on('click', pdf);
         $('#igResultado').on('click', '#igAnterior', function () { vista(S.pagina - 1); });
         $('#igResultado').on('click', '#igSiguiente', function () { vista(S.pagina + 1); });
         $('#igResultado').on('change', '#igPorPagina', function () { S.porPagina = Number($(this).val()) || 10; vista(1); });

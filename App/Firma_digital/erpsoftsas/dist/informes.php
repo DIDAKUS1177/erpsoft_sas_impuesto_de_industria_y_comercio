@@ -345,6 +345,7 @@
 						<div class="ig-acciones">
 							<button type="button" class="ig-btn ig-btn-lleno" id="igVista"><i class="fa fa-eye"></i> Ver vista previa</button>
 							<button type="button" class="ig-btn" id="igExcel"><i class="fa fa-file-excel-o"></i> Descargar Excel</button>
+							<button type="button" class="ig-btn" id="igPdf"><i class="fa fa-file-pdf-o"></i> Descargar PDF</button>
 						</div>
 						<div id="igMensaje" role="alert" hidden></div>
 						<!-- Buscador y orden de la vista previa: los aplica el servidor a TODAS las filas, no solo a la página. -->
@@ -359,7 +360,7 @@
 								<button type="button" class="ig-enlace" id="igOrdenVistaQuitar" style="display:none">Quitar este orden</button>
 							</div>
 							<label id="igExcelVistaCaja" class="ig-excel-vista" style="display:none">
-								<input type="checkbox" id="igExcelVista" checked> El Excel lleva la misma búsqueda y el mismo orden de la vista previa
+								<input type="checkbox" id="igExcelVista" checked> El Excel y el PDF llevan la misma búsqueda y el mismo orden de la vista previa
 							</label>
 						</div>
 						<div id="igResultado" aria-live="polite"></div>

@@ -12,6 +12,8 @@
  * dirección, en el historial ni en el registro del servidor)
  *   config     la configuración del informe en JSON (lo que arma la pantalla), o
  *   plantilla  el id de una plantilla ('sistema:pagadas', '12') [+ fuente para las del sistema]
+ *   formato    (opcional) 'xlsx' (por defecto) o 'pdf'. El PDF sale en carta horizontal con las mismas columnas,
+ *              filtros, busqueda y orden; tiene un tope de filas propio (InformeGeneralPdf::MAX_FILAS)
  *   titulo     (opcional) el título que lleva el archivo; por defecto el nombre de la plantilla
  *   buscar, ordenC, ordenD   (opcionales) el buscador y el orden de la vista previa, cuando la persona
  *              quiere el Excel con lo mismo que ve; el MISMO constructor los aplica y el encabezado del
@@ -39,6 +41,7 @@ include_once SERVER . '/business/class.informeCatalogo.php';
 include_once SERVER . '/business/class.informeConstructor.php';
 include_once SERVER . '/business/class.informePlantillas.php';
 include_once SERVER . '/business/class.xlsxSimple.php';
+require_once __DIR__ . '/pdfRetenciones.php';   // TCPDF y el escudo del municipio
 
 use erpsoftsas\InformeCatalogo;
 use erpsoftsas\InformeConstructor;
@@ -211,6 +214,229 @@ class InformeGeneralExcel
     }
 }
 
+/**
+ * El mismo informe en PDF (carta horizontal). Las columnas son las que eligio la persona, con anchos
+ * proporcionales al de cada una; con muchas columnas la letra baja (hasta 5 pt) y los textos largos se
+ * recortan con "...". Un informe mas largo que MAX_FILAS no se recorta en silencio: se rechaza y se pide
+ * acotarlo, igual que el Excel.
+ */
+class InformeGeneralPdf extends TCPDF
+{
+    const MAX_FILAS = 3000;
+    const MAX_COLUMNAS = 20;
+
+    public $enc = [];
+    public $cols = [];      // [titulo, ancho mm, alinea L|R|C, tipo]
+    public $rgb = [31, 164, 157];
+    public $letra = 7;
+
+    public function Header()
+    {
+        $e = $this->enc;
+        $escudo = pdfret_rutaEscudo();
+        // $resize = false: redimensionar pasa por GD y un archivo temporal que el PHP de Plesk no puede escribir.
+        if (is_file($escudo)) { $this->Image($escudo, 10, 8, 0, 15, '', '', '', false, 300); }
+        $this->SetXY(28, 8.5);
+        $this->SetFont('helvetica', 'B', 13);
+        $this->SetTextColor($this->rgb[0], $this->rgb[1], $this->rgb[2]);
+        $this->Cell(240, 6, self::cabe($this, $e['titulo'], 238), 0, 2, 'L');
+        $this->SetFont('helvetica', '', 8.5);
+        $this->SetTextColor(55, 65, 81);
+        $this->Cell(240, 4.5, self::cabe($this, $e['subtitulo'], 238), 0, 2, 'L');
+        $this->SetTextColor(107, 114, 128);
+        $this->Cell(240, 4.5, self::cabe($this, $e['filtros'], 238), 0, 0, 'L');
+        $this->SetDrawColor($this->rgb[0], $this->rgb[1], $this->rgb[2]);
+        $this->SetLineWidth(0.5);
+        $this->Line(10, 26, 269.4, 26);
+        $this->SetLineWidth(0.2);
+        $this->SetXY(10, 29);
+        $this->filaEncabezado();
+    }
+
+    public function filaEncabezado()
+    {
+        $this->setCellPaddings(1.2, 0, 1.2, 0);
+        $this->SetFillColor($this->rgb[0], $this->rgb[1], $this->rgb[2]);
+        $this->SetTextColor(255, 255, 255);
+        $this->SetDrawColor(255, 255, 255);
+        $this->SetFont('helvetica', 'B', max(5, $this->letra - 0.5));
+        foreach ($this->cols as $c) {
+            // Un rotulo que no cabe se comprime en vez de salirse de su celda.
+            $this->Cell($c[1], 7, $c[0], 'LR', 0, $c[2], true, '', 1);
+        }
+        $this->Ln();
+    }
+
+    public function Footer()
+    {
+        $this->SetY(-11);
+        $this->SetDrawColor(209, 213, 219);
+        $this->Line(10, $this->GetY(), 269.4, $this->GetY());
+        $this->SetFont('helvetica', '', 7);
+        $this->SetTextColor(107, 114, 128);
+        $this->Cell(180, 6, self::cabe($this, $this->enc['generado'], 176), 0, 0, 'L');
+        $this->Cell(79.4, 6, $this->getAliasRightShift() . 'Página ' . $this->getAliasNumPage() . ' de ' . $this->getAliasNbPages(), 0, 0, 'R');
+    }
+
+    /** Recorta un texto para que quepa en el ancho, con "..." al final. */
+    public static function cabe($pdf, $texto, $ancho)
+    {
+        $texto = (string) $texto;
+        if ($pdf->GetStringWidth($texto) <= $ancho) { return $texto; }
+        while ($texto !== '' && $pdf->GetStringWidth($texto . '...') > $ancho) {
+            $texto = mb_substr($texto, 0, -1, 'UTF-8');
+        }
+        return rtrim($texto) . '...';
+    }
+
+    /** El texto de una celda segun el tipo de la columna. */
+    public static function formatear($tipo, $v)
+    {
+        if ($v === null || $v === '') { return ''; }
+        switch ($tipo) {
+            case 'dinero':  return '$ ' . number_format((float) $v, 0, ',', '.');
+            case 'entero':  return number_format((float) $v, 0, ',', '.');
+            case 'anio':    return (string) (int) $v;
+            case 'fecha':
+                return preg_match('/^(\d{4})-(\d{2})-(\d{2})/', (string) $v, $d) ? $d[3] . '/' . $d[2] . '/' . $d[1] : (string) $v;
+            default:        return preg_replace('/\s+/u', ' ', (string) $v);
+        }
+    }
+
+    /**
+     * @param array $validada la salida de InformeConstructor::validar
+     * @param array $enc      titulo, municipio, generado, color, avisos y opc (buscar y orden de la vista previa)
+     * @return string los bytes del PDF
+     */
+    public static function construir($con, array $validada, array $enc)
+    {
+        $opc = $enc['opc'] ?? [];
+        $q = InformeConstructor::armar($validada, $opc);
+        $columnas = $q['columnas'];
+        $nCol = count($columnas);
+        if ($nCol > self::MAX_COLUMNAS) {
+            throw new InformeException('El PDF admite hasta ' . self::MAX_COLUMNAS . ' columnas y el informe tiene ' . $nCol
+                . '. Quite columnas o descargue el Excel.');
+        }
+        $total = InformeConstructor::contar($con, $q);
+        if ($total > self::MAX_FILAS) {
+            throw new InformeException('El informe tiene ' . number_format($total, 0, ',', '.') . ' filas y el PDF admite hasta '
+                . number_format(self::MAX_FILAS, 0, ',', '.') . '. Agregue filtros (por ejemplo un año o un rango de fechas) o descargue el Excel.');
+        }
+
+        // Anchos proporcionales al de cada columna (en caracteres) hasta llenar los 259,4 mm utiles.
+        $pesos = [];
+        foreach ($columnas as $m) { $pesos[] = (float) ($m['def']['ancho'] ?: (InformeGeneralExcel::ANCHOS[$m['tipo']] ?? 20)); }
+        $suma = array_sum($pesos) ?: 1;
+        $util = 259.4;
+        $cols = [];
+        foreach ($columnas as $i => $m) {
+            $alinea = in_array($m['tipo'], ['dinero', 'entero'], true) ? 'R'
+                    : (($m['tipo'] === 'anio' || ($m['def']['alinea'] ?? '') === 'C') ? 'C' : 'L');
+            $cols[] = [$m['titulo'], $util * $pesos[$i] / $suma, $alinea, $m['tipo']];
+        }
+
+        $pdf = new self('L', 'mm', 'LETTER', true, 'UTF-8', false);
+        $color = ltrim((string) ($enc['color'] ?? '1FA49D'), '#');
+        $pdf->rgb = [hexdec(substr($color, 0, 2)), hexdec(substr($color, 2, 2)), hexdec(substr($color, 4, 2))];
+        $pdf->letra = max(5.0, min(7.0, 7.4 - 0.12 * $nCol));
+        $pdf->cols = $cols;
+        $pdf->enc = [
+            'titulo' => $enc['titulo'],
+            'subtitulo' => $validada['fuente']['etiqueta'] . ' · Municipio de ' . $enc['municipio'],
+            'filtros' => InformeConstructor::describirConsulta($con, $validada, $opc),
+            'generado' => $enc['generado'],
+        ];
+        $pdf->SetCreator('ERPSoft');
+        $pdf->SetTitle($enc['titulo']);
+        $pdf->setCellPaddings(1.2, 0, 1.2, 0);
+        $pdf->SetMargins(10, 36, 10);
+        $pdf->SetHeaderMargin(0);
+        $pdf->SetFooterMargin(12);
+        $pdf->SetAutoPageBreak(true, 14);
+        $pdf->AddPage();
+
+        $alto = 6;
+        $limite = $pdf->getPageHeight() - 14;
+        $pdf->SetDrawColor(229, 231, 235);
+        $sumas = [];
+        $n = 0;
+        InformeConstructor::recorrer($con, $q, function (array $valores) use ($pdf, $columnas, $cols, $alto, $limite, &$sumas, &$n) {
+            if ($pdf->GetY() + $alto > $limite) { $pdf->AddPage(); $pdf->SetDrawColor(229, 231, 235); }
+            $pdf->SetFont('helvetica', '', $pdf->letra);
+            $pdf->SetTextColor(31, 41, 55);
+            $pdf->SetFillColor(244, 247, 249);
+            $zebra = $n % 2 === 1;
+            $n++;
+            foreach ($columnas as $i => $m) {
+                $v = $valores[$i];
+                if ($m['tipo'] === 'dinero' && $v !== null) { $sumas[$i] = ($sumas[$i] ?? 0) + $v; }
+                $texto = self::formatear($m['tipo'], $v);
+                $c = $cols[$i];
+                if (in_array($m['tipo'], ['dinero', 'entero', 'anio'], true)) {
+                    // Una cifra nunca se recorta: si no cabe, se comprime.
+                    $pdf->Cell($c[1], $alto, $texto, 'B', 0, $c[2], $zebra, '', 1);
+                } else {
+                    $pdf->Cell($c[1], $alto, self::cabe($pdf, $texto, $c[1] - 2.4), 'B', 0, $c[2], $zebra, '', 0);
+                }
+            }
+            $pdf->Ln();
+        });
+
+        if ($n === 0) {
+            $pdf->SetFont('helvetica', '', 9);
+            $pdf->SetTextColor(107, 114, 128);
+            $pdf->Cell(259.4, 14, 'No hay ' . $validada['fuente']['unidad']['plural'] . ' con estos filtros.', 'B', 1, 'C');
+        } else {
+            if ($pdf->GetY() + 8 > $limite) { $pdf->AddPage(); }
+            $unidad = $validada['fuente']['unidad'];
+            $rotulo = 'Total: ' . number_format($n, 0, ',', '.') . ' ' . ($n === 1 ? $unidad['singular'] : $unidad['plural']);
+            $colRotulo = null;
+            foreach ($columnas as $i => $m) { if (empty($m['def']['total'])) { $colRotulo = $i; break; } }
+            $pdf->SetFont('helvetica', 'B', max(5.5, $pdf->letra + 0.5));
+            $pdf->SetTextColor(17, 24, 39);
+            $pdf->SetFillColor(238, 242, 246);
+            $pdf->SetDrawColor($pdf->rgb[0], $pdf->rgb[1], $pdf->rgb[2]);
+            // El rotulo ocupa todas las columnas de texto que van antes de la primera suma (la primera columna sola es angosta).
+            $primeraSuma = $nCol;
+            foreach ($columnas as $i => $m) { if (!empty($m['def']['total'])) { $primeraSuma = $i; break; } }
+            $anchoRotulo = 0;
+            for ($i = 0; $i < $primeraSuma; $i++) { $anchoRotulo += $cols[$i][1]; }
+            $desde = 0;
+            if ($anchoRotulo >= 30 && $primeraSuma > 0) {
+                $ult = $primeraSuma === $nCol ? 1 : 0;
+                $pdf->Cell($anchoRotulo, 8, self::cabe($pdf, $rotulo, $anchoRotulo - 2.4), 'T', $ult, 'L', true, '', 0);
+                $desde = $primeraSuma;
+                $colRotulo = -1;   // ya se escribio
+            }
+            for ($i = $desde; $i < $nCol; $i++) {
+                $m = $columnas[$i];
+                $c = $cols[$i];
+                $ult = $i === $nCol - 1 ? 1 : 0;
+                if (!empty($m['def']['total'])) {
+                    $pdf->Cell($c[1], 8, '$ ' . number_format($sumas[$i] ?? 0, 0, ',', '.'), 'T', $ult, 'R', true, '', 1);
+                } elseif ($i === $colRotulo) {
+                    $pdf->Cell($c[1], 8, self::cabe($pdf, $rotulo, $c[1] - 2.4), 'T', $ult, 'L', true, '', 0);
+                } else {
+                    $pdf->Cell($c[1], 8, '', 'T', $ult, 'L', true, '', 0);
+                }
+            }
+            if ($colRotulo === null) {
+                $pdf->Ln(9);
+                $pdf->SetFont('helvetica', '', 8);
+                $pdf->Cell(259.4, 5, $rotulo, 0, 1, 'L');
+            }
+        }
+        return $pdf->Output('informe.pdf', 'S');
+    }
+
+    /** El nombre del archivo, como el del Excel pero .pdf. */
+    public static function nombreArchivo($titulo, $fecha)
+    {
+        return preg_replace('/\.xlsx$/', '.pdf', InformeGeneralExcel::nombreArchivo($titulo, $fecha));
+    }
+}
+
 function informe_general_fin($codigo, $texto)
 {
     http_response_code($codigo);
@@ -243,6 +469,7 @@ function informe_general_run()
     $buscar = $campo('buscar');
     $ordenC = $campo('ordenC');
     $ordenD = $campo('ordenD');
+    $formato = $campo('formato') === 'pdf' ? 'pdf' : 'xlsx';
     $titulo = trim(preg_replace('/\s+/u', ' ', $campo('titulo')) ?? '');
     if ($titulo !== '' && (preg_match('/[<>\x00-\x1F\x7F]/', $titulo) || mb_strlen($titulo, 'UTF-8') > InformePlantillas::MAX_NOMBRE)) {
         informe_general_fin(400, 'El título del informe no puede llevar los signos < ni > y tiene hasta ' . InformePlantillas::MAX_NOMBRE . ' caracteres.');
@@ -301,7 +528,8 @@ function informe_general_run()
     if ($mlBytes > 0 && $mlBytes < 256 * 1048576) { @ini_set('memory_limit', '256M'); }
 
     try {
-        $bytes = InformeGeneralExcel::construir($con, $validada, [
+        $clase = $formato === 'pdf' ? 'InformeGeneralPdf' : 'InformeGeneralExcel';
+        $bytes = $clase::construir($con, $validada, [
             'titulo' => $titulo,
             'municipio' => defined('MUNICIPIO_CIUDAD') ? (string) MUNICIPIO_CIUDAD : '',
             'generado' => 'Generado el ' . $ahora->format('d/m/Y \a \l\a\s h:i a') . ($quien !== '' ? ' por ' . $quien : ''),
@@ -314,8 +542,8 @@ function informe_general_run()
         informe_general_fin(500, 'No se pudo generar el informe. Intente de nuevo.');
     }
 
-    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header('Content-Disposition: attachment; filename="' . InformeGeneralExcel::nombreArchivo($titulo, $ahora->format('Ymd')) . '"');
+    header('Content-Type: ' . ($formato === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'));
+    header('Content-Disposition: attachment; filename="' . $clase::nombreArchivo($titulo, $ahora->format('Ymd')) . '"');
     header('Content-Length: ' . strlen($bytes));
     header('Cache-Control: private, no-store');
     header('X-Content-Type-Options: nosniff');

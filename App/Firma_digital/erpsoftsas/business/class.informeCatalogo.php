@@ -435,6 +435,8 @@ class InformeCatalogo
         if ($conPm) {
             // Un pago manual por declaración (índice único UX_pma_declaracion).
             $joins['pm'] = ['sql' => "LEFT JOIN ind_pagos_manuales pm ON pm.pma_Modulo = '$clave' AND pm.pma_IdDeclaracion = d.{$m['pk']}", 'dep' => []];
+            // Quien registró el pago manual (un usuario por pago: el join no multiplica filas).
+            $joins['fu'] = ['sql' => 'LEFT JOIN conf_usuarios fu ON fu.usu_Id = pm.pma_IdUsuario', 'dep' => ['pm']];
         }
         $conAct = false;
         if ($esIca && $hay('T:ind_declaraciones_ica_actividades')) {
@@ -482,7 +484,9 @@ class InformeCatalogo
              "CASE WHEN d.{$m['numero']} > 0 THEN CAST(d.{$m['numero']} AS VARCHAR(20)) END",
              // El número de un borrador es provisional y NEGATIVO (-id): nunca se muestra.
              ['orden' => "CASE WHEN d.{$m['numero']} > 0 THEN d.{$m['numero']} END", 'ancho' => 16, 'alinea' => 'C']);
-        $col('anio', 'Año', 'declaracion', 'anio', "d.$colAnio", ['ancho' => 8, 'alinea' => 'C']);
+        $col('anio', 'Año de la declaración', 'declaracion', 'anio', "d.$colAnio",
+             ['ancho' => 10, 'alinea' => 'C',
+              'ayuda' => 'El año en que se creó la declaración (el que lleva el formulario). No es el año de los ingresos.']);
         if (!$esIca) {
             $col('periodo', $clave === 'autorreteica' ? 'Bimestre' : 'Mes', 'declaracion', 'lista', "d.{$p}_Periodo",
                  ['opciones' => self::_periodos($clave), 'ancho' => 18, 'alinea' => 'L']);
@@ -599,6 +603,12 @@ class InformeCatalogo
             $col('canal', 'Medio de pago', 'pago', 'lista', $canal,
                  ['joins' => $joinPm, 'opciones' => self::_opcionesCanal(), 'ancho' => 16, 'alinea' => 'L']);
         }
+        if ($conPm) {
+            $col('funcionario', 'Funcionario', 'pago', 'texto',
+                 "CASE WHEN $pagada = 1 THEN NULLIF(LTRIM(RTRIM(ISNULL(fu.usu_Nombres, '') + ' ' + ISNULL(fu.usu_Apellidos, ''))), '') END",
+                 ['joins' => ['pm', 'fu'], 'ancho' => 24, 'alinea' => 'L',
+                  'ayuda' => 'El funcionario de la Alcaldía que registró el pago manual (o la declaración «Ya pagada»). Va vacío en los pagos en línea y en el recaudo por archivo.']);
+        }
         if ($conPmCuenta) {
             $col('cuentaContable', 'Cuenta contable', 'pago', 'codigo',
                  "CASE WHEN $pagada = 1 THEN LTRIM(RTRIM(pm.pma_CuentaContable)) END",
@@ -617,7 +627,7 @@ class InformeCatalogo
         };
         $gruposFiltro = ['declaraciones' => 'Declaraciones', 'situacion' => 'Situación y pago', 'contribuyente' => 'Contribuyente'];
 
-        $fil('anio', 'Año', 'declaraciones', 'entero', ['in', 'between'], "d.$colAnio",
+        $fil('anio', 'Año de la declaración', 'declaraciones', 'entero', ['in', 'between'], "d.$colAnio",
              ['min' => 2000, 'max' => 2100, 'ayuda' => 'Año de la declaración.']);
         if (!$esIca) {
             $fil('periodo', $clave === 'autorreteica' ? 'Bimestre' : 'Mes', 'declaraciones', 'lista', ['in'], "d.{$p}_Periodo",
