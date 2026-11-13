@@ -46,6 +46,17 @@
    // municipios son de Boyaca; uno de otro departamento lo define en su config.
    if (!defined('MUNICIPIO_DEPARTAMENTO')) { define('MUNICIPIO_DEPARTAMENTO', 'Boyacá'); }
 
+   // NIT y direccion de la Alcaldia de PAIPA (2026-11-13). Desde el cambio de contacto
+   // (1296987) los PDF ya no traen estos datos escritos en el codigo, y el config de
+   // produccion de Paipa no los define: la declaracion, la liquidacion, el recibo, las
+   // retenciones y el RIT salian SIN el NIT y la direccion de la Alcaldia. Se completan
+   // SOLO en la base de Paipa (por el nombre de la base, como las migraciones 039/052),
+   // para no darle datos de Paipa a otro municipio. Si el config los define, mandan.
+   if (defined('DB_PROD_NAME') && DB_PROD_NAME === 'erpsofts_ind_comercio_paip') {
+       if (!defined('MUNICIPIO_NIT'))       { define('MUNICIPIO_NIT', '891801240'); }
+       if (!defined('MUNICIPIO_DIRECCION')) { define('MUNICIPIO_DIRECCION', 'Carrera 22 No 25-14'); }
+   }
+
    define ('SERVER', $_SERVER['DOCUMENT_ROOT']."/erpsoftsas");
    header("Cache-Control: no-cache, must-revalidate"); // HTTP/1.1
 	header("Expires: Sat, 1 Jul 2000 05:00:00 GMT"); // Fecha en el pasado
