@@ -79,18 +79,21 @@ if (PHP_SAPI !== 'cli') {
     exit('Este script solo se ejecuta por linea de comandos.');
 }
 
+$VM_RESUMEN = false;
 foreach (array_slice($argv, 1) as $a) {
-    if (trim($a) === '') { continue; }   // un campo de argumentos en blanco puede llegar como un argumento vacio
+    if (trim($a) === '') { continue; }
+    if ($a === '--resumen') { $VM_RESUMEN = true; continue; }   // un campo de argumentos en blanco puede llegar como un argumento vacio
     if ($a === '--ayuda') {
         echo "verificar_municipio.php: informe de solo lectura del municipio (base, migraciones, config,\n"
            . "imagenes, parametros heredados de Paipa, administradores y tablas de firma).\n"
-           . "No recibe argumentos. En Plesk: Tareas programadas > Ejecutar un script PHP > \"Ejecutar ahora\".\n"
+           . "Opcion --resumen: solo el resultado, las fallas y los avisos (Plesk corta la salida larga). En Plesk: Tareas programadas > Ejecutar un script PHP > \"Ejecutar ahora\".\n"
            . "NUNCA \"Aceptar\".\n";
         exit(0);
     }
-    echo "Este script no recibe argumentos (solo --ayuda). No se ejecuto.\n";
+    echo "Este script solo recibe --resumen o --ayuda. No se ejecuto.\n";
     exit(1);
 }
+if ($VM_RESUMEN) { ob_start(); }   // el informe completo se descarta y solo queda el resumen final
 
 /* ---------------------------------------------------------------------------
    Utilidades
@@ -943,7 +946,8 @@ vm_resumen_y_salir();
 
 function vm_resumen_y_salir()
 {
-    global $VM;
+    global $VM, $VM_RESUMEN;
+    if ($VM_RESUMEN) { while (ob_get_level() > 0) { ob_end_clean(); } }
     $f = $VM['n']['FALLA'];
     $a = $VM['n']['AVISO'];
 
