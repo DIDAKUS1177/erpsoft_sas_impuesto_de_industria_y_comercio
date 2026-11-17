@@ -487,6 +487,12 @@ class InformeCatalogo
         $col('anio', 'Año de la declaración', 'declaracion', 'anio', "d.$colAnio",
              ['ancho' => 10, 'alinea' => 'C',
               'ayuda' => 'El año en que se creó la declaración (el que lleva el formulario). No es el año de los ingresos.']);
+        if ($esIca) {
+            // Año gravable del ICA: el de los ingresos que se declaran, uno antes que el de la declaración.
+            $col('anioGravable', 'Año gravable', 'declaracion', 'anio', "(d.$colAnio - 1)",
+                 ['ancho' => 10, 'alinea' => 'C',
+                  'ayuda' => 'El año de los ingresos que se declaran: el año de la declaración menos uno (la declaración de 2026 declara los ingresos de 2025). La retención y la autorretención no lo tienen: su año es el del período.']);
+        }
         if (!$esIca) {
             $col('periodo', $clave === 'autorreteica' ? 'Bimestre' : 'Mes', 'declaracion', 'lista', "d.{$p}_Periodo",
                  ['opciones' => self::_periodos($clave), 'ancho' => 18, 'alinea' => 'L']);
@@ -629,6 +635,10 @@ class InformeCatalogo
 
         $fil('anio', 'Año de la declaración', 'declaraciones', 'entero', ['in', 'between'], "d.$colAnio",
              ['min' => 2000, 'max' => 2100, 'ayuda' => 'Año de la declaración.']);
+        if ($esIca) {
+            $fil('anioGravable', 'Año gravable', 'declaraciones', 'entero', ['in', 'between'], "(d.$colAnio - 1)",
+                 ['min' => 1999, 'max' => 2099, 'ayuda' => 'Año de los ingresos que se declaran (el año de la declaración menos uno).']);
+        }
         if (!$esIca) {
             $fil('periodo', $clave === 'autorreteica' ? 'Bimestre' : 'Mes', 'declaraciones', 'lista', ['in'], "d.{$p}_Periodo",
                  ['opciones' => self::_periodos($clave), 'valor' => 'entero']);

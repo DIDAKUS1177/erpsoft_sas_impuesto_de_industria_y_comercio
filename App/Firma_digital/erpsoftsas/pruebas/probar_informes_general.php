@@ -1310,6 +1310,24 @@ foreach (['ica', 'reteica', 'autorreteica'] as $clave) {
     $pdfF = InformeGeneralPdf::construir($con, $vF, $enc);
     prueba("columna Funcionario en $clave: la consulta corre y el PDF se genera", strncmp($pdfF, '%PDF-', 5) === 0);
 }
+// Año gravable (solo ICA): el de la declaracion menos uno, en la columna y en el filtro.
+seccion('Año gravable');
+$cfgG = ['v' => 1, 'modo' => 'declaracion', 'impuesto' => 'ica', 'filtros' => [],
+         'columnas' => [['c' => 'anio'], ['c' => 'anioGravable']], 'orden' => []];
+$rG = ejecutar($con, $ctx, $cfgG);
+$todoOk = count($rG['filas']) > 0;
+foreach ($rG['filas'] as $f) { if ((int) $f[1] !== (int) $f[0] - 1) { $todoOk = false; } }
+prueba('la columna «Año gravable» es el año de la declaración menos uno en todas las filas', $todoOk, count($rG['filas']) . ' filas');
+$anioPrueba = (int) $rG['filas'][0][0];
+$cfgG['filtros'] = [['c' => 'anioGravable', 'op' => 'in', 'v' => [$anioPrueba - 1]]];
+$rF = ejecutar($con, $ctx, $cfgG);
+$filtroOk = count($rF['filas']) > 0;
+foreach ($rF['filas'] as $f) { if ((int) $f[0] !== $anioPrueba) { $filtroOk = false; } }
+prueba('el filtro por «Año gravable» N trae las declaraciones del año N+1', $filtroOk, count($rF['filas']) . ' filas');
+$cfgRet = ['v' => 1, 'modo' => 'declaracion', 'impuesto' => 'reteica', 'filtros' => [], 'columnas' => [['c' => 'anio']], 'orden' => []];
+$cfgRet['columnas'][] = ['c' => 'anioGravable'];
+$msgRet = lanza(function () use ($con, $ctx, $cfgRet) { InformeConstructor::validar($con, $cfgRet, $ctx, 'estricto'); });
+prueba('la retención no ofrece «Año gravable» (su año es el del período)', $msgRet !== null, 'se esperaba un rechazo');
 prueba('el nombre del PDF es ASCII seguro y termina en .pdf', preg_match('/^Informe_[A-Za-z0-9_]+_20261109\.pdf$/', InformeGeneralPdf::nombreArchivo('Pagadas ñ "x"', '20261109')) === 1);
 $vTodo = InformeConstructor::validar($con, configDe($con, $ctx, 'pagadas', 'ica'), $ctx, 'estricto');
 $partes = leerXlsx(InformeGeneralExcel::construir($con, $vTodo, $enc));
