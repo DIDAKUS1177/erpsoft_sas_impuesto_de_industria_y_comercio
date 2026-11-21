@@ -49,6 +49,10 @@ class PermisosRol
     private static $conFilas = [];  // rol => tiene alguna fila en conf_permisos (sin la 040)
     private static $guardadas = []; // rol => claves guardadas (activo o no)
     private static $cuenta = null;  // ['id', 'rol', 'activa'] de la cuenta de la sesion
+    private static $cese = null;    // ['id' => usuario, 'fecha' => 'Y-m-d' o ''] del contribuyente de la sesion
+
+    /** Lo que un contribuyente INACTIVO ya no puede hacer (la ultima parte de la clave). */
+    const ACCIONES_QUE_MODIFICAN = ['editar', 'firmar', 'presentar', 'corregir', 'documentos'];
 
     /* ------------------------------------------------------------------ */
 
@@ -247,12 +251,78 @@ class PermisosRol
         if ($rol <= 0) { return false; }
         if (self::esAdministrador($rol)) { return true; }
         if (self::esClaveDeAlcaldia($clave) && !self::esAlcaldia($rol)) { return false; }
+        // Contribuyente inactivo: consulta, descarga y paga; no declara ni modifica.
+        if (self::bloqueadaPorInactivo($clave, $rol)) { return false; }
 
         if (!self::hayCatalogo()) {
             return self::_comoAntes((string) $clave, $rol);
         }
         self::claves($rol);
         return isset(self::$claves[$rol][(string) $clave]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* CONTRIBUYENTE INACTIVO (Alcaldia de Paipa, 2026-11-20)              */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * Fecha del cese de actividades del contribuyente de la cuenta de la sesion
+     * ('Y-m-d'), o '' si no tiene. El cese lo registra la Alcaldia en el RIT
+     * (ind_FechaCese) y desde ese momento el contribuyente queda INACTIVO: sigue
+     * entrando, ve y descarga lo que ya tenia y puede pagar lo que deba, pero no
+     * declara ni modifica informacion. Se lee una vez por peticion.
+     *
+     * El contribuyente de la cuenta se toma como en el resto del sistema: por el
+     * documento, el de menor ind_Id.
+     */
+    public static function fechaCeseDeLaSesion()
+    {
+        $id = self::idUsuario();
+        if ($id <= 0) { return ''; }
+        if (self::$cese === null || self::$cese['id'] !== $id) {
+            $fecha = '';
+            try {
+                $f = self::_con()->obnerFila(self::_con()->consultar(
+                    "SELECT TOP 1 CONVERT(varchar(10), c.ind_FechaCese, 23) AS f
+                       FROM ind_contribuyentes c
+                       JOIN conf_usuarios u ON u.usu_NumeroDocumento = c.ind_NumeroIdentificacion
+                      WHERE u.usu_Id = ?
+                        AND LTRIM(RTRIM(CAST(u.usu_NumeroDocumento AS VARCHAR(50)))) <> ''
+                      ORDER BY c.ind_Id", [(int) $id]
+                ));
+                if ($f && !empty($f['f']) && $f['f'] !== '1900-01-01') { $fecha = (string) $f['f']; }
+            } catch (\Throwable $e) { /* base sin la columna del cese: nadie esta inactivo */ }
+            self::$cese = ['id' => $id, 'fecha' => $fecha];
+        }
+        return self::$cese['fecha'];
+    }
+
+    /** ¿La cuenta de la sesion es de un contribuyente inactivo? (nunca un rol de la Alcaldia) */
+    public static function contribuyenteInactivo()
+    {
+        return !self::esAlcaldia() && self::fechaCeseDeLaSesion() !== '';
+    }
+
+    /**
+     * ¿Esta clave se le niega a la sesion por estar inactivo su contribuyente?
+     * Solo para el rol de la sesion (el panel de Roles pregunta por otros roles
+     * y ahi el cese de quien mira no cuenta).
+     */
+    public static function bloqueadaPorInactivo($clave, $rol = null)
+    {
+        if ($rol !== null && (int) $rol !== self::rol()) { return false; }
+        $partes = explode('.', (string) $clave);
+        if (!in_array(end($partes), self::ACCIONES_QUE_MODIFICAN, true)) { return false; }
+        return self::contribuyenteInactivo();
+    }
+
+    /** El aviso para el contribuyente inactivo. */
+    public static function mensajeInactivo()
+    {
+        $f = self::fechaCeseDeLaSesion();
+        $cuando = $f !== '' ? ' desde el ' . date('d/m/Y', strtotime($f)) : '';
+        return 'El contribuyente está INACTIVO' . $cuando . ' (cese de actividades registrado por la Alcaldía). '
+             . 'Puede consultar y descargar su información y pagar lo pendiente, pero no declarar ni modificar datos.';
     }
 
     /** Alguno de estos permisos. */
@@ -414,6 +484,7 @@ class PermisosRol
     public static function mensaje($clave)
     {
         if (self::idUsuario() <= 0) { return 'Debe iniciar sesión.'; }
+        if (self::bloqueadaPorInactivo($clave)) { return self::mensajeInactivo(); }
         $nombre = '';
         if (self::hayCatalogo()) {
             try {
@@ -460,6 +531,9 @@ class PermisosRol
             // Trabaja sobre cualquier contribuyente (barra "Gestionando a").
             'gestiona' => self::gestionaOtros($rol),
             'activo'   => $activo,
+            // Contribuyente con cese registrado: la pantalla lo avisa (dist/menu.php).
+            'inactivo' => self::contribuyenteInactivo(),
+            'avisoInactivo' => self::contribuyenteInactivo() ? self::mensajeInactivo() : '',
             'claves'   => array_values(array_unique($claves)),
         ];
     }
@@ -497,5 +571,6 @@ class PermisosRol
         self::$conFilas = [];
         self::$guardadas = [];
         self::$cuenta = null;
+        self::$cese = null;
     }
 }

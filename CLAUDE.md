@@ -2516,3 +2516,87 @@ Pruebas: se corrieron contra copias desechables del SQL Server local (`BACKUP ..
 ### Aprovisionamiento de un municipio nuevo (2026-11-10)
 `BD/esquema/` (01_tablas, 02_indices_y_llaves, 03_programacion, catalogos) + `BD/provisionar_municipio.php` (solo CLI, sin `--aplicar` solo muestra el plan, se niega contra la base de Paipa, registra 000-053 menos 042 y 043) + `BD/README.md` con el paso a paso de Plesk. El esquema está atado al nivel 053 (`COBERTURA_ESQUEMA`); 054-056 se aplican encima. Las tarifas y fórmulas son las de Paipa: cada Alcaldía debe validarlas.
 **Pendiente de seguridad**: `business/class.conexionSqlServer.php` trae un servidor, usuario y clave de producción escritos (respaldo si falta `DB_PROD_*`); rotarla y quitarla del código.
+
+
+### Incidente: un usuario externo no entra aunque se le cambió la clave (2026-11-17, causa SIN confirmar)
+
+Juan (Paipa) reportó que la cuenta de un contribuyente (Colsubsidio, rol "Externos - ICA", usuario y correo
+iguales a su correo) daba "Error de credenciales" aunque él le cambió la clave tres veces desde Usuarios
+(le puso una temporal tipo `TEMPORAL2026`). No hay acceso a la base de producción desde aquí, así que NO se
+sabe la causa; lo que se revisó en el código:
+- Editar una cuenta (funcion 2 de `class.usuarios.php`) SÍ guarda la clave si el campo viene lleno; vacío no la toca.
+  El campo `#usu_Clave` está visible al editar (el `$("#clave")` de `core/usuarios.js` no apunta a nada).
+- El login (`class.login.php`): si lo escrito parece un correo busca por `usu_Correo` (NO por `usu_Usuario`), con la
+  huella de la clave y `usu_Estado = 1`. El mismo mensaje sale si la clave no coincide, si el correo guardado no es
+  el escrito o si la cuenta no existe; una cuenta inactiva da otro aviso.
+- La clave distingue mayúsculas (SHA1 en PHP): `Temporal2026` y `TEMPORAL2026` son claves distintas.
+Hipótesis en orden: (1) el correo de la cuenta tiene otro texto/espacios que el usuario (la regla "usuario con forma de
+correo = el correo de la cuenta" solo se exige al guardar, las cuentas viejas pueden diferir); (2) mayúsculas o
+autocompletado al escribir la clave; (3) la cuenta quedó inactiva o hay otra cuenta con el mismo correo;
+(4) clave con ñ/tilde (resuelto el 2026-09-29). Siguiente paso previsto: un script de SOLO LECTURA
+(`BD/diagnosticar_cuenta.php`, a pedido) que, dado un correo o usuario, muestre estado, rol, usuario vs correo
+(con largos), forma de la huella y, si se le da una clave de prueba, si coincide; se corre desde Plesk.
+Vía rápida para quien lo necesite: "¿Olvidó su contraseña?" (clave temporal al correo de la cuenta).
+
+**Causa CONFIRMADA (2026-11-18)** con la consulta que corrió Diego en Paipa: la cuenta 140 tenía
+el usuario bien escrito y el correo con el dominio mal digitado (`colubsidio`, falta una "s"), estado 1
+y la huella de `TEMPORAL2026` bien guardada. La clave nunca fue el problema: el login buscaba solo por correo.
+Ojo al medir a ojo: el correo mal escrito mide 27 y el bueno 28.
+- Arreglo del dato (lo corre Diego en la base): un `UPDATE` de `usu_Correo` de la cuenta 140 con el correo bien escrito
+- Arreglo del código (`class.login.php`, `_buscarCuenta` + `_consultarCuenta`): si lo escrito tiene forma de correo y
+  no hay cuenta con ese correo, se busca también por `usu_Usuario`. Probado en local el 2026-11-18 (usuario simple,
+  correo, usuario con forma de correo y correo distinto, clave mala, cuenta inexistente). **Sin commit ni despliegue.**
+- En Paipa hay más de 20 cuentas con usuario distinto del correo (ids 2, 5, 10, 26, 47, 74, 75, 84, 94, 112, 118,
+  123, 135, 138, 153, 161, 167, 173, 174, 183, 186, 190, 192). Dos cruces: un mismo correo es correo de la 74 y usuario de la 75, y otro es usuario de la 161 y correo de la 174. Con el
+  arreglo gana primero el correo y después el usuario; la clave decide. Falta revisar esto en los otros municipios.
+- La Alcaldía (Jennyfer) pidió ver usuarios y contraseñas: las claves son huellas SHA1, no se pueden mostrar.
+  Propuesto y SIN decidir: permisos `usuarios.ver/editar` a su rol y un botón «Generar clave temporal».
+
+### Documento "CAMBIOS ICA WEB" de la Alcaldía de Paipa (2026-11-19/21, LOCAL, sin commit ni despliegue)
+
+Siete pedidos de Jennyfer/Juan; las respuestas de Juan a las dudas llegaron por WhatsApp el 2026-11-20.
+
+1. **Recibo con dos desprendibles** (`extensiones/reciboPago.php`): arriba la copia del contribuyente y abajo dos
+   desprendibles iguales, BANCO y ALCALDÍA, cada uno con el MISMO código de barras («como en predial»). Sale en los
+   tres recibos (ICA, retención, autorretención) y para todos los municipios (Juan: «creería que para todos»; falta
+   que Javier lo confirme). Cada desprendible mide 46 mm (closure `$desprendible`); el liquidador va dentro de cada
+   uno. Para que quepa en una hoja: relleno de los conceptos 1,25 y `$limite` de los bancos = alto − 5 − 100.
+2. **Autorretención, casilla 13**: con «Impuesto por generación de energía (Ley 56)» mayor que cero ya NO se exige
+   que la casilla 13 sea igual a la suma de las bases (`class.autorreteica.php::_descuadre`). Sin energía la regla
+   sigue. Ojo: esa regla salió del formato de la propia Alcaldía; con energía se puede guardar y presentar con
+   cualquier diferencia.
+3. **Contribuyente INACTIVO**: es el que tiene cese de actividades registrado en el RIT (`ind_FechaCese`). Se resuelve
+   en UN sitio, `PermisosRol::tiene()`: a la sesión de un contribuyente inactivo se le niegan las claves que terminan
+   en editar, firmar, presentar, corregir o documentos (`ACCIONES_QUE_MODIFICAN`); conserva ver, pagar y consultar.
+   Los roles de la Alcaldía no se bloquean (siguen gestionándolo). `paraPantalla()` manda `inactivo` y
+   `avisoInactivo`; `dist/menu.php` pinta la barra roja `#barraInactivo`. Listado de contribuyentes: etiqueta
+   «Inactivo» (columna calculada `inactivo` en la consulta paginada). **No se reactiva**: `_guardarCese` ya no deja
+   retirar un cese registrado, salvo al administrador (para deshacer un error).
+   **FALTA** lo de «crear otro usuario con el mismo NIT para una inscripción nueva»: la cuenta se liga al
+   contribuyente por documento (`usu_NumeroDocumento = ind_NumeroIdentificacion`, el de menor `ind_Id`) en muchos
+   sitios (login, `_contribuyenteDeLaSesion`, recaudo por documento, recuperar clave); con dos contribuyentes del
+   mismo NIT todos tomarían el inactivo. Hay que cambiar esa regla en todos a «el activo primero» antes de permitirlo.
+4. **Login**: el rótulo dice «Usuario / Correo electrónico». Va junto con el arreglo del login del 2026-11-18.
+5. **Actividades**: la tarifa sale junto al nombre en los listados («303 — Consultores de informática. (7 x mil)»):
+   `core/retenciones.js` (`rotuloTarifa`) y el catálogo del RIT (`core/icaWebRit.js`, que ahora toma el nombre limpio
+   de `data-nombre`). `acc_Tarifa` está en tanto por uno (0.007 = 7 x mil). Corregir los NOMBRES espera el Excel de
+   Jennyfer; Juan confirmó que el cambio de nombre debe verse también en lo ya emitido.
+6. Capacitación (bancos y declaraciones sin pago con saldo a favor): sin desarrollo.
+7. **Casilla 37 (interés de mora) de la declaración de ICA**: bloqueada para el contribuyente y editable para la
+   Alcaldía. Pantalla: `core/declaraciones.ui.js` (readonly si `!ErpPermisos.esAlcaldia()`). Servidor: la función 7
+   de `class.declaracionesICA.php` rechaza el renglón 16 distinto de cero si no es la Alcaldía. Los intereses del
+   contribuyente se liquidan en el recibo, como ya estaba.
+
+Pruebas: `pruebas/probar_cambios_ica_web.php` (23: energía, casilla 37 e inactivo) y todas las anteriores siguen
+pasando (autorretención 33 + 26, cobro del RIT 163, informes 335, código de barras). Recibos generados en local para
+los tres módulos: una hoja. Visto en el navegador local: rótulo del login, casilla 37 bloqueada, barra de inactivo.
+
+**Migración 059 (2026-11-21)**: nombres completos de las actividades según el Excel de Jennyfer («TARIFAS 2023_ACUERDO
+019 DE 2022.xlsx», 68 actividades). Cambia `acc_Nombre` por código (55 filas en la copia local), SOLO en la base de
+Paipa y solo si la tarifa del código coincide con la del Excel; no cambia ninguna tarifa (las 68 ya coincidían).
+Guarda los nombres anteriores en `ind_actividadescomercio_respaldo_059`. NO toca 316, 319 y 324 (en el sistema son
+otra actividad que en el Excel: falta que la Alcaldía diga cuál vale) ni 218 (no viene en el Excel). Aplicar por
+número: `php BD/aplicar_migraciones.php --aplicar 059`. Con los nombres largos se generaron declaración, RIT y
+autorretención: se imprimen bien. Revisión independiente antes de publicar: sin errores que bloqueen; de ahí salió
+que un borrador con intereses ya escritos deja al contribuyente ponerlos en 0, y que `class.actividadEstablecimiento.php`
+(funciones 1, 2 y 4) sigue sin pedir permiso (hueco anterior, sin llamador en pantalla: pendiente).

@@ -869,20 +869,26 @@ var Retenciones = (function () {
             });
         }
 
+        // La tarifa junto al nombre en el listado (Alcaldia de Paipa, 2026-11-19): "7 x mil".
+        function rotuloTarifa(tarifa) {
+            var porMil = (Number(tarifa) || 0) * 1000;
+            return porMil > 0 ? ' (' + parseFloat(porMil.toFixed(2)) + ' x mil)' : '';
+        }
+
         function opcionesActividad(a) {
             var sel = a.idActividad, esta = false;
             var html = '<option value="">Seleccione la actividad…</option>';
             catalogo.forEach(function (c) {
                 if (c.id == sel) { esta = true; }
                 html += '<option value="' + c.id + '"' + (c.id == sel ? ' selected' : '') + '>'
-                      + escapar(c.codigo + ' — ' + c.descripcion) + '</option>';
+                      + escapar(c.codigo + ' — ' + c.descripcion + rotuloTarifa(c.tarifa)) + '</option>';
             });
             // Guardada con una actividad que no está en el catálogo de su año
             // (la Alcaldía la retiró): se conserva, para que Guardar no la
             // borre sin que nadie lo note.
             if (sel && !esta) {
                 html += '<option value="' + sel + '" data-tarifa="' + (Number(a.tarifa) || 0) + '" selected>'
-                      + escapar((a.codigo || '') + ' — ' + (a.descripcion || '')) + '</option>';
+                      + escapar((a.codigo || '') + ' — ' + (a.descripcion || '') + rotuloTarifa(a.tarifa)) + '</option>';
             }
             return html;
         }

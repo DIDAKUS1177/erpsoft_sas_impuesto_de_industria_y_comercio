@@ -195,6 +195,20 @@ class ControladorAutorreteica extends \erpsoftsas\ControladorRetencion
      */
     protected function _descuadre($con, $id)
     {
+        /*
+         * Con impuesto por generacion de energia (Ley 56 de 1981) la regla NO
+         * aplica (Alcaldia de Paipa, documento "CAMBIOS ICA WEB", 2026-11-19):
+         * ese impuesto no sale de los ingresos por actividad, asi que la casilla
+         * 13 y la suma de las bases pueden diferir. Sin energia sigue igual.
+         */
+        if ($this->_existeColumna($con, $this->tabla, 'aut_ImpuestoEnergia')) {
+            $e = $con->obnerFila($con->consultar(
+                "SELECT ISNULL(aut_ImpuestoEnergia, 0) AS energia FROM ind_autorreteica WHERE aut_Id = ?",
+                [(int) $id]
+            ));
+            if ($e && round((float) $e['energia']) > 0) { return null; }
+        }
+
         $f = $con->obnerFila($con->consultar(
             "SELECT ISNULL(a.aut_ValorConcepto13, 0) AS casilla13,
                     (SELECT ISNULL(SUM(x.aua_IngresosGravados), 0)

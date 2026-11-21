@@ -607,6 +607,26 @@ class ControladorEstablecimientos extends \erpsoftsas\Cabecera
         $fecha = trim((string) ($_POST['est_Fecha_cierre'] ?? $_POST['ind_FechaCese'] ?? ''));
         $obs   = trim((string) ($_POST['est_Observacion_cierre'] ?? $_POST['ind_ObservacionCese'] ?? ''));
 
+        /*
+         * UN CESE YA REGISTRADO NO SE RETIRA (Alcaldia de Paipa, 2026-11-20: "que
+         * no se pueda reactivar"). El contribuyente queda inactivo para siempre; si
+         * vuelve a operar hace una inscripcion nueva. Solo el administrador puede
+         * retirarlo, para deshacer un cese registrado por error.
+         */
+        if ($fecha === '' && !\erpsoftsas\PermisosRol::esAdministrador()) {
+            $yaCesado = $con->obnerFila($con->consultar(
+                "SELECT TOP 1 1 AS x FROM ind_contribuyentes
+                  WHERE ind_Id = ? AND ind_FechaCese IS NOT NULL AND ind_FechaCese <> '1900-01-01'",
+                [$idContribuyente]
+            ));
+            if ($yaCesado) {
+                $this->_ok = 0;
+                $this->_mensaje = 'El cese de actividades ya está registrado y no se puede retirar: el contribuyente queda inactivo. '
+                                . 'Si fue un error, lo corrige el administrador.';
+                return [];
+            }
+        }
+
         // Sin fecha no hay cese: se limpian los tres campos juntos, para que no
         // quede una causal huerfana que haga ver al contribuyente como cesado.
         if ($fecha === '') {

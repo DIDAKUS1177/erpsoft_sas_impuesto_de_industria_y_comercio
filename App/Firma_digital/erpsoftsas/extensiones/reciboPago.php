@@ -430,9 +430,9 @@ $SUAVE = '#f3f5f8';   // columna de valores
  * y sus valores, con sus propios anchos (el primero ya no lleva establecimiento
  * y tiene una columna menos que el segundo).
  */
-function recibo_tablaDatos(array $renglones, $gris)
+function recibo_tablaDatos(array $renglones, $gris, $relleno = 2.5)
 {
-    $html = '<table border="1" cellpadding="2.5" width="100%">';
+    $html = '<table border="1" cellpadding="' . $relleno . '" width="100%">';
     foreach ($renglones as [$cabeceras, $valores, $anchos]) {
         foreach ([[$cabeceras, true], [$valores, false]] as [$celdas, $esCabecera]) {
             $html .= '<tr' . ($esCabecera ? ' bgcolor="' . $gris . '"' : '') . '>';
@@ -508,7 +508,7 @@ $filas .= $fila('<b>SUBTOTAL</b>', $subtotal - $interesesDeclaracion, 'font-weig
 
 $pdf->writeHTML(
     '<style> td { font-size: 7.5px; } </style>
-    <table border="0" cellpadding="1.8" width="100%">' . $filas . '
+    <table border="0" cellpadding="1.25" width="100%">' . $filas . '
     <tr bgcolor="' . $GRIS . '">
         <td align="right" style="font-size:10px; ' . $LINEA . '"><b>TOTAL A PAGAR</b></td>
         <td align="right" style="font-size:10px; ' . $LINEA . '"><b>' . recibo_pesos($total) . '</b></td>
@@ -534,7 +534,8 @@ $pdf->writeHTML(
  */
 $bancosRecibo = \erpsoftsas\BancosRecibo::texto();
 if ($bancosRecibo !== null) {
-    $limite   = $pdf->getPageHeight() - 5 - 87;
+    // Dos desprendibles de 46 mm (banco y Alcaldía, 2026-11-20) más el liquidador: 100 mm.
+    $limite   = $pdf->getPageHeight() - 5 - 100;
     $tamanos  = [7.5, 6.5, 5.5, 4.5];
     foreach ($tamanos as $i => $tam) {
         $pdf->startTransaction();
@@ -557,81 +558,95 @@ if ($liquidador !== '') {
     $pdf->Cell(0, 4, 'LIQUIDADOR  ' . $liquidador, 0, 1, 'L');
 }
 
-/* ---------- LÍNEA DE CORTE ---------- */
+/* ---------- DESPRENDIBLES: BANCO Y ALCALDÍA ---------- */
 
+/*
+ * Dos desprendibles iguales, cada uno con su código de barras: uno queda en el
+ * banco y el otro en la Alcaldía; la parte de arriba es la copia del
+ * contribuyente (Alcaldía de Paipa, documento "CAMBIOS ICA WEB" del 2026-11-19:
+ * "como lo tenemos en predial"). Va en los tres recibos: ICA, retención y
+ * autorretención. El código de barras es el mismo en los dos.
+ *
+ * Cada desprendible mide unos 46 mm; si se cambia, cambiar
+ * también el sitio que se le reserva arriba (ver $limite de los bancos).
+ */
 $margenes = $pdf->getMargins();
 $xIzq     = $margenes['left'];
 $ancho    = $pdf->getPageWidth() - $margenes['left'] - $margenes['right'];
 
-$yCorte = $pdf->GetY() + 2;
-$pdf->SetLineStyle(['width' => 0.3, 'dash' => '3,2', 'color' => [110, 110, 110]]);
-$pdf->Line($xIzq, $yCorte, $xIzq + $ancho, $yCorte);
-$pdf->SetLineStyle(['width' => 0.2, 'dash' => 0, 'color' => [0, 0, 0]]);
-$pdf->SetFont('helvetica', '', 6);
-$pdf->SetTextColor(110, 110, 110);
-$pdf->SetXY($xIzq, $yCorte + 0.6);
-$pdf->Cell($ancho, 3, 'Desprenda por esta línea: la parte de abajo queda en el banco', 0, 1, 'C');
-$pdf->SetTextColor(0, 0, 0);
+$desprendible = function ($yCorte, $titulo, $queda, $sello) use (
+    $pdf, $xIzq, $ancho, $municipio, $m, $doc, $nombre, $numero, $periodo, $vence, $total,
+    $cabDeclaracion, $ANCHOS_DECLARACION, $GRIS, $contenidoBarras, $lineaLegible, $liquidador
+) {
+    $pdf->SetLineStyle(['width' => 0.3, 'dash' => '3,2', 'color' => [110, 110, 110]]);
+    $pdf->Line($xIzq, $yCorte, $xIzq + $ancho, $yCorte);
+    $pdf->SetLineStyle(['width' => 0.2, 'dash' => 0, 'color' => [0, 0, 0]]);
+    $pdf->SetFont('helvetica', '', 5.5);
+    $pdf->SetTextColor(110, 110, 110);
+    $pdf->SetXY($xIzq, $yCorte + 0.4);
+    $pdf->Cell($ancho, 2.6, 'Desprenda por esta línea: esta parte queda en ' . $queda, 0, 1, 'C');
+    $pdf->SetTextColor(0, 0, 0);
 
-/* ---------- COPIA DEL BANCO ---------- */
+    // Título en una sola línea: copia, municipio e impuesto.
+    $pdf->SetFont('helvetica', 'B', 8);
+    $pdf->SetXY($xIzq, $yCorte + 3.2);
+    $pdf->Cell($ancho, 4, $titulo . '  ·  ' . $municipio . '  ·  ' . $m['impuesto'], 0, 1, 'C');
 
-$pdf->SetY($yCorte + 6);
-$pdf->writeHTML(
-    '<style> td { font-size: 7.5px; } </style>
-    <table cellpadding="1" width="100%"><tr><td align="center" style="font-size:9px;">
-        <b>BANCO</b><br><b>' . recibo_h($municipio) . '</b><br><b>' . recibo_h($m['impuesto']) . '</b>
-    </td></tr></table>'
-    . recibo_tablaDatos([
-        [['Nit./C.C.', 'Contribuyente', 'N° Factura'],
-         [recibo_h($doc), recibo_h($nombre), '<b>' . recibo_h($numero) . '</b>'],
-         ['17%', '58%', '25%']],
-        [$cabDeclaracion,
-         ['<b>' . recibo_h($numero) . '</b>', '<b>' . recibo_h($periodo) . '</b>',
-          '<b>' . recibo_h($vence) . '</b>', '<b>' . recibo_pesos($total) . '</b>'],
-         $ANCHOS_DECLARACION],
-    ], $GRIS),
-    true, false, true, false, ''
-);
-
-$yBanco      = $pdf->GetY() - DESFASE_GETY_RET + 2;
-$anchoSello  = 60;
-$anchoBarras = $ancho - $anchoSello - 8;
-
-$pdf->SetFont('helvetica', 'B', 7.5);
-$pdf->SetXY($xIzq, $yBanco);
-$pdf->Cell($anchoBarras, 4, $municipio . ' NIT ' . MUNICIPIO_NIT, 0, 0, 'L');
-
-// Recuadro para el sello del banco.
-$pdf->Rect($xIzq + $ancho - $anchoSello, $yBanco, $anchoSello, 30);
-$pdf->SetXY($xIzq + $ancho - $anchoSello, $yBanco + 1);
-$pdf->Cell($anchoSello, 4, 'SELLO BANCO', 0, 0, 'C');
-
-if ($contenidoBarras !== null) {
-    // write1DBarcode (vectorial), nunca como imagen: ver la trampa 5 de
-    // pdfRetenciones.php. La línea legible es la que el cajero digita si el
-    // escáner falla; en GS1-128 los FNC1 no se imprimen, por eso va aparte.
-    $pdf->write1DBarcode(
-        $contenidoBarras, 'C128',
-        $xIzq, $yBanco + 6, $anchoBarras, 18, '',
-        ['position' => '', 'border' => false, 'padding' => 0,
-         'fgcolor' => [0, 0, 0], 'bgcolor' => false, 'text' => false, 'stretch' => true],
-        'N'
+    $pdf->SetY($yCorte + 7.4);
+    $pdf->writeHTML(
+        '<style> td { font-size: 7px; } </style>'
+        . recibo_tablaDatos([
+            [['Nit./C.C.', 'Contribuyente', 'N° Factura'],
+             [recibo_h($doc), recibo_h($nombre), '<b>' . recibo_h($numero) . '</b>'],
+             ['17%', '58%', '25%']],
+            [$cabDeclaracion,
+             ['<b>' . recibo_h($numero) . '</b>', '<b>' . recibo_h($periodo) . '</b>',
+              '<b>' . recibo_h($vence) . '</b>', '<b>' . recibo_pesos($total) . '</b>'],
+             $ANCHOS_DECLARACION],
+        ], $GRIS, 1.4),
+        true, false, true, false, ''
     );
-    $pdf->SetFont('helvetica', '', 6.5);
-    $pdf->SetXY($xIzq, $yBanco + 24.5);
-    $pdf->Cell($anchoBarras, 3, $lineaLegible, 0, 0, 'C');
-} else {
-    $pdf->SetFont('helvetica', 'I', 7);
-    $pdf->SetXY($xIzq, $yBanco + 11);
-    $pdf->MultiCell($anchoBarras, 4,
-        "Código de barras no disponible: falta el EAN de recaudo del municipio\n"
-        . "(Parámetros ICA > Municipio y bancos).", 0, 'C');
-}
 
-if ($liquidador !== '') {
-    $pdf->SetFont('helvetica', '', 7.5);
-    $pdf->SetXY($xIzq + 2, $yBanco + 33);
-    $pdf->Cell($ancho, 4, 'LIQUIDADOR  ' . $liquidador, 0, 1, 'L');
-}
+    $y           = $pdf->GetY() - DESFASE_GETY_RET + 1;
+    $anchoSello  = 52;
+    $anchoBarras = $ancho - $anchoSello - 8;
+    $altoSello   = 20;
+
+    $pdf->SetFont('helvetica', 'B', 6.5);
+    $pdf->SetXY($xIzq, $y);
+    $pdf->Cell($anchoBarras, 3, $municipio . ' NIT ' . MUNICIPIO_NIT
+        . ($liquidador !== '' ? '   ·   LIQUIDADOR  ' . $liquidador : ''), 0, 0, 'L');
+
+    $pdf->Rect($xIzq + $ancho - $anchoSello, $y, $anchoSello, $altoSello);
+    $pdf->SetFont('helvetica', 'B', 7);
+    $pdf->SetXY($xIzq + $ancho - $anchoSello, $y + 0.8);
+    $pdf->Cell($anchoSello, 3.5, $sello, 0, 0, 'C');
+
+    if ($contenidoBarras !== null) {
+        // write1DBarcode (vectorial), nunca como imagen: ver la trampa 5 de
+        // pdfRetenciones.php. La línea legible es la que el cajero digita si el
+        // escáner falla; en GS1-128 los FNC1 no se imprimen, por eso va aparte.
+        $pdf->write1DBarcode(
+            $contenidoBarras, 'C128',
+            $xIzq, $y + 3.6, $anchoBarras, 13.5, '',
+            ['position' => '', 'border' => false, 'padding' => 0,
+             'fgcolor' => [0, 0, 0], 'bgcolor' => false, 'text' => false, 'stretch' => true],
+            'N'
+        );
+        $pdf->SetFont('helvetica', '', 6);
+        $pdf->SetXY($xIzq, $y + 17.4);
+        $pdf->Cell($anchoBarras, 2.6, $lineaLegible, 0, 0, 'C');
+    } else {
+        $pdf->SetFont('helvetica', 'I', 6.5);
+        $pdf->SetXY($xIzq, $y + 6);
+        $pdf->MultiCell($anchoBarras, 3.5,
+            "Código de barras no disponible: falta el EAN de recaudo del municipio\n"
+            . "(Parámetros ICA > Municipio y bancos).", 0, 'C');
+    }
+    return $y + $altoSello;   // donde termina este desprendible
+};
+
+$fin = $desprendible($pdf->GetY() + 1.5, 'BANCO', 'el banco', 'SELLO BANCO');
+$desprendible($fin + 2.5, 'ALCALDÍA', 'la Alcaldía', 'SELLO ALCALDÍA');
 
 $pdf->Output('Recibo_de_pago_' . $modulo . '_' . $numero . '.pdf', 'I');

@@ -597,6 +597,30 @@ try {
     });
 
     /* ============================================================
+       CONTRIBUYENTE INACTIVO (Alcaldia de Paipa, 2026-11-20)
+       Con el cese de actividades registrado en el RIT la cuenta sigue
+       entrando, pero solo consulta, descarga y paga. El servidor lo
+       decide (PermisosRol); aqui solo se le dice por que no ve los
+       botones de declarar y modificar.
+       ============================================================ */
+    $(function () {
+        function avisarInactivo() {
+            $('#barraInactivo').remove();
+            var p = (typeof ErpPermisos !== 'undefined') ? ErpPermisos.datos() : null;
+            if (!p || !p.inactivo) { return; }
+            $('<div id="barraInactivo" role="status"></div>').css({
+                background: '#fdecea', 'border-bottom': '1px solid #f1b5ae', color: '#8a1f17',
+                padding: '9px 16px', 'font-size': '13.5px', 'line-height': '1.45'
+            }).append('<i class="fa fa-ban" style="margin-right:8px;"></i>')
+              .append($('<span></span>').text(p.avisoInactivo || 'El contribuyente está INACTIVO.'))
+              .prependTo('.main-container');
+        }
+        avisarInactivo();
+        // Los permisos se refrescan al cargar cada pantalla: se repinta cuando llegan.
+        setTimeout(avisarInactivo, 2500);
+    });
+
+    /* ============================================================
        CONTRIBUYENTE ACTIVO Y PESTAÑAS
        El administrador no tiene contribuyente propio: elige uno en la pantalla
        de Contribuyentes ("Gestionar") y a partir de ahí opera como ese

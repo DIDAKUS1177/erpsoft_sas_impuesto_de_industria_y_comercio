@@ -92,6 +92,10 @@ class Contribuyentes {
                     '</td>' +
                     '<td>' +
                     contribuyentes.esc(dep.ind_PrimerNombre) +
+                    // Con cese de actividades registrado en el RIT (2026-11-20).
+                    (Number(dep.inactivo) === 1
+                        ? ' <span class="badge" title="Cese de actividades registrado en el RIT" style="background:#b03535;color:#fff;font-weight:600;margin-left:6px;">Inactivo</span>'
+                        : '') +
                     '</td>' +
                     '<td>' +
                     contribuyentes.esc(dep.ind_PrimerApellido) +

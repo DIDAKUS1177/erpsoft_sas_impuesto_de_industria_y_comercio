@@ -740,9 +740,15 @@ class ControladorContribuyentes extends \erpsoftsas\Cabecera
         $orden  = $condiciones ? 'ind_PrimerNombre, ind_PrimerApellido, ind_Id' : 'ind_Id DESC';
 
         $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
+        // "inactivo" = tiene registrado el cese de actividades (etiqueta del listado,
+        // Alcaldia de Paipa 2026-11-20). En una base sin la columna, nadie lo esta.
+        $hayCese = $con->obnerFila($con->consultar("SELECT COL_LENGTH('dbo.ind_contribuyentes', 'ind_FechaCese') AS l"));
+        $inactivo = ($hayCese && $hayCese['l'] !== null)
+            ? "CASE WHEN ind_FechaCese IS NOT NULL AND ind_FechaCese <> '1900-01-01' THEN 1 ELSE 0 END AS inactivo"
+            : "0 AS inactivo";
         $datos = \erpsoftsas\Paginacion::consultar(
             $con,
-            'ind_Id, ind_NumeroIdentificacion, ind_PrimerNombre, ind_PrimerApellido, ind_Direccion, ind_Estado',
+            'ind_Id, ind_NumeroIdentificacion, ind_PrimerNombre, ind_PrimerApellido, ind_Direccion, ind_Estado, ' . $inactivo,
             "FROM ind_contribuyentes $filtro",
             $parametros, $orden, $pagina, $porPagina
         );

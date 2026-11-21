@@ -389,13 +389,13 @@ try {
 			<div class="login-body-custom">
 				<form action="javascript:login.init();">
 					<div class="form-group-custom">
-						<label for="email">Usuario / NIT</label>
+						<label for="email">Usuario / Correo electrónico</label>
 						<div class="input-wrapper-custom">
 							<svg class="input-icon-custom" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 								<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
 								<circle cx="12" cy="7" r="4"/>
 							</svg>
-							<input type="text" class="form-control-custom" id="email" placeholder="Ingrese su usuario o NIT" required>
+							<input type="text" class="form-control-custom" id="email" placeholder="Ingrese su usuario o correo electrónico" required>
 						</div>
 					</div>
 					

@@ -1652,6 +1652,19 @@ private function _actualizarDeclaracionIca(){
     $campoSeleccionado = $n;
     $NombreCampo = 'dec_ValorConcepto' . $n;
 
+    /*
+     * Casilla 37, INTERES DE MORA (dec_ValorConcepto16): solo la escribe la
+     * Alcaldia (pedido del 2026-11-20). Al contribuyente le sale bloqueada y
+     * sus intereses se liquidan en el recibo de pago; aqui se rechaza si lo
+     * manda por fuera de la pantalla. Guardar un 0 no cambia nada y se deja.
+     */
+    if ($n === 16 && !\erpsoftsas\PermisosRol::esAlcaldia()
+        && (float) preg_replace('/[^0-9.\-]/', '', (string) $valorLimpio) != 0.0) {
+        $this->_ok = 0;
+        $this->_mensaje = 'Los intereses de mora se liquidan en el recibo de pago.';
+        return [];
+    }
+
     if(!$idDeclaracion){
         $this->_ok = 0;
         $this->_mensaje = "Id de declaración requerido";

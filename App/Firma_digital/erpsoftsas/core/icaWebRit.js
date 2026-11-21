@@ -2374,8 +2374,10 @@ actualizarDeclaracionIca(valor, numeroCampo){
         var html = '<option value="">Agregar actividad…</option>';
         (establecimientos._catalogoActividades || []).forEach(function (a) {
             html += '<option value="' + esc(a.acc_Id) + '" data-codigo="' + esc(a.acc_Codigo) +
-                    '" data-tarifa="' + esc(a.acc_Tarifa) + '">' +
-                    esc(a.acc_Codigo) + ' — ' + esc(a.acc_Nombre) + '</option>';
+                    '" data-tarifa="' + esc(a.acc_Tarifa) + '" data-nombre="' + esc(a.acc_Nombre) + '">' +
+                    esc(a.acc_Codigo) + ' — ' + esc(a.acc_Nombre) +
+                    // La tarifa junto al nombre (Alcaldia de Paipa, 2026-11-19).
+                    (parseFloat(a.acc_Tarifa) > 0 ? ' (' + esc(parseFloat((parseFloat(a.acc_Tarifa) * 1000).toFixed(2))) + ' x mil)' : '') + '</option>';
         });
         $('#ritCatalogoActividades').html(html);
     }
@@ -3934,7 +3936,8 @@ $(document).on('click', '#btnAgregarActividadRIT', function () {
     var $op    = $sel.find('option:selected');
     var esc    = establecimientos.escaparHtml;
     var texto  = $op.text();
-    var nombre = texto.indexOf(' — ') >= 0 ? texto.split(' — ').slice(1).join(' — ') : texto;
+    // El nombre limpio viene en data-nombre: el texto de la opcion ahora trae tambien la tarifa.
+    var nombre = $op.attr('data-nombre') || (texto.indexOf(' — ') >= 0 ? texto.split(' — ').slice(1).join(' — ') : texto);
 
     $('#tbodyActividadesRIT').append(
         '<tr data-actividad="' + esc(id) + '">' +

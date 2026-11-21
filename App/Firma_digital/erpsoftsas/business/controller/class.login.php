@@ -52,8 +52,26 @@ class Login{
      */
     private function _buscarCuenta($huella)
     {
+        $esCorreo = (bool) filter_var($this->_usuario, FILTER_VALIDATE_EMAIL);
+        $obj = $this->_consultarCuenta($huella, $esCorreo);
+        /*
+         * Lo escrito tiene forma de correo y no hay cuenta con ese CORREO: se
+         * busca tambien por USUARIO. Hay cuentas cuyo usuario es el correo bien
+         * escrito y el campo correo quedo con un error de digitacion (caso
+         * Colsubsidio, 2026-11-18: "colubsidio"): la clave estaba bien y el
+         * login respondia "Error de credenciales".
+         */
+        if ($esCorreo && empty($obj->get_usu_Id())) {
+            $obj = $this->_consultarCuenta($huella, false);
+        }
+        return $obj;
+    }
+
+    /** Una consulta de cuenta activa con esa huella, por correo o por usuario. */
+    private function _consultarCuenta($huella, $porCorreo)
+    {
         $obj = new DAO_Usuario();
-        if (filter_var($this->_usuario, FILTER_VALIDATE_EMAIL)) {
+        if ($porCorreo) {
             $obj->set_usu_Correo($this->_usuario);
         } else {
             $obj->set_usu_Usuario($this->_usuario);
