@@ -14,6 +14,8 @@
  * El pago en si lo crea crearSesion.php, al que este resumen envia por POST.
  *
  * GET: id (o dec_Id), modulo
+ *      pasarela = 101: el botón «PSE · Bancolombia» (1cero1pay, migración 060),
+ *      la segunda pasarela. Sin él, la pasarela de la entidad, como siempre.
  */
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
@@ -42,6 +44,16 @@ $textoPago = $esWompi ? 'Ir a pagar con Wompi' : 'Pagar con PSE';
 // 2026-10-06): el de pruebas puede desaparecer. Con Wompi va solo el texto: su
 // certificacion no pide logo.
 $logoAvalPay = $esWompi ? '' : 'https://placetopay-static-prod-bucket.s3.us-east-2.amazonaws.com/avalpaycenter-com/logos/Logo%20Avalpay.svg';
+
+// La SEGUNDA pasarela (060): «PSE · Bancolombia» por 1cero1pay, si se pidió.
+// Cambian los textos y a dónde se va a pagar; las reglas son las mismas.
+$es101 = \erpsoftsas\Pasarela::pedida($_GET['pasarela'] ?? '') !== null;
+if ($es101) {
+    require_once SERVER . '/business/class.unocerouno.php';
+    $pasarela    = \erpsoftsas\UnoCeroUno::nombre();
+    $textoPago   = 'Pagar con PSE · Bancolombia';
+    $logoAvalPay = '';
+}
 
 $modulo = $_GET['modulo'] ?? 'ica';
 $m      = \erpsoftsas\PseModulo::get($modulo);
@@ -105,7 +117,7 @@ function pantalla($titulo, $html, $color, $muni) {
 }
 
 // Sin convenio configurado no hay pago que ofrecer.
-if (!\erpsoftsas\Pasarela::configurado()) {
+if ($es101 ? !\erpsoftsas\UnoCeroUno::activo() : !\erpsoftsas\Pasarela::configurado()) {
     http_response_code(503);
     pantalla('Pago no disponible',
         '<div class="aviso info">El pago en línea todavía no está disponible. '
@@ -115,7 +127,7 @@ if (!\erpsoftsas\Pasarela::configurado()) {
 
 // Solo quien ve el botón, y sobre sus propias declaraciones (la Alcaldía, sobre
 // cualquiera): ver PseModulo::motivoParaNoPagar.
-$motivo = \erpsoftsas\PseModulo::motivoParaNoPagar($con, $m, $id);
+$motivo = \erpsoftsas\PseModulo::motivoParaNoPagar($con, $m, $id, $es101 ? \erpsoftsas\Pasarela::SEGUNDA : null);
 if ($motivo !== null) {
     http_response_code(403);
     pantalla('Pago no disponible', '<div class="aviso info">' . htmlspecialchars($motivo) . '</div>', $color, $muni);
@@ -267,9 +279,81 @@ if ($enTramite) {
         $color, $muni);
 }
 
+/*
+ * 1CERO1PAY (060). Un solo pago en curso por declaración, también ENTRE
+ * pasarelas: si hay uno por «PSE · Bancolombia» no se ofrece otro, ni por ahí
+ * ni por la pasarela de la entidad (lo de arriba hace lo mismo al revés, se
+ * haya pedido la que se haya pedido). Solo corre donde hay credenciales de
+ * 1cero1pay.
+ */
+if (\erpsoftsas\Pasarela::hayUnoCeroUno()) {
+    require_once SERVER . '/business/class.pagoUnoCeroUno.php';
+    // Si no se puede comprobar (la base), no se ofrece el pago a ciegas ni se
+    // rompe la página: se dice, y se puede volver a intentar.
+    try {
+        $t101 = \erpsoftsas\PagoUnoCeroUno::enTramite($con, $modulo, $id);
+
+        // Preguntarle a 1cero1pay pudo dejarla pagada en este mismo momento.
+        $ahora = $con->obnerFila($con->consultar(
+            "SELECT ISNULL({$m['pagado']}, 0) AS pagado FROM {$m['tabla']} WHERE {$m['pk']} = ?", [$id]
+        ));
+        $revision101 = \erpsoftsas\PagoUnoCeroUno::enRevision($con, $m, $id) !== null;
+    } catch (\Throwable $e) {
+        error_log('[1cero1pay pagar] ' . $modulo . ' ' . $id . ': no se pudo comprobar el pago en curso: ' . $e->getMessage());
+        http_response_code(503);
+        pantalla('Intente de nuevo',
+            '<div class="aviso info">No se pudo comprobar en este momento si esta declaración tiene un pago en curso. '
+          . 'Intente de nuevo en unos minutos.</div>', $color, $muni);
+    }
+    if ((int) ($ahora['pagado'] ?? 0) === 1) {
+        pantalla('Ya pagada',
+            '<div class="aviso info">Esta declaración (referencia <span class="ref">'
+          . htmlspecialchars($referencia) . '</span>) ya está registrada como pagada.</div>',
+            $color, $muni);
+    }
+
+    if ($t101 !== null) {
+        $retorno101 = \erpsoftsas\PagoUnoCeroUno::urlRetorno('', $modulo, $id, $t101['pel_Referencia']);
+        if (($t101['pel_Estado'] ?? '') !== 'PENDIENTE') {
+            $faltan = max(1, \erpsoftsas\PagoUnoCeroUno::MINUTOS_RECIENTE - (int) ($t101['minutos'] ?? 0));
+            pantalla('Pago iniciado',
+                '<div class="aviso pend">Hace ' . (int) ($t101['minutos'] ?? 0) . ' minuto(s) se inició un pago de esta declaración '
+              . '(referencia <span class="ref">' . htmlspecialchars($referencia) . '</span>) por PSE · Bancolombia que todavía no tiene '
+              . 'respuesta del banco. Si lo terminó, espere: se confirmará solo. Si no lo terminó, podrá iniciar otro en unos '
+              . $faltan . ' minutos. Así se evita pagar dos veces.</div>'
+              . '<a class="btn" href="' . htmlspecialchars($retorno101) . '">Verificar estado del pago</a>',
+                $color, $muni);
+        }
+        pantalla('Pago en proceso',
+            '<div class="aviso pend">Su pago con referencia <span class="ref">' . htmlspecialchars($referencia)
+          . '</span> por PSE · Bancolombia está en estado <b>PENDIENTE</b>: aún no recibimos '
+          . 'la confirmación de su entidad financiera. Espere unos minutos y vuelva a consultar; '
+          . 'si el dinero fue debitado, el pago se confirmará automáticamente. Si tiene dudas, '
+          . 'comuníquese con ' . htmlspecialchars($muni) . ' indicando su referencia.</div>'
+          . '<a class="btn" href="' . htmlspecialchars($retorno101) . '">Verificar estado del pago</a>',
+            $color, $muni);
+    }
+
+    // Aprobado por el banco, pero no se pudo registrar solo: lo revisa la
+    // Alcaldía. Mientras tanto no se ofrece pagar otra vez.
+    if ($revision101) {
+        pantalla('Pago en revisión',
+            '<div class="aviso pend">Ya hay un pago de esta declaración (referencia <span class="ref">'
+          . htmlspecialchars($referencia) . '</span>) aprobado por PSE · Bancolombia que ' . htmlspecialchars($muni)
+          . ' está revisando. No vuelva a pagar: comuníquese con ' . htmlspecialchars($muni)
+          . ' indicando su referencia.</div>',
+            $color, $muni);
+    }
+}
+
 // Resumen normal + confirmacion.
+// aviso=reintente: crearSesion.php no pudo iniciar el pago y devolvió aquí (texto fijo; nada de la URL se pinta).
+$avisoReintente = (($_GET['aviso'] ?? '') === 'reintente');
 ob_start();
 ?>
+<?php if ($avisoReintente): ?>
+<div class="aviso pend" id="avisoReintente" style="margin-bottom:12px;">No se pudo iniciar el pago en este momento. No se le cobró nada: intente de nuevo en unos minutos.</div>
+<?php endif; ?>
 <div class="fila"><span class="k">Concepto</span><span class="v"><?= htmlspecialchars($m['etiqueta']) ?></span></div>
 <div class="fila"><span class="k">Referencia</span><span class="v ref"><?= htmlspecialchars($referencia) ?></span></div>
 <div class="fila"><span class="k">Entidad</span><span class="v"><?= htmlspecialchars($muni) ?></span></div>
@@ -300,6 +384,9 @@ ob_start();
 <form method="post" action="crearSesion.php" id="formPago">
   <input type="hidden" name="id" value="<?= $id ?>">
   <input type="hidden" name="modulo" value="<?= htmlspecialchars($modulo) ?>">
+<?php if ($es101): ?>
+  <input type="hidden" name="pasarela" value="<?= htmlspecialchars(\erpsoftsas\Pasarela::SEGUNDA) ?>">
+<?php endif; ?>
   <div class="politica">
     <label>
       <input type="checkbox" name="acepto" value="1" id="acepto" required>
@@ -363,7 +450,7 @@ ob_start();
   });
   frm.addEventListener('submit', function () {
     btn.disabled = true;
-    btn.textContent = <?= json_encode($esWompi ? 'Redirigiendo a Wompi…' : 'Redirigiendo al banco…', JSON_UNESCAPED_UNICODE) ?>;
+    btn.textContent = <?= json_encode(($esWompi && !$es101) ? 'Redirigiendo a Wompi…' : 'Redirigiendo al banco…', JSON_UNESCAPED_UNICODE) ?>;
   });
 </script>
 <?php

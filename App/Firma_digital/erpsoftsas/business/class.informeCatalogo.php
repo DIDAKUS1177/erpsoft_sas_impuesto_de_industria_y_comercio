@@ -663,7 +663,7 @@ class InformeCatalogo
         if ($conRuta) {
             $fil('canal', 'Canal de pago', 'situacion', 'lista', ['in'],
                  "CASE WHEN $pagada = 1 THEN d.{$p}_RutaPago END",
-                 ['opciones' => ['PSE' => 'PSE', 'WOMPI' => 'Wompi', 'RECAUDO_BANCARIO' => 'Recaudo bancario', 'MANUAL' => 'Manual']]);
+                 ['opciones' => ['PSE' => 'PSE', 'WOMPI' => 'Wompi', '1CERO1PAY' => 'PSE Bancolombia', 'RECAUDO_BANCARIO' => 'Recaudo bancario', 'MANUAL' => 'Manual']]);
         }
         if ($conBanco) {
             // El banco POR EL QUE ENTRÓ la plata (su id), no el texto del PSE (que es el banco del que pagó).

@@ -12,6 +12,10 @@
  * GET Wompi (042): decl = la declaracion, modulo, ref = el intento, t = la firma
  *     del enlace (PagoWompi::urlRetorno), e id = la transaccion, que agrega
  *     Wompi (por eso la declaracion no va en "id").
+ * GET 1cero1pay (060): pasarela = 101, y decl, modulo, ref = la factura del
+ *     intento y t = la firma del enlace (PagoUnoCeroUno::urlRetorno). Sin el
+ *     enlace firmado, solo la sesion que inicio ese pago (1cero1pay no recibe
+ *     una URL de retorno por intento).
  */
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
@@ -38,6 +42,41 @@ $m       = \erpsoftsas\PseModulo::get($_GET['modulo'] ?? 'ica');
 $esWompi = \erpsoftsas\Pasarela::esWompi();
 $id      = $esWompi ? (int) ($_GET['decl'] ?? 0) : (int) ($_GET['id'] ?? $_GET['dec_Id'] ?? 0);
 
+/*
+ * 1CERO1PAY (060), «PSE · Bancolombia»: la segunda pasarela. Esta rama sí la
+ * pide la URL (pasarela=101), pero nada de la URL se aplica: solo sirve para
+ * encontrar el intento, y eso con el enlace FIRMADO (ref + t, que solo arman
+ * crearSesion.php y el resumen) o, sin él, con la sesión que inició ese pago.
+ * Lo que se guarda sale de la consulta a 1cero1pay por la factura del intento.
+ */
+$es101      = \erpsoftsas\Pasarela::pedida($_GET['pasarela'] ?? '') !== null && \erpsoftsas\Pasarela::hayUnoCeroUno();
+$intento101 = null;
+if ($es101) {
+    require_once SERVER . '/business/class.pagoUnoCeroUno.php';
+    $ref101  = (string) ($_GET['ref'] ?? '');
+    $decl101 = (int) ($_GET['decl'] ?? 0);
+    $porSesion = false;
+    if (!\erpsoftsas\PagoUnoCeroUno::retornoValido($m['clave'], $decl101, $ref101, $_GET['t'] ?? '')) {
+        if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+        $s101 = $_SESSION['pago101'] ?? null;
+        $ref101 = '';
+        if (is_array($s101) && (int) ($_SESSION['id_usuario'] ?? 0) > 0 && \erpsoftsas\PseModulo::existe($s101['modulo'] ?? '')) {
+            $m         = \erpsoftsas\PseModulo::get($s101['modulo']);
+            $decl101   = (int) ($s101['id'] ?? 0);
+            $ref101    = (string) ($s101['ref'] ?? '');
+            $porSesion = true;
+        }
+    }
+    if ($ref101 !== '') {
+        $intento101 = \erpsoftsas\PagoUnoCeroUno::intento($con, $ref101);
+        if ($intento101 && ($intento101['pel_Modulo'] !== $m['clave'] || (int) $intento101['pel_IdDeclaracion'] !== $decl101
+                            || ($porSesion && (int) $intento101['pel_IdUsuario'] !== (int) ($_SESSION['id_usuario'] ?? 0)))) {
+            $intento101 = null;
+        }
+    }
+    $id = $intento101 ? (int) $intento101['pel_IdDeclaracion'] : 0;
+}
+
 $col = [
     'numero' => $m['numero'], 'valor' => $m['valor'], 'pagado' => $m['pagado'],
     'req' => \erpsoftsas\PseModulo::colRequestId($m),
@@ -56,7 +95,55 @@ $valor      = (float) ($row['valor'] ?? 0);
 $estado     = '';
 $fechaIso   = '';
 
-if ($esWompi) {
+if ($es101) {
+    if (!$intento101 || !$row) {
+        $referencia = '';
+        $valor      = 0;
+        $mensaje    = 'No se pudo verificar este enlace de pago. Consulte el estado del pago desde su declaración.';
+    } else {
+        // Lo que se cobró en este intento (con los intereses de mora, si los hubo).
+        $valor = ((int) $intento101['pel_Centavos']) / 100;
+        try {
+            $r = \erpsoftsas\PagoUnoCeroUno::confirmar($con, $intento101);
+            if ($r === null) {
+                $estado  = 'PENDIENTE';
+                $mensaje = 'Todavía no hay respuesta del banco para este pago. Si lo terminó, se confirmará solo en unos '
+                         . 'minutos; puede cerrar esta ventana.';
+            } else {
+                $info   = $r['info'];
+                $estado = $r['estado'];
+
+                if ($r['pagada']) {
+                    $aprobado = true;
+                    $mensaje  = 'Pago aprobado. Gracias.';
+                } elseif ($r['doble']) {
+                    $mensaje = 'El banco aprobó este pago, pero la declaración ya estaba pagada. ' . $muni
+                             . ' revisará la devolución; conserve su comprobante.';
+                } elseif ($estado === 'REVISAR' && !empty($r['yaPagada'])) {
+                    $mensaje = 'Este pago está en revisión por ' . $muni . ' y la declaración ya figura como pagada. '
+                             . 'Si tiene dudas, comuníquese con ' . $muni . ' con su número de referencia.';
+                } elseif ($estado === 'REVISAR') {
+                    $mensaje = 'El banco aprobó el pago, pero no se pudo registrar automáticamente. '
+                             . 'Comuníquese con ' . $muni . ' con su número de referencia.';
+                } elseif (!empty($r['ajena']) || !empty($r['desconocido'])) {
+                    $mensaje = 'No se pudo confirmar el estado del pago en este momento. Si el pago sí se realizó, '
+                             . 'quedará confirmado automáticamente en las próximas horas.';
+                } elseif ($estado === 'PENDIENTE') {
+                    $mensaje = 'El pago quedó en proceso. En cuanto el banco confirme, se actualizará automáticamente (puede tardar unos minutos).';
+                } elseif (in_array($estado, ['COMENZADA', 'CREADO'], true)) {
+                    $mensaje = 'Todavía no se ha hecho el pago: el que inició sigue abierto. Si no lo va a terminar, podrá '
+                             . 'iniciar uno nuevo desde su declaración en unos minutos.';
+                } else {
+                    $mensaje = 'El pago no fue aprobado. Puede intentarlo de nuevo desde su declaración.';
+                }
+            }
+        } catch (Exception $e) {
+            error_log('[1cero1pay retorno] ' . $m['clave'] . ' ' . $id . ': ' . $e->getMessage());
+            $mensaje = 'No se pudo confirmar el estado del pago en este momento. Si el pago sí se realizó, '
+                     . 'quedará confirmado automáticamente en las próximas horas.';
+        }
+    }
+} elseif ($esWompi) {
     /*
      * WOMPI (042, revision 2026-10-02). Sin el enlace FIRMADO (ref + t, que solo
      * arma crearSesion.php o el resumen) no se consulta nada ni se muestran
@@ -204,6 +291,9 @@ $mapaEstado = [
     // Wompi (042)
     'DECLINED' => 'Rechazado', 'VOIDED' => 'Anulado', 'ERROR' => 'Fallido',
     'REVISAR'  => 'En revisión', 'DOBLE' => 'Pago repetido',
+    // 1cero1pay (060)
+    'APROBADA' => 'Aprobado', 'PENDIENTE' => 'Pendiente', 'RECHAZADA' => 'Rechazado', 'FALLIDA' => 'Fallido',
+    'COMENZADA' => 'Iniciado', 'CREADO' => 'Iniciado', 'SIN_PAGO' => 'Sin pago',
 ];
 $estadoTxt = $mapaEstado[$estado] ?? ($estado !== '' ? $estado : '—');
 $valorFmt  = $valor > 0 ? '$ ' . number_format($valor, 0, ',', '.') . ' COP' : '—';
@@ -214,7 +304,7 @@ try {
 } catch (Exception $e) {
     $fechaTxt = (new DateTime('now', $zonaCo))->format('Y-m-d H:i');
 }
-$claseEstado = $aprobado ? 'ok' : ($estado === 'PENDING' ? 'pendiente' : 'error');
+$claseEstado = $aprobado ? 'ok' : (in_array($estado, ['PENDING', 'PENDIENTE', 'COMENZADA', 'CREADO'], true) ? 'pendiente' : 'error');
 
 /*
  * "Cerrar" no cerraba nada. Los navegadores solo dejan que window.close()
@@ -263,7 +353,7 @@ $volver = [
 <body>
   <div class="tarjeta">
     <div class="cab">
-      <div class="icono <?= $claseEstado ?>"><?= $aprobado ? '✔' : ($estado === 'PENDING' ? '⏳' : '✕') ?></div>
+      <div class="icono <?= $claseEstado ?>"><?= $aprobado ? '✔' : ($claseEstado === 'pendiente' ? '⏳' : '✕') ?></div>
       <h2><?= $aprobado ? 'Pago procesado' : 'Estado del pago' ?></h2>
     </div>
     <p class="msg"><?= htmlspecialchars($mensaje) ?></p>

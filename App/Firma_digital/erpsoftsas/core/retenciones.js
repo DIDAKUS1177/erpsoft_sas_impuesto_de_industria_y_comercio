@@ -292,6 +292,15 @@ var Retenciones = (function () {
                                   href: '../extensiones/pse/pagar.php?modulo=' + encodeURIComponent(cfg.modulo || '') + '&id=' + f.id,
                                   target: '_blank' });
                 }
+                // Segundo botón, simultáneo: «PSE · Bancolombia» por 1cero1pay
+                // (migración 060). Mismas condiciones y permiso; pasarela=101.
+                if (Number(f.pago_en_linea_2) === 1 && Number(f.total) > 0) {
+                    var textoPago2 = f.pago_en_linea_2_texto || 'PSE · Bancolombia';
+                    b += accBtn({ permiso: mod + '.pagar', tipo: 'danger', icono: 'fa-university', texto: textoPago2,
+                                  title: 'Pagar por PSE con Bancolombia',
+                                  href: '../extensiones/pse/pagar.php?modulo=' + encodeURIComponent(cfg.modulo || '') + '&id=' + f.id + '&pasarela=101',
+                                  target: '_blank' });
+                }
                 // Recibo de pago para el banco: el mismo en los tres módulos
                 // (extensiones/reciboPago.php), solo si hay valor.
                 if (Number(f.total) > 0) {

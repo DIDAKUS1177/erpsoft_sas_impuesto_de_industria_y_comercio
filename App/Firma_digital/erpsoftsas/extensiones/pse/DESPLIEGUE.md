@@ -193,3 +193,65 @@ Revisión del mismo día, antes de subirlo:
 - **Volver sin pagar** (sin elegir banco) no borra "Pago iniciado" ni su hora.
 - **El cron** deja de consultar solo las finales (REJECTED, EXPIRED,
   PARTIAL_EXPIRED); lo demás se sigue mirando.
+
+## 9. 1cero1pay, segundo botón «PSE · Bancolombia» — Paipa (migración 060)
+
+Es una SEGUNDA pasarela, simultánea con la de la entidad: el listado muestra
+«Pagar PSE» (AvalPay) y «PSE · Bancolombia» (1cero1pay). Mismas reglas de pago;
+un mismo documento no puede tener dos pagos en curso. Las credenciales no van
+aquí ni en ningún archivo del repositorio (es público): las escribe quien
+administra, en la pantalla. Detalle técnico en `CLAUDE.md` («1cero1pay»).
+
+1. **Subir el código.** Los archivos NUEVOS van en el MISMO commit que los
+   modificados, agregados por ruta (no `git add -A`: el repositorio es
+   público). `class.pasarela.php`, los listados, el pago manual y
+   `extensiones/pse/` ya los requieren: subir los modificados sin los nuevos
+   rompe el pago en línea y los listados. Los nuevos son:
+   - `business/class.unocerouno.php`
+   - `business/class.pagoUnoCeroUno.php`
+   - `BD/migraciones/060_pago_en_linea_con_1cero1pay.sql`
+   - las pruebas: `pruebas/probar_unocerouno.php`, `pruebas/stub_unocerouno.php`
+     (el simulador; solo funciona con el servidor embebido de PHP) y
+     `pruebas/pago_segundo_boton.test.js`
+2. **Migración 060**, por número: Tareas programadas → Ejecutar un script PHP →
+   `BD/aplicar_migraciones.php` con `--aplicar 060` → «Ejecutar ahora». No
+   cambia nada por sí sola (nace apagada y sin credenciales). En Paipa crea
+   además `ind_pagos_en_linea` (la 042 sigue pendiente a propósito; no hace falta).
+3. **Confirmar con 1Cero1 ANTES de activar** (ver las dudas en `CLAUDE.md`):
+   los IDImpuesto (2 / 77 / 615 según lo que entregaron; su anexo dice 2 y 3),
+   el TipoImplementacion (7, como en predial) y a qué dirección devuelven al
+   contribuyente al terminar el pago (pedir que sea
+   `https://<dominio>/erpsoftsas/extensiones/pse/retorno.php?pasarela=101`).
+4. **Parámetros ICA → Municipio y bancos** (detrás de la contraseña de edición):
+   - `UNOCEROUNO_USUARIO`, `UNOCEROUNO_CLAVE` y `UNOCEROUNO_CODIGO_ENTIDAD`:
+     los que entregó 1Cero1. Usuario y clave no se muestran después de guardados.
+   - `UNOCEROUNO_IDIMPUESTO_ICA` / `_RETEICA` / `_AUTORRETEICA`: los confirmados
+     en el punto 3 (por defecto 2, 77 y 615).
+   - `UNOCEROUNO_BANCO`: el banco al que 1cero1pay le consigna a la Alcaldía
+     (Bancolombia), para los informes de pagos.
+   - `UNOCEROUNO_DOCUMENTOS_PRUEBA`: el número de documento de la cuenta con la
+     que se va a probar (solo esa cuenta verá el botón).
+   - `UNOCEROUNO_ACTIVO` = 1, de último.
+5. **Verificar**: `BD/verificar_municipio.php --resumen` («Ejecutar ahora»): en
+   la sección de parámetros debe decir que 1cero1pay acepta el usuario y la
+   clave. Solo pide un token: no crea ni consulta pagos.
+6. **Primer pago real con valor mínimo**, con la cuenta de prueba (es plata de
+   verdad: no hay ambiente de pruebas). Comprobar que al volver la declaración
+   quede pagada con banco «1cero1pay - …», que el intento quede APROBADA en
+   `ind_pagos_en_linea` y, después, que el dinero llegue a la cuenta. Si queda
+   «en revisión», mirar `pel_Mensaje` del intento: dice qué no cuadró (valor,
+   factura) y con eso se ajusta la integración antes de abrirla.
+7. **Abrirlo**: vaciar `UNOCEROUNO_DOCUMENTOS_PRUEBA`.
+8. **Tarea programada**: la misma de siempre (`cron_verificar_pagos.php`) ya
+   confirma también estos pagos. 1cero1pay NO avisa (no hay webhook): un pago
+   cuyo contribuyente cierra la ventana sin volver solo se registra cuando
+   corre la tarea. Conviene pasarla de una vez al día a **cada 15 minutos**
+   (como en predial); a AvalPay solo se le consultan las sesiones pendientes.
+9. **Para apagarlo**: `UNOCEROUNO_ACTIVO` = 0. El botón desaparece; los pagos ya
+   iniciados se siguen confirmando con la tarea.
+
+La tarea imprime `[1cero1pay] ATENCIÓN …` cuando algo necesita a una persona:
+`REVISAR` (el banco aprobó pero no se registró solo: otro valor, otra factura o
+la declaración ya no estaba presentada; se resuelve con «Pago manual» o con
+1Cero1) y `DOBLE` (se aprobó un pago de una declaración que ya estaba pagada:
+hay que devolverlo).

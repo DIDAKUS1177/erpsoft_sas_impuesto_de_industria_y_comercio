@@ -11,6 +11,8 @@
  *
  * POST/GET: id (o dec_Id), modulo, acepto
  * POST: intereses (ICA vencida: intereses de mora escritos en el resumen)
+ * POST/GET: pasarela = 101 -> el botón «PSE · Bancolombia» (1cero1pay,
+ *     migración 060), la segunda pasarela; sin él, la de la entidad.
  */
 include_once $_SERVER['DOCUMENT_ROOT'] . '/erpsoftsas/business/globals.php';
 include_once SERVER . '/business/class.conexionSqlServer.php';
@@ -28,9 +30,15 @@ if (file_exists($configPath)) {
 
 $con = \ConexionMysqlUsuariosSqlServer\ConexionSQLServer::getInstance();
 
+// La SEGUNDA pasarela (060): «PSE · Bancolombia» por 1cero1pay, si se pidió.
+$es101 = \erpsoftsas\Pasarela::pedida($_POST['pasarela'] ?? $_GET['pasarela'] ?? '') !== null;
+if ($es101) {
+    require_once SERVER . '/business/class.pagoUnoCeroUno.php';
+}
+
 // Sin convenio de recaudo configurado no hay nada que cobrar. Se comprueba lo
 // PRIMERO, antes de tocar la base (ver la nota en pagar.php).
-if (!\erpsoftsas\Pasarela::configurado()) {
+if ($es101 ? !\erpsoftsas\UnoCeroUno::activo() : !\erpsoftsas\Pasarela::configurado()) {
     http_response_code(503);
     die('El pago en línea no está disponible: la Alcaldía todavía no ha configurado '
       . 'el convenio de recaudo. Puede pagar en el banco con el código de barras '
@@ -42,9 +50,13 @@ $m      = \erpsoftsas\PseModulo::get($modulo);
 $modulo = $m['clave'];
 $id     = (int) ($_POST['id'] ?? $_GET['id'] ?? $_POST['dec_Id'] ?? $_GET['dec_Id'] ?? 0);
 
+// El resumen (pagar.php) de la pasarela pedida: a donde se vuelve si no se puede seguir.
+$resumen = 'pagar.php?modulo=' . urlencode($modulo) . '&id=' . $id
+         . ($es101 ? '&pasarela=' . \erpsoftsas\Pasarela::SEGUNDA : '');
+
 // Solo quien ve el botón, y sobre sus propias declaraciones (la Alcaldía, sobre
 // cualquiera): ver PseModulo::motivoParaNoPagar.
-$motivo = \erpsoftsas\PseModulo::motivoParaNoPagar($con, $m, $id);
+$motivo = \erpsoftsas\PseModulo::motivoParaNoPagar($con, $m, $id, $es101 ? \erpsoftsas\Pasarela::SEGUNDA : null);
 if ($motivo !== null) {
     http_response_code(403);
     die(htmlspecialchars($motivo));
@@ -61,7 +73,7 @@ if ($motivo !== null) {
 // 2026-10-02). Con GET se va al resumen, como sin aceptar.
 $acepto = (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['acepto'] ?? '') === '1');
 if (!$acepto) {
-    header('Location: pagar.php?modulo=' . urlencode($modulo) . '&id=' . $id);
+    header('Location: ' . $resumen);
     exit;
 }
 
@@ -112,10 +124,43 @@ $enTramite = $esWompi
     ? \erpsoftsas\PagoWompi::enTramite($con, $modulo, $id) !== null
     : (!empty($row['pse_req']) && PlacetoPay::enTramite($row['pse_est']));
 if ($enTramite) {
-    header('Location: pagar.php?modulo=' . urlencode($modulo) . '&id=' . $id);
+    header('Location: ' . $resumen);
     exit;
 }
-if ($esWompi && \erpsoftsas\PagoWompi::intentosUltimaHora($con, $modulo, $id) >= \erpsoftsas\PagoWompi::MAX_INTENTOS_HORA) {
+/*
+ * 1CERO1PAY (060): un solo pago en curso por declaración, también ENTRE
+ * pasarelas. Con un pago por «PSE · Bancolombia» en trámite (o aprobado y en
+ * revisión) no se inicia otro, ni por ahí ni por la pasarela de la entidad; se
+ * manda al resumen, que lo explica. Solo corre donde hay credenciales de
+ * 1cero1pay.
+ */
+$hay101 = \erpsoftsas\Pasarela::hayUnoCeroUno();
+if ($hay101) {
+    require_once SERVER . '/business/class.pagoUnoCeroUno.php';
+    // Si esta comprobación falla (la base, no 1cero1pay: eso ya cuenta como "en
+    // trámite"), no se sigue a ciegas ni se rompe la página: al resumen, con el
+    // aviso de intentar de nuevo. Vale también para el botón de siempre.
+    try {
+        $frena101 = \erpsoftsas\PagoUnoCeroUno::enTramite($con, $modulo, $id) !== null
+                 || \erpsoftsas\PagoUnoCeroUno::enRevision($con, $m, $id) !== null;
+        // Preguntarle a 1cero1pay pudo dejarla pagada en este mismo momento.
+        $ahora = $con->obnerFila($con->consultar(
+            "SELECT ISNULL({$m['pagado']}, 0) AS pagado FROM {$m['tabla']} WHERE {$m['pk']} = ?", [$id]
+        ));
+    } catch (\Throwable $e) {
+        error_log('[1cero1pay crearSesion] ' . $modulo . ' ' . $id . ': no se pudo comprobar el pago en curso: ' . $e->getMessage());
+        header('Location: ' . $resumen . '&aviso=reintente');
+        exit;
+    }
+    if ($frena101) {
+        header('Location: ' . $resumen);
+        exit;
+    }
+    if ((int) ($ahora['pagado'] ?? 0) === 1) {
+        die('Esta declaración ya está pagada.');
+    }
+}
+if (!$es101 && $esWompi && \erpsoftsas\PagoWompi::intentosUltimaHora($con, $modulo, $id) >= \erpsoftsas\PagoWompi::MAX_INTENTOS_HORA) {
     http_response_code(429);
     die('Ya se iniciaron varios pagos de esta declaración en la última hora. Si ya pagó, espere la confirmación; '
       . 'si no, intente de nuevo más tarde.');
@@ -164,7 +209,7 @@ if ($intereses > 0 && !$vencidaIca) {
     die('Esta declaración no lleva intereses de mora en el pago en línea.');
 }
 if ($exige && $intereses <= 0) {
-    header('Location: pagar.php?modulo=' . urlencode($modulo) . '&id=' . $id);
+    header('Location: ' . $resumen);
     exit;
 }
 $valor += $intereses;
@@ -181,11 +226,83 @@ $esquema = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' 
  * con la referencia y una firma del enlace (PagoWompi::urlRetorno). Los
  * intereses de mora van dentro del valor, igual que con PlacetoPay.
  */
+/*
+ * 1CERO1PAY (060), «PSE · Bancolombia». Cada clic es un intento con su FACTURA
+ * (el identificador único del pago en 1cero1pay: número de la declaración +
+ * módulo + consecutivo, ver class.pagoUnoCeroUno.php); la Referencia es el
+ * número de la declaración y el IDImpuesto, el del módulo. Los intereses de
+ * mora van dentro del valor, igual que con las otras pasarelas. El intento se
+ * anota ANTES de hablar con 1cero1pay, con el candado de la declaración: ahí se
+ * vuelve a comprobar que siga presentada, sin pagar y sin otro pago en curso
+ * por ninguna pasarela. No hay URL de notificación: el pago se confirma al
+ * volver (retorno.php) y con la tarea programada.
+ */
+if ($es101) {
+    $centavos = (int) round($valor * 100);
+    $usuario  = (int) ($_SESSION['id_usuario'] ?? 0);
+    try {
+        $r101 = \erpsoftsas\PagoUnoCeroUno::crearIntento($con, $m, $id, $centavos, $intereses, $usuario);
+    } catch (Exception $e) {
+        error_log('[1cero1pay crearSesion] ' . $modulo . ' ' . $id . ': ' . $e->getMessage());
+        http_response_code(502);
+        die('No se pudo iniciar el pago en línea. Intente de nuevo en unos minutos.');
+    }
+    if (!$r101['ok']) {
+        if ($r101['motivo'] === 'limite') {
+            http_response_code(429);
+            die('Ya se iniciaron varios pagos de esta declaración en la última hora. Si ya pagó, espere la confirmación; '
+              . 'si no, intente de nuevo más tarde.');
+        }
+        if ($r101['motivo'] === 'numero') {
+            die('Esta declaración no se puede pagar por este medio. Puede pagar en el banco con el recibo de pago.');
+        }
+        // Ya pagada, sin presentar o con otro pago en curso: el resumen lo explica.
+        header('Location: ' . $resumen);
+        exit;
+    }
+
+    $factura = (string) $r101['intento']['pel_Referencia'];
+    try {
+        $tx101 = \erpsoftsas\UnoCeroUno::crearTransaccion([
+            'factura'    => $factura,
+            'referencia' => $referencia,
+            'centavos'   => $centavos,
+            'modulo'     => $modulo,
+            'idImpuesto' => (int) $r101['intento']['pel_IdImpuesto'],
+            'pagador'    => \erpsoftsas\PagoUnoCeroUno::pagador($con, $m, $id),
+        ]);
+    } catch (Exception $e) {
+        // Sin dirección de pago no hay cómo pagarlo: el intento se cierra y se
+        // puede reintentar. El detalle va al registro, no a la pantalla.
+        error_log('[1cero1pay crearSesion] ' . $factura . ': ' . $e->getMessage());
+        try { \erpsoftsas\PagoUnoCeroUno::marcarError($con, $factura, $e->getMessage()); } catch (Exception $e2) { /* ya quedó en el registro */ }
+        http_response_code(502);
+        die('No se pudo iniciar el pago en línea. Intente de nuevo en unos minutos.');
+    }
+    \erpsoftsas\PagoUnoCeroUno::marcarIniciado($con, $factura, $tx101['id']);
+
+    // Para el regreso sin enlace firmado (1cero1pay no recibe una URL de
+    // retorno por intento): la sesión que inició el pago puede verificarlo.
+    $_SESSION['pago101'] = ['modulo' => $modulo, 'id' => $id, 'ref' => $factura];
+
+    header('Location: ' . $tx101['url']);
+    exit;
+}
+
 if ($esWompi) {
     $centavos = (int) round($valor * 100);
     $usuario  = (int) ($_SESSION['id_usuario'] ?? 0);
     try {
-        $refWompi = \erpsoftsas\PagoWompi::crearIntento($con, $m, $id, $referencia, $centavos, $intereses, $usuario);
+        // Con 1cero1pay configurado, el intento se anota con el candado y solo
+        // si 1cero1pay no tiene un pago en curso (dos pestañas, una por pasarela).
+        $crearWompi = function () use ($con, $m, $id, $referencia, $centavos, $intereses, $usuario) {
+            return \erpsoftsas\PagoWompi::crearIntento($con, $m, $id, $referencia, $centavos, $intereses, $usuario);
+        };
+        $refWompi = $hay101 ? \erpsoftsas\PagoUnoCeroUno::siLibre($con, $m, $id, $crearWompi) : $crearWompi();
+        if ($refWompi === null) {
+            header('Location: ' . $resumen);
+            exit;
+        }
         $url = \erpsoftsas\Wompi::urlCheckout([
             'referencia'  => $refWompi,
             'centavos'    => $centavos,
@@ -241,8 +358,27 @@ try {
 // La sesion queda anotada ya PENDIENTE (PlacetoPay::anotarSesion): otra no se
 // crea hasta que esta se resuelva o venza. Si en el intervalo otra pestaña dejo
 // la suya, esta no se ofrece: al resumen, que muestra el pago en curso.
-if (!PlacetoPay::anotarSesion($con, $m, $id, $sesion['requestId'])) {
-    header('Location: pagar.php?modulo=' . urlencode($modulo) . '&id=' . $id);
+// Con 1cero1pay configurado (060), se anota con el candado de la declaración y
+// solo si 1cero1pay no tiene un pago en curso (dos pestañas, una por pasarela).
+$anotar = function () use ($con, $m, $id, $sesion) {
+    return PlacetoPay::anotarSesion($con, $m, $id, $sesion['requestId']);
+};
+// Si con 1cero1pay configurado no se puede comprobar (el candado tarda, la base
+// falla), el botón de siempre no termina en un error 500: al resumen, con el
+// aviso de intentar de nuevo (PagoUnoCeroUno::intentarSiLibre). La sesión que ya
+// se creó en el banco no se ofrece y vence sola, como en el caso de abajo.
+if ($hay101) {
+    $libre = \erpsoftsas\PagoUnoCeroUno::intentarSiLibre($con, $m, $id, $anotar);
+    if (!$libre['ok']) {
+        header('Location: ' . $resumen . '&aviso=reintente');
+        exit;
+    }
+    $anotada = $libre['valor'];
+} else {
+    $anotada = $anotar();
+}
+if (!$anotada) {
+    header('Location: ' . $resumen);
     exit;
 }
 

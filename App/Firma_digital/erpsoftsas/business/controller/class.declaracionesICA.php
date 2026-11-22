@@ -2451,6 +2451,9 @@ private function _consultarDeclaracionesListado(){
     // pasarela es la de la entidad (042): AvalPay en Paipa, Wompi en Macanal.
     $pagoEnLinea      = (int) \erpsoftsas\Pasarela::botonVisible($_SESSION['id_usuario'] ?? null);
     $pagoEnLineaTexto = \erpsoftsas\Pasarela::textoBoton();
+    // El segundo botón, «PSE · Bancolombia» (1cero1pay, 060): simultáneo con el
+    // de arriba, con su propia lista de quién lo ve. Apagado, no consulta nada.
+    $segundoBoton     = \erpsoftsas\Pasarela::segundoBoton($_SESSION['id_usuario'] ?? null);
 
     $data = [];
 
@@ -2464,6 +2467,8 @@ private function _consultarDeclaracionesListado(){
 
         $row['pago_en_linea'] = $pagoEnLinea;
         $row['pago_en_linea_texto'] = $pagoEnLineaTexto;
+        $row['pago_en_linea_2'] = $segundoBoton['visible'];
+        $row['pago_en_linea_2_texto'] = $segundoBoton['texto'];
 
         $data[] = $row;
     }

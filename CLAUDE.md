@@ -2600,3 +2600,75 @@ número: `php BD/aplicar_migraciones.php --aplicar 059`. Con los nombres largos 
 autorretención: se imprimen bien. Revisión independiente antes de publicar: sin errores que bloqueen; de ahí salió
 que un borrador con intereses ya escritos deja al contribuyente ponerlos en 0, y que `class.actividadEstablecimiento.php`
 (funciones 1, 2 y 4) sigue sin pedir permiso (hueco anterior, sin llamador en pantalla: pendiente).
+
+
+### 1cero1pay: segundo botón «PSE · Bancolombia» (2026-11-21, migración 060, LOCAL, sin commit ni despliegue)
+
+Pedido de Paipa: DOS botones de pago en línea a la vez, el de la pasarela de la entidad (AvalPay/PlacetoPay,
+«Pagar PSE») y «PSE · Bancolombia» por 1cero1pay (1Cero1; la misma del predial, `psepaipa/src/UnoCeroUno.php`), en
+ICA, retención y autorretención. Sin configurar no cambia nada en ningún municipio.
+
+- **Piezas**: `business/class.unocerouno.php` (configuración y servicio: `Login/authenticate` → token Bearer de
+  5 minutos, `transaction/InsertTransaction`, `GET transaction?CodigoEntidad=&Factura=&IDImpuesto=`) y
+  `business/class.pagoUnoCeroUno.php` (intentos en `ind_pagos_en_linea` con `pel_Pasarela = '1CERO1PAY'`). El
+  recorrido es el de siempre con `?pasarela=101` (`Pasarela::SEGUNDA`): `pagar.php`, `crearSesion.php`,
+  `retorno.php` y `cron_verificar_pagos.php`. Los listados mandan `pago_en_linea_2` y `pago_en_linea_2_texto`
+  (`Pasarela::segundoBoton`) y los pintan `core/declaraciones.ui.js` y `core/retenciones.js`. Mismos permisos
+  `*.pagar`, mismas reglas (presentada, sin pagar, valor > 0, intereses de mora del ICA vencido).
+- **Configuración** (Municipio y bancos, parámetros `UNOCEROUNO_*` de la 060; usuario y clave son sensibles):
+  `_ACTIVO`, `_USUARIO`, `_CLAVE`, `_CODIGO_ENTIDAD`, `_IDIMPUESTO_ICA` (2), `_IDIMPUESTO_RETEICA` (77),
+  `_IDIMPUESTO_AUTORRETEICA` (615), `_FUENTE_PAGO` (1), `_TIPO_IMPLEMENTACION` (7), `_CODIGO_SERVICIO` (2016006 en
+  Paipa; la API no lo pide), `_DOCUMENTOS_PRUEBA` (documentos de las CUENTAS que ven el botón; vacío = todos) y
+  `_BANCO` (el banco del pago; no es `PASARELA_BANCO`), más `_SECRETO_ENLACE` (interno). Usuario, clave y entidad admiten constantes de respaldo del
+  mismo nombre. La dirección del servicio no es parámetro de pantalla: producción, salvo la constante
+  `UNOCEROUNO_API_BASE` (solo pruebas). No hay ambiente de pruebas de 1cero1pay: un pago de prueba es real.
+- **Factura** (identificador único del pago, ≤18 cifras) = número de la declaración + módulo (1 ICA, 2 retención,
+  3 autorretención) + consecutivo de 3 cifras: una por intento, nunca se reutiliza. Referencia = número de la
+  declaración. El intento guarda el IDImpuesto con que se creó (`pel_IdImpuesto`) y se consulta con ese.
+- **Registro**: `PagoDeclaracion::registrar` con vía `1CERO1PAY` (`VIA_UNOCEROUNO`), banco «1cero1pay - <medio>» e
+  `idBanco` de `UNOCEROUNO_BANCO`. NO escribe las columnas `*_PSE_*` (son de la sesión de PlacetoPay). Solo si la
+  respuesta trae ESA factura, estado APROBADA y el valor EXACTO del intento; otro valor, sin valor, sin factura u
+  otra factura → `REVISAR` (no registra; frena otro pago en línea, no el pago manual). Aprobado sobre una ya
+  pagada → `DOBLE`. Todo con el candado de la declaración (`erp_pago_<módulo>_<id>`), idempotente.
+- **Un solo pago en curso por declaración, también entre pasarelas**: `PagoUnoCeroUno::crearIntento` mira la sesión
+  de PlacetoPay (PENDING/APPROVED) y los intentos de Wompi; `crearSesion.php` anota la sesión de PlacetoPay (o el
+  intento de Wompi) con `PagoUnoCeroUno::siLibre`. En trámite = PENDIENTE (sin límite) o CREADO/COMENZADA de menos
+  de 45 minutos (`MINUTOS_RECIENTE`); a los recientes se les pregunta a 1cero1pay y, si no contesta, cuentan.
+- **Sin URL de notificación**: confirman el retorno (enlace firmado, o la sesión que inició el pago:
+  `$_SESSION['pago101']`) y la tarea. La firma es un HMAC con `UNOCEROUNO_SECRETO_ENLACE`, un secreto aleatorio
+  propio de cada base (lo crea la 060; si falta, `UnoCeroUno::secretoEnlace` lo genera una vez, con escritura
+  condicional y relectura): NUNCA la clave de 1cero1pay, porque la firma viaja al navegador. Ese parámetro no se
+  lista ni se edita en Municipio y bancos.
+- **Nada frena para siempre** (revisión del 2026-11-22):
+  - Un estado que no está en el documento («NO AUTORIZADA»...) es `DESCONOCIDO`, no PENDIENTE: no se aplica, el
+    intento queda como estaba con el texto en `pel_Mensaje` y la tarea lo avisa con `ATENCIÓN`.
+  - La tarea mira abiertos y rechazados de 26 h. Un CREADO/COMENZADA se cierra `SIN_PAGO` pasadas 26 h si
+    1cero1pay CONTESTA sin un pago: sigue sin empezar, vacío, un objeto sin la factura (`{"Mensaje":"No existe"}`)
+    o un estado desconocido. Si no deja preguntar (sin conexión, 4xx, 5xx) no cierra nada. Un cerrado igual se
+    registra si «Verificar estado» lo encuentra APROBADA.
+  - Un PENDIENTE de verdad frena otro pago EN LÍNEA hasta que el banco conteste, pero deja de frenar el PAGO MANUAL
+    de la Alcaldía a las 48 h (`HORAS_PENDIENTE_FRENA_MANUAL`, `PagoUnoCeroUno::frenaPagoManual`); la tarea lo sigue
+    avisando. Si después se aprueba queda `DOBLE`.
+  - Un `REVISAR` cuya declaración aparece pagada por otra vía, sin otro intento aprobado, sigue `REVISAR` con nota
+    (lo normal es que la Alcaldía lo resolvió con pago manual): no es `DOBLE`.
+  - El botón de siempre no da 500 si no puede comprobar el candado: `PagoUnoCeroUno::intentarSiLibre` y vuelta al
+    resumen con `aviso=reintente`.
+  En Paipa conviene pasar la tarea a cada 15 minutos.
+- **Verificación**: `BD/verificar_municipio.php` dice el estado, los IDImpuesto y si 1cero1pay acepta las
+  credenciales (solo pide un token), sin imprimirlas.
+- **Pruebas**: `pruebas/probar_unocerouno.php` (214) con un 1cero1pay falso (`pruebas/stub_unocerouno.php`, que la
+  misma prueba arranca en 127.0.0.1:9101; solo corre con el servidor embebido de PHP). Mientras corre agrega
+  `UNOCEROUNO_API_BASE` al config DEL CONTENEDOR y lo quita; aparca las sesiones de PlacetoPay abiertas para que la
+  tarea no salga a Internet; deja la base como estaba. `pruebas/pago_segundo_boton.test.js` (25, los dos botones).
+- **Sin verificar contra el 1cero1pay real** (no hubo credenciales): los nombres exactos de los campos de las
+  respuestas (se leen sin importar mayúsculas), que la consulta devuelva `Factura` y `Total` (si no, todo aprobado
+  queda REVISAR), el formato de las fechas y a dónde devuelve al contribuyente.
+- **Dudas para 1Cero1**: IDImpuesto reales (entregaron 615 / 77 / 2; su anexo dice 2 = ICA y 3 = ReteICA);
+  TipoImplementacion (se asumió 7, como predial); para qué es el «Código Servicio» 2016006; si `Factura` admite 14
+  cifras y si se puede crear otra transacción con la misma (aquí nunca se repite); cuánto vale la dirección de pago
+  y si COMENZADA vence sola; a dónde vuelve el contribuyente (pedir `…/extensiones/pse/retorno.php?pasarela=101`);
+  qué campos del Pagador son obligatorios y qué TipoDocumento lleva un pasaporte (va como cédula); zona y formato
+  de `FechaTransaccion`/`FechaRespuestaBanco`.
+- **Al subir**: los archivos nuevos (`class.unocerouno.php`, `class.pagoUnoCeroUno.php`, la 060, las dos pruebas y
+  el simulador) en el MISMO commit que los modificados, agregados por ruta. Pasos de activación en
+  `extensiones/pse/DESPLIEGUE.md` §9.

@@ -694,6 +694,9 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
             'valorPago'   => isset($f[$this->c('ValorPago')]) ? (float) $f[$this->c('ValorPago')] : null,
             'pago_en_linea' => $this->_pagoEnLinea(),
             'pago_en_linea_texto' => \erpsoftsas\Pasarela::textoBoton(),
+            // El segundo botón, «PSE · Bancolombia» (1cero1pay, 060).
+            'pago_en_linea_2' => $this->_segundoBoton()['visible'],
+            'pago_en_linea_2_texto' => $this->_segundoBoton()['texto'],
             'total'       => isset($f[$colTotal]) ? (float) $f[$colTotal] : 0,
             'documento'   => isset($f['documento']) ? $f['documento'] : '',
             'razon'       => $razon,
@@ -714,6 +717,17 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
             $this->_pagoEnLineaCache = (int) \erpsoftsas\Pasarela::botonVisible($_SESSION['id_usuario'] ?? null);
         }
         return $this->_pagoEnLineaCache;
+    }
+
+    /** El segundo botón de pago (1cero1pay, 060); una vez por petición, como el primero. */
+    private $_segundoBotonCache = null;
+    protected function _segundoBoton()
+    {
+        if ($this->_segundoBotonCache === null) {
+            require_once __DIR__ . '/class.pasarela.php';
+            $this->_segundoBotonCache = \erpsoftsas\Pasarela::segundoBoton($_SESSION['id_usuario'] ?? null);
+        }
+        return $this->_segundoBotonCache;
     }
 
     /**

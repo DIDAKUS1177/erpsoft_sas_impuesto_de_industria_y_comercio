@@ -316,6 +316,16 @@ var DeclaracionesUI = (function () {
             botones += accBtn({ permiso: 'ica.pagar', tipo: 'danger', icono: 'fa-money', texto: textoPago, title: textoPago,
                                 href: '../extensiones/pse/pagar.php?modulo=ica&id=' + d.dec_Id, target: '_blank' });
         }
+        // Segundo botón, simultáneo con el de arriba: «PSE · Bancolombia» por
+        // 1cero1pay (migración 060). Mismas condiciones y mismo permiso; el
+        // servidor dice si este usuario lo ve (pago_en_linea_2) y va al mismo
+        // resumen con pasarela=101.
+        if (clave === 'presentada' && Number(d.pago_en_linea_2) === 1 && Number(d.dec_ValorConcepto20) > 0) {
+            var textoPago2 = d.pago_en_linea_2_texto || 'PSE · Bancolombia';
+            botones += accBtn({ permiso: 'ica.pagar', tipo: 'danger', icono: 'fa-university', texto: textoPago2,
+                                title: 'Pagar por PSE con Bancolombia',
+                                href: '../extensiones/pse/pagar.php?modulo=ica&id=' + d.dec_Id + '&pasarela=101', target: '_blank' });
+        }
 
         // Recibo de pago para el banco (extensiones/reciboPago.php): el mismo de
         // retención y autorretención. Solo presentada, sin pagar y con valor; el

@@ -76,3 +76,18 @@ if (!defined('DB_DEV_NAME'))   define('DB_DEV_NAME', 'bd_dev');
 if (!defined('PLACETOPAY_LOGIN'))      define('PLACETOPAY_LOGIN', 'login_placetopay');
 if (!defined('PLACETOPAY_SECRETKEY'))  define('PLACETOPAY_SECRETKEY', 'secretkey_placetopay');
 if (!defined('PLACETOPAY_BASEURL'))    define('PLACETOPAY_BASEURL', 'https://checkout.test.avalpaycenter.com/api');
+
+// 5. 1cero1pay, el segundo botón de pago «PSE · Bancolombia» (migración 060).
+// Se configura en la PANTALLA (Parámetros ICA > Municipio y bancos: los
+// parámetros UNOCEROUNO_*), no aquí. Estas tres constantes son solo el
+// respaldo del usuario, la clave y el código de entidad, como las de
+// PlacetoPay: la tabla manda. No escriba credenciales reales en un archivo
+// versionado (el repositorio es público).
+// if (!defined('UNOCEROUNO_USUARIO'))        define('UNOCEROUNO_USUARIO', 'usuario_1cero1pay');
+// if (!defined('UNOCEROUNO_CLAVE'))          define('UNOCEROUNO_CLAVE', 'clave_1cero1pay');
+// if (!defined('UNOCEROUNO_CODIGO_ENTIDAD')) define('UNOCEROUNO_CODIGO_ENTIDAD', '0000');
+//
+// UNOCEROUNO_API_BASE cambia la dirección del servicio de 1cero1pay. SOLO para
+// pruebas locales con el simulador (pruebas/stub_unocerouno.php): en un
+// servidor real NO se define; sin ella se usa https://www.1cero1pay.com/ApiPayment/api.
+// if (!defined('UNOCEROUNO_API_BASE'))       define('UNOCEROUNO_API_BASE', 'http://127.0.0.1:9101/api');

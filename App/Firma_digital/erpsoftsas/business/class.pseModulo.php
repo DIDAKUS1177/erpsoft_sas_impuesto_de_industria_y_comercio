@@ -93,7 +93,7 @@ class PseModulo
      * criterio que los PDF (pdfret_filaAutorizada): la Alcaldía, cualquiera; el
      * contribuyente, solo las suyas. Y el mismo del botón (botonVisible).
      */
-    public static function motivoParaNoPagar($con, array $m, $id)
+    public static function motivoParaNoPagar($con, array $m, $id, $pasarela = null)
     {
         if (session_status() === PHP_SESSION_NONE) { @session_start(); }
 
@@ -102,7 +102,16 @@ class PseModulo
             return 'Inicie sesión para pagar en línea.';
         }
         require_once __DIR__ . '/class.pasarela.php';
-        if (!Pasarela::botonVisible($usuario)) {
+        // $pasarela = '101': el botón «PSE · Bancolombia» (1cero1pay, migración
+        // 060), que tiene su propia lista de quién lo ve. Sin él, la pasarela
+        // de la entidad, como siempre.
+        if ($pasarela === Pasarela::SEGUNDA) {
+            require_once __DIR__ . '/class.unocerouno.php';
+            $visible = UnoCeroUno::botonVisible($usuario);
+        } else {
+            $visible = Pasarela::botonVisible($usuario);
+        }
+        if (!$visible) {
             return 'El pago en línea todavía no está disponible. Puede pagar en el banco con el recibo de pago.';
         }
         // "Recibo de pago y PSE" del modulo; por cualquier contribuyente, quien

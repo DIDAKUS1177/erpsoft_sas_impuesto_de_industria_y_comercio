@@ -355,6 +355,11 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
 
             $f['par_Sensible'] = (int) !empty($f['par_Sensible']);
 
+            // El secreto de los enlaces de 1cero1pay (060) es interno: lo genera
+            // el sistema, no es una credencial que alguien deba escribir. No se
+            // lista (ni siquiera como "configurada") ni se edita.
+            if ($f['par_Clave'] === 'UNOCEROUNO_SECRETO_ENLACE') { continue; }
+
             // Los tres del contacto del municipio (054) no van en esta tabla:
             // la pantalla los pinta aparte, en "Contacto del municipio", y se
             // guardan por la función 12 sin la contraseña.
@@ -377,8 +382,9 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
                 $f['par_Puesto'] = (int) (trim((string) $f['par_Valor']) !== '');
             }
 
-            // El banco de la pasarela se elige de la lista de bancos (045).
-            if ($f['par_Clave'] === 'PASARELA_BANCO') {
+            // El banco de la pasarela se elige de la lista de bancos (045); el
+            // de 1cero1pay (060), también.
+            if (in_array($f['par_Clave'], ['PASARELA_BANCO', 'UNOCEROUNO_BANCO'], true)) {
                 require_once SERVER . '/business/class.bancosPago.php';
                 $f['par_Opciones'] = array_map(function ($b) {
                     return ['valor' => (string) $b['id'], 'texto' => $b['nombre'] . ($b['cuenta'] !== '' ? ' (cuenta ' . $b['cuenta'] . ')' : '')];
@@ -423,6 +429,12 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
         }
 
         $sensible = !empty($par['par_Sensible']);
+
+        // El secreto interno de los enlaces de 1cero1pay no se edita desde aquí.
+        if ($par['par_Clave'] === 'UNOCEROUNO_SECRETO_ENLACE') {
+            $this->_mensaje = 'Ese parámetro es interno y no se edita.';
+            return [];
+        }
 
         /*
          * DEJAR UN SECRETO EN BLANCO NO LO BORRA.
@@ -520,6 +532,17 @@ class ControladorConfiguracion extends \erpsoftsas\Cabecera
             require_once SERVER . '/business/class.bancosPago.php';
             $bancoPasarela = \erpsoftsas\BancosPago::activo($con, (int) $valor);
             if (!$bancoPasarela) {
+                $this->_mensaje = 'Elija un banco activo de la lista.';
+                return [];
+            }
+        }
+
+        // El banco de 1cero1pay (060) también tiene que ser uno activo del
+        // catálogo. No completa pagos anteriores: eso es del banco de la
+        // pasarela de la entidad.
+        if ($par['par_Clave'] === 'UNOCEROUNO_BANCO' && $valor !== '') {
+            require_once SERVER . '/business/class.bancosPago.php';
+            if (!\erpsoftsas\BancosPago::activo($con, (int) $valor)) {
                 $this->_mensaje = 'Elija un banco activo de la lista.';
                 return [];
             }

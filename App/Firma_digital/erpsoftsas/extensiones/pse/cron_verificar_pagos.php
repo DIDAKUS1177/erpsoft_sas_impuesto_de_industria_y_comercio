@@ -115,4 +115,22 @@ if (\erpsoftsas\Pasarela::esWompi()) {
     }
 }
 
+/*
+ * 1CERO1PAY (060), «PSE · Bancolombia»: la segunda pasarela, donde tenga
+ * credenciales (aunque el botón esté apagado: un intento ya creado se sigue
+ * mirando). No tiene URL de notificación, así que esta tarea y el regreso del
+ * contribuyente son lo único que confirma sus pagos. Un fallo aquí no afecta lo
+ * de arriba.
+ */
+try {
+    if (\erpsoftsas\Pasarela::hayUnoCeroUno()) {
+        require_once __DIR__ . '/../../business/class.pagoUnoCeroUno.php';
+        $r = \erpsoftsas\PagoUnoCeroUno::revisarAbiertos($con, function ($linea) { echo "[1cero1pay] $linea\n"; });
+        $revisadas    += $r['revisados'];
+        $actualizadas += $r['pagados'];
+    }
+} catch (\Throwable $e) {
+    echo "[1cero1pay] no se pudo revisar - " . $e->getMessage() . "\n";
+}
+
 echo "Revisadas: $revisadas, actualizadas a pagada: $actualizadas.\n";

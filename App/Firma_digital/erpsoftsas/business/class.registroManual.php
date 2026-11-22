@@ -279,7 +279,7 @@ class RegistroManual
                     ? 'Esa declaración ya figura como pagada.'
                     : 'La declaración ya no está presentada y sin pagar. Recargue la lista y revise su estado.');
             }
-            $tramite = self::_pagoEnLinea($con, $m, $id, $fila);
+            $tramite = self::_pagoEnLinea($con, $m, $id, $fila, true);
             if ($tramite !== null) {
                 $con->rollback();
                 self::_borrar($guardados);
@@ -794,9 +794,22 @@ class RegistroManual
      * ¿Hay un pago en línea en trámite? Registrar uno manual encima dejaría la
      * declaración con dos pagos cuando el banco confirme el suyo.
      */
-    private static function _pagoEnLinea($con, array $m, $id, array $fila)
+    private static function _pagoEnLinea($con, array $m, $id, array $fila, $bajoCandado = false)
     {
         require_once __DIR__ . '/class.pasarela.php';
+        // 1cero1pay (060), la segunda pasarela: un intento que todavía puede
+        // terminar en pago. Uno aprobado EN REVISIÓN no frena (el pago manual es
+        // justamente como la Alcaldía lo resuelve), y un PENDIENTE deja de frenar
+        // pasadas PagoUnoCeroUno::HORAS_PENDIENTE_FRENA_MANUAL: nada de 1cero1pay
+        // deja a la Alcaldía sin poder registrar un pago para siempre.
+        if (Pasarela::hayUnoCeroUno()) {
+            require_once __DIR__ . '/class.pagoUnoCeroUno.php';
+            // Con el candado ya tomado no se le pregunta a 1cero1pay (aplicar su
+            // respuesta abriría otra transacción): basta lo que hay en la base.
+            if (PagoUnoCeroUno::frenaPagoManual($con, $m['clave'], $id, !$bajoCandado)) {
+                return 'Hay un pago en línea de esta declaración por PSE · Bancolombia que todavía no tiene respuesta. Verifique su estado antes de registrar un pago manual.';
+            }
+        }
         if (Pasarela::esWompi()) {
             require_once __DIR__ . '/class.pagoWompi.php';
             if (PagoWompi::enTramite($con, $m['clave'], $id) !== null) {

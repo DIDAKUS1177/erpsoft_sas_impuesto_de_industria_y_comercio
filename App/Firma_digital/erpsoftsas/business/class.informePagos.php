@@ -25,6 +25,7 @@ class InformePagos
     const CANALES = [
         'PSE'              => 'PSE',
         'WOMPI'            => 'Wompi',
+        '1CERO1PAY'        => 'PSE Bancolombia',
         'RECAUDO_BANCARIO' => 'Recaudo',
         'MANUAL'           => 'Manual',
     ];

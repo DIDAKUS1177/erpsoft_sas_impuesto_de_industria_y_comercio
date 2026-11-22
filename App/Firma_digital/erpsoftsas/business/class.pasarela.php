@@ -19,6 +19,50 @@ class Pasarela
     const PLACETOPAY = 'PLACETOPAY';
     const WOMPI      = 'WOMPI';
 
+    /**
+     * La SEGUNDA pasarela, simultánea con la de la entidad (migración 060):
+     * 1cero1pay, el botón «PSE · Bancolombia». Es el valor de ?pasarela= en
+     * extensiones/pse/ (pagar.php, crearSesion.php, retorno.php); sin él, todo
+     * va por la pasarela de la entidad. Vive en class.unocerouno.php y
+     * class.pagoUnoCeroUno.php, que solo se cargan si se usa.
+     */
+    const SEGUNDA = '101';
+
+    /** ¿Pide la petición la segunda pasarela? ('101' o nada; cualquier otro valor es la de la entidad). */
+    public static function pedida($valor)
+    {
+        return trim((string) $valor) === self::SEGUNDA ? self::SEGUNDA : null;
+    }
+
+    /**
+     * Lo que los listados necesitan del segundo botón: si este usuario lo ve y
+     * su texto. Sin 1cero1pay activo no carga ni consulta nada más.
+     *
+     * @return array ['visible' => 0|1, 'texto' => string]
+     */
+    public static function segundoBoton($idUsuario = null)
+    {
+        if (Parametros::valor('UNOCEROUNO_ACTIVO') !== '1') {
+            return ['visible' => 0, 'texto' => ''];
+        }
+        require_once __DIR__ . '/class.unocerouno.php';
+        return ['visible' => (int) UnoCeroUno::botonVisible($idUsuario), 'texto' => UnoCeroUno::textoBoton()];
+    }
+
+    /**
+     * ¿Hay credenciales de 1cero1pay? Aunque el botón esté apagado, los
+     * intentos ya creados se siguen consultando y siguen frenando otro pago.
+     * Sin usuario de 1cero1pay (cualquier municipio que no lo use) no carga nada.
+     */
+    public static function hayUnoCeroUno()
+    {
+        if (Parametros::valor('UNOCEROUNO_USUARIO') === null && !defined('UNOCEROUNO_USUARIO')) {
+            return false;
+        }
+        require_once __DIR__ . '/class.unocerouno.php';
+        return UnoCeroUno::configurado();
+    }
+
     public static function proveedor()
     {
         return strtoupper((string) Parametros::valor('PASARELA_PROVEEDOR')) === self::WOMPI

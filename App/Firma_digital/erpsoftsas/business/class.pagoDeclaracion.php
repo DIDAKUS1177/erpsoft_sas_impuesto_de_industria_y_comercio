@@ -63,6 +63,12 @@ class PagoDeclaracion
      * detalle (medio, referencia, quién) va en ind_pagos_manuales.
      */
     const VIA_MANUAL = 'MANUAL';
+    /**
+     * 1cero1pay, el botón «PSE · Bancolombia» (migración 060): la segunda
+     * pasarela, simultánea con la de la entidad. El banco del pago es el de
+     * UNOCEROUNO_BANCO (class.pagoUnoCeroUno.php), no el de PASARELA_BANCO.
+     */
+    const VIA_UNOCEROUNO = '1CERO1PAY';
 
     /**
      * dec_BancoPago es VARCHAR(60) en la base.
@@ -100,7 +106,7 @@ class PagoDeclaracion
         $p  = $m['prefijo'];  // de PseModulo, nunca del usuario: seguro interpolarlos
         $pk = $m['pk'];
 
-        $via = in_array($datos['via'] ?? '', [self::VIA_PSE, self::VIA_RECAUDO, self::VIA_WOMPI, self::VIA_WOMPI_PRUEBA, self::VIA_MANUAL], true)
+        $via = in_array($datos['via'] ?? '', [self::VIA_PSE, self::VIA_RECAUDO, self::VIA_WOMPI, self::VIA_WOMPI_PRUEBA, self::VIA_MANUAL, self::VIA_UNOCEROUNO], true)
             ? $datos['via']
             : self::VIA_RECAUDO;
 

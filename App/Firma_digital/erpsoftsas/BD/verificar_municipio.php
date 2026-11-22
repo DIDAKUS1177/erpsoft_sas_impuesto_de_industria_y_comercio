@@ -827,6 +827,63 @@ vm_seguro('los parametros', function () {
         vm_linea('INFO', 'Pago en linea: no se pudo evaluar (' . vm_mensaje_error($e) . ').');
     }
 
+    // --- Segunda pasarela: 1cero1pay, el boton "PSE - Bancolombia" (migracion 060). Nunca se imprimen
+    //     el usuario ni la clave: solo si estan puestos. La unica llamada al servicio pide un token
+    //     (no crea ni consulta ninguna transaccion), y solo si esta configurado.
+    try {
+        $hay101 = isset($P['UNOCEROUNO_ACTIVO']) || defined('UNOCEROUNO_USUARIO');
+        if (!$hay101) {
+            vm_linea('INFO', 'PSE - Bancolombia (1cero1pay): sin la migracion 060; no existe en este municipio.');
+        } else {
+            require_once $ctx['raiz'] . '/business/class.unocerouno.php';
+            $U = '\erpsoftsas\UnoCeroUno';
+            $falta = [];
+            if ($U::usuario() === null)       { $falta[] = 'usuario'; }
+            if ($U::clave() === null)         { $falta[] = 'clave'; }
+            if ($U::codigoEntidad() === null) { $falta[] = 'codigo de entidad'; }
+            $encendido = $valor('UNOCEROUNO_ACTIVO') === '1';
+            $docs      = $U::documentosPrueba();
+            $datos = 'entidad ' . ($U::codigoEntidad() === null ? 'FALTA' : vm_ascii($U::codigoEntidad()))
+                   . ', IDImpuesto ICA ' . $U::idImpuesto('ica') . ' / retencion ' . $U::idImpuesto('reteica')
+                   . ' / autorretencion ' . $U::idImpuesto('autorreteica')
+                   . ', fuente de pago ' . $U::fuentePago() . ', tipo de implementacion ' . $U::tipoImplementacion()
+                   . ', codigo de servicio ' . ($U::codigoServicio() === null ? '(vacio)' : vm_ascii($U::codigoServicio()))
+                   . ', usuario ' . ($U::usuario() === null ? 'FALTA' : 'puesto') . ', clave ' . ($U::clave() === null ? 'FALTA' : 'puesta');
+            if (!$encendido && count($falta) === 3) {
+                vm_linea('INFO', 'PSE - Bancolombia (1cero1pay): apagado y sin credenciales; no se ofrece ni cambia nada.');
+            } elseif ($falta) {
+                vm_linea($encendido ? 'AVISO' : 'INFO', 'PSE - Bancolombia (1cero1pay): ' . ($encendido ? 'ACTIVO pero ' : 'apagado; ')
+                    . 'falta ' . implode(', ', $falta) . ': el boton no se ofrece. ' . $datos . '.');
+            } elseif (!$U::hayTabla()) {
+                vm_linea('AVISO', 'PSE - Bancolombia (1cero1pay): hay credenciales pero falta la tabla de intentos (migracion 060): el boton no se ofrece.');
+            } else {
+                $para = !$encendido ? 'apagado (los pagos ya iniciados se siguen confirmando)'
+                      : ($docs ? 'ACTIVO en modo prueba: solo lo ven ' . count($docs) . ' documento(s) de UNOCEROUNO_DOCUMENTOS_PRUEBA'
+                               : 'ACTIVO y abierto a todos los contribuyentes');
+                vm_linea('INFO', 'PSE - Bancolombia (1cero1pay): ' . $para . '. ' . $datos . '. Confirme con 1Cero1 los IDImpuesto.');
+                if ($U::apiBase() !== $U::API_PRODUCCION) {
+                    vm_linea('AVISO', 'PSE - Bancolombia (1cero1pay): el config define UNOCEROUNO_API_BASE (' . vm_ascii((string) parse_url($U::apiBase(), PHP_URL_HOST))
+                        . '): los pagos NO van al servicio real de 1cero1pay. Esa constante es solo para pruebas locales.');
+                }
+                if ($U::idBanco($ctx['con']) === null) {
+                    vm_linea($encendido ? 'AVISO' : 'INFO', 'PSE - Bancolombia (1cero1pay): UNOCEROUNO_BANCO sin elegir; sus pagos quedarian sin banco en los informes.');
+                }
+                $pr = $U::probarCredenciales();
+                vm_linea($pr['ok'] ? 'OK' : 'AVISO', 'PSE - Bancolombia (1cero1pay): ' . ($pr['ok']
+                    ? '1cero1pay acepta el usuario y la clave (entrego el token; no se creo ni consulto nada).'
+                    : 'no se pudo autenticar con 1cero1pay (' . vm_ascii($pr['detalle']) . '). Sin eso ningun pago se puede iniciar ni confirmar.'));
+                $ab = vm_fila("SELECT SUM(CASE WHEN pel_Estado IN ('CREADO', 'COMENZADA', 'PENDIENTE') THEN 1 ELSE 0 END) AS abiertos,
+                                      SUM(CASE WHEN pel_Estado IN ('REVISAR', 'DOBLE') THEN 1 ELSE 0 END) AS revisar,
+                                      SUM(CASE WHEN pel_Estado = 'APROBADA' THEN 1 ELSE 0 END) AS aprobados
+                                 FROM ind_pagos_en_linea WHERE pel_Pasarela = '1CERO1PAY'");
+                vm_linea(((int) ($ab['revisar'] ?? 0)) > 0 ? 'AVISO' : 'INFO', 'PSE - Bancolombia (1cero1pay): intentos aprobados ' . (int) ($ab['aprobados'] ?? 0)
+                    . ', en tramite ' . (int) ($ab['abiertos'] ?? 0) . ', para revisar a mano (REVISAR o DOBLE) ' . (int) ($ab['revisar'] ?? 0) . '.');
+            }
+        }
+    } catch (\Throwable $e) {
+        vm_linea('INFO', 'PSE - Bancolombia (1cero1pay): no se pudo evaluar (' . vm_mensaje_error($e) . ').');
+    }
+
     // --- Cualquier otro parametro que mencione a Paipa (los secretos no se miran)
     if (!$esPaipa) {
         $mencionan = [];
