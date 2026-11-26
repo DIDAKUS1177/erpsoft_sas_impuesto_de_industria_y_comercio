@@ -1665,6 +1665,18 @@ private function _actualizarDeclaracionIca(){
         return [];
     }
 
+    /*
+     * Casilla 36, DESCUENTO POR PRONTO PAGO (dec_ValorConcepto15): misma regla
+     * (pedido de Juan, 2026-11-25). Solo la escribe la Alcaldia; el
+     * contribuyente no puede descontarse por su cuenta. El 0 se deja pasar.
+     */
+    if ($n === 15 && !\erpsoftsas\PermisosRol::esAlcaldia()
+        && (float) preg_replace('/[^0-9.\-]/', '', (string) $valorLimpio) != 0.0) {
+        $this->_ok = 0;
+        $this->_mensaje = 'El descuento por pronto pago lo aplica la Alcaldía.';
+        return [];
+    }
+
     if(!$idDeclaracion){
         $this->_ok = 0;
         $this->_mensaje = "Id de declaración requerido";
@@ -1952,6 +1964,8 @@ private function _presentarDeclaracion(){
             return [];
         }
         $numero = NumeroDeclaracion::asignar($con, 'ica', $idDeclaracion);
+        // Quien la presento (061): el contribuyente o el funcionario que lo gestiona.
+        \erpsoftsas\PseModulo::anotarQuienPresenta($con, 'ica', $idDeclaracion, (int) ($_SESSION['id_usuario'] ?? 0));
         $con->commit();
     } catch (\Throwable $e) {
         try { $con->rollback(); } catch (\Throwable $e2) { /* ya cerrada */ }

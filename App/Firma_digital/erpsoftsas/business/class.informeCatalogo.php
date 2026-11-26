@@ -145,6 +145,10 @@ class InformeCatalogo
         'borrador'  => 'Borrador',
     ];
 
+    /** Activo o inactivo: inactivo es el que tiene cese de actividades registrado en el RIT. */
+    const ESTADOS_CONTRIBUYENTE = ['activo' => 'Activo', 'inactivo' => 'Inactivo'];
+    const SQL_ESTADO_CONTRIBUYENTE = "CASE WHEN c.ind_FechaCese IS NOT NULL THEN 'inactivo' ELSE 'activo' END";
+
     /** Los estados que cuentan como "presentada" (lo que se trae si no se filtra por estado). */
     const ESTADOS_PRESENTADA = ['pagada', 'sinpagar', 'corregida', 'sinvalor'];
 
@@ -438,6 +442,11 @@ class InformeCatalogo
             // Quien registró el pago manual (un usuario por pago: el join no multiplica filas).
             $joins['fu'] = ['sql' => 'LEFT JOIN conf_usuarios fu ON fu.usu_Id = pm.pma_IdUsuario', 'dep' => ['pm']];
         }
+        // Quien presentó la declaración (061): una cuenta por declaración, el join no multiplica.
+        $conPresenta = $hay("C:$t.{$p}_IdUsuarioPresenta");
+        if ($conPresenta) {
+            $joins['up'] = ['sql' => "LEFT JOIN conf_usuarios up ON up.usu_Id = d.{$p}_IdUsuarioPresenta", 'dep' => []];
+        }
         $conAct = false;
         if ($esIca && $hay('T:ind_declaraciones_ica_actividades')) {
             $conAct = true;
@@ -478,6 +487,13 @@ class InformeCatalogo
              ['joins' => ['c', 'ci'], 'ancho' => 22, 'alinea' => 'L']);
         $col('departamento', 'Departamento del contribuyente', 'contribuyente', 'texto', 'ci.ciu_Departamento',
              ['joins' => ['c', 'ci'], 'ancho' => 22, 'alinea' => 'L']);
+        $conCese = $hay('C:ind_contribuyentes.ind_FechaCese');
+        if ($conCese) {
+            // Paipa, 2026-11-25: saber cuáles son los inactivos y cuáles los activos.
+            $col('estadoContribuyente', 'Estado del contribuyente', 'contribuyente', 'lista', self::SQL_ESTADO_CONTRIBUYENTE,
+                 ['joins' => ['c'], 'opciones' => self::ESTADOS_CONTRIBUYENTE, 'ancho' => 14, 'alinea' => 'C',
+                  'ayuda' => 'Inactivo es el contribuyente con cese de actividades registrado en el RIT.']);
+        }
 
         /* Declaración */
         $col('numero', 'N° declaración', 'declaracion', 'codigo',
@@ -609,6 +625,12 @@ class InformeCatalogo
             $col('canal', 'Medio de pago', 'pago', 'lista', $canal,
                  ['joins' => $joinPm, 'opciones' => self::_opcionesCanal(), 'ancho' => 16, 'alinea' => 'L']);
         }
+        if ($conPresenta) {
+            $col('presentadaPor', 'Presentada por', 'declaracion', 'texto',
+                 "COALESCE(NULLIF(LTRIM(RTRIM(ISNULL(up.usu_Nombres, '') + ' ' + ISNULL(up.usu_Apellidos, ''))), ''), up.usu_Usuario)",
+                 ['joins' => ['up'], 'ancho' => 24, 'alinea' => 'L',
+                  'ayuda' => 'La cuenta que presentó la declaración: el contribuyente, o el funcionario de la Alcaldía que la presentó o la registró por él. Va vacío en las presentadas antes de que se empezara a anotar (noviembre de 2026).']);
+        }
         if ($conPm) {
             $col('funcionario', 'Funcionario', 'pago', 'texto',
                  "CASE WHEN $pagada = 1 THEN NULLIF(LTRIM(RTRIM(ISNULL(fu.usu_Nombres, '') + ' ' + ISNULL(fu.usu_Apellidos, ''))), '') END",
@@ -676,6 +698,11 @@ class InformeCatalogo
         $fil('tipoPersona', 'Tipo de persona', 'contribuyente', 'lista', ['in'], 'c.ind_Persona',
              ['joins' => ['c'], 'opciones' => self::TIPOS_PERSONA, 'valor' => 'entero']);
         $fil('municipio', 'Municipio del contribuyente', 'contribuyente', 'texto', ['contiene'], 'ci.ciu_Nombre', ['joins' => ['c', 'ci']]);
+        if ($conCese) {
+            $fil('estadoContribuyente', 'Estado del contribuyente', 'contribuyente', 'lista', ['in'], self::SQL_ESTADO_CONTRIBUYENTE,
+                 ['joins' => ['c'], 'opciones' => self::ESTADOS_CONTRIBUYENTE,
+                  'ayuda' => 'Inactivo es el contribuyente con cese de actividades registrado en el RIT.']);
+        }
 
         return [
             'clave' => $clave, 'etiqueta' => self::ETIQUETA_FUENTE[$clave], 'modo' => 'declaracion', 'impuesto' => $clave,
@@ -740,6 +767,12 @@ class InformeCatalogo
         $col('municipio', 'Municipio del contribuyente', 'contribuyente', 'texto', 'ci.ciu_Nombre', ['joins' => ['ci'], 'ancho' => 22, 'alinea' => 'L']);
         $col('departamento', 'Departamento del contribuyente', 'contribuyente', 'texto', 'ci.ciu_Departamento', ['joins' => ['ci'], 'ancho' => 22, 'alinea' => 'L']);
         $col('fechaInscripcion', 'Fecha de inscripción', 'contribuyente', 'fecha', 'CAST(c.ind_FechaCreacion AS DATE)', ['ancho' => 14, 'alinea' => 'C']);
+        if ($existe('ind_FechaCese')) {
+            // Paipa, 2026-11-25: descargar los inactivos y los activos.
+            $col('estadoContribuyente', 'Estado (activo o inactivo)', 'contribuyente', 'lista', self::SQL_ESTADO_CONTRIBUYENTE,
+                 ['opciones' => self::ESTADOS_CONTRIBUYENTE, 'ancho' => 14, 'alinea' => 'C',
+                  'ayuda' => 'Inactivo es el contribuyente con cese de actividades registrado en el RIT.']);
+        }
 
         if ($existe('ind_Matricula')) {
             $col('matricula', 'Matrícula mercantil', 'rit', 'codigo', 'c.ind_Matricula', ['ancho' => 18, 'alinea' => 'L']);
@@ -812,6 +845,11 @@ class InformeCatalogo
              ['opciones' => self::TIPOS_DOCUMENTO, 'valor' => 'entero']);
         $fil('municipio', 'Municipio del contribuyente', 'contribuyente', 'texto', ['contiene'], 'ci.ciu_Nombre', ['joins' => ['ci']]);
         $fil('fechaInscripcion', 'Fecha de inscripción', 'contribuyente', 'fecha', ['between', '>=', '<='], 'CAST(c.ind_FechaCreacion AS DATE)');
+        if ($existe('ind_FechaCese')) {
+            $fil('estadoContribuyente', 'Estado (activo o inactivo)', 'contribuyente', 'lista', ['in'], self::SQL_ESTADO_CONTRIBUYENTE,
+                 ['opciones' => self::ESTADOS_CONTRIBUYENTE,
+                  'ayuda' => 'Inactivo es el contribuyente con cese de actividades registrado en el RIT.']);
+        }
         if ($existe('ind_RegimenTributario')) {
             // Un contribuyente puede tener varios regímenes marcados: basta con que tenga alguno de los pedidos.
             $fil('regimen', 'Régimen tributario', 'rit', 'lista', ['in'], 'c.ind_RegimenTributario',

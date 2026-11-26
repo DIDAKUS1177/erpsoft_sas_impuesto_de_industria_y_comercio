@@ -1632,4 +1632,12 @@ $(function () {
         var valor = parseFloat(String($(this).val()).replace(/[^0-9]/g, '')) || 0;
         $(this).prop('readonly', valor === 0).toggleClass('campo-bloqueado', valor === 0);
     });
+
+    // Casilla 36, DESCUENTO POR PRONTO PAGO (Juan, 2026-11-25): la misma regla.
+    $('[data-campo="descuento_pronto_pago"]').prop('readonly', true).addClass('campo-bloqueado')
+        .attr('title', 'El descuento por pronto pago lo aplica la Alcaldía.');
+    $(document).on('focusin', '[data-campo="descuento_pronto_pago"]', function () {
+        var valor = parseFloat(String($(this).val()).replace(/[^0-9]/g, '')) || 0;
+        $(this).prop('readonly', valor === 0).toggleClass('campo-bloqueado', valor === 0);
+    });
 });

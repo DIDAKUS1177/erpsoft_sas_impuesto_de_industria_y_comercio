@@ -1063,10 +1063,12 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
             $this->_ok = 0;
             $this->_mensaje = $e->getMessage() === 'VALOR_ACTIVIDAD'
                 ? 'El valor de una actividad no es válido: escriba pesos enteros, sin negativos. No quedó ningún cambio.'
+                : ($e->getMessage() === 'ACTIVIDAD_FUERA_DEL_RIT'
+                ? 'Una de las actividades no está en su RIT. Actualice el RIT o pida a la Alcaldía que la registre. No quedó ningún cambio.'
                 : ($e->getMessage() === 'AVISOS_VALOR'
                 ? 'El valor de avisos y tableros no es válido: escriba pesos enteros, sin negativos. No quedó ningún cambio.'
                 : 'No se pudo guardar la declaración: no quedó ningún cambio. '
-                  . 'Revise las cifras e intente de nuevo; si persiste, avise a la Alcaldía.');
+                  . 'Revise las cifras e intente de nuevo; si persiste, avise a la Alcaldía.'));
             return [];
         }
 
@@ -1359,6 +1361,11 @@ abstract class ControladorRetencion extends \erpsoftsas\Cabecera
 
             // El consecutivo se asigna aqui, en la misma transaccion (2026-10-23).
             $numero = NumeroDeclaracion::asignar($con, $this->_claveModulo(), $id);
+
+            // Quien la presento (061): el contribuyente o el funcionario que lo gestiona.
+            \erpsoftsas\PseModulo::anotarQuienPresenta(
+                $con, $this->_claveModulo(), $id, (int) ($_SESSION['id_usuario'] ?? 0)
+            );
 
             $con->commit();
 

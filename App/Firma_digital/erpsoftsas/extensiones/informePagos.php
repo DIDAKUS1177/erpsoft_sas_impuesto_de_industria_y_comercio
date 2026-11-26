@@ -185,6 +185,12 @@ $base = 'Declaraciones_' . $nombres[$estado] . '_' . preg_replace('/[^A-Za-z]/',
 
 /* ==== EXCEL ======================================================================== */
 if ($formato === 'xlsx') {
+    // Solo en el Excel (Paipa, 2026-11-25): si el contribuyente está activo o
+    // inactivo, quién presentó la declaración y quién registró el pago manual.
+    // En el PDF no caben: la hoja ya va al ancho completo.
+    $columnas[] = ['Estado del contribuyente', 0, 16, 'C', 'estadoContribuyente'];
+    $columnas[] = ['Presentada por',      0, 28, 'L', 'presento'];
+    $columnas[] = ['Pago registrado por', 0, 28, 'L', 'registro'];
     $x = new \erpsoftsas\XlsxSimple('Declaraciones', $color);
     $x->anchos(array_column($columnas, 2));
     $ultimaCol = \erpsoftsas\XlsxSimple::columna(count($columnas));
@@ -210,7 +216,7 @@ if ($formato === 'xlsx') {
             } elseif ($campo === 'anio') {
                 $x->numero($n, $i + 1, $f[$campo], \erpsoftsas\XlsxSimple::CENTRADO);
             } else {
-                $x->texto($n, $i + 1, $f[$campo], in_array($campo, ['numero', 'estado', 'cuentaContable'], true) ? \erpsoftsas\XlsxSimple::CENTRADO : \erpsoftsas\XlsxSimple::TEXTO);
+                $x->texto($n, $i + 1, $f[$campo], in_array($campo, ['numero', 'estado', 'cuentaContable', 'estadoContribuyente'], true) ? \erpsoftsas\XlsxSimple::CENTRADO : \erpsoftsas\XlsxSimple::TEXTO);
             }
         }
     }

@@ -182,6 +182,8 @@ class RegistroManual
             // Queda presentada: le toca su consecutivo (2026-10-23; el borrador
             // traía uno provisional). Misma transacción.
             $numero = NumeroDeclaracion::asignar($con, $m['clave'], $id);
+            // Quien la presento (061): el funcionario que la registra.
+            PseModulo::anotarQuienPresenta($con, $m['clave'], $id, $idUsuario);
 
             $idSop = self::_insertarSoportes($con, $m, $id, $guardados, $idUsuario);
 

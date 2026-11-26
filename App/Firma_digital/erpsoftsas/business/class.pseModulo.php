@@ -76,6 +76,38 @@ class PseModulo
         return isset(self::mapa()[strtolower(trim((string) $clave))]);
     }
 
+    /**
+     * Columna con la cuenta que PRESENTO la declaracion (migracion 061), o null
+     * si la base todavia no la tiene. Se pregunta una vez por peticion.
+     */
+    public static function columnaQuienPresenta($con, array $m)
+    {
+        static $hay = [];
+        $col = $m['prefijo'] . '_IdUsuarioPresenta';
+        if (!isset($hay[$m['tabla']])) {
+            $f = $con->obnerFila($con->consultar("SELECT COL_LENGTH(?, ?) AS existe", [$m['tabla'], $col]));
+            $hay[$m['tabla']] = isset($f['existe']) && $f['existe'] !== null;
+        }
+        return $hay[$m['tabla']] ? $col : null;
+    }
+
+    /**
+     * Anota quien presento la declaracion (Alcaldia de Paipa, 2026-11-25: saber
+     * si la presento el contribuyente o un funcionario por el). Va dentro de la
+     * transaccion que la presenta. Sin la 061 no hace nada.
+     */
+    public static function anotarQuienPresenta($con, $clave, $id, $idUsuario)
+    {
+        if (!self::existe($clave) || (int) $idUsuario <= 0) { return; }
+        $m = self::get($clave);
+        $col = self::columnaQuienPresenta($con, $m);
+        if ($col === null) { return; }
+        $con->consultar(
+            "UPDATE {$m['tabla']} SET {$col} = ? WHERE {$m['pk']} = ?",
+            [(int) $idUsuario, (int) $id]
+        );
+    }
+
     /** Las tres claves, para el webhook y el cron que recorren los modulos. */
     public static function claves()
     {

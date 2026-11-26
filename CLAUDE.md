@@ -2672,3 +2672,31 @@ ICA, retención y autorretención. Sin configurar no cambia nada en ningún muni
 - **Al subir**: los archivos nuevos (`class.unocerouno.php`, `class.pagoUnoCeroUno.php`, la 060, las dos pruebas y
   el simulador) en el MISMO commit que los modificados, agregados por ruta. Pasos de activación en
   `extensiones/pse/DESPLIEGUE.md` §9.
+
+### Reunión con Juan del 2026-11-25 (LOCAL, sin commit ni despliegue al escribir esto)
+
+Cuatro pedidos (reunión + WhatsApp de Juan). Diego aprobó las cuatro soluciones.
+
+1. **Casilla 36 (descuento por pronto pago) del ICA**: misma regla de la 37. Bloqueada para el contribuyente y editable
+   para la Alcaldía. Pantalla: `core/declaraciones.ui.js`. Servidor: la función 7 de `class.declaracionesICA.php`
+   rechaza el renglón 15 distinto de cero si no es la Alcaldía.
+2. **Autorretención con el RIT sin actividades**: la Alcaldía, gestionando al contribuyente, puede agregar actividades
+   en la declaración (botón Agregar actividad, como en retención). El RIT NO se toca: la actividad queda guardada solo
+   en esa declaración. `class.autorreteica.php`: `_datosExtra` manda `agregaActividades` y `_guardarActividades` le
+   rechaza al contribuyente una actividad que no esté en su RIT ni en la declaración (`ACTIVIDAD_FUERA_DEL_RIT`); sí
+   conserva la que le puso la Alcaldía. `core/retenciones.js`: `actividadesEditables()`. Ojo: al abrir o guardar un
+   borrador, `_completarBorrador` le vuelve a sumar las actividades del RIT que le falten (con base 0); no borra nada.
+3. **Quién presentó la declaración (migración 061)**: `dec_/ret_/aut_IdUsuarioPresenta`. Lo anota
+   `PseModulo::anotarQuienPresenta()` dentro de la transacción que presenta, en tres sitios: `class.retenciones.php`
+   (`_presentar`), `class.declaracionesICA.php` (presentar) y `RegistroManual::registrarHistorica` (Ya pagada). La 061
+   llena las Ya pagada existentes con `his_IdUsuario`; lo demás ya presentado queda en blanco (no se puede reconstruir).
+   El código funciona sin la 061. Aplicarla por número en cada municipio: `--aplicar 061`.
+4. **Informes**: Informe rápido en Excel con tres columnas más al final (Estado del contribuyente, Presentada por, Pago
+   registrado por); el PDF no cambia porque la hoja ya va al ancho completo. Informe general: columna Presentada por en
+   las tres fuentes de declaraciones, y columna y filtro Estado del contribuyente (Activo / Inactivo = con cese en el
+   RIT) en declaraciones y en Contribuyentes.
+
+Pruebas: `pruebas/probar_cambios_2026_11_25.php` (29) y `probar_cambios_ica_web.php` (26, con la casilla 36). Todas las
+demás siguen pasando; las de `/tmp/pruebas` del contenedor `probar_informe_rango` y `probar_banco_informes` se
+actualizaron (el autofiltro del Excel llega ahora a la columna P). Fallas que ya existían y no son de esto:
+`probar_053` (2), `probar_bancos_recibo` (40) y `probar_numero_al_presentar` (44 y 45, por una fecha fija).

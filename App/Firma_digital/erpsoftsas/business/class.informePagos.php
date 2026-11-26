@@ -122,6 +122,17 @@ class InformePagos
         // La cuenta contable con la que se hizo el ingreso del pago manual (051).
         $colCuenta = ($conManual && BancosPago::hayCuentasContables($con)) ? 'pm.pma_CuentaContable' : 'CAST(NULL AS VARCHAR(70))';
         $joinBanco = $conBanco ? "LEFT JOIN ind_bancos b ON b.ban_Id = d.{$p}_IdBancoPago" : '';
+        // Quién presentó (061) y quién registró el pago manual o la «Ya pagada» (044).
+        // Paipa, 2026-11-25: «una columna de quién la subió».
+        $nombreDe = function ($a) {
+            return "COALESCE(NULLIF(LTRIM(RTRIM(ISNULL($a.usu_Nombres, '') + ' ' + ISNULL($a.usu_Apellidos, ''))), ''), $a.usu_Usuario)";
+        };
+        $colPresenta  = PseModulo::columnaQuienPresenta($con, $m);
+        $joinPresenta = $colPresenta ? "LEFT JOIN conf_usuarios up ON up.usu_Id = d.$colPresenta" : '';
+        $sqlPresento  = $colPresenta ? $nombreDe('up') : 'CAST(NULL AS NVARCHAR(200))';
+        $joinRegistra = $conManual ? 'LEFT JOIN conf_usuarios ur ON ur.usu_Id = pm.pma_IdUsuario' : '';
+        $sqlRegistro  = $conManual ? $nombreDe('ur') : 'CAST(NULL AS NVARCHAR(200))';
+        $sqlInactivo  = self::_hayCese($con) ? 'CASE WHEN c.ind_FechaCese IS NOT NULL THEN 1 ELSE 0 END' : '0';
         $colBanco  = $conBanco ? "COALESCE(b.ban_Nombre, d.{$p}_BancoPago)" : "d.{$p}_BancoPago";
 
         // Rango de fechas (Paipa, 2026-10-20: "entre fechas, por ejemplo del 1 de
@@ -139,12 +150,15 @@ class InformePagos
                     $pagadaSql AS pagado, $corregidaSql AS corregida,
                     ISNULL(d.{$m['valor']}, 0) AS valorDeclarado, ISNULL(d.{$p}_ValorPago, 0) AS valorPagado,
                     $colBanco AS banco, d.{$p}_RutaPago AS ruta, $colMedio AS medio, $colCuenta AS cuentaContable,
+                    $sqlPresento AS presento, $sqlRegistro AS registro, $sqlInactivo AS inactivo,
                     c.ind_NumeroIdentificacion AS doc, c.ind_DV AS dv, c.ind_IdTipoDocumento AS tipoDoc,
                     c.ind_PrimerNombre, c.ind_SegundoNombre, c.ind_PrimerApellido, c.ind_SegundoApellido
                FROM {$m['tabla']} d
                LEFT JOIN ind_contribuyentes c ON c.ind_Id = d.{$c['contribuyente']}
                $joinBanco
                $joinManual
+               $joinRegistra
+               $joinPresenta
               WHERE " . implode(' AND ', $where) . "
               ORDER BY $orden",
             $params
@@ -183,9 +197,19 @@ class InformePagos
                 'valorDeclarado' => round((float) $r['valorDeclarado']),
                 'valorPagado'    => $pagada ? round((float) $r['valorPagado']) : 0,
                 'intereses'      => ($diferencia !== null && $diferencia >= 0) ? $diferencia : null,
+                'presento'       => trim((string) $r['presento']),
+                'registro'       => $pagada ? trim((string) $r['registro']) : '',
+                'estadoContribuyente' => (int) $r['inactivo'] === 1 ? 'Inactivo' : 'Activo',
             ];
         }
         return $filas;
+    }
+
+    /** ¿La base guarda el cese de actividades (el contribuyente inactivo)? */
+    private static function _hayCese($con)
+    {
+        $f = $con->obnerFila($con->consultar("SELECT COL_LENGTH('ind_contribuyentes', 'ind_FechaCese') AS existe"));
+        return isset($f['existe']) && $f['existe'] !== null;
     }
 
     /** Nombre del contribuyente (por su documento) para el encabezado del informe. */

@@ -106,6 +106,44 @@ class ControladorAutorreteica extends \erpsoftsas\ControladorRetencion
         return count($filas);
     }
 
+    /**
+     * Las actividades de la autorretencion son las del RIT. Solo la Alcaldia,
+     * gestionando al contribuyente, puede declarar una que el RIT no tiene
+     * (Juan, 2026-11-25: contribuyentes con el RIT sin actividades a los que
+     * hay que subirles la declaracion). Al contribuyente se le acepta lo del
+     * RIT y lo que la declaracion ya traia (lo que le puso la Alcaldia, o una
+     * actividad que el RIT tuvo), nunca una nueva.
+     */
+    protected function _guardarActividades($con, $id, array $actividades)
+    {
+        if (!$this->_esFuncionario()) {
+            $permitidas = [];
+            $stmt = $con->consultar(
+                "SELECT ya.aua_IdActividad AS id
+                   FROM ind_autorreteica_actividades ya
+                  WHERE ya.aua_IdAutorreteica = ?
+                 UNION
+                 SELECT cur.acc_Id
+                   FROM {$this->tabla} d
+                   INNER JOIN ind_actividad_contribuyente atc ON atc.atc_IdContribuyente = d.aut_IdContribuyente
+                   INNER JOIN ind_actividadescomercio rit ON rit.acc_Id = atc.atc_IdCodigoActividad
+                   INNER JOIN ind_actividadescomercio cur ON cur.acc_Codigo = rit.acc_Codigo
+                  WHERE d.aut_Id = ?",
+                [(int) $id, (int) $id]
+            );
+            while ($f = $con->obnerFila($stmt)) { $permitidas[(int) $f['id']] = true; }
+
+            foreach ($actividades as $a) {
+                $idActividad = isset($a['idActividad']) ? (int) $a['idActividad'] : 0;
+                if ($idActividad > 0 && !isset($permitidas[$idActividad])) {
+                    throw new \RuntimeException('ACTIVIDAD_FUERA_DEL_RIT');
+                }
+            }
+        }
+
+        parent::_guardarActividades($con, $id, $actividades);
+    }
+
     /** Un borrador sin firmas recibe las actividades que el RIT gano despues. */
     protected function _completarBorrador($con, array $fila)
     {
@@ -281,6 +319,8 @@ class ControladorAutorreteica extends \erpsoftsas\ControladorRetencion
             'avisosEditable'  => $hay ? 1 : 0,
             'avisosManual'    => ($hay && !empty($fila['aut_AvisosManual'])) ? 1 : 0,
             'sinAvisos'       => ($c && !empty($c['exento'])) ? 1 : 0,
+            // La Alcaldia puede agregar actividades que el RIT no tiene (2026-11-25).
+            'agregaActividades' => $this->_esFuncionario() ? 1 : 0,
         ];
     }
 

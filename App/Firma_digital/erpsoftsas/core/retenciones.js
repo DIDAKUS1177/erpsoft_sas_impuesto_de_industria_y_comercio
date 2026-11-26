@@ -1072,7 +1072,7 @@ var Retenciones = (function () {
                 $('#btnPdf').hide();
             }
 
-            $('#btnAgregarActividad').toggle(editable && cfg.actividadesEditables);
+            $('#btnAgregarActividad').toggle(editable && actividadesEditables());
             $('#btnGuardar, #btnLiquidar').toggle(editable);
             // Eliminar solo lo que no se ha presentado: en una presentada el
             // servidor lo rechaza y el aviso remitía a un "Corregir" que aquí
@@ -1085,6 +1085,18 @@ var Retenciones = (function () {
 
         /* ---------------- actividades ---------------- */
 
+        /*
+         * ¿Se eligen las actividades en la declaracion? En retencion, siempre.
+         * En autorretencion salen del RIT, pero la Alcaldia puede agregarlas
+         * cuando gestiona a un contribuyente con el RIT sin actividades (Juan,
+         * 2026-11-25): el servidor lo dice en extra.agregaActividades y es
+         * quien lo exige al guardar.
+         */
+        function actividadesEditables() {
+            return !!cfg.actividadesEditables
+                || !!(abierta && abierta.extra && Number(abierta.extra.agregaActividades) === 1);
+        }
+
         function pintarActividades(editable) {
 
             $('#tablaActividades tbody').empty();
@@ -1096,7 +1108,9 @@ var Retenciones = (function () {
 
         function pintarFilaVacia() {
             $('#tablaActividades tbody').empty().append('<tr class="js-vacia">'
-                + vacio(5, 'Sin actividades', cfg.textoSinActividades, 'fa-list').replace(/^<tr><td colspan="5">/, '<td colspan="5">').replace(/<\/td><\/tr>$/, '</td>')
+                + vacio(5, 'Sin actividades', (!cfg.actividadesEditables && actividadesEditables())
+                        ? 'El RIT de este contribuyente no tiene actividades. Use el botón Agregar actividad para declararlas aquí.'
+                        : cfg.textoSinActividades, 'fa-list').replace(/^<tr><td colspan="5">/, '<td colspan="5">').replace(/<\/td><\/tr>$/, '</td>')
                 + '</tr>');
         }
 
@@ -1104,7 +1118,7 @@ var Retenciones = (function () {
 
             $('#tablaActividades tbody .js-vacia').remove();
 
-            var celdaActividad = editable && cfg.actividadesEditables
+            var celdaActividad = editable && actividadesEditables()
                 ? '<select class="form-control form-control-sm js-actividad">'
                   + opcionesActividad(a) + '</select>'
                 : '<input type="hidden" class="js-actividad" value="' + (a.idActividad || '') + '">'
@@ -1132,7 +1146,7 @@ var Retenciones = (function () {
                     + 'value="' + NumerosCOP.formatear(Math.round(NumerosCOP.deBaseDeDatos(a.valor) || 0)) + '"></td>'
                   : '<td class="text-right js-valor">' + pesos(a.valor)
                     + (a.manual ? '<div style="font-size:10px;color:#B45309;">escrito a mano</div>' : '') + '</td>')
-              + '<td class="text-center">' + (editable && cfg.actividadesEditables
+              + '<td class="text-center">' + (editable && actividadesEditables()
                     ? '<button class="btn btn-danger btn-sm js-quitar" title="Quitar"><i class="fa fa-trash"></i></button>' : '')
               + '</td>'
               + '</tr>'
