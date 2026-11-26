@@ -132,7 +132,18 @@ $lista = ec_filas($con,
             LTRIM(RTRIM(ISNULL(ind_PrimerNombre,'') + ' ' + ISNULL(ind_SegundoNombre,'') + ' ' + ISNULL(ind_PrimerApellido,'') + ' ' + ISNULL(ind_SegundoApellido,''))) AS nombre,
             CONVERT(VARCHAR(10), ind_FechaCreacion, 120) AS creado
        FROM ind_contribuyentes WHERE ind_NumeroIdentificacion = ? ORDER BY ind_Id", [$documento]);
-if (!$lista) { ec_salir("No hay ningun contribuyente con el documento $documento. No se hizo nada."); }
+if (!$lista) {
+    $n = (int) ec_fila($con, 'SELECT COUNT(*) AS n FROM conf_usuarios WHERE usu_NumeroDocumento = ?', [$documento])['n'];
+    $resp = ec_hay($con, 'ind_eliminados_respaldo')
+        ? ec_fila($con, 'SELECT COUNT(DISTINCT elr_Lote) AS lotes, ISNULL(SUM(elr_Filas), 0) AS filas, CONVERT(VARCHAR(16), MAX(elr_Fecha), 120) AS fecha FROM dbo.ind_eliminados_respaldo WHERE elr_Documento = ?', [$documento])
+        : ['lotes' => 0, 'filas' => 0, 'fecha' => null];
+    // En revision no es un error: Plesk no muestra la salida de una tarea que termina con error.
+    ec_salir("No hay ningun contribuyente con el documento $documento ($n cuenta(s) de usuario con ese documento).
+"
+           . ((int) $resp['lotes'] > 0 ? "Ya se elimino antes: {$resp['filas']} filas en el respaldo, ultima vez {$resp['fecha']}.
+" : '')
+           . 'No se hizo nada.', $eliminar ? 1 : 0);
+}
 if ($idPedido !== null) {
     $lista = array_values(array_filter($lista, function ($f) use ($idPedido) { return (int) $f['ind_Id'] === $idPedido; }));
     if (!$lista) { ec_salir("El --id=$idPedido no corresponde a un contribuyente con el documento $documento. No se hizo nada."); }
