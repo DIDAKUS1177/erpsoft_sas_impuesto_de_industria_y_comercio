@@ -1653,12 +1653,13 @@ private function _actualizarDeclaracionIca(){
     $NombreCampo = 'dec_ValorConcepto' . $n;
 
     /*
-     * Casilla 37, INTERES DE MORA (dec_ValorConcepto16): solo la escribe la
-     * Alcaldia (pedido del 2026-11-20). Al contribuyente le sale bloqueada y
-     * sus intereses se liquidan en el recibo de pago; aqui se rechaza si lo
-     * manda por fuera de la pantalla. Guardar un 0 no cambia nada y se deja.
+     * Casilla 37, INTERES DE MORA (dec_ValorConcepto16): nadie la escribe.
+     * Sale bloqueada y los intereses se liquidan en el recibo de pago; aqui se
+     * rechaza si llega por fuera de la pantalla. Hasta el 2026-11-27 la
+     * Alcaldia si podia; pidieron bloquearla tambien para ella. Guardar un 0
+     * no cambia nada y se deja.
      */
-    if ($n === 16 && !\erpsoftsas\PermisosRol::esAlcaldia()
+    if ($n === 16
         && (float) preg_replace('/[^0-9.\-]/', '', (string) $valorLimpio) != 0.0) {
         $this->_ok = 0;
         $this->_mensaje = 'Los intereses de mora se liquidan en el recibo de pago.';
@@ -1667,13 +1668,13 @@ private function _actualizarDeclaracionIca(){
 
     /*
      * Casilla 36, DESCUENTO POR PRONTO PAGO (dec_ValorConcepto15): misma regla
-     * (pedido de Juan, 2026-11-25). Solo la escribe la Alcaldia; el
-     * contribuyente no puede descontarse por su cuenta. El 0 se deja pasar.
+     * (pedido de Juan, 2026-11-25; para todos, tambien la Alcaldia, desde el
+     * 2026-11-27). El 0 se deja pasar.
      */
-    if ($n === 15 && !\erpsoftsas\PermisosRol::esAlcaldia()
+    if ($n === 15
         && (float) preg_replace('/[^0-9.\-]/', '', (string) $valorLimpio) != 0.0) {
         $this->_ok = 0;
-        $this->_mensaje = 'El descuento por pronto pago lo aplica la Alcaldía.';
+        $this->_mensaje = 'El descuento por pronto pago no se diligencia en la declaración.';
         return [];
     }
 

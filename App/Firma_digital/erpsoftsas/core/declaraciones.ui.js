@@ -1616,17 +1616,16 @@ $(document).on('click', '#btnLiquidar', function () {
 });
 
 /*
- * Casilla 37, INTERES DE MORA (Alcaldia de Paipa, 2026-11-20): el contribuyente no la
- * escribe -queda bloqueada-; los intereses se liquidan en el recibo de pago. La Alcaldia
- * si puede escribirla. El servidor lo exige igual (funcion de guardar un renglon).
+ * Casilla 37, INTERES DE MORA (Alcaldia de Paipa, 2026-11-20): no se escribe -queda
+ * bloqueada-; los intereses se liquidan en el recibo de pago. Desde el 2026-11-27 queda
+ * bloqueada tambien para la Alcaldia (antes ella si podia escribirla), igual que la 36.
+ * El servidor lo exige igual (funcion de guardar un renglon).
  */
 $(function () {
-    var esAlcaldia = (typeof ErpPermisos !== 'undefined' && ErpPermisos.hay()) ? ErpPermisos.esAlcaldia() : true;
-    if (esAlcaldia) { return; }
     $('[data-campo="interes_mora"]').prop('readonly', true).addClass('campo-bloqueado')
         .attr('title', 'Los intereses de mora se liquidan en el recibo de pago.');
     // Un borrador anterior a esta regla puede traer intereses escritos: el
-    // contribuyente los puede dejar en 0 (el servidor solo le acepta el 0), pero
+    // usuario los puede dejar en 0 (el servidor solo acepta el 0), pero
     // no escribir otro valor. Con la casilla en 0 sigue bloqueada.
     $(document).on('focusin', '[data-campo="interes_mora"]', function () {
         var valor = parseFloat(String($(this).val()).replace(/[^0-9]/g, '')) || 0;
@@ -1635,7 +1634,7 @@ $(function () {
 
     // Casilla 36, DESCUENTO POR PRONTO PAGO (Juan, 2026-11-25): la misma regla.
     $('[data-campo="descuento_pronto_pago"]').prop('readonly', true).addClass('campo-bloqueado')
-        .attr('title', 'El descuento por pronto pago lo aplica la Alcaldía.');
+        .attr('title', 'El descuento por pronto pago no se diligencia en la declaración.');
     $(document).on('focusin', '[data-campo="descuento_pronto_pago"]', function () {
         var valor = parseFloat(String($(this).val()).replace(/[^0-9]/g, '')) || 0;
         $(this).prop('readonly', valor === 0).toggleClass('campo-bloqueado', valor === 0);

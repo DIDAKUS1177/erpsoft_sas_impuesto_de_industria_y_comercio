@@ -188,9 +188,9 @@ prueba('el contribuyente no puede escribir el descuento por pronto pago', $r['ok
 $r = ica(7, ['idDeclaracion' => 0, 'campoSeleccionado' => 15, 'valorLimpio' => '0']);
 prueba('un cero en la 36 no se rechaza por esta regla', strpos((string) ($r['mensaje'] ?? ''), 'pronto pago') === false, $r);
 $r = ica(7, ['idDeclaracion' => 0, 'campoSeleccionado' => 15, 'valorLimpio' => '5000'], $sesAdmin);
-prueba('la Alcaldía sí puede escribir la 36', strpos((string) ($r['mensaje'] ?? ''), 'pronto pago') === false, $r);
+prueba('la Alcaldía tampoco puede escribir la 36 (2026-11-27)', $r['ok'] == 0 && strpos((string) ($r['mensaje'] ?? ''), 'pronto pago') !== false, $r);
 $r = ica(7, ['idDeclaracion' => 0, 'campoSeleccionado' => 16, 'valorLimpio' => '5000'], $sesAdmin);
-prueba('la Alcaldía sí puede (no recibe ese rechazo)', strpos((string) ($r['mensaje'] ?? ''), $aviso) === false, $r);
+prueba('la Alcaldía tampoco puede escribir la 37 (2026-11-27)', $r['ok'] == 0 && strpos((string) ($r['mensaje'] ?? ''), $aviso) !== false, $r);
 
 /* ======================================================================
    C. Contribuyente inactivo
